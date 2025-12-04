@@ -30,7 +30,8 @@ function App() {
     name: 'ChurchCoin Community',
     email: 'finance@churchcoin.app',
     address: '123 High Street, London, UK',
-    charityNumber: '11223344'
+    charityNumber: '11223344',
+    reportingPeriod: 'tax_year' // Default to UK Tax Year
   });
 
   const handleSwitchUser = (user: AppUser) => {
@@ -143,7 +144,7 @@ function App() {
       case 'funds': return <FundManager funds={funds} />;
       case 'donors': return <DonorManager donors={donors} transactions={transactions} pledges={pledges} funds={funds} onAddDonor={handleAddDonor} onUpdateDonor={handleUpdateDonor} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} churchDetails={churchDetails} />;
       case 'campaigns': return <Campaigns funds={funds} pledges={pledges} transactions={transactions} onAddPledge={p => setPledges(prev => [...prev, p])} onBulkAddPledges={handleBulkAddPledges} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} />;
-      case 'reports': return <Reports transactions={transactions} funds={funds} pledges={pledges} />;
+      case 'reports': return <Reports transactions={transactions} funds={funds} pledges={pledges} churchDetails={churchDetails} />;
       case 'copilot': return <AICoPilot transactions={transactions} funds={funds} />;
       case 'settings': return <Settings currentUser={currentUser} users={users} categories={categories} funds={funds} churchDetails={churchDetails} onUpdateUserRole={handleUpdateUserRole} onAddCategory={handleAddCategory} onRemoveCategory={handleRemoveCategory} onAddUser={handleAddUser} onUpdateChurchDetails={handleUpdateChurchDetails} onAddFund={handleAddFund} onUpdateFund={handleUpdateFund} />;
       default: return <Dashboard funds={funds} transactions={transactions} />;

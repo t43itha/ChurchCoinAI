@@ -26,6 +26,7 @@ export interface ChurchDetails {
   address?: string;
   email?: string;
   website?: string;
+  reportingPeriod?: 'tax_year' | 'calendar_year';
 }
 
 export interface Fund {

@@ -340,6 +340,104 @@ export const generateCampaignReport = async (transactions: Transaction[], fund: 
     return response.text;
 };
 
+export const generateAnnualStatement = async (transactions: Transaction[], startDate?: string, endDate?: string) => {
+    if (!apiKey) throw new Error("API Key missing");
+
+    let periodTxns = transactions;
+    if (startDate) periodTxns = periodTxns.filter(t => t.date >= startDate);
+    if (endDate) periodTxns = periodTxns.filter(t => t.date <= endDate);
+
+    // Aggregate by Category
+    const incomeCats: Record<string, number> = {};
+    const expenseCats: Record<string, number> = {};
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    periodTxns.forEach(t => {
+        if (t.type === 'Income') {
+            incomeCats[t.category] = (incomeCats[t.category] || 0) + t.amount;
+            totalIncome += t.amount;
+        } else {
+            expenseCats[t.category] = (expenseCats[t.category] || 0) + t.amount;
+            totalExpense += t.amount;
+        }
+    });
+
+    const data = {
+        period: `${startDate || 'Start'} to ${endDate || 'End'}`,
+        income: incomeCats,
+        expenditure: expenseCats,
+        totals: { income: totalIncome, expenditure: totalExpense, net: totalIncome - totalExpense }
+    };
+
+    const prompt = `
+        Create a formal "Annual Statement of Financial Activities" (SOFA) report.
+        This is a standard financial report for a UK Charity.
+
+        Data:
+        ${JSON.stringify(data)}
+
+        Instructions:
+        1. Create a clear structure with "Incoming Resources" and "Resources Expended".
+        2. Present the breakdown by Category in a table format.
+        3. Show the "Net Movement in Funds" at the bottom.
+        4. Add a brief executive summary interpreting the numbers (e.g., did we break even? where did most money come from?).
+        5. Use professional Markdown formatting.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: prompt
+    });
+
+    return response.text;
+};
+
+export const generateMonthlyBreakdown = async (transactions: Transaction[], startDate?: string, endDate?: string) => {
+    if (!apiKey) throw new Error("API Key missing");
+
+    let periodTxns = transactions;
+    if (startDate) periodTxns = periodTxns.filter(t => t.date >= startDate);
+    if (endDate) periodTxns = periodTxns.filter(t => t.date <= endDate);
+
+    // Aggregate by Month
+    const monthlyData: Record<string, { income: number; expense: number }> = {};
+
+    periodTxns.forEach(t => {
+        const monthKey = t.date.substring(0, 7); // YYYY-MM
+        if (!monthlyData[monthKey]) monthlyData[monthKey] = { income: 0, expense: 0 };
+        
+        if (t.type === 'Income') monthlyData[monthKey].income += t.amount;
+        else monthlyData[monthKey].expense += t.amount;
+    });
+
+    // Sort months
+    const sortedMonths = Object.keys(monthlyData).sort().map(m => ({
+        month: m,
+        ...monthlyData[m]
+    }));
+
+    const prompt = `
+        Create a "Monthly Financial Performance" report.
+        
+        Data (Time Series):
+        ${JSON.stringify(sortedMonths)}
+
+        Instructions:
+        1. Present a Markdown table showing Month, Income, Expenditure, and Net Result for each month.
+        2. Identify any seasonal trends or unusual months (e.g. "Highest income was in...").
+        3. Provide a brief commentary on the consistency of cash flow.
+        4. Use professional Markdown.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
+        contents: prompt
+    });
+
+    return response.text;
+};
+
 export const generateDonorCommunication = async (donorName: string, transactions: any[], totalGiven: number) => {
     if (!apiKey) throw new Error("API Key missing");
 

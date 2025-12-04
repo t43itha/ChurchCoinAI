@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Transaction, Fund, Pledge } from '../types';
-import { generateTreasurerReport, generateGiftAidSchedule, generateProjectReport, generateCampaignReport } from '../services/gemini';
-import { FileText, Download, Share2, Sparkles, PoundSterling, Calendar, Megaphone, ArrowRight, Target } from 'lucide-react';
+import { Transaction, Fund, Pledge, ChurchDetails } from '../types';
+import { generateTreasurerReport, generateGiftAidSchedule, generateProjectReport, generateCampaignReport, generateAnnualStatement, generateMonthlyBreakdown } from '../services/gemini';
+import { FileText, Download, Share2, Sparkles, PoundSterling, Calendar, Megaphone, ArrowRight, Target, TrendingUp } from 'lucide-react';
 
 interface ReportsProps {
   transactions: Transaction[];
   funds: Fund[];
   pledges: Pledge[];
+  churchDetails?: ChurchDetails; // Prop passed to read config
 }
 
-const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchDetails }) => {
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -21,12 +22,32 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges }) => {
   const getDatesForTaxYear = (year: string) => {
       const today = new Date();
       const currentYear = today.getFullYear();
-      // UK Tax Year: April 6th to April 5th
-      if (year === 'current') {
-          return { start: `${currentYear}-04-06`, end: `${currentYear + 1}-04-05` };
-      } else if (year === 'previous') {
-          return { start: `${currentYear - 1}-04-06`, end: `${currentYear}-04-05` };
+      
+      const isCalendar = churchDetails?.reportingPeriod === 'calendar_year';
+
+      if (year === 'all') return { start: undefined, end: undefined };
+
+      if (isCalendar) {
+          // Calendar Year: Jan 1 - Dec 31
+          if (year === 'current') {
+              return { start: `${currentYear}-01-01`, end: `${currentYear}-12-31` };
+          } else if (year === 'previous') {
+              return { start: `${currentYear - 1}-01-01`, end: `${currentYear - 1}-12-31` };
+          }
+      } else {
+          // UK Tax Year: April 6th to April 5th
+          // If today is before April 6th, the "current" tax year started in previous calendar year
+          const taxYearStartYear = (today.getMonth() < 3 || (today.getMonth() === 3 && today.getDate() < 6)) 
+            ? currentYear - 1 
+            : currentYear;
+
+          if (year === 'current') {
+              return { start: `${taxYearStartYear}-04-06`, end: `${taxYearStartYear + 1}-04-05` };
+          } else if (year === 'previous') {
+              return { start: `${taxYearStartYear - 1}-04-06`, end: `${taxYearStartYear}-04-05` };
+          }
       }
+
       return { start: undefined, end: undefined };
   };
 
@@ -94,6 +115,36 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges }) => {
       }
   };
 
+  const handleGenerateAnnualStatement = async () => {
+      setIsGenerating(true);
+      setReportTitle("Annual Financial Statement");
+      const { start, end } = getDatesForTaxYear(taxYear);
+      try {
+          const text = await generateAnnualStatement(transactions, start, end);
+          setReportText(text || "No transactions found for this period.");
+      } catch (e) {
+          console.error(e);
+          setReportText("Error generating annual statement.");
+      } finally {
+          setIsGenerating(false);
+      }
+  };
+
+  const handleGenerateMonthlyBreakdown = async () => {
+      setIsGenerating(true);
+      setReportTitle("Monthly Income & Expense Breakdown");
+      const { start, end } = getDatesForTaxYear(taxYear);
+      try {
+          const text = await generateMonthlyBreakdown(transactions, start, end);
+          setReportText(text || "No transactions found for this period.");
+      } catch (e) {
+          console.error(e);
+          setReportText("Error generating monthly breakdown.");
+      } finally {
+          setIsGenerating(false);
+      }
+  };
+
   return (
     <div className="space-y-6 animate-enter max-w-6xl mx-auto">
       <header className="border-b border-slate-200 pb-6 flex flex-col md:flex-row justify-between md:items-end gap-4">
@@ -109,8 +160,12 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges }) => {
                     onChange={(e) => setTaxYear(e.target.value)}
                     className="text-sm font-medium text-slate-700 outline-none bg-transparent cursor-pointer"
                 >
-                    <option value="current">Current Tax Year</option>
-                    <option value="previous">Previous Tax Year</option>
+                    <option value="current">
+                        Current {churchDetails?.reportingPeriod === 'calendar_year' ? 'Calendar' : 'Tax'} Year
+                    </option>
+                    <option value="previous">
+                        Previous {churchDetails?.reportingPeriod === 'calendar_year' ? 'Calendar' : 'Tax'} Year
+                    </option>
                     <option value="all">All Time</option>
                 </select>
             </div>
@@ -133,6 +188,33 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges }) => {
                 <div className="flex items-center text-xs font-bold text-indigo-600 uppercase tracking-wide group-hover:translate-x-1 transition-transform">
                     {isGenerating && reportTitle.includes("Treasurer") ? 'Generating...' : <span className="flex items-center gap-2">Create Draft <ArrowRight size={12}/></span>}
                 </div>
+            </div>
+
+            {/* Financial Performance Card */}
+            <div className="swiss-card p-6 group">
+                 <div className="flex justify-between items-start mb-4">
+                    <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600">
+                        <TrendingUp size={20} />
+                    </div>
+                </div>
+                 <h3 className="font-bold text-slate-900 mb-2">Financial Performance</h3>
+                 <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+                    Income and Expenditure statements for the selected tax year.
+                 </p>
+                 <div className="flex gap-2">
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); handleGenerateAnnualStatement(); }}
+                        className="flex-1 py-1.5 bg-slate-900 text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-slate-800 transition-colors"
+                     >
+                         Annual
+                     </button>
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); handleGenerateMonthlyBreakdown(); }}
+                        className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-700 rounded text-xs font-bold uppercase tracking-wide hover:border-slate-300 transition-colors"
+                     >
+                         Monthly
+                     </button>
+                 </div>
             </div>
 
             {/* Gift Aid Card */}

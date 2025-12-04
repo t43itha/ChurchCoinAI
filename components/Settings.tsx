@@ -183,6 +183,17 @@ const Settings: React.FC<SettingsProps> = ({
                                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                                     />
                                 </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Reporting Period</label>
+                                    <select 
+                                        value={localChurchDetails.reportingPeriod || 'tax_year'}
+                                        onChange={e => setLocalChurchDetails({...localChurchDetails, reportingPeriod: e.target.value as 'tax_year' | 'calendar_year'})}
+                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="tax_year">UK Tax Year (April - April)</option>
+                                        <option value="calendar_year">Calendar Year (Jan - Dec)</option>
+                                    </select>
+                                </div>
                                 <div className="col-span-2">
                                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Address</label>
                                     <textarea 
@@ -213,6 +224,12 @@ const Settings: React.FC<SettingsProps> = ({
                                     <p className="text-sm font-medium text-slate-700">{churchDetails.email || 'N/A'}</p>
                                 </div>
                                 <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Reporting Period</p>
+                                    <p className="text-sm font-medium text-slate-700">
+                                        {churchDetails.reportingPeriod === 'calendar_year' ? 'Calendar Year (Jan-Dec)' : 'UK Tax Year (Apr-Apr)'}
+                                    </p>
+                                </div>
+                                <div className="col-span-2">
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Address</p>
                                     <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{churchDetails.address || 'N/A'}</p>
                                 </div>
