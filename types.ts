@@ -10,6 +10,16 @@ export enum FundType {
   ENDOWMENT = 'Endowment'
 }
 
+export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatarUrl?: string;
+}
+
 export interface Fund {
   id: string;
   name: string;
@@ -40,6 +50,7 @@ export interface Donor {
   address?: string;
   notes?: string;
   type: 'Individual' | 'Organization';
+  isGiftAidActive?: boolean;
 }
 
 export interface Transaction {
@@ -55,6 +66,7 @@ export interface Transaction {
   isGiftAidEligible?: boolean;
   donorName?: string; // For linking to pledges
   donorId?: string;
+  pledgeId?: string;
 }
 
 export interface Insight {

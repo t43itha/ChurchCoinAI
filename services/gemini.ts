@@ -154,16 +154,19 @@ export const generateInsights = async (transactions: Transaction[]) => {
 export const reconcilePledges = async (transactions: Transaction[], pledges: Pledge[]) => {
     if (!apiKey) throw new Error("API Key missing");
     
-    // Only look at income that isn't linked to a pledge yet but might be relevant
+    // Only look at income that isn't linked to a pledge yet
     const candidates = transactions
-        .filter(t => t.type === 'Income' && !t.isReconciled)
+        .filter(t => t.type === 'Income' && !t.pledgeId)
         .map(t => ({ id: t.id, desc: t.description, amount: t.amount, date: t.date }));
         
     const pledgeList = pledges.map(p => ({ id: p.id, donor: p.donorName, amount: p.amount }));
 
+    if (candidates.length === 0) return [];
+
     const prompt = `
         I have a list of Transactions and a list of Pledges/Donors.
         Match the Transactions to the Pledges based on donor name similarity or amount patterns.
+        Only include matches where you are reasonably confident.
         Return a JSON array of matches.
 
         Transactions: ${JSON.stringify(candidates)}
@@ -198,26 +201,139 @@ export const reconcilePledges = async (transactions: Transaction[], pledges: Ple
     }
 };
 
-export const generateGiftAidSchedule = async (transactions: Transaction[]) => {
+export const generateGiftAidSchedule = async (transactions: Transaction[], startDate?: string, endDate?: string) => {
     if (!apiKey) throw new Error("API Key missing");
 
-    const eligible = transactions
-        .filter(t => t.isGiftAidEligible && t.type === 'Income')
-        .map(t => ({ date: t.date, donor: t.donorName || 'Unknown', amount: t.amount }));
+    // Filter relevant transactions
+    let eligible = transactions.filter(t => t.isGiftAidEligible && t.type === 'Income');
+    if (startDate) eligible = eligible.filter(t => t.date >= startDate);
+    if (endDate) eligible = eligible.filter(t => t.date <= endDate);
 
-    if (eligible.length === 0) return "No Gift Aid eligible transactions found.";
+    if (eligible.length === 0) return "No Gift Aid eligible transactions found for this period.";
+
+    // Aggregate by Donor in TypeScript for accuracy
+    const donorTotals: Record<string, number> = {};
+    let totalClaimable = 0;
+
+    eligible.forEach(t => {
+        const name = t.donorName || 'Unknown Donor';
+        donorTotals[name] = (donorTotals[name] || 0) + t.amount;
+    });
+
+    const breakdown = Object.entries(donorTotals).map(([donor, amount]) => {
+        const claim = amount * 0.25;
+        totalClaimable += claim;
+        return { donor, totalDonation: amount, claimable: claim };
+    });
 
     const prompt = `
-        Create a Gift Aid Schedule summary for the HMRC (UK tax authority).
-        List the total donation amount and the total Gift Aid Claimable (which is 25% of the donation amount).
-        Group by Donor if possible.
-        Format as a Markdown table.
+        Create a formal Gift Aid Schedule summary for HMRC (UK tax authority).
         
-        Data: ${JSON.stringify(eligible)}
+        Period: ${startDate || 'All Time'} to ${endDate || 'Present'}
+        
+        Aggregated Data:
+        ${JSON.stringify(breakdown)}
+        
+        Total Claimable Calculated: £${totalClaimable.toFixed(2)}
+        
+        Instructions:
+        1. Create a Markdown table with columns: Donor Name, Total Donation (£), Gift Aid Claimable (£).
+        2. Include a summary section at the bottom stating the Grand Total Claim.
+        3. Add a brief declaration statement suitable for a charity treasurer.
+        4. Keep the tone professional and compliant.
     `;
 
     const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
+        contents: prompt
+    });
+
+    return response.text;
+};
+
+export const generateProjectReport = async (transactions: Transaction[], fund: Fund, startDate?: string, endDate?: string) => {
+    if (!apiKey) throw new Error("API Key missing");
+
+    let fundTxns = transactions.filter(t => t.fundId === fund.id);
+    if (startDate) fundTxns = fundTxns.filter(t => t.date >= startDate);
+    if (endDate) fundTxns = fundTxns.filter(t => t.date <= endDate);
+
+    const income = fundTxns.filter(t => t.type === 'Income').reduce((acc, t) => acc + t.amount, 0);
+    const expense = fundTxns.filter(t => t.type === 'Expenditure').reduce((acc, t) => acc + t.amount, 0);
+
+    const prompt = `
+        Write a "Project Impact Update" for the '${fund.name}' fund.
+        Target Audience: Church members or newsletter subscribers.
+        
+        Financials:
+        - Opening Balance: (Context: Fund Balance is currently £${fund.balance})
+        - Period Income: £${income}
+        - Period Spend: £${expense}
+        - Target: £${fund.targetAmount || 'N/A'}
+        
+        Key Activity (Transactions):
+        ${JSON.stringify(fundTxns.slice(0, 10).map(t => ({ date: t.date, desc: t.description, amount: t.amount, type: t.type })))}
+
+        Instructions:
+        1. Write an engaging title.
+        2. Summarize progress towards the target (if applicable).
+        3. Highlight key expenditures (what the money achieved).
+        4. Thank donors for specific support.
+        5. Format using Markdown.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt
+    });
+
+    return response.text;
+};
+
+export const generateCampaignReport = async (transactions: Transaction[], fund: Fund, pledges: Pledge[]) => {
+    if (!apiKey) throw new Error("API Key missing");
+
+    const campaignTxns = transactions.filter(t => t.fundId === fund.id && t.type === 'Income');
+    const campaignPledges = pledges.filter(p => p.fundId === fund.id);
+
+    const totalRaisedCash = campaignTxns.reduce((sum, t) => sum + t.amount, 0);
+    const totalPledged = campaignPledges.reduce((sum, p) => sum + p.amount, 0);
+    
+    // Calculate unique donors
+    const donorSet = new Set<string>();
+    campaignTxns.forEach(t => { if (t.donorName) donorSet.add(t.donorName) });
+    campaignPledges.forEach(p => { if (p.donorName) donorSet.add(p.donorName) });
+    const donorCount = donorSet.size || campaignTxns.length; // Fallback if no names
+
+    const avgDonation = campaignTxns.length > 0 ? totalRaisedCash / campaignTxns.length : 0;
+
+    const stats = {
+        fundName: fund.name,
+        target: fund.targetAmount || 'Not Set',
+        totalRaisedCash,
+        totalPledged,
+        donorCount,
+        avgDonation: avgDonation.toFixed(2),
+        deadline: fund.deadline || 'None'
+    };
+
+    const prompt = `
+        Write a Strategic Campaign Fundraising Report for the '${fund.name}'.
+        
+        Key Metrics:
+        ${JSON.stringify(stats)}
+
+        Instructions:
+        1. Create a "Campaign Scorecard" table at the top with the key metrics.
+        2. Analyze the progress against the Target.
+        3. Project the likelihood of meeting the goal based on current pledges and cash.
+        4. Provide a commentary on donor engagement (based on donor count).
+        5. Suggest 2-3 brief next steps to boost fundraising.
+        6. Use Markdown formatting.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3-pro-preview",
         contents: prompt
     });
 

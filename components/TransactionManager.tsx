@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Transaction, TransactionType, Fund } from '../types';
+import { Transaction, TransactionType, Fund, Pledge } from '../types';
 import { categorizeTransactions } from '../services/gemini';
 import { CATEGORIES } from '../constants';
-import { Upload, Plus, Wand2, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search } from 'lucide-react';
 
 interface TransactionManagerProps {
   transactions: Transaction[];
   funds: Fund[];
+  pledges: Pledge[];
   onAddTransaction: (t: Transaction) => void;
   onUpdateTransaction: (t: Transaction) => void;
   onBulkAdd: (ts: Transaction[]) => void;
@@ -15,7 +16,7 @@ interface TransactionManagerProps {
 }
 
 const TransactionManager: React.FC<TransactionManagerProps> = ({ 
-  transactions, funds, onAddTransaction, onUpdateTransaction, onBulkAdd, onBulkUpdate, onBatchUpdate
+  transactions, funds, pledges, onAddTransaction, onUpdateTransaction, onBulkAdd, onBulkUpdate, onBatchUpdate
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
@@ -23,27 +24,46 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [pendingTransactions, setPendingTransactions] = useState<Partial<Transaction>[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
   
-  // Selection & Bulk Action State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActionType, setBulkActionType] = useState<'category' | 'fund' | null>(null);
-
-  // Edit State
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  // Filter State
+  // Manual Entry State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
+      type: TransactionType.INCOME,
+      date: new Date().toISOString().split('T')[0],
+      isReconciled: false,
+      isGiftAidEligible: false,
+      category: 'Donations',
+      fundId: funds[0]?.id
+  });
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'reconciled', 'unreconciled'
+  const [filterStatus, setFilterStatus] = useState('all'); 
 
-  // Filter Logic
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
+      // Global Search
+      if (searchTerm) {
+          const lowerTerm = searchTerm.toLowerCase();
+          const matchesDesc = t.description.toLowerCase().includes(lowerTerm);
+          const matchesCat = t.category.toLowerCase().includes(lowerTerm);
+          const matchesDonor = t.donorName?.toLowerCase().includes(lowerTerm);
+          const matchesAmount = t.amount.toString().includes(lowerTerm);
+          
+          if (!matchesDesc && !matchesCat && !matchesDonor && !matchesAmount) return false;
+      }
+
       // Date Range
       if (filterDateStart && t.date < filterDateStart) return false;
       if (filterDateEnd && t.date > filterDateEnd) return false;
       
-      // Category
+      // Category (Dropdown)
       if (filterCategory && t.category !== filterCategory) return false;
       
       // Status
@@ -52,9 +72,23 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, filterDateStart, filterDateEnd, filterCategory, filterStatus]);
+  }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterStatus]);
 
-  // Selection Logic
+  const relevantPledges = useMemo(() => {
+      if (!editingTransaction?.donorName) return [];
+      return pledges.filter(p => 
+          (p.donorName && p.donorName.toLowerCase().includes(editingTransaction.donorName!.toLowerCase())) ||
+          (editingTransaction.donorId && p.donorId === editingTransaction.donorId)
+      );
+  }, [editingTransaction?.donorName, editingTransaction?.donorId, pledges]);
+
+  const relevantPledgesForNew = useMemo(() => {
+      if (!newTransaction?.donorName) return [];
+      return pledges.filter(p => 
+          (p.donorName && p.donorName.toLowerCase().includes(newTransaction.donorName!.toLowerCase()))
+      );
+  }, [newTransaction?.donorName, pledges]);
+
   const handleSelectAll = () => {
       if (selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0) {
           setSelectedIds(new Set());
@@ -65,15 +99,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const handleSelectOne = (id: string) => {
       const newSet = new Set(selectedIds);
-      if (newSet.has(id)) {
-          newSet.delete(id);
-      } else {
-          newSet.add(id);
-      }
+      if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
       setSelectedIds(newSet);
   };
 
   const clearFilters = () => {
+      setSearchTerm('');
       setFilterDateStart('');
       setFilterDateEnd('');
       setFilterCategory('');
@@ -89,40 +120,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handleBulkAutoCategorize = async () => {
       if (selectedIds.size === 0) return;
       setIsBulkProcessingAI(true);
-
       const targetTransactions = transactions.filter(t => selectedIds.has(t.id));
       const descriptions = targetTransactions.map(t => t.description);
-
       try {
           const suggestions = await categorizeTransactions(descriptions, funds, CATEGORIES);
-          
           const updates = targetTransactions.map((t, index) => {
               const suggestion = suggestions[index];
               if (!suggestion) return { id: t.id, changes: {} };
-
               const suggestedFund = funds.find(f => f.name === suggestion.fundName);
-              
               const changes: Partial<Transaction> = {
                   category: suggestion.category,
                   isGiftAidEligible: suggestion.isGiftAidEligible,
               };
-
-              // Only update fund if confident and found
-              if (suggestedFund) {
-                  changes.fundId = suggestedFund.id;
-              }
-              
-              // Only update donor if found
-              if (suggestion.donorName) {
-                  changes.donorName = suggestion.donorName;
-              }
-
+              if (suggestedFund) changes.fundId = suggestedFund.id;
+              if (suggestion.donorName) changes.donorName = suggestion.donorName;
               return { id: t.id, changes };
           });
-
           onBatchUpdate(updates);
           setSelectedIds(new Set());
-          alert(`Successfully auto-categorized ${updates.length} transactions.`);
       } catch (error) {
           console.error(error);
           alert("Failed to auto-categorize. Please check API connection.");
@@ -131,7 +146,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
-  // Simulate Plaid/Bank Sync
   const handleSimulateSync = () => {
     setIsUploading(true);
     setTimeout(() => {
@@ -140,7 +154,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             { description: 'British Gas Bill Oct', amount: 145.00, type: TransactionType.EXPENDITURE, date: '2023-11-02' },
             { description: 'Donation Ref: Sarah Jenkins', amount: 200.00, type: TransactionType.INCOME, date: '2023-11-04' },
             { description: 'Cash Collection - Sunday', amount: 450.00, type: TransactionType.INCOME, date: '2023-11-05' },
-            { description: 'Amazon: Office Supplies', amount: 34.99, type: TransactionType.EXPENDITURE, date: '2023-11-05' },
         ];
         setPendingTransactions(newMockTransactions);
         setIsUploading(false);
@@ -151,13 +164,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handleApplyAI = async () => {
     setIsProcessingAI(true);
     const descriptions = pendingTransactions.map(t => t.description || '');
-    
     try {
         const suggestions = await categorizeTransactions(descriptions, funds, CATEGORIES);
-        
         const updatedPending = pendingTransactions.map((t, idx) => {
             const suggestion = suggestions[idx];
-            // Find fund ID by name
             const suggestedFund = funds.find(f => f.name === suggestion.fundName);
             return {
                 ...t,
@@ -171,7 +181,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         setPendingTransactions(updatedPending);
     } catch (error) {
         console.error("AI Error", error);
-        alert("Failed to categorize with Gemini. Check your API key.");
     } finally {
         setIsProcessingAI(false);
     }
@@ -183,320 +192,264 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         id: Math.random().toString(36).substr(2, 9),
         isReconciled: false,
     })) as Transaction[];
-    
     onBulkAdd(newTransactions);
     setShowReviewModal(false);
     setPendingTransactions([]);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (editingTransaction) {
-          onUpdateTransaction(editingTransaction);
-          setEditingTransaction(null);
-      }
+  const handleAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTransaction.amount && newTransaction.description && newTransaction.fundId) {
+        const t: Transaction = {
+            id: Math.random().toString(36).substr(2, 9),
+            date: newTransaction.date!,
+            description: newTransaction.description!,
+            amount: Number(newTransaction.amount),
+            type: newTransaction.type!,
+            category: newTransaction.category || 'Donations',
+            fundId: newTransaction.fundId!,
+            isReconciled: newTransaction.isReconciled || false,
+            isGiftAidEligible: newTransaction.isGiftAidEligible,
+            donorName: newTransaction.donorName,
+            pledgeId: newTransaction.pledgeId
+        };
+        onAddTransaction(t);
+        setShowAddModal(false);
+        // Reset
+        setNewTransaction({
+            type: TransactionType.INCOME,
+            date: new Date().toISOString().split('T')[0],
+            isReconciled: false,
+            isGiftAidEligible: false,
+            category: 'Donations',
+            fundId: funds[0]?.id
+        });
+    }
   };
 
   return (
-    <div className="space-y-6 relative">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
-          <h2 className="text-3xl font-serif font-bold text-slate-800">Transactions</h2>
-          <p className="text-slate-500">Manage income, expenditure, and gift aid.</p>
+          <h2 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Ledger</h2>
+          <p className="text-slate-500 mt-1 text-sm font-medium">Recorded transactions and reconciliations.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2">
           <button 
             onClick={handleSimulateSync}
             disabled={isUploading}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors shadow-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
           >
-            <Building2 size={18} className="text-blue-600"/>
-            {isUploading ? 'Syncing...' : 'Sync Bank'}
+            {isUploading ? <Loader2 size={14} className="animate-spin"/> : <Building2 size={14} />}
+            Sync Bank
           </button>
           <button 
             onClick={() => document.getElementById('csvInput')?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors shadow-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
           >
-            <FileSpreadsheet size={18} className="text-green-600"/>
-            Import CSV
-            <input 
-                id="csvInput" 
-                type="file" 
-                accept=".csv" 
-                className="hidden" 
-                onChange={(e) => {
-                    if (e.target.files?.length) handleSimulateSync();
-                }} 
-            />
+            <FileSpreadsheet size={14}/>
+            Import
+            <input id="csvInput" type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.length) handleSimulateSync(); }} />
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors shadow-md font-medium">
-            <Plus size={18} />
-            Manual Entry
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition-all shadow-sm font-semibold text-xs uppercase tracking-wide btn-primary"
+          >
+            <Plus size={14} />
+            Entry
           </button>
         </div>
       </header>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 items-end md:items-center">
-          <div className="flex items-center gap-2 text-slate-500 font-medium mr-2">
-              <Filter size={18} /> Filters:
+      <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-3">
+          {/* Global Search */}
+          <div className="relative flex-1">
+             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+             <input 
+                type="text" 
+                placeholder="Search transactions, donors, or categories..." 
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-md focus:ring-1 focus:ring-slate-900 outline-none transition-shadow" 
+             />
           </div>
-          
-          <div className="flex items-center gap-2 flex-1">
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                  <Calendar size={16} className="text-slate-400" />
+
+          <div className="flex flex-wrap items-center gap-3">
+             {/* Simplified Date Range */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-md h-[34px]">
+                  <Calendar size={14} className="text-slate-400 shrink-0" />
                   <input 
-                      type="date" 
-                      value={filterDateStart}
-                      onChange={(e) => setFilterDateStart(e.target.value)}
-                      className="bg-transparent border-none text-sm text-slate-700 focus:ring-0 p-0 w-32 placeholder-slate-400"
-                      placeholder="Start Date"
+                    type="date" 
+                    value={filterDateStart} 
+                    onChange={(e) => setFilterDateStart(e.target.value)} 
+                    className="bg-transparent border-none text-xs text-slate-700 font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
                   />
-                  <span className="text-slate-400">-</span>
+                  <span className="text-slate-300 text-[10px] shrink-0 font-bold">—</span>
                   <input 
-                      type="date" 
-                      value={filterDateEnd}
-                      onChange={(e) => setFilterDateEnd(e.target.value)}
-                      className="bg-transparent border-none text-sm text-slate-700 focus:ring-0 p-0 w-32"
+                    type="date" 
+                    value={filterDateEnd} 
+                    onChange={(e) => setFilterDateEnd(e.target.value)} 
+                    className="bg-transparent border-none text-xs text-slate-700 font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
                   />
               </div>
 
-              <div className="relative">
-                  <Tag size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <select 
-                      value={filterCategory}
-                      onChange={(e) => setFilterCategory(e.target.value)}
-                      className="pl-9 pr-8 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
-                  >
-                      <option value="">All Categories</option>
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-              </div>
-
-              <div className="relative">
-                  <CheckCircle2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <select 
-                      value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value)}
-                      className="pl-9 pr-8 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"
-                  >
+              {/* Status Filter */}
+              <div className="relative group h-[34px]">
+                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-28">
                       <option value="all">All Status</option>
                       <option value="reconciled">Reconciled</option>
-                      <option value="unreconciled">Unreconciled</option>
+                      <option value="unreconciled">Pending</option>
                   </select>
+                  <Filter size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
-          </div>
 
-          {(filterDateStart || filterDateEnd || filterCategory || filterStatus !== 'all') && (
-              <button 
-                  onClick={clearFilters}
-                  className="flex items-center gap-1 text-sm text-slate-500 hover:text-rose-500 transition-colors px-3 py-2 hover:bg-rose-50 rounded-lg"
-              >
-                  <RotateCcw size={14} /> Clear
-              </button>
-          )}
+               {/* Category Filter */}
+              <div className="relative group h-[34px]">
+                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
+                      <option value="">Category...</option>
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <Tag size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+
+              {(searchTerm || filterDateStart || filterDateEnd || filterCategory || filterStatus !== 'all') && (
+                  <button onClick={clearFilters} className="h-[34px] px-3 text-xs text-rose-600 font-bold uppercase tracking-wide hover:bg-rose-50 rounded-md flex items-center gap-1 transition-colors">
+                      <RotateCcw size={12} />
+                  </button>
+              )}
+          </div>
       </div>
 
-      {/* Transactions Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden mb-16">
+      {/* Ledger Table */}
+      <div className="swiss-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left ledger-table">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="w-10 px-4 py-4">
-                     <input 
-                        type="checkbox" 
-                        checked={selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0}
-                        onChange={handleSelectAll}
-                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                     />
+                <th className="w-10 px-4 py-3">
+                     <input type="checkbox" checked={selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0} onChange={handleSelectAll} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
                 </th>
-                <th className="px-6 py-4 font-semibold text-slate-600">Date</th>
-                <th className="px-6 py-4 font-semibold text-slate-600">Description</th>
-                <th className="px-6 py-4 font-semibold text-slate-600">Category</th>
-                <th className="px-6 py-4 font-semibold text-slate-600">Fund</th>
-                <th className="px-6 py-4 font-semibold text-slate-600 text-center">Gift Aid</th>
-                <th className="px-6 py-4 font-semibold text-slate-600 text-right">Amount</th>
-                <th className="px-6 py-4 font-semibold text-slate-600 text-center">Rec.</th>
-                <th className="px-6 py-4 font-semibold text-slate-600"></th>
+                <th className="px-6 py-3 text-xs">Date</th>
+                <th className="px-6 py-3 text-xs">Description</th>
+                <th className="px-6 py-3 text-xs">Category</th>
+                <th className="px-6 py-3 text-xs">Fund</th>
+                <th className="px-6 py-3 text-xs text-right">Credit/Debit</th>
+                <th className="px-6 py-3 text-xs text-center">Status</th>
+                <th className="px-6 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredTransactions.length > 0 ? (
-                  filteredTransactions.map((t) => {
-                    const fund = funds.find(f => f.id === t.fundId);
-                    const isSelected = selectedIds.has(t.id);
-                    return (
-                      <tr key={t.id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? 'bg-indigo-50/30' : ''}`}>
-                        <td className="px-4 py-4">
-                             <input 
-                                type="checkbox" 
-                                checked={isSelected}
-                                onChange={() => handleSelectOne(t.id)}
-                                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                             />
-                        </td>
-                        <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{t.date}</td>
-                        <td className="px-6 py-4">
-                            <div className="font-medium text-slate-800">{t.description}</div>
-                            {t.donorName && <div className="text-xs text-indigo-500">Donor: {t.donorName}</div>}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                            {t.category}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-slate-500">{fund?.name || 'Unknown'}</td>
-                        <td className="px-6 py-4 text-center">
-                            {t.type === TransactionType.INCOME && (
-                                t.isGiftAidEligible ? 
-                                <span className="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded">Yes</span> : 
-                                <span className="text-slate-300 text-xs">-</span>
-                            )}
-                        </td>
-                        <td className={`px-6 py-4 text-right font-bold ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-800'}`}>
-                          {t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                            {t.isReconciled ? (
-                                <Check size={18} className="mx-auto text-emerald-500" />
-                            ) : (
-                                <div className="w-4 h-4 rounded-full border-2 border-slate-300 mx-auto"></div>
-                            )}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                            <button 
-                                onClick={() => setEditingTransaction(t)}
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                            >
-                                <Edit2 size={16} />
-                            </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-              ) : (
-                  <tr>
-                      <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
-                          <div className="flex flex-col items-center gap-2">
-                              <Filter size={32} className="opacity-20" />
-                              <p>No transactions match your filters.</p>
-                              <button onClick={clearFilters} className="text-indigo-600 text-xs font-medium hover:underline">Clear all filters</button>
-                          </div>
-                      </td>
+            <tbody className="bg-white">
+              {filteredTransactions.map((t) => {
+                const fund = funds.find(f => f.id === t.fundId);
+                const isSelected = selectedIds.has(t.id);
+                const linkedPledge = pledges.find(p => p.id === t.pledgeId);
+                
+                return (
+                  <tr key={t.id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? 'bg-indigo-50/30' : ''}`}>
+                    <td className="px-4 py-3 border-b border-slate-100">
+                         <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t.id)} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
+                    </td>
+                    <td className="px-6 py-3 border-b border-slate-100 text-slate-500 font-mono text-xs">{t.date}</td>
+                    <td className="px-6 py-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                           <div className="font-medium text-slate-800 text-sm truncate max-w-[200px]">{t.description}</div>
+                           {t.pledgeId && <LinkIcon size={12} className="text-indigo-500" />}
+                        </div>
+                        {t.donorName && <div className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
+                        {linkedPledge && <div className="text-[9px] text-indigo-500 font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f.id===linkedPledge.fundId)?.name}</div>}
+                    </td>
+                    <td className="px-6 py-3 border-b border-slate-100">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                        {t.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 border-b border-slate-100 text-slate-500 text-xs font-medium">{fund?.name}</td>
+                    <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
+                      {t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-3 border-b border-slate-100 text-center">
+                        {t.isReconciled ? <Check size={14} className="mx-auto text-emerald-500" /> : <div className="w-2 h-2 rounded-full bg-slate-300 mx-auto"></div>}
+                    </td>
+                    <td className="px-6 py-3 border-b border-slate-100 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditingTransaction(t)} className="text-slate-400 hover:text-indigo-600 transition-colors">
+                            <Edit2 size={14} />
+                        </button>
+                    </td>
                   </tr>
-              )}
+                );
+              })}
             </tbody>
           </table>
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex justify-between">
-              <span>Showing {filteredTransactions.length} of {transactions.length} transactions</span>
-              <span>Sorted by Date (Newest First)</span>
-          </div>
+          {filteredTransactions.length === 0 && (
+              <div className="py-12 text-center text-slate-400">
+                  <Filter size={32} className="mx-auto mb-2 opacity-20" />
+                  <p className="text-sm">No transactions match your query.</p>
+              </div>
+          )}
         </div>
       </div>
 
-      {/* Bulk Actions Floating Toolbar */}
+      {/* Floating Bulk Actions */}
       {selectedIds.size > 0 && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-6 z-40 animate-fade-in-up border border-slate-700">
-              <div className="flex items-center gap-2 border-r border-slate-700 pr-6">
-                  <div className="bg-emerald-500 text-slate-900 text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">
-                      {selectedIds.size}
-                  </div>
-                  <span className="text-sm font-medium">Selected</span>
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
+              <div className="flex items-center gap-3 border-r border-slate-700 pr-5 shrink-0">
+                  <span className="text-xs font-bold font-mono text-emerald-400">{selectedIds.size} SELECTED</span>
               </div>
-              
               <div className="flex items-center gap-2">
-                  <button 
-                      onClick={handleBulkAutoCategorize}
-                      disabled={isBulkProcessingAI}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium bg-gradient-to-r from-indigo-600 to-indigo-500"
-                      title="Auto-Categorize with AI"
-                  >
-                      {isBulkProcessingAI ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} className="text-amber-300" />}
-                      AI Auto-Cat
+                  <button onClick={handleBulkAutoCategorize} disabled={isBulkProcessingAI} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      {isBulkProcessingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-violet-400" />}
+                      <span className="hidden sm:inline">AI Auto-Cat</span>
                   </button>
-
-                  <div className="w-px h-6 bg-slate-700 mx-1"></div>
-
-                  <button 
-                      onClick={() => executeBulkUpdate({ isReconciled: true })}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium"
-                      title="Mark as Reconciled"
-                  >
-                      <CheckSquare size={16} className="text-emerald-400" />
-                      Reconcile
+                  <button onClick={() => executeBulkUpdate({ isReconciled: true })} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      <CheckSquare size={14} className="text-slate-400" /> <span className="hidden sm:inline">Reconcile</span>
                   </button>
-                  <button 
-                      onClick={() => setBulkActionType('category')}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium"
-                      title="Change Category"
-                  >
-                      <Tag size={16} className="text-blue-400" />
-                      Categorize
+                  <button onClick={() => setBulkActionType('category')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      <Tag size={14} className="text-slate-400" /> <span className="hidden sm:inline">Categorize</span>
                   </button>
-                  <button 
-                      onClick={() => setBulkActionType('fund')}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded-lg transition-colors text-sm font-medium"
-                      title="Move to Fund"
-                  >
-                      <Wallet size={16} className="text-amber-400" />
-                      Move Fund
+                  <button onClick={() => setBulkActionType('fund')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      <Wallet size={14} className="text-slate-400" /> <span className="hidden sm:inline">Move Fund</span>
                   </button>
-                  <div className="w-px h-6 bg-slate-700 mx-2"></div>
-                  <button 
-                      onClick={() => setSelectedIds(new Set())}
-                      className="text-slate-400 hover:text-white"
-                  >
-                      <X size={20} />
+                  <div className="w-px h-4 bg-slate-700 mx-2"></div>
+                  <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white transition-colors">
+                      <X size={16} />
                   </button>
               </div>
           </div>
       )}
 
-      {/* Bulk Action Edit Modal */}
+      {/* Bulk Action Modal */}
       {bulkActionType && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-             <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
-                <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                    <h3 className="font-bold text-slate-800">
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+             <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm animate-enter border border-slate-200">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
+                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">
                         {bulkActionType === 'category' ? 'Set Category' : 'Move to Fund'}
                     </h3>
-                    <button onClick={() => setBulkActionType(null)} className="text-slate-400 hover:text-slate-600">
-                        <X size={20} />
-                    </button>
+                    <button onClick={() => setBulkActionType(null)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
                 </div>
                 <div className="p-6">
-                    <p className="text-sm text-slate-500 mb-4">
-                        Applying to {selectedIds.size} transactions.
-                    </p>
+                    <p className="text-sm text-slate-500 mb-4">Update <strong className="text-slate-900">{selectedIds.size}</strong> items:</p>
                     <form onSubmit={(e) => {
                         e.preventDefault();
                         const formData = new FormData(e.currentTarget);
                         const val = formData.get('value') as string;
                         if (!val) return;
-                        
-                        if (bulkActionType === 'category') {
-                            executeBulkUpdate({ category: val });
-                        } else {
-                            executeBulkUpdate({ fundId: val });
-                        }
+                        if (bulkActionType === 'category') executeBulkUpdate({ category: val });
+                        else executeBulkUpdate({ fundId: val });
                     }}>
                         <div className="mb-6">
-                            {bulkActionType === 'category' ? (
-                                <select name="value" className="w-full p-2 border border-slate-300 rounded-lg" required>
-                                    <option value="">Select Category...</option>
-                                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            ) : (
-                                <select name="value" className="w-full p-2 border border-slate-300 rounded-lg" required>
-                                    <option value="">Select Fund...</option>
-                                    {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                </select>
-                            )}
+                            <select name="value" className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none" required>
+                                <option value="">Select...</option>
+                                {bulkActionType === 'category' 
+                                    ? CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)
+                                    : funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)
+                                }
+                            </select>
                         </div>
                         <div className="flex justify-end gap-3">
-                            <button type="button" onClick={() => setBulkActionType(null)} className="text-slate-600 font-medium">Cancel</button>
-                            <button type="submit" className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-medium">Apply Update</button>
+                            <button type="button" onClick={() => setBulkActionType(null)} className="text-slate-500 text-xs font-bold uppercase hover:bg-slate-50 px-3 py-2 rounded">Cancel</button>
+                            <button type="submit" className="btn-primary px-4 py-2 text-xs font-bold uppercase tracking-wide">Apply</button>
                         </div>
                     </form>
                 </div>
@@ -504,242 +457,360 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
       )}
 
+      {/* New Transaction Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-slate-200">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
+                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">New Entry</h3>
+                    <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+                        <X size={16} />
+                    </button>
+                </div>
+                <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Date</label>
+                            <input 
+                                type="date" 
+                                required
+                                value={newTransaction.date} 
+                                onChange={(e) => setNewTransaction({...newTransaction, date: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                            />
+                        </div>
+                        <div>
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Amount</label>
+                             <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">£</span>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    required
+                                    value={newTransaction.amount || ''} 
+                                    onChange={(e) => setNewTransaction({...newTransaction, amount: parseFloat(e.target.value)})}
+                                    className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                    placeholder="0.00"
+                                />
+                             </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Description</label>
+                        <input 
+                            type="text" 
+                            required
+                            value={newTransaction.description || ''} 
+                            onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
+                            className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                            placeholder="e.g. Sunday Collection Cash"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Category</label>
+                            <select 
+                                value={newTransaction.category} 
+                                onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Fund</label>
+                             <select 
+                                value={newTransaction.fundId} 
+                                onChange={(e) => setNewTransaction({...newTransaction, fundId: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Type</label>
+                             <select 
+                                value={newTransaction.type} 
+                                onChange={(e) => setNewTransaction({...newTransaction, type: e.target.value as TransactionType})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                <option value={TransactionType.INCOME}>Income</option>
+                                <option value={TransactionType.EXPENDITURE}>Expenditure</option>
+                            </select>
+                        </div>
+                        <div>
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Donor Name (Optional)</label>
+                            <input 
+                                type="text" 
+                                value={newTransaction.donorName || ''} 
+                                onChange={(e) => setNewTransaction({...newTransaction, donorName: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                placeholder="Name or Ref..."
+                            />
+                        </div>
+                    </div>
+
+                    {newTransaction.type === TransactionType.INCOME && (
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
+                            <select
+                                value={newTransaction.pledgeId || ''}
+                                onChange={(e) => setNewTransaction({...newTransaction, pledgeId: e.target.value || undefined})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                <option value="">-- No Linked Pledge --</option>
+                                {relevantPledgesForNew.map(p => {
+                                    const fundName = funds.find(f => f.id === p.fundId)?.name || 'Unknown Fund';
+                                    return (
+                                        <option key={p.id} value={p.id}>
+                                            {fundName}: £{p.amount} ({p.frequency}) - {p.status}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                             {relevantPledgesForNew.length === 0 && newTransaction.donorName && (
+                                <p className="text-[10px] text-slate-400 mt-1 italic">No pledges found for donor "{newTransaction.donorName}"</p>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex gap-6 pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                             <input 
+                                type="checkbox" 
+                                checked={newTransaction.isReconciled}
+                                onChange={(e) => setNewTransaction({...newTransaction, isReconciled: e.target.checked})}
+                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                            />
+                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Reconciled</span>
+                        </label>
+                        
+                         <label className="flex items-center gap-2 cursor-pointer group">
+                             <input 
+                                type="checkbox" 
+                                checked={newTransaction.isGiftAidEligible || false}
+                                onChange={(e) => setNewTransaction({...newTransaction, isGiftAidEligible: e.target.checked})}
+                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                            />
+                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Gift Aid Eligible</span>
+                        </label>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
+                        <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                        <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
+                            <Plus size={14} /> Add Entry
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
       {/* Edit Transaction Modal */}
       {editingTransaction && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
-                  <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                      <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                          <Edit2 size={18} className="text-indigo-600"/> Edit Transaction
-                      </h3>
-                      <button onClick={() => setEditingTransaction(null)} className="text-slate-400 hover:text-slate-600">
-                          <X size={20} />
-                      </button>
-                  </div>
-                  <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                              <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-                              <input 
-                                  type="date"
-                                  required
-                                  value={editingTransaction.date}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
-                                  className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                              />
-                          </div>
-                          <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Amount (£)</label>
-                               <input 
-                                  type="number"
-                                  step="0.01"
-                                  required
-                                  value={editingTransaction.amount}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
-                                  className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                               />
-                          </div>
-                      </div>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-slate-200">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
+                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">Edit Transaction</h3>
+                    <button onClick={() => setEditingTransaction(null)} className="text-slate-400 hover:text-slate-600">
+                        <X size={16} />
+                    </button>
+                </div>
+                <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (editingTransaction) {
+                        onUpdateTransaction(editingTransaction);
+                        setEditingTransaction(null);
+                    }
+                }} className="p-6 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Date</label>
+                            <input 
+                                type="date" 
+                                required
+                                value={editingTransaction.date} 
+                                onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                            />
+                        </div>
+                        <div>
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Amount</label>
+                             <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">£</span>
+                                <input 
+                                    type="number" 
+                                    step="0.01"
+                                    required
+                                    value={editingTransaction.amount} 
+                                    onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
+                                    className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                />
+                             </div>
+                        </div>
+                    </div>
 
-                      <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                          <input 
-                              type="text"
-                              required
-                              value={editingTransaction.description}
-                              onChange={(e) => setEditingTransaction({...editingTransaction, description: e.target.value})}
-                              className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                          />
-                      </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Description</label>
+                        <input 
+                            type="text" 
+                            required
+                            value={editingTransaction.description} 
+                            onChange={(e) => setEditingTransaction({...editingTransaction, description: e.target.value})}
+                            className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                        />
+                    </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                               <select 
-                                  value={editingTransaction.type}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, type: e.target.value as TransactionType})}
-                                  className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
-                               >
-                                   <option value={TransactionType.INCOME}>Income</option>
-                                   <option value={TransactionType.EXPENDITURE}>Expenditure</option>
-                               </select>
-                          </div>
-                          <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                               <select 
-                                  value={editingTransaction.category}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
-                                  className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
-                               >
-                                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                               </select>
-                          </div>
-                      </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Category</label>
+                            <select 
+                                value={editingTransaction.category} 
+                                onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Fund</label>
+                             <select 
+                                value={editingTransaction.fundId} 
+                                onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Type</label>
+                             <select 
+                                value={editingTransaction.type} 
+                                onChange={(e) => setEditingTransaction({...editingTransaction, type: e.target.value as TransactionType})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                <option value={TransactionType.INCOME}>Income</option>
+                                <option value={TransactionType.EXPENDITURE}>Expenditure</option>
+                            </select>
+                        </div>
+                        <div>
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Donor Name (Optional)</label>
+                            <input 
+                                type="text" 
+                                value={editingTransaction.donorName || ''} 
+                                onChange={(e) => setEditingTransaction({...editingTransaction, donorName: e.target.value})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                placeholder="Ref..."
+                            />
+                        </div>
+                    </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Fund</label>
-                               <select 
-                                  value={editingTransaction.fundId}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
-                                  className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
-                               >
-                                   {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                               </select>
-                          </div>
-                          <div>
-                               <label className="block text-sm font-medium text-slate-700 mb-1">Donor Name</label>
-                               <input 
-                                  type="text"
-                                  value={editingTransaction.donorName || ''}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, donorName: e.target.value})}
-                                  placeholder="Optional"
-                                  className="w-full p-2 border border-slate-300 rounded-lg text-sm"
-                               />
-                          </div>
-                      </div>
-                      
-                      {editingTransaction.type === TransactionType.INCOME && (
-                          <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                              <input 
-                                  type="checkbox"
-                                  id="edit-ga"
-                                  checked={editingTransaction.isGiftAidEligible || false}
-                                  onChange={(e) => setEditingTransaction({...editingTransaction, isGiftAidEligible: e.target.checked})}
-                                  className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-                              />
-                              <label htmlFor="edit-ga" className="text-sm text-slate-700 select-none cursor-pointer">Eligible for Gift Aid</label>
-                          </div>
-                      )}
+                    {editingTransaction.type === TransactionType.INCOME && (
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
+                            <select
+                                value={editingTransaction.pledgeId || ''}
+                                onChange={(e) => setEditingTransaction({...editingTransaction, pledgeId: e.target.value || undefined})}
+                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                            >
+                                <option value="">-- No Linked Pledge --</option>
+                                {relevantPledges.map(p => {
+                                    const fundName = funds.find(f => f.id === p.fundId)?.name || 'Unknown Fund';
+                                    return (
+                                        <option key={p.id} value={p.id}>
+                                            {fundName}: £{p.amount} ({p.frequency}) - {p.status}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            {relevantPledges.length === 0 && editingTransaction.donorName && (
+                                <p className="text-[10px] text-slate-400 mt-1 italic">No pledges found for donor "{editingTransaction.donorName}"</p>
+                            )}
+                        </div>
+                    )}
 
-                      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                          <button 
-                              type="button" 
-                              onClick={() => setEditingTransaction(null)}
-                              className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-50 rounded-lg"
-                          >
-                              Cancel
-                          </button>
-                          <button 
-                              type="submit" 
-                              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium shadow-sm"
-                          >
-                              <Save size={18} />
-                              Save Changes
-                          </button>
-                      </div>
-                  </form>
-              </div>
-          </div>
+                    <div className="flex gap-6 pt-2">
+                        <label className="flex items-center gap-2 cursor-pointer group">
+                             <input 
+                                type="checkbox" 
+                                checked={editingTransaction.isReconciled}
+                                onChange={(e) => setEditingTransaction({...editingTransaction, isReconciled: e.target.checked})}
+                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                            />
+                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Reconciled</span>
+                        </label>
+                        
+                         <label className="flex items-center gap-2 cursor-pointer group">
+                             <input 
+                                type="checkbox" 
+                                checked={editingTransaction.isGiftAidEligible || false}
+                                onChange={(e) => setEditingTransaction({...editingTransaction, isGiftAidEligible: e.target.checked})}
+                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                            />
+                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Gift Aid Eligible</span>
+                        </label>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
+                        <button type="button" onClick={() => setEditingTransaction(null)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                        <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
+                            <Save size={14} /> Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
       )}
 
       {/* Review Modal */}
       {showReviewModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-                <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-slate-200">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center rounded-t-lg">
                     <div>
-                        <h3 className="text-xl font-bold text-slate-800 font-serif">Review Imported Transactions</h3>
-                        <p className="text-sm text-slate-500">Found {pendingTransactions.length} new transactions.</p>
+                        <h3 className="text-lg font-bold text-slate-900 font-display">Review Import</h3>
+                        <p className="text-xs text-slate-500 font-mono mt-1 uppercase tracking-wide">Found {pendingTransactions.length} items</p>
                     </div>
-                    <button 
-                        onClick={handleApplyAI}
-                        disabled={isProcessingAI}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg shadow-indigo-200"
-                    >
-                        {isProcessingAI ? (
-                            <>Processing...</>
-                        ) : (
-                            <>
-                                <Wand2 size={18} />
-                                Auto-Categorize & Identify Gift Aid
-                            </>
-                        )}
+                    <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors font-bold text-xs uppercase tracking-wide">
+                        {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
                     </button>
                 </div>
-                
                 <div className="overflow-y-auto flex-1 p-6">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full text-left ledger-table">
                         <thead>
-                            <tr className="border-b border-slate-200">
-                                <th className="pb-3 font-semibold text-slate-600">Date</th>
-                                <th className="pb-3 font-semibold text-slate-600">Description</th>
-                                <th className="pb-3 font-semibold text-slate-600">Amount</th>
-                                <th className="pb-3 font-semibold text-indigo-600">Category</th>
-                                <th className="pb-3 font-semibold text-indigo-600">Fund</th>
-                                <th className="pb-3 font-semibold text-indigo-600 w-24 text-center">Gift Aid?</th>
+                            <tr>
+                                <th className="pb-2">Date</th>
+                                <th className="pb-2">Description</th>
+                                <th className="pb-2">Amount</th>
+                                <th className="pb-2">Category</th>
+                                <th className="pb-2">Fund</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody>
                             {pendingTransactions.map((t, i) => (
-                                <tr key={i} className="group">
-                                    <td className="py-3 text-slate-500">{t.date}</td>
-                                    <td className="py-3 font-medium text-slate-800">
-                                        {t.description}
-                                        {t.donorName && <div className="text-xs text-indigo-500">Detected: {t.donorName}</div>}
-                                    </td>
-                                    <td className="py-3">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3">
-                                        <select 
-                                            className="bg-indigo-50 border-none rounded text-indigo-900 text-sm py-1 px-2 focus:ring-2 focus:ring-indigo-500"
-                                            value={t.category || ''}
-                                            onChange={(e) => {
-                                                const newPending = [...pendingTransactions];
-                                                newPending[i].category = e.target.value;
-                                                setPendingTransactions(newPending);
-                                            }}
-                                        >
-                                            <option value="">Select...</option>
-                                            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </td>
-                                    <td className="py-3">
-                                        <select 
-                                            className="bg-indigo-50 border-none rounded text-indigo-900 text-sm py-1 px-2 focus:ring-2 focus:ring-indigo-500"
-                                            value={t.fundId || ''}
-                                            onChange={(e) => {
-                                                const newPending = [...pendingTransactions];
-                                                newPending[i].fundId = e.target.value;
-                                                setPendingTransactions(newPending);
-                                            }}
-                                        >
-                                            <option value="">Select...</option>
-                                            {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                        </select>
-                                    </td>
-                                    <td className="py-3 text-center">
-                                        {t.type === TransactionType.INCOME && (
-                                            <input 
-                                                type="checkbox" 
-                                                checked={t.isGiftAidEligible || false}
-                                                onChange={(e) => {
-                                                     const newPending = [...pendingTransactions];
-                                                     newPending[i].isGiftAidEligible = e.target.checked;
-                                                     setPendingTransactions(newPending);
-                                                }}
-                                                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-                                            />
-                                        )}
-                                    </td>
+                                <tr key={i}>
+                                    <td className="py-3 text-slate-500 font-mono text-xs">{t.date}</td>
+                                    <td className="py-3 font-medium text-slate-800 text-sm">{t.description}</td>
+                                    <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
+                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
+                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-
-                <div className="p-6 border-t border-slate-200 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
-                    <button 
-                        onClick={() => setShowReviewModal(false)}
-                        className="px-5 py-2 text-slate-600 font-medium hover:text-slate-800"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onClick={handleConfirmImport}
-                        className="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium shadow-md"
-                    >
-                        Confirm & Import
-                    </button>
+                <div className="p-5 border-t border-slate-100 flex justify-end gap-3 rounded-b-lg bg-slate-50">
+                    <button onClick={() => setShowReviewModal(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-200 rounded transition-colors">Discard</button>
+                    <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
                 </div>
             </div>
         </div>

@@ -1,4 +1,4 @@
-import { Fund, FundType, Transaction, TransactionType, Pledge, Donor } from './types';
+import { Fund, FundType, Transaction, TransactionType, Pledge, Donor, AppUser } from './types';
 
 export const INITIAL_FUNDS: Fund[] = [
   {
@@ -33,12 +33,75 @@ export const INITIAL_FUNDS: Fund[] = [
   }
 ];
 
+export const MOCK_USERS: AppUser[] = [
+  { 
+    id: 'u1', 
+    name: 'Sarah Treasurer', 
+    email: 'sarah.t@church.org', 
+    role: 'Admin', 
+    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150&h=150' 
+  },
+  { 
+    id: 'u2', 
+    name: 'David Finance', 
+    email: 'david.f@church.org', 
+    role: 'Finance Team',
+    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150'
+  },
+  { 
+    id: 'u3', 
+    name: 'Rev. John Doe', 
+    email: 'john.doe@church.org', 
+    role: 'Pastorate' 
+  },
+  { 
+    id: 'u4', 
+    name: 'Ext. Auditor', 
+    email: 'audit@firm.com', 
+    role: 'Guest' 
+  }
+];
+
 export const INITIAL_DONORS: Donor[] = [
-  { id: 'd1', name: 'Robert Brown', email: 'rob.brown@example.com', type: 'Individual', notes: 'Major donor for building project' },
-  { id: 'd2', name: 'Sarah Jenkins', email: 's.jenkins@example.com', type: 'Individual', notes: 'PCC Member' },
-  { id: 'd3', name: 'John Smith', email: 'jsmith@example.com', type: 'Individual' },
-  { id: 'd4', name: 'Anonymous Donor', type: 'Individual' },
-  { id: 'd5', name: 'James Wilson', type: 'Individual' }
+  { 
+    id: 'd1', 
+    name: 'Robert Brown', 
+    email: 'rob.brown@example.com', 
+    phone: '07700 900123',
+    address: '12 Oak Avenue, Springfield, SP1 2BB',
+    isGiftAidActive: true,
+    type: 'Individual', 
+    notes: 'Major donor for building project' 
+  },
+  { 
+    id: 'd2', 
+    name: 'Sarah Jenkins', 
+    email: 's.jenkins@example.com', 
+    phone: '07700 900456',
+    address: 'Flat 4, The Mews, London, SW1',
+    isGiftAidActive: true,
+    type: 'Individual', 
+    notes: 'PCC Member' 
+  },
+  { 
+    id: 'd3', 
+    name: 'John Smith', 
+    email: 'jsmith@example.com', 
+    type: 'Individual',
+    isGiftAidActive: true
+  },
+  { 
+    id: 'd4', 
+    name: 'Anonymous Donor', 
+    type: 'Individual',
+    isGiftAidActive: false
+  },
+  { 
+    id: 'd5', 
+    name: 'James Wilson', 
+    type: 'Individual',
+    isGiftAidActive: false
+  }
 ];
 
 export const INITIAL_PLEDGES: Pledge[] = [
