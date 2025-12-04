@@ -7,8 +7,9 @@ import Campaigns from './components/Campaigns';
 import Reports from './components/Reports';
 import AICoPilot from './components/AICoPilot';
 import DonorManager from './components/DonorManager';
-import { INITIAL_FUNDS, INITIAL_TRANSACTIONS, INITIAL_PLEDGES, INITIAL_DONORS, MOCK_USERS } from './constants';
-import { Transaction, Fund, Pledge, Donor, AppUser } from './types';
+import Settings from './components/Settings';
+import { INITIAL_FUNDS, INITIAL_TRANSACTIONS, INITIAL_PLEDGES, INITIAL_DONORS, MOCK_USERS, CATEGORIES as INITIAL_CATEGORIES } from './constants';
+import { Transaction, Fund, Pledge, Donor, AppUser, UserRole, ChurchDetails } from './types';
 import { Menu, Command } from 'lucide-react';
 
 function App() {
@@ -16,10 +17,28 @@ function App() {
   const [currentUser, setCurrentUser] = useState<AppUser>(MOCK_USERS[0]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
+  // App State
   const [funds, setFunds] = useState<Fund[]>(INITIAL_FUNDS);
   const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const [pledges, setPledges] = useState<Pledge[]>(INITIAL_PLEDGES);
   const [donors, setDonors] = useState<Donor[]>(INITIAL_DONORS);
+  const [users, setUsers] = useState<AppUser[]>(MOCK_USERS);
+  const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
+  
+  // New: Organization Config
+  const [churchDetails, setChurchDetails] = useState<ChurchDetails>({
+    name: 'ChurchCoin Community',
+    email: 'finance@churchcoin.app',
+    address: '123 High Street, London, UK',
+    charityNumber: '11223344'
+  });
+
+  const handleSwitchUser = (user: AppUser) => {
+      const upToDateUser = users.find(u => u.id === user.id) || user;
+      setCurrentUser(upToDateUser);
+      if (activeTab === 'donors' && !['Admin', 'Finance Team'].includes(upToDateUser.role)) setActiveTab('dashboard');
+      if (activeTab === 'settings' && !['Admin', 'Finance Team'].includes(upToDateUser.role)) setActiveTab('dashboard');
+  };
 
   const handleAddTransaction = (t: Transaction) => {
     setTransactions(prev => [t, ...prev]);
@@ -99,52 +118,50 @@ function App() {
       }));
   };
 
-  const handleUpdateDonor = (updatedDonor: Donor) => {
-    setDonors(prev => prev.map(d => d.id === updatedDonor.id ? updatedDonor : d));
+  const handleAddDonor = (newDonor: Donor) => setDonors(prev => [...prev, newDonor]);
+  const handleUpdateDonor = (updatedDonor: Donor) => setDonors(prev => prev.map(d => d.id === updatedDonor.id ? updatedDonor : d));
+  const handleBulkAddPledges = (newPledges: Pledge[]) => setPledges(prev => [...prev, ...newPledges]);
+
+  // Settings Handlers
+  const handleUpdateUserRole = (userId: string, newRole: UserRole) => {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    if (currentUser.id === userId) setCurrentUser(prev => ({ ...prev, role: newRole }));
   };
+  const handleAddUser = (user: AppUser) => setUsers(prev => [...prev, user]);
+  const handleAddCategory = (cat: string) => !categories.includes(cat) && setCategories(prev => [...prev, cat]);
+  const handleRemoveCategory = (cat: string) => setCategories(prev => prev.filter(c => c !== cat));
+  
+  // New Handlers
+  const handleUpdateChurchDetails = (details: ChurchDetails) => setChurchDetails(details);
+  const handleAddFund = (fund: Fund) => setFunds(prev => [...prev, fund]);
+  const handleUpdateFund = (fund: Fund) => setFunds(prev => prev.map(f => f.id === fund.id ? fund : f));
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard funds={funds} transactions={transactions} />;
-      case 'transactions': return <TransactionManager transactions={transactions} funds={funds} pledges={pledges} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onBulkAdd={handleBulkAdd} onBulkUpdate={handleBulkUpdateTransaction} onBatchUpdate={handleBatchUpdate} />;
+      case 'transactions': return <TransactionManager transactions={transactions} funds={funds} pledges={pledges} categories={categories} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onBulkAdd={handleBulkAdd} onBulkUpdate={handleBulkUpdateTransaction} onBatchUpdate={handleBatchUpdate} currentUser={currentUser} />;
       case 'funds': return <FundManager funds={funds} />;
-      case 'donors': return <DonorManager donors={donors} transactions={transactions} pledges={pledges} funds={funds} onAddDonor={setDonors as any} onUpdateDonor={handleUpdateDonor} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdateTransaction={handleUpdateTransaction} />;
-      case 'campaigns': return <Campaigns funds={funds} pledges={pledges} transactions={transactions} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdateTransaction={handleUpdateTransaction} />;
+      case 'donors': return <DonorManager donors={donors} transactions={transactions} pledges={pledges} funds={funds} onAddDonor={handleAddDonor} onUpdateDonor={handleUpdateDonor} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} churchDetails={churchDetails} />;
+      case 'campaigns': return <Campaigns funds={funds} pledges={pledges} transactions={transactions} onAddPledge={p => setPledges(prev => [...prev, p])} onBulkAddPledges={handleBulkAddPledges} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} />;
       case 'reports': return <Reports transactions={transactions} funds={funds} pledges={pledges} />;
       case 'copilot': return <AICoPilot transactions={transactions} funds={funds} />;
+      case 'settings': return <Settings currentUser={currentUser} users={users} categories={categories} funds={funds} churchDetails={churchDetails} onUpdateUserRole={handleUpdateUserRole} onAddCategory={handleAddCategory} onRemoveCategory={handleRemoveCategory} onAddUser={handleAddUser} onUpdateChurchDetails={handleUpdateChurchDetails} onAddFund={handleAddFund} onUpdateFund={handleUpdateFund} />;
       default: return <Dashboard funds={funds} transactions={transactions} />;
     }
   };
 
   return (
     <div className="flex bg-[#FDFCF8] min-h-screen font-sans text-slate-800 selection:bg-orange-100 selection:text-orange-900">
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        currentUser={currentUser} 
-        onSwitchUser={setCurrentUser} 
-        isOpen={isMobileMenuOpen}
-        onClose={() => setIsMobileMenuOpen(false)}
-      />
-      
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} currentUser={currentUser} users={users} onSwitchUser={handleSwitchUser} isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
       <main className="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden">
-        {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 border-b border-slate-200 bg-[#FDFCF8]/95 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-3">
-             <div className="w-8 h-8 bg-slate-800 text-orange-50 flex items-center justify-center rounded-lg">
-                <Command size={16} />
-            </div>
-            <span className="font-bold text-slate-900 font-display">ChurchCoin</span>
+             <div className="w-8 h-8 bg-slate-800 text-orange-50 flex items-center justify-center rounded-lg"><Command size={16} /></div>
+             <span className="font-bold text-slate-900 font-display">ChurchCoin</span>
           </div>
-          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-md">
-            <Menu size={24} />
-          </button>
+          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-md"><Menu size={24} /></button>
         </header>
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-           {renderContent()}
-        </div>
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">{renderContent()}</div>
       </main>
     </div>
   );

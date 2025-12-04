@@ -20,6 +20,14 @@ export interface AppUser {
   avatarUrl?: string;
 }
 
+export interface ChurchDetails {
+  name: string;
+  charityNumber?: string;
+  address?: string;
+  email?: string;
+  website?: string;
+}
+
 export interface Fund {
   id: string;
   name: string;

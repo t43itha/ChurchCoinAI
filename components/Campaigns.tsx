@@ -1,23 +1,42 @@
-import React, { useState } from 'react';
-import { Fund, Pledge, Transaction } from '../types';
+import React, { useState, useRef } from 'react';
+import { Fund, Pledge, Transaction, AppUser } from '../types';
 import { reconcilePledges } from '../services/gemini';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Upload, Users, Calendar, Wand2, Check, X } from 'lucide-react';
+import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon } from 'lucide-react';
 
 interface CampaignsProps {
     funds: Fund[];
     pledges: Pledge[];
     transactions: Transaction[];
     onAddPledge: (p: Pledge) => void;
+    onBulkAddPledges: (ps: Pledge[]) => void;
     onUpdateTransaction: (t: Transaction) => void;
+    currentUser: AppUser;
 }
 
 const COLORS = ['#10b981', '#e2e8f0'];
 
-const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onAddPledge, onUpdateTransaction }) => {
+const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onAddPledge, onBulkAddPledges, onUpdateTransaction, currentUser }) => {
     const [selectedFundId, setSelectedFundId] = useState<string>(funds.find(f => f.type === 'Restricted')?.id || funds[0].id);
     const [isReconciling, setIsReconciling] = useState(false);
     const [matches, setMatches] = useState<any[]>([]);
+
+    // Manual Add State
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newPledge, setNewPledge] = useState<Partial<Pledge>>({
+        frequency: 'Monthly',
+        status: 'Active',
+        startDate: new Date().toISOString().split('T')[0]
+    });
+
+    // CSV Import State
+    const [showCsvMapper, setShowCsvMapper] = useState(false);
+    const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+    const [csvRows, setCsvRows] = useState<string[][]>([]);
+    const [columnMapping, setColumnMapping] = useState({ donor: '', amount: '', frequency: '' });
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
 
     const selectedFund = funds.find(f => f.id === selectedFundId);
     const campaignPledges = pledges.filter(p => p.fundId === selectedFundId);
@@ -51,6 +70,98 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
 
     const handleRejectMatch = (match: any) => {
         setMatches(prev => prev.filter(m => m !== match));
+    };
+
+    const handleAddPledgeSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newPledge.donorName && newPledge.amount) {
+            const pledge: Pledge = {
+                id: Math.random().toString(36).substr(2, 9),
+                donorName: newPledge.donorName,
+                amount: Number(newPledge.amount),
+                fundId: selectedFundId,
+                frequency: newPledge.frequency as any || 'Monthly',
+                startDate: newPledge.startDate || new Date().toISOString().split('T')[0],
+                status: 'Active'
+            };
+            onAddPledge(pledge);
+            setShowAddModal(false);
+            setNewPledge({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+        }
+    };
+
+    // --- CSV Import Handlers ---
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target?.result as string;
+            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) { alert("Invalid CSV"); return; }
+
+            const parseLine = (line: string) => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.trim().replace(/^"|"$/g, ''));
+            const headers = parseLine(lines[0]);
+            const rows = lines.slice(1).map(parseLine);
+
+            setCsvHeaders(headers);
+            setCsvRows(rows);
+
+            // Auto-guess columns
+            const newMapping = { donor: '', amount: '', frequency: '' };
+            headers.forEach(h => {
+                const lower = h.toLowerCase();
+                if ((lower.includes('name') || lower.includes('donor')) && !newMapping.donor) newMapping.donor = h;
+                else if ((lower.includes('amount') || lower.includes('value')) && !newMapping.amount) newMapping.amount = h;
+                else if ((lower.includes('freq') || lower.includes('period')) && !newMapping.frequency) newMapping.frequency = h;
+            });
+            setColumnMapping(newMapping);
+            setShowCsvMapper(true);
+        };
+        reader.readAsText(file);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleProcessImport = () => {
+        const donorIdx = csvHeaders.indexOf(columnMapping.donor);
+        const amountIdx = csvHeaders.indexOf(columnMapping.amount);
+        const freqIdx = csvHeaders.indexOf(columnMapping.frequency);
+
+        if (donorIdx === -1 || amountIdx === -1) {
+            alert("Donor Name and Amount columns are required.");
+            return;
+        }
+
+        const newPledges: Pledge[] = [];
+        csvRows.forEach(row => {
+            const donorName = row[donorIdx];
+            let amountStr = row[amountIdx] || '0';
+            amountStr = amountStr.replace(/[£$,]/g, '');
+            const amount = parseFloat(amountStr);
+            const freqRaw = freqIdx !== -1 ? row[freqIdx] : 'Monthly';
+            
+            // Normalize frequency
+            let frequency: any = 'One-off';
+            if (freqRaw.toLowerCase().includes('month')) frequency = 'Monthly';
+            else if (freqRaw.toLowerCase().includes('week')) frequency = 'Weekly';
+            else if (freqRaw.toLowerCase().includes('year') || freqRaw.toLowerCase().includes('ann')) frequency = 'Annual';
+
+            if (donorName && amount > 0) {
+                newPledges.push({
+                    id: Math.random().toString(36).substr(2, 9),
+                    donorName,
+                    amount,
+                    fundId: selectedFundId,
+                    frequency,
+                    startDate: new Date().toISOString().split('T')[0],
+                    status: 'Active'
+                });
+            }
+        });
+
+        onBulkAddPledges(newPledges);
+        setShowCsvMapper(false);
     };
 
     return (
@@ -128,13 +239,45 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 swiss-card overflow-hidden">
                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
-                        <button onClick={handleAIReconcile} disabled={isReconciling} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-indigo-600 rounded-md hover:border-indigo-200 text-xs font-bold uppercase tracking-wide transition-colors">
-                            {isReconciling ? <Wand2 size={14} className="animate-spin"/> : <Wand2 size={14} />} AI Match
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
+                            <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
+                        </div>
+                        {canEdit ? (
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="p-1.5 bg-white border border-slate-200 rounded hover:border-slate-300 text-slate-600 transition-colors shadow-sm" 
+                                    title="Import CSV"
+                                >
+                                    <FileSpreadsheet size={14} />
+                                    <input 
+                                        ref={fileInputRef}
+                                        type="file" 
+                                        accept=".csv" 
+                                        className="hidden" 
+                                        onChange={handleFileUpload} 
+                                    />
+                                </button>
+                                <button 
+                                    onClick={() => setShowAddModal(true)}
+                                    className="p-1.5 bg-slate-900 text-white border border-slate-900 rounded hover:bg-slate-800 transition-colors shadow-sm" 
+                                    title="Add New Pledge"
+                                >
+                                    <Plus size={14} />
+                                </button>
+                                <button onClick={handleAIReconcile} disabled={isReconciling} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-indigo-600 rounded-md hover:border-indigo-200 text-xs font-bold uppercase tracking-wide transition-colors">
+                                    {isReconciling ? <Wand2 size={14} className="animate-spin"/> : <Wand2 size={14} />} AI Match
+                                </button>
+                            </div>
+                        ) : (
+                             <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                <Lock size={12} /> Read Only
+                            </div>
+                        )}
                     </div>
                     
-                    {matches.length > 0 && (
+                    {matches.length > 0 && canEdit && (
                         <div className="p-4 bg-indigo-50/30 border-b border-indigo-100">
                             <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-3 flex items-center gap-2">
                                 <Wand2 size={12} /> Suggested Links
@@ -215,6 +358,166 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                     </div>
                 </div>
             </div>
+
+            {/* New Pledge Modal */}
+            {showAddModal && canEdit && (
+                <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-slate-200 animate-enter">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
+                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">New Pledge</h3>
+                            <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                        </div>
+                        <form onSubmit={handleAddPledgeSubmit} className="p-6 space-y-4">
+                            <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 mb-2">
+                                Adding pledge to <strong>{selectedFund?.name}</strong>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Donor Name</label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    value={newPledge.donorName || ''} 
+                                    onChange={(e) => setNewPledge({...newPledge, donorName: e.target.value})}
+                                    className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                    placeholder="e.g. John Doe"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Amount</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">£</span>
+                                        <input 
+                                            type="number" 
+                                            required
+                                            value={newPledge.amount || ''} 
+                                            onChange={(e) => setNewPledge({...newPledge, amount: parseFloat(e.target.value)})}
+                                            className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Frequency</label>
+                                    <select 
+                                        value={newPledge.frequency} 
+                                        onChange={(e) => setNewPledge({...newPledge, frequency: e.target.value as any})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="One-off">One-off</option>
+                                        <option value="Monthly">Monthly</option>
+                                        <option value="Annual">Annual</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Start Date</label>
+                                <input 
+                                    type="date"
+                                    value={newPledge.startDate}
+                                    onChange={e => setNewPledge({...newPledge, startDate: e.target.value})}
+                                    className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                    required
+                                />
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
+                                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                                <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
+                                    <Plus size={14} /> Add Pledge
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* CSV Import Modal */}
+            {showCsvMapper && canEdit && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl animate-enter border border-slate-200">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
+                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                                <TableIcon size={16} /> Import Pledges CSV
+                            </h3>
+                            <button onClick={() => setShowCsvMapper(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-6">
+                             <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mb-4 flex justify-between items-center">
+                                <p className="text-xs text-indigo-900">
+                                    Importing <strong>{csvRows.length}</strong> pledges into <strong>{selectedFund?.name}</strong>.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Donor Name</label>
+                                    <select 
+                                        value={columnMapping.donor} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, donor: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Amount</label>
+                                    <select 
+                                        value={columnMapping.amount} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Frequency (Opt)</label>
+                                    <select 
+                                        value={columnMapping.frequency} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, frequency: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                             <div className="mt-4">
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Preview (First 3 Rows)</label>
+                                <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                                    <table className="w-full text-left ledger-table text-[10px]">
+                                        <thead className="bg-slate-50">
+                                            <tr>{csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-500 font-bold">{h}</th>)}</tr>
+                                        </thead>
+                                        <tbody>
+                                            {csvRows.slice(0, 3).map((row, i) => (
+                                                <tr key={i} className="border-b border-slate-50 last:border-0">
+                                                    {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{cell}</td>)}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
+                                <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                                <button onClick={handleProcessImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
+                                    Import Pledges <ArrowRight size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

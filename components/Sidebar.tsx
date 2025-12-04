@@ -1,27 +1,32 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Wallet, PieChart, Upload, MessageSquareText, HeartHandshake, Users, LogOut, ChevronUp, UserCircle2, Command, X, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, LogOut, ChevronUp, UserCircle2, Command, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 import { AppUser } from '../types';
-import { MOCK_USERS } from '../constants';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   currentUser: AppUser;
+  users: AppUser[];
   onSwitchUser: (user: AppUser) => void;
   isOpen: boolean;
   onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, onSwitchUser, isOpen, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, users, onSwitchUser, isOpen, onClose }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+
+  // Permission Logic
+  const canViewDonors = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canViewSettings = ['Admin', 'Finance Team'].includes(currentUser.role);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: Upload },
     { id: 'funds', label: 'Funds & Balances', icon: Wallet },
-    { id: 'donors', label: 'Donors', icon: Users },
+    { id: 'donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
     { id: 'campaigns', label: 'Campaigns', icon: HeartHandshake },
     { id: 'reports', label: 'Reports', icon: PieChart },
+    { id: 'settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
     { id: 'copilot', label: 'Ask Ward', icon: Sparkles },
   ];
 
@@ -60,7 +65,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
         
         {/* Navigation */}
         <nav className="flex-1 px-4 space-y-1 mt-2 overflow-y-auto">
-          {menuItems.map((item) => {
+          {menuItems.filter(item => !item.hidden).map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             const isWard = item.id === 'copilot';
@@ -105,26 +110,28 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
               <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Switch Profile</p>
               </div>
-              {MOCK_USERS.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => {
-                    onSwitchUser(u);
-                    setIsUserMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors ${currentUser.id === u.id ? 'bg-orange-50/50' : ''}`}
-                >
-                  <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0 border border-slate-100">
-                    {u.avatarUrl ? (
-                      <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-[9px] font-bold text-slate-600">{u.name.charAt(0)}</span>
-                    )}
-                  </div>
-                  <span className={`text-xs font-medium ${currentUser.id === u.id ? 'text-orange-900' : 'text-slate-700'}`}>{u.name}</span>
-                  {currentUser.id === u.id && <div className="ml-auto w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
-                </button>
-              ))}
+              <div className="max-h-48 overflow-y-auto">
+                {users.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      onSwitchUser(u);
+                      setIsUserMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors ${currentUser.id === u.id ? 'bg-orange-50/50' : ''}`}
+                  >
+                    <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0 border border-slate-100">
+                      {u.avatarUrl ? (
+                        <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[9px] font-bold text-slate-600">{u.name.charAt(0)}</span>
+                      )}
+                    </div>
+                    <span className={`text-xs font-medium ${currentUser.id === u.id ? 'text-orange-900' : 'text-slate-700'}`}>{u.name}</span>
+                    {currentUser.id === u.id && <div className="ml-auto w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
+                  </button>
+                ))}
+              </div>
               <div className="border-t border-slate-100 mt-1">
                   <button className="w-full text-left px-4 py-3 flex items-center gap-2 text-rose-600 hover:bg-rose-50 transition-colors">
                       <LogOut size={14} />
