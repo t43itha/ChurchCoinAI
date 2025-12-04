@@ -118,8 +118,13 @@ export const generateInsights = async (transactions: Transaction[]) => {
     if (!apiKey) return [];
 
     const prompt = `
-      Analyze these transactions and provide 3 brief financial insights or alerts for the treasurer.
-      Focus on anomalies, subscription creep, or good news (e.g. increased giving).
+      Analyze these transactions and provide 3 "Decision Ready" strategic insights for the Treasurer.
+      
+      Focus on these specific areas:
+      1. Donor Momentum: Are we gaining or losing regular givers compared to previous months?
+      2. Fund Alerts: Are any restricted funds falling behind schedule or running low?
+      3. Cash Flow: Are there any unusual spending spikes or drops in income?
+
       Return JSON array of objects with 'title', 'description', 'type' (warning, info, success).
       Transactions: ${JSON.stringify(transactions.slice(0, 50))}
     `;

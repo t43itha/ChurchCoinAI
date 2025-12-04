@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Transaction, TransactionType, Fund, Pledge, AppUser } from '../types';
 import { categorizeTransactions } from '../services/gemini';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight } from 'lucide-react';
@@ -14,10 +14,11 @@ interface TransactionManagerProps {
   onBulkUpdate: (ids: string[], updates: Partial<Transaction>) => void;
   onBatchUpdate: (updates: { id: string; changes: Partial<Transaction> }[]) => void;
   currentUser: AppUser;
+  initialFundId?: string;
 }
 
 const TransactionManager: React.FC<TransactionManagerProps> = ({ 
-  transactions, funds, pledges, categories, onAddTransaction, onUpdateTransaction, onBulkAdd, onBulkUpdate, onBatchUpdate, currentUser
+  transactions, funds, pledges, categories, onAddTransaction, onUpdateTransaction, onBulkAdd, onBulkUpdate, onBatchUpdate, currentUser, initialFundId
 }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
@@ -52,7 +53,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [filterDateStart, setFilterDateStart] = useState('');
   const [filterDateEnd, setFilterDateEnd] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterFund, setFilterFund] = useState(initialFundId || '');
   const [filterStatus, setFilterStatus] = useState('all'); 
+
+  // Effect to apply initial fund filter if passed (e.g. navigation from Fund Manager)
+  useEffect(() => {
+    if (initialFundId) {
+        setFilterFund(initialFundId);
+    }
+  }, [initialFundId]);
 
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
 
@@ -75,6 +84,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       
       // Category (Dropdown)
       if (filterCategory && t.category !== filterCategory) return false;
+
+      // Fund (Dropdown)
+      if (filterFund && t.fundId !== filterFund) return false;
       
       // Status
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
@@ -82,7 +94,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterStatus]);
+  }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterFund, filterStatus]);
 
   const relevantPledges = useMemo(() => {
       if (!editingTransaction?.donorName) return [];
@@ -120,6 +132,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       setFilterDateStart('');
       setFilterDateEnd('');
       setFilterCategory('');
+      setFilterFund('');
       setFilterStatus('all');
   };
 
@@ -429,6 +442,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   <Filter size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
 
+               {/* Fund Filter */}
+               <div className="relative group h-[34px]">
+                  <select value={filterFund} onChange={(e) => setFilterFund(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-36">
+                      <option value="">All Funds</option>
+                      {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                  <Wallet size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+
                {/* Category Filter */}
               <div className="relative group h-[34px]">
                   <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
@@ -438,7 +460,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   <Tag size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
 
-              {(searchTerm || filterDateStart || filterDateEnd || filterCategory || filterStatus !== 'all') && (
+              {(searchTerm || filterDateStart || filterDateEnd || filterCategory || filterStatus !== 'all' || filterFund) && (
                   <button onClick={clearFilters} className="h-[34px] px-3 text-xs text-rose-600 font-bold uppercase tracking-wide hover:bg-rose-50 rounded-md flex items-center gap-1 transition-colors">
                       <RotateCcw size={12} />
                   </button>

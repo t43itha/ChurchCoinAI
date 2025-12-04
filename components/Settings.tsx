@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppUser, UserRole, ChurchDetails, Fund, FundType } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2 } from 'lucide-react';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2 } from 'lucide-react';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -15,6 +15,7 @@ interface SettingsProps {
   onUpdateChurchDetails: (details: ChurchDetails) => void;
   onAddFund: (fund: Fund) => void;
   onUpdateFund: (fund: Fund) => void;
+  onRemoveFund: (fundId: string) => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({ 
@@ -29,7 +30,8 @@ const Settings: React.FC<SettingsProps> = ({
   onAddUser,
   onUpdateChurchDetails,
   onAddFund,
-  onUpdateFund
+  onUpdateFund,
+  onRemoveFund
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users'>('general');
   const [isEditingDetails, setIsEditingDetails] = useState(false);
@@ -106,6 +108,16 @@ const Settings: React.FC<SettingsProps> = ({
           }
           setShowFundModal(false);
           setEditingFund(null);
+      }
+  };
+
+  const handleDeleteFund = (fund: Fund) => {
+      if (fund.balance !== 0) {
+          alert("Cannot delete a fund with a non-zero balance. Please transfer funds out before deleting.");
+          return;
+      }
+      if (window.confirm(`Are you sure you want to delete '${fund.name}'? This action cannot be undone.`)) {
+          onRemoveFund(fund.id);
       }
   };
 
@@ -261,7 +273,7 @@ const Settings: React.FC<SettingsProps> = ({
                                 <th className="px-6 text-right">Balance</th>
                                 <th className="px-6 text-right">Target</th>
                                 <th className="px-6">Description</th>
-                                <th className="px-6"></th>
+                                <th className="px-6 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -283,8 +295,11 @@ const Settings: React.FC<SettingsProps> = ({
                                     </td>
                                     <td className="px-6 py-4 border-b border-slate-50 text-xs text-slate-500 truncate max-w-xs">{fund.description}</td>
                                     <td className="px-6 py-4 border-b border-slate-50 text-right">
-                                        <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                        <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="text-slate-400 hover:text-slate-600 transition-colors mr-2">
                                             <Edit2 size={14} />
+                                        </button>
+                                        <button onClick={() => handleDeleteFund(fund)} className="text-slate-400 hover:text-rose-600 transition-colors">
+                                            <Trash2 size={14} />
                                         </button>
                                     </td>
                                 </tr>

@@ -24,6 +24,7 @@ function App() {
   const [donors, setDonors] = useState<Donor[]>(INITIAL_DONORS);
   const [users, setUsers] = useState<AppUser[]>(MOCK_USERS);
   const [categories, setCategories] = useState<string[]>(INITIAL_CATEGORIES);
+  const [transactionFilterFundId, setTransactionFilterFundId] = useState<string | undefined>(undefined);
   
   // New: Organization Config
   const [churchDetails, setChurchDetails] = useState<ChurchDetails>({
@@ -39,6 +40,11 @@ function App() {
       setCurrentUser(upToDateUser);
       if (activeTab === 'donors' && !['Admin', 'Finance Team'].includes(upToDateUser.role)) setActiveTab('dashboard');
       if (activeTab === 'settings' && !['Admin', 'Finance Team'].includes(upToDateUser.role)) setActiveTab('dashboard');
+  };
+
+  const handleViewFundLedger = (fundId: string) => {
+      setTransactionFilterFundId(fundId);
+      setActiveTab('transactions');
   };
 
   const handleAddTransaction = (t: Transaction) => {
@@ -136,17 +142,18 @@ function App() {
   const handleUpdateChurchDetails = (details: ChurchDetails) => setChurchDetails(details);
   const handleAddFund = (fund: Fund) => setFunds(prev => [...prev, fund]);
   const handleUpdateFund = (fund: Fund) => setFunds(prev => prev.map(f => f.id === fund.id ? fund : f));
+  const handleRemoveFund = (fundId: string) => setFunds(prev => prev.filter(f => f.id !== fundId));
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard funds={funds} transactions={transactions} />;
-      case 'transactions': return <TransactionManager transactions={transactions} funds={funds} pledges={pledges} categories={categories} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onBulkAdd={handleBulkAdd} onBulkUpdate={handleBulkUpdateTransaction} onBatchUpdate={handleBatchUpdate} currentUser={currentUser} />;
-      case 'funds': return <FundManager funds={funds} />;
+      case 'transactions': return <TransactionManager transactions={transactions} funds={funds} pledges={pledges} categories={categories} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onBulkAdd={handleBulkAdd} onBulkUpdate={handleBulkUpdateTransaction} onBatchUpdate={handleBatchUpdate} currentUser={currentUser} initialFundId={transactionFilterFundId} />;
+      case 'funds': return <FundManager funds={funds} onViewLedger={handleViewFundLedger} />;
       case 'donors': return <DonorManager donors={donors} transactions={transactions} pledges={pledges} funds={funds} onAddDonor={handleAddDonor} onUpdateDonor={handleUpdateDonor} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} churchDetails={churchDetails} />;
       case 'campaigns': return <Campaigns funds={funds} pledges={pledges} transactions={transactions} onAddPledge={p => setPledges(prev => [...prev, p])} onBulkAddPledges={handleBulkAddPledges} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} />;
       case 'reports': return <Reports transactions={transactions} funds={funds} pledges={pledges} churchDetails={churchDetails} />;
       case 'copilot': return <AICoPilot transactions={transactions} funds={funds} />;
-      case 'settings': return <Settings currentUser={currentUser} users={users} categories={categories} funds={funds} churchDetails={churchDetails} onUpdateUserRole={handleUpdateUserRole} onAddCategory={handleAddCategory} onRemoveCategory={handleRemoveCategory} onAddUser={handleAddUser} onUpdateChurchDetails={handleUpdateChurchDetails} onAddFund={handleAddFund} onUpdateFund={handleUpdateFund} />;
+      case 'settings': return <Settings currentUser={currentUser} users={users} categories={categories} funds={funds} churchDetails={churchDetails} onUpdateUserRole={handleUpdateUserRole} onAddCategory={handleAddCategory} onRemoveCategory={handleRemoveCategory} onAddUser={handleAddUser} onUpdateChurchDetails={handleUpdateChurchDetails} onAddFund={handleAddFund} onUpdateFund={handleUpdateFund} onRemoveFund={handleRemoveFund} />;
       default: return <Dashboard funds={funds} transactions={transactions} />;
     }
   };

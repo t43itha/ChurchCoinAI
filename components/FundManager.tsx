@@ -5,11 +5,12 @@ import { ArrowRight, Wallet, Target } from 'lucide-react';
 
 interface FundManagerProps {
   funds: Fund[];
+  onViewLedger: (fundId: string) => void;
 }
 
 const COLORS = ['#d97706', '#57534e', '#a8a29e', '#e7e5e4'];
 
-const FundManager: React.FC<FundManagerProps> = ({ funds }) => {
+const FundManager: React.FC<FundManagerProps> = ({ funds, onViewLedger }) => {
   const data = funds.map(f => ({ name: f.name, value: f.balance }));
 
   return (
@@ -60,7 +61,10 @@ const FundManager: React.FC<FundManagerProps> = ({ funds }) => {
                     )}
                     
                     <div className="flex justify-end relative z-10">
-                        <button className="text-xs font-bold uppercase tracking-wide text-slate-400 group-hover:text-orange-600 flex items-center gap-2 transition-colors">
+                        <button 
+                            onClick={() => onViewLedger(fund.id)}
+                            className="text-xs font-bold uppercase tracking-wide text-slate-400 group-hover:text-orange-600 flex items-center gap-2 transition-colors"
+                        >
                             Ledger History <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
                         </button>
                     </div>
