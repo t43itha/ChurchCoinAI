@@ -636,7 +636,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Floating Bulk Actions */}
       {selectedIds.size > 0 && canEdit && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-[calc(50%+8rem)] bg-slate-900 text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
               <div className="flex items-center gap-3 border-r border-slate-700 pr-5 shrink-0">
                   <span className="text-xs font-bold font-mono text-emerald-400">{selectedIds.size} SELECTED</span>
               </div>
