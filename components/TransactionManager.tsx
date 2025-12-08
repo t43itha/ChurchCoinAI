@@ -1,25 +1,79 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Transaction, TransactionType, Fund, Pledge, AppUser } from '../types';
-import { categorizeTransactions, reconcilePledges } from '../services/gemini';
+import { useMutation, useAction } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { Id } from '../convex/_generated/dataModel';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2 } from 'lucide-react';
+
+// Types
+type TransactionType = 'Income' | 'Expenditure';
+
+interface Transaction {
+  _id: Id<"transactions">;
+  date: string;
+  description: string;
+  amount: number;
+  type: TransactionType;
+  category: string;
+  fundId: Id<"funds">;
+  isReconciled: boolean;
+  isGiftAidEligible?: boolean;
+  donorId?: Id<"donors">;
+  donorName?: string;
+  pledgeId?: Id<"pledges">;
+  notes?: string;
+}
+
+interface Fund {
+  _id: Id<"funds">;
+  name: string;
+  type: string;
+  balance: number;
+}
+
+interface Pledge {
+  _id: Id<"pledges">;
+  donorId: Id<"donors">;
+  donorName: string;
+  amount: number;
+  frequency: string;
+  fundId: Id<"funds">;
+  status: string;
+}
+
+interface Category {
+  _id: Id<"categories">;
+  name: string;
+}
+
+interface CurrentUser {
+  _id: Id<"users">;
+  name: string;
+  role: 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
+}
 
 interface TransactionManagerProps {
   transactions: Transaction[];
   funds: Fund[];
   pledges: Pledge[];
-  categories: string[];
-  onAddTransaction: (t: Transaction) => void;
-  onUpdateTransaction: (t: Transaction) => void;
-  onBulkAdd: (ts: Transaction[]) => void;
-  onBulkUpdate: (ids: string[], updates: Partial<Transaction>) => void;
-  onBatchUpdate: (updates: { id: string; changes: Partial<Transaction> }[]) => void;
-  currentUser: AppUser;
+  categories: Category[];
+  currentUser: CurrentUser;
   initialFundId?: string;
+  onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
 
-const TransactionManager: React.FC<TransactionManagerProps> = ({ 
-  transactions, funds, pledges, categories, onAddTransaction, onUpdateTransaction, onBulkAdd, onBulkUpdate, onBatchUpdate, currentUser, initialFundId
+const TransactionManager: React.FC<TransactionManagerProps> = ({
+  transactions, funds, pledges, categories, currentUser, initialFundId, onPledgeCompleted
 }) => {
+  // Convex mutations and actions
+  const createTransaction = useMutation(api.mutations.transactions.create);
+  const updateTransaction = useMutation(api.mutations.transactions.update);
+  const bulkCreateTransactions = useMutation(api.mutations.transactions.bulkCreate);
+  const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
+  const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
+  const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
+
+  // Extract category names for backwards compatibility
+  const categoryNames = categories.map(c => c.name);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
@@ -46,12 +100,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
-      type: TransactionType.INCOME,
+      type: 'Income' as TransactionType,
       date: new Date().toISOString().split('T')[0],
       isReconciled: false,
       isGiftAidEligible: false,
-      category: categories[0] || 'Donations',
-      fundId: funds[0]?.id
+      category: categoryNames[0] || 'Donations',
+      fundId: funds[0]?._id
   });
 
   // Filters
@@ -80,46 +134,46 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           const matchesCat = t.category.toLowerCase().includes(lowerTerm);
           const matchesDonor = t.donorName?.toLowerCase().includes(lowerTerm);
           const matchesAmount = t.amount.toString().includes(lowerTerm);
-          
+
           if (!matchesDesc && !matchesCat && !matchesDonor && !matchesAmount) return false;
       }
 
       // Date Range
       if (filterDateStart && t.date < filterDateStart) return false;
       if (filterDateEnd && t.date > filterDateEnd) return false;
-      
+
       // Category (Dropdown)
       if (filterCategory && t.category !== filterCategory) return false;
 
-      // Fund (Dropdown)
+      // Fund (Dropdown) - compare as strings since Convex IDs are strings
       if (filterFund && t.fundId !== filterFund) return false;
-      
+
       // Status
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
-      
+
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterFund, filterStatus]);
 
   const relevantPledges = useMemo(() => {
       // Always include the currently linked pledge so it shows in the dropdown, even if name filter doesn't match
-      const linkedPledge = editingTransaction?.pledgeId 
-          ? pledges.find(p => p.id === editingTransaction.pledgeId)
+      const linkedPledge = editingTransaction?.pledgeId
+          ? pledges.find(p => p._id === editingTransaction.pledgeId)
           : null;
 
       const donorSearch = editingTransaction?.donorName?.toLowerCase();
-      
+
       const suggestions = pledges.filter(p => {
           // Avoid duplicates
-          if (linkedPledge && p.id === linkedPledge.id) return false;
+          if (linkedPledge && p._id === linkedPledge._id) return false;
 
           // Match name
           if (donorSearch && p.donorName.toLowerCase().includes(donorSearch)) return true;
-          
+
           // Match ID
           if (editingTransaction?.donorId && p.donorId === editingTransaction.donorId) return true;
-          
+
           return false;
       });
 
@@ -128,7 +182,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const relevantPledgesForNew = useMemo(() => {
       if (!newTransaction?.donorName) return [];
-      return pledges.filter(p => 
+      return pledges.filter(p =>
           (p.donorName && p.donorName.toLowerCase().includes(newTransaction.donorName!.toLowerCase()))
       );
   }, [newTransaction?.donorName, pledges]);
@@ -138,7 +192,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0) {
           setSelectedIds(new Set());
       } else {
-          setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
+          setSelectedIds(new Set(filteredTransactions.map(t => t._id)));
       }
   };
 
@@ -158,32 +212,49 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       setFilterStatus('all');
   };
 
-  const executeBulkUpdate = (updates: Partial<Transaction>) => {
-      onBulkUpdate(Array.from(selectedIds), updates);
-      setSelectedIds(new Set());
-      setBulkActionType(null);
+  const executeBulkUpdate = async (updates: Partial<Transaction>) => {
+      try {
+          await bulkUpdateTransactions({
+              transactionIds: Array.from(selectedIds) as Id<"transactions">[],
+              updates: {
+                  category: updates.category,
+                  fundId: updates.fundId as Id<"funds"> | undefined,
+                  isReconciled: updates.isReconciled,
+              }
+          });
+          setSelectedIds(new Set());
+          setBulkActionType(null);
+      } catch (error) {
+          console.error("Bulk update failed:", error);
+          alert("Failed to update transactions.");
+      }
   };
 
   const handleBulkAutoCategorize = async () => {
       if (selectedIds.size === 0) return;
       setIsBulkProcessingAI(true);
-      const targetTransactions = transactions.filter(t => selectedIds.has(t.id));
+      const targetTransactions = transactions.filter(t => selectedIds.has(t._id));
       const descriptions = targetTransactions.map(t => t.description);
       try {
-          const suggestions = await categorizeTransactions(descriptions, funds, categories);
-          const updates = targetTransactions.map((t, index) => {
-              const suggestion = suggestions[index];
-              if (!suggestion) return { id: t.id, changes: {} };
+          const suggestions = await categorizeTransactionsAI({
+              descriptions,
+              fundNames: funds.map(f => f.name),
+              categories: categoryNames
+          });
+          // Update each transaction with its suggestion
+          for (let i = 0; i < targetTransactions.length; i++) {
+              const t = targetTransactions[i];
+              const suggestion = suggestions[i];
+              if (!suggestion) continue;
               const suggestedFund = funds.find(f => f.name === suggestion.fundName);
-              const changes: Partial<Transaction> = {
+              await updateTransaction({
+                  transactionId: t._id,
                   category: suggestion.category,
                   isGiftAidEligible: suggestion.isGiftAidEligible,
-              };
-              if (suggestedFund) changes.fundId = suggestedFund.id;
-              if (suggestion.donorName) changes.donorName = suggestion.donorName;
-              return { id: t.id, changes };
-          });
-          onBatchUpdate(updates);
+                  fundId: suggestedFund?._id,
+                  donorName: suggestion.donorName || undefined,
+              });
+          }
           setSelectedIds(new Set());
       } catch (error) {
           console.error(error);
@@ -196,8 +267,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handleSmartLinkPledges = async () => {
       setIsReconciling(true);
       try {
-          // Reconcile function already filters for unlinked income
-          const matches = await reconcilePledges(transactions, pledges);
+          // Filter for unlinked income transactions
+          const unlinkedIncome = transactions.filter(t => t.type === 'Income' && !t.pledgeId);
+          const matches = await reconcilePledgesAI({
+              candidateTransactions: JSON.stringify(unlinkedIncome.map(t => ({
+                  id: t._id,
+                  description: t.description,
+                  amount: t.amount,
+                  date: t.date,
+                  donorName: t.donorName
+              }))),
+              pledges: JSON.stringify(pledges.map(p => ({
+                  id: p._id,
+                  donorName: p.donorName,
+                  amount: p.amount,
+                  frequency: p.frequency,
+                  fundId: p.fundId
+              })))
+          });
           if (matches.length > 0) {
               setPledgeMatches(matches);
               setShowMatchModal(true);
@@ -212,12 +299,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
-  const handleConfirmMatch = (match: any) => {
-      const t = transactions.find(tx => tx.id === match.transactionId);
+  const handleConfirmMatch = async (match: any) => {
+      const t = transactions.find(tx => tx._id === match.transactionId);
       if (t) {
-          onUpdateTransaction({ ...t, pledgeId: match.pledgeId, donorName: match.donorName || t.donorName });
-          setPledgeMatches(prev => prev.filter(m => m !== match));
-          if (pledgeMatches.length <= 1) setShowMatchModal(false);
+          try {
+              const result = await updateTransaction({
+                  transactionId: t._id,
+                  pledgeId: match.pledgeId as Id<"pledges">,
+                  donorName: match.donorName || t.donorName
+              });
+              // Check if pledge was completed
+              if (result?.pledgeCompleted && onPledgeCompleted) {
+                  onPledgeCompleted(result.pledgeCompleted.donorName, result.pledgeCompleted.amount);
+              }
+              setPledgeMatches(prev => prev.filter(m => m !== match));
+              if (pledgeMatches.length <= 1) setShowMatchModal(false);
+          } catch (error) {
+              console.error("Failed to link transaction:", error);
+          }
       }
   };
 
@@ -334,7 +433,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           }
 
           let amount = 0;
-          let type = TransactionType.INCOME;
+          let type = 'Income' as TransactionType;
 
           if (useSplitAmount) {
               const inStr = amountInIdx !== -1 ? (row[amountInIdx] || '') : '';
@@ -344,10 +443,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
               if (inVal > 0) {
                   amount = inVal;
-                  type = TransactionType.INCOME;
+                  type = 'Income' as TransactionType;
               } else if (outVal > 0) {
                   amount = outVal;
-                  type = TransactionType.EXPENDITURE;
+                  type = 'Expenditure' as TransactionType;
               }
           } else {
               // Single column logic
@@ -358,7 +457,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               
               if (isDebit) amount = -Math.abs(amount);
 
-              type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENDITURE;
+              type = amount >= 0 ? 'Income' : 'Expenditure';
               amount = Math.abs(amount);
           }
 
@@ -369,7 +468,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               type,
               isReconciled: false,
               category: '',
-              fundId: funds[0].id // Default to General
+              fundId: funds[0]._id // Default to General
           };
       }).filter(t => t.description && t.amount !== 0); // Filter out empty rows
 
@@ -383,10 +482,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setIsUploading(true);
     setTimeout(() => {
         const newMockTransactions: Partial<Transaction>[] = [
-            { description: 'Stripe Payout 10239', amount: 320.00, type: TransactionType.INCOME, date: '2023-11-01' },
-            { description: 'British Gas Bill Oct', amount: 145.00, type: TransactionType.EXPENDITURE, date: '2023-11-02' },
-            { description: 'Donation Ref: Sarah Jenkins', amount: 200.00, type: TransactionType.INCOME, date: '2023-11-04' },
-            { description: 'Cash Collection - Sunday', amount: 450.00, type: TransactionType.INCOME, date: '2023-11-05' },
+            { description: 'Stripe Payout 10239', amount: 320.00, type: 'Income' as TransactionType, date: '2023-11-01' },
+            { description: 'British Gas Bill Oct', amount: 145.00, type: 'Expenditure' as TransactionType, date: '2023-11-02' },
+            { description: 'Donation Ref: Sarah Jenkins', amount: 200.00, type: 'Income' as TransactionType, date: '2023-11-04' },
+            { description: 'Cash Collection - Sunday', amount: 450.00, type: 'Income' as TransactionType, date: '2023-11-05' },
         ];
         setPendingTransactions(newMockTransactions);
         setIsUploading(false);
@@ -398,7 +497,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setIsProcessingAI(true);
     const descriptions = pendingTransactions.map(t => t.description || '');
     try {
-        const suggestions = await categorizeTransactions(descriptions, funds, categories);
+        const suggestions = await categorizeTransactionsAI({
+            descriptions,
+            fundNames: funds.map(f => f.name),
+            categories: categoryNames
+        });
         const updatedPending = pendingTransactions.map((t, idx) => {
             const suggestion = suggestions[idx];
             if (!suggestion) return t;
@@ -406,7 +509,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             return {
                 ...t,
                 category: suggestion.category,
-                fundId: suggestedFund ? suggestedFund.id : funds[0].id, 
+                fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
                 isGiftAidEligible: suggestion.isGiftAidEligible,
                 donorName: suggestion.donorName || (t.description?.includes('Ref:') ? t.description.split('Ref:')[1].trim() : undefined),
                 notes: `AI Confidence: ${suggestion.confidence}`
@@ -420,49 +523,63 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
   };
 
-  const handleConfirmImport = () => {
-    const newTransactions = pendingTransactions.map(pt => ({
-        ...pt,
-        id: Math.random().toString(36).substr(2, 9),
-        isReconciled: false,
-        // Ensure defaults if missing
-        type: pt.type || TransactionType.INCOME,
-        fundId: pt.fundId || funds[0].id,
-        category: pt.category || categories[0],
-        date: pt.date || new Date().toISOString().split('T')[0]
-    })) as Transaction[];
-    onBulkAdd(newTransactions);
-    setShowReviewModal(false);
-    setPendingTransactions([]);
+  const handleConfirmImport = async () => {
+    try {
+        const transactionsToCreate = pendingTransactions.map(pt => ({
+            date: pt.date || new Date().toISOString().split('T')[0],
+            description: pt.description || '',
+            amount: pt.amount || 0,
+            type: (pt.type || 'Income') as 'Income' | 'Expenditure',
+            category: pt.category || categoryNames[0] || 'Donations',
+            fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+            isReconciled: false,
+            isGiftAidEligible: pt.isGiftAidEligible || false,
+            donorName: pt.donorName,
+            notes: pt.notes,
+        }));
+        await bulkCreateTransactions({ transactions: transactionsToCreate });
+        setShowReviewModal(false);
+        setPendingTransactions([]);
+    } catch (error) {
+        console.error("Import failed:", error);
+        alert("Failed to import transactions.");
+    }
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newTransaction.amount && newTransaction.description && newTransaction.fundId) {
-        const t: Transaction = {
-            id: Math.random().toString(36).substr(2, 9),
-            date: newTransaction.date!,
-            description: newTransaction.description!,
-            amount: Number(newTransaction.amount),
-            type: newTransaction.type!,
-            category: newTransaction.category || categories[0],
-            fundId: newTransaction.fundId!,
-            isReconciled: newTransaction.isReconciled || false,
-            isGiftAidEligible: newTransaction.isGiftAidEligible,
-            donorName: newTransaction.donorName,
-            pledgeId: newTransaction.pledgeId
-        };
-        onAddTransaction(t);
-        setShowAddModal(false);
-        // Reset
-        setNewTransaction({
-            type: TransactionType.INCOME,
-            date: new Date().toISOString().split('T')[0],
-            isReconciled: false,
-            isGiftAidEligible: false,
-            category: categories[0] || 'Donations',
-            fundId: funds[0]?.id
-        });
+        try {
+            const result = await createTransaction({
+                date: newTransaction.date!,
+                description: newTransaction.description!,
+                amount: Number(newTransaction.amount),
+                type: newTransaction.type! as 'Income' | 'Expenditure',
+                category: newTransaction.category || categoryNames[0],
+                fundId: newTransaction.fundId as Id<"funds">,
+                isReconciled: newTransaction.isReconciled || false,
+                isGiftAidEligible: newTransaction.isGiftAidEligible,
+                donorName: newTransaction.donorName,
+                pledgeId: newTransaction.pledgeId as Id<"pledges"> | undefined
+            });
+            // Check if a pledge was completed
+            if (result?.pledgeCompleted && onPledgeCompleted) {
+                onPledgeCompleted(result.pledgeCompleted.donorName, result.pledgeCompleted.amount);
+            }
+            setShowAddModal(false);
+            // Reset
+            setNewTransaction({
+                type: 'Income' as TransactionType,
+                date: new Date().toISOString().split('T')[0],
+                isReconciled: false,
+                isGiftAidEligible: false,
+                category: categoryNames[0] || 'Donations',
+                fundId: funds[0]?._id
+            });
+        } catch (error) {
+            console.error("Failed to create transaction:", error);
+            alert("Failed to create transaction.");
+        }
     }
   };
 
@@ -579,7 +696,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                <div className="relative group h-[34px]">
                   <select value={filterFund} onChange={(e) => setFilterFund(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-36">
                       <option value="">All Funds</option>
-                      {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                   </select>
                   <Wallet size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
@@ -588,7 +705,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               <div className="relative group h-[34px]">
                   <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
                       <option value="">Category...</option>
-                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                      {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <Tag size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               </div>
@@ -623,15 +740,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             </thead>
             <tbody className="bg-white">
               {filteredTransactions.map((t) => {
-                const fund = funds.find(f => f.id === t.fundId);
-                const isSelected = selectedIds.has(t.id);
-                const linkedPledge = pledges.find(p => p.id === t.pledgeId);
+                const fund = funds.find(f => f._id === t.fundId);
+                const isSelected = selectedIds.has(t._id);
+                const linkedPledge = pledges.find(p => p._id === t.pledgeId);
                 
                 return (
-                  <tr key={t.id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? 'bg-indigo-50/30' : ''}`}>
+                  <tr key={t._id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? 'bg-indigo-50/30' : ''}`}>
                     <td className="px-4 py-3 border-b border-slate-100">
                         {canEdit && (
-                             <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t.id)} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
+                             <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
                         )}
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100 text-slate-500 font-mono text-xs">{formatDateUK(t.date)}</td>
@@ -641,7 +758,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                            {t.pledgeId && <LinkIcon size={12} className="text-indigo-500" />}
                         </div>
                         {t.donorName && <div className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
-                        {linkedPledge && <div className="text-[9px] text-indigo-500 font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f.id===linkedPledge.fundId)?.name}</div>}
+                        {linkedPledge && <div className="text-[9px] text-indigo-500 font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100">
                       <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
@@ -649,8 +766,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       </span>
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100 text-slate-500 text-xs font-medium">{fund?.name}</td>
-                    <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
-                      {t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}
+                    <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === 'Income' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                      {t.type === 'Income' ? '+' : '-'}£{t.amount.toFixed(2)}
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100 text-center">
                         {t.isReconciled ? <Check size={14} className="mx-auto text-emerald-500" /> : <div className="w-2 h-2 rounded-full bg-slate-300 mx-auto"></div>}
@@ -722,14 +839,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         const val = formData.get('value') as string;
                         if (!val) return;
                         if (bulkActionType === 'category') executeBulkUpdate({ category: val });
-                        else executeBulkUpdate({ fundId: val });
+                        else executeBulkUpdate({ fundId: val as Id<"funds"> });
                     }}>
                         <div className="mb-6">
                             <select name="value" className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none" required>
                                 <option value="">Select...</option>
-                                {bulkActionType === 'category' 
-                                    ? categories.map(c => <option key={c} value={c}>{c}</option>
-                                    : funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)
+                                {bulkActionType === 'category'
+                                    ? categoryNames.map(c => <option key={c} value={c}>{c}</option>)
+                                    : funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)
                                 }
                             </select>
                         </div>
@@ -759,7 +876,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </p>
                     <div className="space-y-3">
                         {pledgeMatches.map((m, i) => {
-                            const txn = transactions.find(t => t.id === m.transactionId);
+                            const txn = transactions.find(t => t._id === m.transactionId);
                             if (!txn) return null;
                             return (
                                 <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded border border-indigo-100 shadow-sm gap-4">
@@ -1003,7 +1120,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
@@ -1013,7 +1130,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setNewTransaction({...newTransaction, fundId: e.target.value})}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                             </select>
                         </div>
                     </div>
@@ -1026,8 +1143,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setNewTransaction({...newTransaction, type: e.target.value as TransactionType})}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                <option value={TransactionType.INCOME}>Income</option>
-                                <option value={TransactionType.EXPENDITURE}>Expenditure</option>
+                                <option value="Income">Income</option>
+                                <option value="Expenditure">Expenditure</option>
                             </select>
                         </div>
                         <div>
@@ -1042,7 +1159,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                     </div>
 
-                    {newTransaction.type === TransactionType.INCOME && (
+                    {newTransaction.type === 'Income' && (
                         <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
                             <select
@@ -1052,9 +1169,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             >
                                 <option value="">-- No Linked Pledge --</option>
                                 {relevantPledgesForNew.map(p => {
-                                    const fundName = funds.find(f => f.id === p.fundId)?.name || 'Unknown Fund';
+                                    const fundName = funds.find(f => f._id === p.fundId)?.name || 'Unknown Fund';
                                     return (
-                                        <option key={p.id} value={p.id}>
+                                        <option key={p._id} value={p._id}>
                                             {fundName}: £{p.amount} ({p.frequency}) - {p.status}
                                         </option>
                                     );
@@ -1109,11 +1226,32 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <X size={16} />
                     </button>
                 </div>
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                     e.preventDefault();
                     if (editingTransaction) {
-                        onUpdateTransaction(editingTransaction);
-                        setEditingTransaction(null);
+                        try {
+                            const result = await updateTransaction({
+                                transactionId: editingTransaction._id,
+                                date: editingTransaction.date,
+                                description: editingTransaction.description,
+                                amount: editingTransaction.amount,
+                                type: editingTransaction.type,
+                                category: editingTransaction.category,
+                                fundId: editingTransaction.fundId,
+                                isReconciled: editingTransaction.isReconciled,
+                                isGiftAidEligible: editingTransaction.isGiftAidEligible,
+                                donorName: editingTransaction.donorName,
+                                pledgeId: editingTransaction.pledgeId
+                            });
+                            // Check if pledge was completed
+                            if (result?.pledgeCompleted && onPledgeCompleted) {
+                                onPledgeCompleted(result.pledgeCompleted.donorName, result.pledgeCompleted.amount);
+                            }
+                            setEditingTransaction(null);
+                        } catch (error) {
+                            console.error("Failed to update transaction:", error);
+                            alert("Failed to update transaction.");
+                        }
                     }
                 }} className="p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -1162,7 +1300,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
@@ -1172,7 +1310,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                             </select>
                         </div>
                     </div>
@@ -1185,8 +1323,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setEditingTransaction({...editingTransaction, type: e.target.value as TransactionType})}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                <option value={TransactionType.INCOME}>Income</option>
-                                <option value={TransactionType.EXPENDITURE}>Expenditure</option>
+                                <option value="Income">Income</option>
+                                <option value="Expenditure">Expenditure</option>
                             </select>
                         </div>
                         <div>
@@ -1201,7 +1339,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                     </div>
 
-                    {editingTransaction.type === TransactionType.INCOME && (
+                    {editingTransaction.type === 'Income' && (
                         <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
                             <select
@@ -1212,16 +1350,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         ...editingTransaction, 
                                         pledgeId: pid || undefined,
                                         // Optional: auto-fill donor name if selecting a pledge and name is empty
-                                        donorName: (editingTransaction.donorName || !pid) ? editingTransaction.donorName : pledges.find(pl => pl.id === pid)?.donorName
+                                        donorName: (editingTransaction.donorName || !pid) ? editingTransaction.donorName : pledges.find(pl => pl._id === pid)?.donorName
                                     });
                                 }}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="">-- No Linked Pledge --</option>
                                 {relevantPledges.map(p => {
-                                    const fundName = funds.find(f => f.id === p.fundId)?.name || 'Unknown Fund';
+                                    const fundName = funds.find(f => f._id === p.fundId)?.name || 'Unknown Fund';
                                     return (
-                                        <option key={p.id} value={p.id}>
+                                        <option key={p._id} value={p._id}>
                                             {fundName}: £{p.amount} ({p.frequency}) - {p.status}
                                         </option>
                                     );
@@ -1296,8 +1434,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <td className="py-3 text-slate-500 font-mono text-xs">{t.date}</td>
                                     <td className="py-3 font-medium text-slate-800 text-sm">{t.description}</td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
-                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></td>
+                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
+                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                 </tr>
                             ))}
                         </tbody>

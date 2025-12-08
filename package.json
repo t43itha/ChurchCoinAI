@@ -9,11 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.58.1",
+    "@google/genai": "^1.31.0",
+    "convex": "^1.30.0",
+    "lucide-react": "^0.555.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "recharts": "^3.5.1",
-    "lucide-react": "^0.555.0",
-    "@google/genai": "^1.31.0"
+    "recharts": "^3.5.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

@@ -1,19 +1,26 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, LogOut, ChevronUp, UserCircle2, Command, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
-import { AppUser } from '../types';
+import React from 'react';
+import { UserButton } from '@clerk/clerk-react';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, Command, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+
+// Type for Convex user from database
+interface ConvexUser {
+  _id: string;
+  name: string;
+  email: string;
+  role: 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
+  avatarUrl?: string;
+}
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  currentUser: AppUser;
-  users: AppUser[];
-  onSwitchUser: (user: AppUser) => void;
+  currentUser: ConvexUser;
+  users: ConvexUser[];
   isOpen: boolean;
   onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, users, onSwitchUser, isOpen, onClose }) => {
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, users, isOpen, onClose }) => {
 
   // Permission Logic
   const canViewDonors = ['Admin', 'Finance Team'].includes(currentUser.role);
@@ -104,61 +111,21 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
 
         {/* User Section */}
         <div className="p-4 border-t border-slate-100 mx-4 mb-4 mt-auto">
-          
-          {isUserMenuOpen && (
-            <div className="mb-2 bg-white rounded-xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden animate-enter origin-bottom absolute bottom-20 left-4 w-56 z-50">
-              <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Switch Profile</p>
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {users.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      onSwitchUser(u);
-                      setIsUserMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors ${currentUser.id === u.id ? 'bg-orange-50/50' : ''}`}
-                  >
-                    <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden shrink-0 border border-slate-100">
-                      {u.avatarUrl ? (
-                        <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-[9px] font-bold text-slate-600">{u.name.charAt(0)}</span>
-                      )}
-                    </div>
-                    <span className={`text-xs font-medium ${currentUser.id === u.id ? 'text-orange-900' : 'text-slate-700'}`}>{u.name}</span>
-                    {currentUser.id === u.id && <div className="ml-auto w-1.5 h-1.5 bg-orange-500 rounded-full"></div>}
-                  </button>
-                ))}
-              </div>
-              <div className="border-t border-slate-100 mt-1">
-                  <button className="w-full text-left px-4 py-3 flex items-center gap-2 text-rose-600 hover:bg-rose-50 transition-colors">
-                      <LogOut size={14} />
-                      <span className="text-xs font-bold">Sign Out</span>
-                  </button>
-              </div>
-            </div>
-          )}
-
-          <button 
-            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white transition-all border border-transparent hover:border-slate-200 hover:shadow-sm group bg-slate-50/50"
-          >
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-900 border border-slate-200 overflow-hidden shrink-0 shadow-sm">
-              {currentUser.avatarUrl ? (
-                  <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover"/>
-              ) : (
-                  <UserCircle2 size={20} />
-              )}
-            </div>
-            
+          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50/50">
+            <UserButton
+              afterSignOutUrl="/"
+              appearance={{
+                elements: {
+                  avatarBox: "w-8 h-8",
+                  userButtonPopoverCard: "shadow-xl",
+                }
+              }}
+            />
             <div className="flex-1 min-w-0 text-left">
-                <p className="text-xs font-bold text-slate-900 truncate font-display">{currentUser.name}</p>
-                <p className="text-[10px] text-slate-500 truncate font-mono">{currentUser.role}</p>
+              <p className="text-xs font-bold text-slate-900 truncate font-display">{currentUser.name}</p>
+              <p className="text-[10px] text-slate-500 truncate font-mono">{currentUser.role}</p>
             </div>
-            <ChevronUp size={14} className={`text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
-          </button>
+          </div>
         </div>
       </aside>
     </>

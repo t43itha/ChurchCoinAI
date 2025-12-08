@@ -1,0 +1,30 @@
+import { query } from "../_generated/server";
+import { getCurrentUser, getIdentity } from "../lib/auth";
+
+// Get the current user's organization
+export const current = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return null;
+
+    const organization = await ctx.db.get(user.organizationId);
+    return organization;
+  },
+});
+
+// Check if current Clerk user has completed onboarding
+export const hasOrganization = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await getIdentity(ctx);
+    if (!identity) return false;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+      .first();
+
+    return !!user;
+  },
+});
