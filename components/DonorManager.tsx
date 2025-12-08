@@ -13,12 +13,13 @@ interface DonorManagerProps {
   onAddDonor: (d: Donor) => void;
   onUpdateDonor: (d: Donor) => void;
   onAddPledge: (p: Pledge) => void;
+  onUpdatePledge: (p: Pledge) => void; // New prop
   onUpdateTransaction: (t: Transaction) => void;
   currentUser: AppUser;
-  churchDetails?: ChurchDetails; // Added Prop
+  churchDetails?: ChurchDetails; 
 }
 
-const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdateTransaction, currentUser, churchDetails }) => {
+const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?.id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [generatedComm, setGeneratedComm] = useState('');
@@ -133,8 +134,41 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     }
   };
 
-  const handleLinkTransaction = (transaction: Transaction, pledgeId: string) => { if (pledgeId) onUpdateTransaction({ ...transaction, pledgeId }); };
-  const handleUnlinkTransaction = (transaction: Transaction) => { onUpdateTransaction({ ...transaction, pledgeId: undefined }); };
+  const handleLinkTransaction = (transaction: Transaction, pledgeId: string) => {
+      if (!pledgeId) return;
+      onUpdateTransaction({ ...transaction, pledgeId });
+      
+      // Check if this link completes the pledge
+      const pledge = pledges.find(p => p.id === pledgeId);
+      if (pledge && pledge.status === 'Active') {
+           const currentLinkedSum = transactions
+              .filter(t => t.pledgeId === pledgeId && t.id !== transaction.id)
+              .reduce((sum, t) => sum + t.amount, 0);
+           
+           if (currentLinkedSum + transaction.amount >= pledge.amount) {
+               onUpdatePledge({ ...pledge, status: 'Completed' });
+           }
+      }
+  };
+
+  const handleUnlinkTransaction = (transaction: Transaction) => {
+      const oldPledgeId = transaction.pledgeId;
+      if (!oldPledgeId) return;
+
+      onUpdateTransaction({ ...transaction, pledgeId: undefined });
+
+      // Check if unlinking should reactivate a completed pledge
+      const pledge = pledges.find(p => p.id === oldPledgeId);
+      if (pledge && pledge.status === 'Completed') {
+           const remainingSum = transactions
+              .filter(t => t.pledgeId === oldPledgeId && t.id !== transaction.id)
+              .reduce((sum, t) => sum + t.amount, 0);
+           
+           if (remainingSum < pledge.amount) {
+                onUpdatePledge({ ...pledge, status: 'Active' });
+           }
+      }
+  };
 
   return (
     <div className="flex h-[calc(100vh-8rem)] animate-enter gap-0 swiss-card overflow-hidden">

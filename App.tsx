@@ -128,6 +128,7 @@ function App() {
   const handleAddDonor = (newDonor: Donor) => setDonors(prev => [...prev, newDonor]);
   const handleUpdateDonor = (updatedDonor: Donor) => setDonors(prev => prev.map(d => d.id === updatedDonor.id ? updatedDonor : d));
   const handleBulkAddPledges = (newPledges: Pledge[]) => setPledges(prev => [...prev, ...newPledges]);
+  const handleUpdatePledge = (updatedPledge: Pledge) => setPledges(prev => prev.map(p => p.id === updatedPledge.id ? updatedPledge : p));
 
   // Settings Handlers
   const handleUpdateUserRole = (userId: string, newRole: UserRole) => {
@@ -148,9 +149,9 @@ function App() {
     switch (activeTab) {
       case 'dashboard': return <Dashboard funds={funds} transactions={transactions} />;
       case 'transactions': return <TransactionManager transactions={transactions} funds={funds} pledges={pledges} categories={categories} onAddTransaction={handleAddTransaction} onUpdateTransaction={handleUpdateTransaction} onBulkAdd={handleBulkAdd} onBulkUpdate={handleBulkUpdateTransaction} onBatchUpdate={handleBatchUpdate} currentUser={currentUser} initialFundId={transactionFilterFundId} />;
-      case 'funds': return <FundManager funds={funds} onViewLedger={handleViewFundLedger} />;
-      case 'donors': return <DonorManager donors={donors} transactions={transactions} pledges={pledges} funds={funds} onAddDonor={handleAddDonor} onUpdateDonor={handleUpdateDonor} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} churchDetails={churchDetails} />;
-      case 'campaigns': return <Campaigns funds={funds} pledges={pledges} transactions={transactions} onAddPledge={p => setPledges(prev => [...prev, p])} onBulkAddPledges={handleBulkAddPledges} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} />;
+      case 'funds': return <FundManager funds={funds} transactions={transactions} onViewLedger={handleViewFundLedger} />;
+      case 'donors': return <DonorManager donors={donors} transactions={transactions} pledges={pledges} funds={funds} onAddDonor={handleAddDonor} onUpdateDonor={handleUpdateDonor} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdatePledge={handleUpdatePledge} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} churchDetails={churchDetails} />;
+      case 'campaigns': return <Campaigns funds={funds} pledges={pledges} transactions={transactions} onAddPledge={p => setPledges(prev => [...prev, p])} onUpdatePledge={handleUpdatePledge} onBulkAddPledges={handleBulkAddPledges} onUpdateTransaction={handleUpdateTransaction} currentUser={currentUser} />;
       case 'reports': return <Reports transactions={transactions} funds={funds} pledges={pledges} churchDetails={churchDetails} />;
       case 'copilot': return <AICoPilot transactions={transactions} funds={funds} />;
       case 'settings': return <Settings currentUser={currentUser} users={users} categories={categories} funds={funds} churchDetails={churchDetails} onUpdateUserRole={handleUpdateUserRole} onAddCategory={handleAddCategory} onRemoveCategory={handleRemoveCategory} onAddUser={handleAddUser} onUpdateChurchDetails={handleUpdateChurchDetails} onAddFund={handleAddFund} onUpdateFund={handleUpdateFund} onRemoveFund={handleRemoveFund} />;

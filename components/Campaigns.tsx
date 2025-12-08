@@ -2,13 +2,14 @@ import React, { useState, useRef } from 'react';
 import { Fund, Pledge, Transaction, AppUser } from '../types';
 import { reconcilePledges } from '../services/gemini';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon } from 'lucide-react';
+import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save } from 'lucide-react';
 
 interface CampaignsProps {
     funds: Fund[];
     pledges: Pledge[];
     transactions: Transaction[];
     onAddPledge: (p: Pledge) => void;
+    onUpdatePledge: (p: Pledge) => void;
     onBulkAddPledges: (ps: Pledge[]) => void;
     onUpdateTransaction: (t: Transaction) => void;
     currentUser: AppUser;
@@ -16,14 +17,17 @@ interface CampaignsProps {
 
 const COLORS = ['#10b981', '#e2e8f0'];
 
-const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onAddPledge, onBulkAddPledges, onUpdateTransaction, currentUser }) => {
+const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onAddPledge, onUpdatePledge, onBulkAddPledges, onUpdateTransaction, currentUser }) => {
     const [selectedFundId, setSelectedFundId] = useState<string>(funds.find(f => f.type === 'Restricted')?.id || funds[0].id);
     const [isReconciling, setIsReconciling] = useState(false);
     const [matches, setMatches] = useState<any[]>([]);
 
-    // Manual Add State
+    // State for modals
     const [showAddModal, setShowAddModal] = useState(false);
-    const [newPledge, setNewPledge] = useState<Partial<Pledge>>({
+    const [editingPledge, setEditingPledge] = useState<Pledge | null>(null);
+
+    // Form State
+    const [pledgeForm, setPledgeForm] = useState<Partial<Pledge>>({
         frequency: 'Monthly',
         status: 'Active',
         startDate: new Date().toISOString().split('T')[0]
@@ -72,21 +76,41 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
         setMatches(prev => prev.filter(m => m !== match));
     };
 
-    const handleAddPledgeSubmit = (e: React.FormEvent) => {
+    const handleAddPledgeClick = () => {
+        setPledgeForm({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+        setShowAddModal(true);
+    }
+
+    const handleEditPledgeClick = (p: Pledge) => {
+        setEditingPledge(p);
+        setPledgeForm(p);
+    };
+
+    const handlePledgeSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (newPledge.donorName && newPledge.amount) {
+        if (!pledgeForm.donorName || !pledgeForm.amount) return;
+
+        if (editingPledge) {
+            // Update
+            onUpdatePledge({
+                ...editingPledge,
+                ...pledgeForm as Pledge
+            });
+            setEditingPledge(null);
+        } else {
+            // Create
             const pledge: Pledge = {
                 id: Math.random().toString(36).substr(2, 9),
-                donorName: newPledge.donorName,
-                amount: Number(newPledge.amount),
+                donorName: pledgeForm.donorName,
+                amount: Number(pledgeForm.amount),
                 fundId: selectedFundId,
-                frequency: newPledge.frequency as any || 'Monthly',
-                startDate: newPledge.startDate || new Date().toISOString().split('T')[0],
-                status: 'Active'
+                frequency: pledgeForm.frequency as any || 'Monthly',
+                startDate: pledgeForm.startDate || new Date().toISOString().split('T')[0],
+                endDate: pledgeForm.endDate,
+                status: pledgeForm.status || 'Active'
             };
             onAddPledge(pledge);
             setShowAddModal(false);
-            setNewPledge({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
         }
     };
 
@@ -165,22 +189,25 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
     };
 
     return (
-        <div className="space-y-6 animate-enter max-w-6xl mx-auto">
-            <header className="flex flex-col md:flex-row justify-between md:items-center gap-4 border-b border-slate-200 pb-6">
+        <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
+            <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-slate-200 pb-6">
                 <div>
                     <h2 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Campaigns</h2>
                     <p className="text-slate-500 mt-1 text-sm font-medium">Capital projects and pledged giving.</p>
                 </div>
-                <div className="flex gap-2">
-                    <select 
-                        className="bg-white border border-slate-200 text-slate-900 rounded-md px-3 py-2 text-sm font-medium outline-none focus:ring-1 focus:ring-slate-900"
-                        value={selectedFundId}
-                        onChange={(e) => setSelectedFundId(e.target.value)}
-                    >
-                        {funds.filter(f => f.type === 'Restricted' || f.type === 'Designated').map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
-                        ))}
-                    </select>
+                <div className="flex items-center gap-3">
+                    <div className="bg-white border border-slate-200 rounded-md px-3 py-2 flex items-center gap-2 shadow-sm">
+                        <Target size={14} className="text-slate-400"/>
+                        <select 
+                            className="text-sm font-bold text-slate-700 outline-none bg-transparent cursor-pointer min-w-[150px]"
+                            value={selectedFundId}
+                            onChange={(e) => setSelectedFundId(e.target.value)}
+                        >
+                            {funds.filter(f => f.type === 'Restricted' || f.type === 'Designated').map(f => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </header>
 
@@ -205,17 +232,17 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-8">
+                        <div className="grid grid-cols-3 gap-8 border-t border-slate-50 pt-6">
                             <div>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-wide mb-1">Pledged</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-1">Pledged</p>
                                 <p className="text-xl font-bold text-slate-900 font-mono">£{totalPledged.toLocaleString()}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-wide mb-1">Collected</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-1">Collected</p>
                                 <p className="text-xl font-bold text-emerald-600 font-mono">£{totalCollected.toLocaleString()}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-wide mb-1">Target</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-1">Target</p>
                                 <p className="text-xl font-bold text-slate-900 font-mono">£{target.toLocaleString()}</p>
                             </div>
                         </div>
@@ -223,22 +250,25 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                 </div>
 
                 <div className="swiss-card p-6 flex flex-col items-center justify-center">
-                    <div className="w-40 h-40">
+                    <div className="w-48 h-48">
                          <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
-                                <Pie data={pieData} innerRadius={35} outerRadius={55} paddingAngle={5} dataKey="value" stroke="none">
+                                <Pie data={pieData} innerRadius={40} outerRadius={65} paddingAngle={5} dataKey="value" stroke="none">
                                     {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                                 </Pie>
-                                <Tooltip />
+                                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e7e5e4', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}/>
                             </PieChart>
                         </ResponsiveContainer>
+                    </div>
+                    <div className="text-center mt-4">
+                        <p className="text-xs font-medium text-slate-400">Funds vs Target</p>
                     </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 swiss-card overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div className="lg:col-span-2 swiss-card overflow-hidden flex flex-col">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                         <div className="flex items-center gap-3">
                             <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
                             <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
@@ -260,7 +290,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                     />
                                 </button>
                                 <button 
-                                    onClick={() => setShowAddModal(true)}
+                                    onClick={handleAddPledgeClick}
                                     className="p-1.5 bg-slate-900 text-white border border-slate-900 rounded hover:bg-slate-800 transition-colors shadow-sm" 
                                     title="Add New Pledge"
                                 >
@@ -315,34 +345,55 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                         </div>
                     )}
 
-                    <table className="w-full text-left ledger-table">
-                        <thead>
-                            <tr>
-                                <th className="px-6">Donor</th>
-                                <th className="px-6">Frequency</th>
-                                <th className="px-6 text-right">Amount</th>
-                                <th className="px-6 text-center">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {campaignPledges.map((pledge) => (
-                                <tr key={pledge.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-3 font-medium text-slate-900 text-sm">{pledge.donorName}</td>
-                                    <td className="px-6 py-3 text-slate-500 text-xs">{pledge.frequency}</td>
-                                    <td className="px-6 py-3 text-emerald-600 font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
-                                    <td className="px-6 py-3 text-center">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${pledge.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                            {pledge.status}
-                                        </span>
-                                    </td>
+                    <div className="overflow-x-auto flex-1">
+                        <table className="w-full text-left ledger-table">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th className="px-6 py-3 pl-6 text-xs text-slate-500 font-bold uppercase tracking-wide">Donor</th>
+                                    <th className="px-6 py-3 text-xs text-slate-500 font-bold uppercase tracking-wide">Frequency</th>
+                                    <th className="px-6 py-3 text-right text-xs text-slate-500 font-bold uppercase tracking-wide">Amount</th>
+                                    <th className="px-6 py-3 text-center text-xs text-slate-500 font-bold uppercase tracking-wide">Status</th>
+                                    <th className="px-6 py-3"></th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {campaignPledges.map((pledge) => (
+                                    <tr key={pledge.id} className="hover:bg-slate-50 transition-colors group border-b border-slate-50 last:border-0">
+                                        <td className="px-6 py-4 pl-6 font-medium text-slate-900 text-sm">{pledge.donorName}</td>
+                                        <td className="px-6 py-4 text-slate-500 text-xs">{pledge.frequency}</td>
+                                        <td className="px-6 py-4 text-emerald-600 font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
+                                                pledge.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
+                                                pledge.status === 'Completed' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                                                'bg-slate-100 text-slate-500 border-slate-200'
+                                            }`}>
+                                                {pledge.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            {canEdit && (
+                                                <button onClick={() => handleEditPledgeClick(pledge)} className="text-slate-300 hover:text-slate-600 transition-colors opacity-0 group-hover:opacity-100">
+                                                    <Edit2 size={14} />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {campaignPledges.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">
+                                            No pledges recorded for this campaign yet.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div className="swiss-card p-6">
-                    <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2 font-display"><Calendar size={18} /> Timeline</h3>
+                <div className="swiss-card p-6 h-full">
+                    <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2 font-display text-sm uppercase tracking-wide"><Calendar size={16} /> Campaign Timeline</h3>
                     <div className="space-y-8 pl-2">
                         {[
                             { date: 'OCT 2023', title: 'Launch', color: 'bg-emerald-500' },
@@ -359,17 +410,19 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                 </div>
             </div>
 
-            {/* New Pledge Modal */}
-            {showAddModal && canEdit && (
+            {/* Add/Edit Pledge Modal */}
+            {(showAddModal || editingPledge) && canEdit && (
                 <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-slate-200 animate-enter">
                         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">New Pledge</h3>
-                            <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">
+                                {editingPledge ? 'Edit Pledge' : 'New Pledge'}
+                            </h3>
+                            <button onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
                         </div>
-                        <form onSubmit={handleAddPledgeSubmit} className="p-6 space-y-4">
+                        <form onSubmit={handlePledgeSubmit} className="p-6 space-y-4">
                             <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 mb-2">
-                                Adding pledge to <strong>{selectedFund?.name}</strong>
+                                {editingPledge ? 'Editing pledge for ' : 'Adding pledge to '} <strong>{selectedFund?.name}</strong>
                             </div>
 
                             <div>
@@ -377,8 +430,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                 <input 
                                     type="text" 
                                     required
-                                    value={newPledge.donorName || ''} 
-                                    onChange={(e) => setNewPledge({...newPledge, donorName: e.target.value})}
+                                    value={pledgeForm.donorName || ''} 
+                                    onChange={(e) => setPledgeForm({...pledgeForm, donorName: e.target.value})}
                                     className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
                                     placeholder="e.g. John Doe"
                                 />
@@ -392,8 +445,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                         <input 
                                             type="number" 
                                             required
-                                            value={newPledge.amount || ''} 
-                                            onChange={(e) => setNewPledge({...newPledge, amount: parseFloat(e.target.value)})}
+                                            value={pledgeForm.amount || ''} 
+                                            onChange={(e) => setPledgeForm({...pledgeForm, amount: parseFloat(e.target.value)})}
                                             className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
                                             placeholder="0.00"
                                         />
@@ -402,32 +455,60 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                 <div>
                                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Frequency</label>
                                     <select 
-                                        value={newPledge.frequency} 
-                                        onChange={(e) => setNewPledge({...newPledge, frequency: e.target.value as any})}
+                                        value={pledgeForm.frequency} 
+                                        onChange={(e) => setPledgeForm({...pledgeForm, frequency: e.target.value as any})}
                                         className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                                     >
                                         <option value="One-off">One-off</option>
+                                        <option value="Weekly">Weekly</option>
                                         <option value="Monthly">Monthly</option>
                                         <option value="Annual">Annual</option>
                                     </select>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Start Date</label>
-                                <input 
-                                    type="date"
-                                    value={newPledge.startDate}
-                                    onChange={e => setNewPledge({...newPledge, startDate: e.target.value})}
-                                    className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
-                                    required
-                                />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Start Date</label>
+                                    <input 
+                                        type="date"
+                                        value={pledgeForm.startDate}
+                                        onChange={e => setPledgeForm({...pledgeForm, startDate: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">End Date</label>
+                                    <input 
+                                        type="date"
+                                        value={pledgeForm.endDate || ''} 
+                                        onChange={e => setPledgeForm({...pledgeForm, endDate: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                    />
+                                </div>
                             </div>
 
+                            {editingPledge && (
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Status</label>
+                                    <select 
+                                        value={pledgeForm.status} 
+                                        onChange={(e) => setPledgeForm({...pledgeForm, status: e.target.value as any})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="Active">Active</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                </div>
+                            )}
+
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
-                                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                                <button type="button" onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
                                 <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
-                                    <Plus size={14} /> Add Pledge
+                                    {editingPledge ? <Save size={14} /> : <Plus size={14} />} 
+                                    {editingPledge ? 'Save Changes' : 'Add Pledge'}
                                 </button>
                             </div>
                         </form>

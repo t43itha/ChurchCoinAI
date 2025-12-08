@@ -1,17 +1,36 @@
 import React from 'react';
-import { Fund } from '../types';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { ArrowRight, Wallet, Target } from 'lucide-react';
+import { Fund, Transaction, FundType, TransactionType } from '../types';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis } from 'recharts';
+import { ArrowRight, Wallet, Target, Activity } from 'lucide-react';
 
 interface FundManagerProps {
   funds: Fund[];
+  transactions: Transaction[];
   onViewLedger: (fundId: string) => void;
 }
 
 const COLORS = ['#d97706', '#57534e', '#a8a29e', '#e7e5e4'];
 
-const FundManager: React.FC<FundManagerProps> = ({ funds, onViewLedger }) => {
+const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLedger }) => {
   const data = funds.map(f => ({ name: f.name, value: f.balance }));
+
+  // Calculate General Fund (Unrestricted) Expenditure Breakdown
+  const generalFunds = funds.filter(f => f.type === FundType.UNRESTRICTED);
+  const generalFundIds = new Set(generalFunds.map(f => f.id));
+  
+  const generalFundExpenditure = transactions.filter(t => 
+    generalFundIds.has(t.fundId) && t.type === TransactionType.EXPENDITURE
+  );
+
+  const categoryTotals: Record<string, number> = {};
+  generalFundExpenditure.forEach(t => {
+      categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+  });
+
+  const expenditureData = Object.entries(categoryTotals)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6); // Top 6 categories
 
   return (
     <div className="space-y-8 animate-enter max-w-6xl mx-auto">
@@ -72,33 +91,66 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, onViewLedger }) => {
             ))}
         </div>
 
-        {/* Visual */}
-        <div className="swiss-card p-8 flex flex-col justify-center items-center bg-white">
-            <h3 className="font-bold text-slate-800 mb-8 font-display text-lg">Capital Allocation</h3>
-            <div className="w-full h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={data}
-                            innerRadius={80}
-                            outerRadius={120}
-                            paddingAngle={5}
-                            dataKey="value"
-                            stroke="none"
-                        >
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e7e5e4', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}/>
-                        <Legend verticalAlign="bottom" height={36} iconType="circle"/>
-                    </PieChart>
-                </ResponsiveContainer>
+        {/* Visuals Column */}
+        <div className="space-y-6">
+            
+            {/* General Fund Breakdown */}
+            <div className="swiss-card p-6 bg-white">
+                <div className="flex items-center gap-2 mb-6">
+                    <div className="p-1.5 bg-indigo-50 rounded text-indigo-600"><Activity size={14}/></div>
+                    <div>
+                        <h3 className="font-bold text-slate-800 font-display text-sm">General Fund Expenditure</h3>
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Top Categories</p>
+                    </div>
+                </div>
+                
+                <div className="w-full h-48">
+                    {expenditureData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={expenditureData} layout="vertical" margin={{ top: 0, right: 30, left: 30, bottom: 0 }}>
+                                <XAxis type="number" hide />
+                                <YAxis dataKey="name" type="category" width={80} tick={{fontSize: 10, fill: '#78716c'}} axisLine={false} tickLine={false} />
+                                <Tooltip 
+                                    cursor={{fill: '#f8fafc'}}
+                                    contentStyle={{ borderRadius: '8px', border: '1px solid #e7e5e4', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', fontFamily: 'JetBrains Mono', fontSize: '11px' }}
+                                />
+                                <Bar dataKey="value" fill="#292524" radius={[0, 4, 4, 0]} barSize={16} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="h-full flex items-center justify-center text-slate-300 text-xs">No expenditure data available.</div>
+                    )}
+                </div>
             </div>
-            <div className="mt-8 text-center bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900 max-w-sm">
-                <p className="text-xs font-medium leading-relaxed">
-                    <strong>Note:</strong> Restricted funds must be reported separately in year-end accounts.
-                </p>
+
+            {/* Existing Capital Allocation */}
+            <div className="swiss-card p-8 flex flex-col justify-center items-center bg-white">
+                <h3 className="font-bold text-slate-800 mb-8 font-display text-lg">Capital Allocation</h3>
+                <div className="w-full h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                            <Pie
+                                data={data}
+                                innerRadius={70}
+                                outerRadius={100}
+                                paddingAngle={5}
+                                dataKey="value"
+                                stroke="none"
+                            >
+                                {data.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Pie>
+                            <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e7e5e4', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}/>
+                            <Legend verticalAlign="bottom" height={36} iconType="circle"/>
+                        </PieChart>
+                    </ResponsiveContainer>
+                </div>
+                <div className="mt-8 text-center bg-orange-50 p-4 rounded-lg border border-orange-100 text-orange-900 max-w-sm">
+                    <p className="text-xs font-medium leading-relaxed">
+                        <strong>Note:</strong> Restricted funds must be reported separately in year-end accounts.
+                    </p>
+                </div>
             </div>
         </div>
       </div>

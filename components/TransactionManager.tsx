@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Transaction, TransactionType, Fund, Pledge, AppUser } from '../types';
 import { categorizeTransactions } from '../services/gemini';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight } from 'lucide-react';
 
 interface TransactionManagerProps {
   transactions: Transaction[];
@@ -30,7 +30,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [showColumnMapper, setShowColumnMapper] = useState(false);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvRows, setCsvRows] = useState<string[][]>([]);
-  const [columnMapping, setColumnMapping] = useState({ date: '', description: '', amount: '' });
+  const [columnMapping, setColumnMapping] = useState({ date: '', description: '', amount: '', amountIn: '', amountOut: '' });
+  const [useSplitAmount, setUseSplitAmount] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -97,12 +98,28 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterFund, filterStatus]);
 
   const relevantPledges = useMemo(() => {
-      if (!editingTransaction?.donorName) return [];
-      return pledges.filter(p => 
-          (p.donorName && p.donorName.toLowerCase().includes(editingTransaction.donorName!.toLowerCase())) ||
-          (editingTransaction.donorId && p.donorId === editingTransaction.donorId)
-      );
-  }, [editingTransaction?.donorName, editingTransaction?.donorId, pledges]);
+      // Always include the currently linked pledge so it shows in the dropdown, even if name filter doesn't match
+      const linkedPledge = editingTransaction?.pledgeId 
+          ? pledges.find(p => p.id === editingTransaction.pledgeId)
+          : null;
+
+      const donorSearch = editingTransaction?.donorName?.toLowerCase();
+      
+      const suggestions = pledges.filter(p => {
+          // Avoid duplicates
+          if (linkedPledge && p.id === linkedPledge.id) return false;
+
+          // Match name
+          if (donorSearch && p.donorName.toLowerCase().includes(donorSearch)) return true;
+          
+          // Match ID
+          if (editingTransaction?.donorId && p.donorId === editingTransaction.donorId) return true;
+          
+          return false;
+      });
+
+      return linkedPledge ? [linkedPledge, ...suggestions] : suggestions;
+  }, [editingTransaction?.donorName, editingTransaction?.donorId, editingTransaction?.pledgeId, pledges]);
 
   const relevantPledgesForNew = useMemo(() => {
       if (!newTransaction?.donorName) return [];
@@ -202,13 +219,38 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           setCsvRows(rows);
           
           // Auto-guess columns
-          const newMapping = { date: '', description: '', amount: '' };
+          const newMapping = { date: '', description: '', amount: '', amountIn: '', amountOut: '' };
+          let splitDetected = false;
+
           headers.forEach(h => {
               const lower = h.toLowerCase();
               if (lower.includes('date') && !newMapping.date) newMapping.date = h;
               else if ((lower.includes('desc') || lower.includes('payee') || lower.includes('details') || lower.includes('memo')) && !newMapping.description) newMapping.description = h;
-              else if ((lower.includes('amount') || lower.includes('value') || lower.includes('debit') || lower.includes('credit')) && !newMapping.amount) newMapping.amount = h;
           });
+
+          // Split Detection logic
+          const creditCol = headers.find(h => {
+             const l = h.toLowerCase();
+             return l.includes('credit') || l.includes('paid in') || l.includes('money in') || l === 'in' || l.includes('deposit');
+          });
+          const debitCol = headers.find(h => {
+             const l = h.toLowerCase();
+             return l.includes('debit') || l.includes('paid out') || l.includes('money out') || l === 'out' || l.includes('withdrawal');
+          });
+
+          if (creditCol && debitCol) {
+              splitDetected = true;
+              newMapping.amountIn = creditCol;
+              newMapping.amountOut = debitCol;
+          } else {
+               const amt = headers.find(h => {
+                   const l = h.toLowerCase();
+                   return (l.includes('amount') || l.includes('value')) && !l.includes('balance');
+               });
+               if(amt) newMapping.amount = amt;
+          }
+
+          setUseSplitAmount(splitDetected);
           setColumnMapping(newMapping);
           setShowColumnMapper(true);
       };
@@ -217,14 +259,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const parseAmountString = (str: string) => {
+      if (!str) return 0;
+      const clean = str.replace(/[£$,\s]/g, '');
+      const val = parseFloat(clean);
+      return isNaN(val) ? 0 : val;
+  };
+
   const handleProcessMapping = () => {
       const dateIdx = csvHeaders.indexOf(columnMapping.date);
       const descIdx = csvHeaders.indexOf(columnMapping.description);
-      const amountIdx = csvHeaders.indexOf(columnMapping.amount);
+      
+      let amountIdx = -1;
+      let amountInIdx = -1;
+      let amountOutIdx = -1;
 
-      if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
-          alert("Please map all fields before proceeding.");
-          return;
+      if (useSplitAmount) {
+         amountInIdx = csvHeaders.indexOf(columnMapping.amountIn);
+         amountOutIdx = csvHeaders.indexOf(columnMapping.amountOut);
+         if (dateIdx === -1 || descIdx === -1 || (amountInIdx === -1 && amountOutIdx === -1)) {
+            alert("Please map Date, Description, and the In/Out columns.");
+            return;
+         }
+      } else {
+         amountIdx = csvHeaders.indexOf(columnMapping.amount);
+         if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
+            alert("Please map Date, Description, and Amount columns.");
+            return;
+         }
       }
 
       const parsed: Partial<Transaction>[] = csvRows.map(row => {
@@ -238,18 +300,39 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                dateStr = `${y}-${m}-${d}`;
           }
 
-          // Parse Amount (Remove currency symbols, handle negatives)
-          let amountStr = row[amountIdx] || '0';
-          amountStr = amountStr.replace(/[£$,]/g, '');
-          let amount = parseFloat(amountStr);
-          if (isNaN(amount)) amount = 0;
+          let amount = 0;
+          let type = TransactionType.INCOME;
 
-          const type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENDITURE;
+          if (useSplitAmount) {
+              const inStr = amountInIdx !== -1 ? (row[amountInIdx] || '') : '';
+              const outStr = amountOutIdx !== -1 ? (row[amountOutIdx] || '') : '';
+              const inVal = parseAmountString(inStr);
+              const outVal = parseAmountString(outStr);
+
+              if (inVal > 0) {
+                  amount = inVal;
+                  type = TransactionType.INCOME;
+              } else if (outVal > 0) {
+                  amount = outVal;
+                  type = TransactionType.EXPENDITURE;
+              }
+          } else {
+              // Single column logic
+              let amountStr = row[amountIdx] || '0';
+              // Check for DR/CR suffix in some strings (rare but possible)
+              const isDebit = amountStr.toLowerCase().includes('dr');
+              amount = parseAmountString(amountStr);
+              
+              if (isDebit) amount = -Math.abs(amount);
+
+              type = amount >= 0 ? TransactionType.INCOME : TransactionType.EXPENDITURE;
+              amount = Math.abs(amount);
+          }
 
           return {
               date: dateStr,
               description: row[descIdx],
-              amount: Math.abs(amount),
+              amount: amount,
               type,
               isReconciled: false,
               category: '',
@@ -348,6 +431,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             fundId: funds[0]?.id
         });
     }
+  };
+
+  const formatDateUK = (dateString: string) => {
+      try {
+          return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      } catch {
+          return dateString;
+      }
   };
 
   return (
@@ -501,7 +592,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                              <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t.id)} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
                         )}
                     </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-slate-500 font-mono text-xs">{t.date}</td>
+                    <td className="px-6 py-3 border-b border-slate-100 text-slate-500 font-mono text-xs">{formatDateUK(t.date)}</td>
                     <td className="px-6 py-3 border-b border-slate-100">
                         <div className="flex items-center gap-2">
                            <div className="font-medium text-slate-800 text-sm truncate max-w-[200px]">{t.description}</div>
@@ -545,7 +636,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Floating Bulk Actions */}
       {selectedIds.size > 0 && canEdit && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-[calc(50%+8rem)] bg-slate-900 text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
               <div className="flex items-center gap-3 border-r border-slate-700 pr-5 shrink-0">
                   <span className="text-xs font-bold font-mono text-emerald-400">{selectedIds.size} SELECTED</span>
               </div>
@@ -595,7 +686,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <select name="value" className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none" required>
                                 <option value="">Select...</option>
                                 {bulkActionType === 'category' 
-                                    ? categories.map(c => <option key={c} value={c}>{c}</option>)
+                                    ? categories.map(c => <option key={c} value={c}>{c}</option>
                                     : funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)
                                 }
                             </select>
@@ -610,74 +701,138 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
       )}
 
-      {/* CSV Column Mapping Modal */}
+      {/* CSV Column Mapping Modal - REFINED UI 2.0 */}
       {showColumnMapper && canEdit && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl animate-enter border border-slate-200">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
-                        <TableIcon size={16} /> Map CSV Columns
-                    </h3>
-                    <button onClick={() => setShowColumnMapper(false)} className="text-slate-400 hover:text-slate-600">
-                        <X size={16} />
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl animate-enter border border-slate-200 overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                            <TableIcon size={16} className="text-slate-500" /> Map CSV Columns
+                        </h3>
+                        <p className="text-[10px] text-slate-500 mt-1 font-medium">Match your bank statement columns to the ledger.</p>
+                    </div>
+                    <button onClick={() => setShowColumnMapper(false)} className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-full">
+                        <X size={18} />
                     </button>
                 </div>
-                <div className="p-6 space-y-6">
-                    <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 mb-4">
-                        <p className="text-xs text-orange-900">
-                            We found <strong>{csvRows.length}</strong> rows. Please match the columns from your CSV to the fields below.
-                        </p>
+
+                <div className="p-8">
+                    {/* Mode Toggle */}
+                    <div className="flex justify-center mb-8">
+                            <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                                <button 
+                                onClick={() => setUseSplitAmount(false)}
+                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-sm text-slate-900 border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                            >
+                                Single Amount Column
+                            </button>
+                            <button 
+                                onClick={() => setUseSplitAmount(true)}
+                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-sm text-slate-900 border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                            >
+                                Split In/Out Columns
+                                <ArrowLeftRight size={14} />
+                            </button>
+                            </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Date Column</label>
-                            <select 
-                                value={columnMapping.date} 
-                                onChange={(e) => setColumnMapping({...columnMapping, date: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
-                            >
-                                <option value="">Select...</option>
-                                {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                            </select>
+                    <div className={`grid grid-cols-1 gap-6 mb-8 ${useSplitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+                        <div className="space-y-2">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Date Column</label>
+                            <div className="relative">
+                                <select 
+                                    value={columnMapping.date} 
+                                    onChange={(e) => setColumnMapping({...columnMapping, date: e.target.value})}
+                                    className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-slate-700 cursor-pointer"
+                                >
+                                    <option value="">Select Column...</option>
+                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                </select>
+                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                            </div>
                         </div>
-                        <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Description / Payee</label>
-                             <select 
-                                value={columnMapping.description} 
-                                onChange={(e) => setColumnMapping({...columnMapping, description: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
-                            >
-                                <option value="">Select...</option>
-                                {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                            </select>
+                        
+                         <div className="space-y-2">
+                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Description / Payee</label>
+                             <div className="relative">
+                                <select 
+                                    value={columnMapping.description} 
+                                    onChange={(e) => setColumnMapping({...columnMapping, description: e.target.value})}
+                                    className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-slate-700 cursor-pointer"
+                                >
+                                    <option value="">Select Column...</option>
+                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                </select>
+                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                            </div>
                         </div>
-                        <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Amount</label>
-                             <select 
-                                value={columnMapping.amount} 
-                                onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
-                            >
-                                <option value="">Select...</option>
-                                {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                            </select>
-                        </div>
+                        
+                        {useSplitAmount ? (
+                             <>
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wide">Money In (Credit)</label>
+                                    <div className="relative">
+                                    <select 
+                                        value={columnMapping.amountIn} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, amountIn: e.target.value})}
+                                        className="w-full py-2 pl-3 pr-8 border border-emerald-200 rounded-lg text-xs bg-emerald-50/50 hover:bg-emerald-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all appearance-none font-medium text-emerald-900 cursor-pointer"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400 pointer-events-none"/>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-wide">Money Out (Debit)</label>
+                                    <div className="relative">
+                                    <select 
+                                        value={columnMapping.amountOut} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, amountOut: e.target.value})}
+                                        className="w-full py-2 pl-3 pr-8 border border-rose-200 rounded-lg text-xs bg-rose-50/50 hover:bg-rose-50 focus:bg-white focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all appearance-none font-medium text-rose-900 cursor-pointer"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-400 pointer-events-none"/>
+                                    </div>
+                                </div>
+                             </>
+                        ) : (
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Amount</label>
+                                <div className="relative">
+                                <select 
+                                    value={columnMapping.amount} 
+                                    onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
+                                    className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-slate-700 cursor-pointer"
+                                >
+                                    <option value="">Select Column...</option>
+                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                </select>
+                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="mt-4">
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Preview (First 3 Rows)</label>
-                        <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                        <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
+                            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Preview (First 3 Rows)</h4>
+                            <span className="text-[10px] text-slate-400 font-mono">{csvRows.length} Rows Detected</span>
+                        </div>
+                        <div className="overflow-x-auto">
                             <table className="w-full text-left ledger-table text-[10px]">
-                                <thead className="bg-slate-50">
+                                <thead className="bg-white">
                                     <tr>
-                                        {csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-500 font-bold">{h}</th>)}
+                                        {csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-400 font-bold border-b border-slate-100 whitespace-nowrap">{h}</th>)}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {csvRows.slice(0, 3).map((row, i) => (
-                                        <tr key={i} className="border-b border-slate-50 last:border-0">
-                                            {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{cell}</td>)}
+                                        <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+                                            {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -685,10 +840,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
-                        <button onClick={() => setShowColumnMapper(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
-                        <button onClick={handleProcessMapping} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
-                            Next Step <ArrowRight size={14} />
+                    <div className="flex justify-end gap-3 pt-8 mt-4">
+                        <button onClick={() => setShowColumnMapper(false)} className="px-5 py-2.5 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded-lg transition-colors">Cancel</button>
+                        <button onClick={handleProcessMapping} className="btn-primary px-6 py-2.5 font-bold uppercase text-xs tracking-wide flex items-center gap-2 shadow-lg shadow-slate-900/10">
+                            Process Import <ArrowRight size={14} />
                         </button>
                     </div>
                 </div>
@@ -958,7 +1113,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
                             <select
                                 value={editingTransaction.pledgeId || ''}
-                                onChange={(e) => setEditingTransaction({...editingTransaction, pledgeId: e.target.value || undefined})}
+                                onChange={(e) => {
+                                    const pid = e.target.value;
+                                    setEditingTransaction({
+                                        ...editingTransaction, 
+                                        pledgeId: pid || undefined,
+                                        // Optional: auto-fill donor name if selecting a pledge and name is empty
+                                        donorName: (editingTransaction.donorName || !pid) ? editingTransaction.donorName : pledges.find(pl => pl.id === pid)?.donorName
+                                    });
+                                }}
                                 className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="">-- No Linked Pledge --</option>
@@ -971,7 +1134,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     );
                                 })}
                             </select>
-                            {relevantPledges.length === 0 && editingTransaction.donorName && (
+                            {relevantPledges.length === 0 && editingTransaction.donorName && !editingTransaction.pledgeId && (
                                 <p className="text-[10px] text-slate-400 mt-1 italic">No pledges found for donor "{editingTransaction.donorName}"</p>
                             )}
                         </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppUser, UserRole, ChurchDetails, Fund, FundType } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2 } from 'lucide-react';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target } from 'lucide-react';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -121,6 +121,11 @@ const Settings: React.FC<SettingsProps> = ({
       }
   };
 
+  const calculateProgress = (fund: Fund) => {
+      if (!fund.targetAmount || fund.targetAmount <= 0) return 0;
+      return Math.min((fund.balance / fund.targetAmount) * 100, 100);
+  };
+
   return (
     <div className="space-y-6 animate-enter max-w-5xl mx-auto pb-20">
       <header className="border-b border-slate-200 pb-6">
@@ -129,7 +134,7 @@ const Settings: React.FC<SettingsProps> = ({
       </header>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-slate-200 px-2 flex items-center gap-6 sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-200 px-2 flex items-center gap-8 sticky top-0 z-10">
         {[
             { id: 'general', label: 'Organization', icon: Building2 },
             { id: 'funds', label: 'Funds & Campaigns', icon: Wallet },
@@ -139,10 +144,10 @@ const Settings: React.FC<SettingsProps> = ({
             <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 py-4 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                className={`flex items-center gap-2 py-4 text-xs font-bold uppercase tracking-wide border-b-2 transition-all duration-200 ${
                     activeTab === tab.id 
                     ? 'border-slate-900 text-slate-900' 
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                    : 'border-transparent text-slate-400 hover:text-slate-700'
                 }`}
             >
                 <tab.icon size={14} /> {tab.label}
@@ -154,96 +159,125 @@ const Settings: React.FC<SettingsProps> = ({
         
         {/* GENERAL TAB */}
         {activeTab === 'general' && (
-             <div className="swiss-card max-w-3xl">
+             <div className="swiss-card max-w-4xl">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">Church Details</h3>
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-600">
+                            <Building2 size={16} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">Organization Profile</h3>
+                            <p className="text-[10px] text-slate-500">Legal and contact details for reports.</p>
+                        </div>
+                    </div>
                     {!isEditingDetails && (
-                        <button onClick={() => { setLocalChurchDetails(churchDetails); setIsEditingDetails(true); }} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:border-slate-300 rounded text-xs font-bold uppercase tracking-wide transition-colors">
-                            <Edit2 size={12} /> Edit
+                        <button onClick={() => { setLocalChurchDetails(churchDetails); setIsEditingDetails(true); }} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:border-slate-300 hover:text-slate-900 rounded text-xs font-bold uppercase tracking-wide transition-colors shadow-sm">
+                            <Edit2 size={12} /> Edit Details
                         </button>
                     )}
                 </div>
+                
                 <div className="p-8">
                     {isEditingDetails ? (
-                        <form onSubmit={handleSaveChurchDetails} className="space-y-6">
-                             <div className="grid grid-cols-2 gap-6">
+                        <form onSubmit={handleSaveChurchDetails} className="space-y-8">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Organization Name</label>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Organization Name</label>
                                     <input 
                                         type="text" 
                                         value={localChurchDetails.name} 
                                         onChange={e => setLocalChurchDetails({...localChurchDetails, name: e.target.value})}
-                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-shadow"
                                         required
                                     />
                                 </div>
+                                
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Charity Number</label>
-                                    <input 
-                                        type="text" 
-                                        value={localChurchDetails.charityNumber || ''} 
-                                        onChange={e => setLocalChurchDetails({...localChurchDetails, charityNumber: e.target.value})}
-                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
-                                    />
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Charity Number</label>
+                                    <div className="relative">
+                                        <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input 
+                                            type="text" 
+                                            value={localChurchDetails.charityNumber || ''} 
+                                            onChange={e => setLocalChurchDetails({...localChurchDetails, charityNumber: e.target.value})}
+                                            className="w-full pl-9 p-3 bg-slate-50 border border-slate-200 rounded-md text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                        />
+                                    </div>
                                 </div>
+
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Contact Email</label>
-                                    <input 
-                                        type="email" 
-                                        value={localChurchDetails.email || ''} 
-                                        onChange={e => setLocalChurchDetails({...localChurchDetails, email: e.target.value})}
-                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
-                                    />
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Contact Email</label>
+                                    <div className="relative">
+                                        <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input 
+                                            type="email" 
+                                            value={localChurchDetails.email || ''} 
+                                            onChange={e => setLocalChurchDetails({...localChurchDetails, email: e.target.value})}
+                                            className="w-full pl-9 p-3 bg-slate-50 border border-slate-200 rounded-md text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        />
+                                    </div>
                                 </div>
+
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Reporting Period</label>
-                                    <select 
-                                        value={localChurchDetails.reportingPeriod || 'tax_year'}
-                                        onChange={e => setLocalChurchDetails({...localChurchDetails, reportingPeriod: e.target.value as 'tax_year' | 'calendar_year'})}
-                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
-                                    >
-                                        <option value="tax_year">UK Tax Year (April - April)</option>
-                                        <option value="calendar_year">Calendar Year (Jan - Dec)</option>
-                                    </select>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Reporting Period</label>
+                                    <div className="relative">
+                                        <CalendarClock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <select 
+                                            value={localChurchDetails.reportingPeriod || 'tax_year'}
+                                            onChange={e => setLocalChurchDetails({...localChurchDetails, reportingPeriod: e.target.value as 'tax_year' | 'calendar_year'})}
+                                            className="w-full pl-9 p-3 bg-slate-50 border border-slate-200 rounded-md text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer"
+                                        >
+                                            <option value="tax_year">UK Tax Year (April - April)</option>
+                                            <option value="calendar_year">Calendar Year (Jan - Dec)</option>
+                                        </select>
+                                    </div>
                                 </div>
+
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Address</label>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Registered Address</label>
                                     <textarea 
                                         value={localChurchDetails.address || ''} 
                                         onChange={e => setLocalChurchDetails({...localChurchDetails, address: e.target.value})}
-                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none h-24 resize-none"
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-md text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none h-24 resize-none"
                                     />
                                 </div>
                              </div>
-                             <div className="flex justify-end gap-3 pt-4">
-                                <button type="button" onClick={() => setIsEditingDetails(false)} className="px-4 py-2 text-xs font-bold uppercase text-slate-500 hover:bg-slate-50 rounded">Cancel</button>
-                                <button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase tracking-wide">Save Details</button>
+                             
+                             <div className="flex justify-end gap-3 pt-6 border-t border-slate-100">
+                                <button type="button" onClick={() => setIsEditingDetails(false)} className="px-5 py-2.5 text-xs font-bold uppercase text-slate-500 hover:bg-slate-50 rounded-md transition-colors">Cancel</button>
+                                <button type="submit" className="btn-primary px-6 py-2.5 text-xs font-bold uppercase tracking-wide flex items-center gap-2">
+                                    <Save size={14} /> Save Changes
+                                </button>
                              </div>
                         </form>
                     ) : (
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-8">
-                                <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Organization Name</p>
-                                    <p className="text-lg font-bold text-slate-900">{churchDetails.name}</p>
+                        <div className="space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="col-span-2 pb-6 border-b border-slate-50">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><Building2 size={12}/> Legal Name</p>
+                                    <p className="text-2xl font-bold text-slate-900 font-display">{churchDetails.name}</p>
                                 </div>
+                                
                                 <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Charity Number</p>
-                                    <p className="text-sm font-medium text-slate-700 font-mono">{churchDetails.charityNumber || 'N/A'}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><Hash size={12}/> Charity Number</p>
+                                    <p className="text-sm font-medium text-slate-700 font-mono bg-slate-50 inline-block px-2 py-1 rounded">{churchDetails.charityNumber || 'N/A'}</p>
                                 </div>
+                                
                                 <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Email</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><Mail size={12}/> Contact Email</p>
                                     <p className="text-sm font-medium text-slate-700">{churchDetails.email || 'N/A'}</p>
                                 </div>
+                                
                                 <div>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Reporting Period</p>
-                                    <p className="text-sm font-medium text-slate-700">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><CalendarClock size={12}/> Reporting Period</p>
+                                    <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
                                         {churchDetails.reportingPeriod === 'calendar_year' ? 'Calendar Year (Jan-Dec)' : 'UK Tax Year (Apr-Apr)'}
                                     </p>
                                 </div>
-                                <div className="col-span-2">
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Address</p>
-                                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{churchDetails.address || 'N/A'}</p>
+                                
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><MapPin size={12}/> Address</p>
+                                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">{churchDetails.address || 'N/A'}</p>
                                 </div>
                             </div>
                         </div>
@@ -256,54 +290,106 @@ const Settings: React.FC<SettingsProps> = ({
         {activeTab === 'funds' && (
             <div className="swiss-card overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">Fund Management</h3>
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-slate-600">
+                            <Wallet size={16} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">Fund Management</h3>
+                            <p className="text-[10px] text-slate-500">Configure restricted and unrestricted funds.</p>
+                        </div>
+                    </div>
                     <button 
                         onClick={() => { setEditingFund({ type: FundType.UNRESTRICTED }); setShowFundModal(true); }}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-slate-800 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-md text-xs font-bold uppercase tracking-wide hover:bg-slate-800 transition-colors shadow-sm"
                     >
                         <Plus size={12} /> Add Fund
                     </button>
                 </div>
+                
+                {/* Stats Summary */}
+                <div className="grid grid-cols-3 gap-6 p-6 border-b border-slate-100 bg-white">
+                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Total Funds</p>
+                        <p className="text-xl font-bold text-slate-900 font-mono">{funds.length}</p>
+                    </div>
+                    <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+                        <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1">Unrestricted Balance</p>
+                        <p className="text-xl font-bold text-emerald-900 font-mono">
+                            £{funds.filter(f => f.type === FundType.UNRESTRICTED).reduce((acc, f) => acc + f.balance, 0).toLocaleString()}
+                        </p>
+                    </div>
+                    <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
+                        <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide mb-1">Restricted Balance</p>
+                        <p className="text-xl font-bold text-amber-900 font-mono">
+                            £{funds.filter(f => f.type !== FundType.UNRESTRICTED).reduce((acc, f) => acc + f.balance, 0).toLocaleString()}
+                        </p>
+                    </div>
+                </div>
+
                 <div className="overflow-x-auto">
                     <table className="w-full text-left ledger-table">
                         <thead>
-                            <tr>
-                                <th className="px-6 pl-6">Fund Name</th>
-                                <th className="px-6">Type</th>
-                                <th className="px-6 text-right">Balance</th>
-                                <th className="px-6 text-right">Target</th>
-                                <th className="px-6">Description</th>
-                                <th className="px-6 text-right">Actions</th>
+                            <tr className="bg-slate-50/50 border-b border-slate-200">
+                                <th className="px-6 py-4 pl-8">Fund Name</th>
+                                <th className="px-6 py-4">Type</th>
+                                <th className="px-6 py-4 text-right">Balance</th>
+                                <th className="px-6 py-4 w-1/3">Target & Progress</th>
+                                <th className="px-6 py-4 text-right pr-8">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {funds.map(fund => (
-                                <tr key={fund.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4 border-b border-slate-50 font-bold text-slate-900 text-sm">{fund.name}</td>
-                                    <td className="px-6 py-4 border-b border-slate-50">
-                                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
-                                            fund.type === FundType.UNRESTRICTED ? 'bg-slate-100 text-slate-600 border-slate-200' : 
-                                            fund.type === FundType.RESTRICTED ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                                            'bg-indigo-50 text-indigo-700 border-indigo-100'
-                                         }`}>
-                                             {fund.type}
-                                         </span>
-                                    </td>
-                                    <td className="px-6 py-4 border-b border-slate-50 text-right font-mono text-sm">£{fund.balance.toLocaleString()}</td>
-                                    <td className="px-6 py-4 border-b border-slate-50 text-right font-mono text-sm text-slate-500">
-                                        {fund.targetAmount ? `£${fund.targetAmount.toLocaleString()}` : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 border-b border-slate-50 text-xs text-slate-500 truncate max-w-xs">{fund.description}</td>
-                                    <td className="px-6 py-4 border-b border-slate-50 text-right">
-                                        <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="text-slate-400 hover:text-slate-600 transition-colors mr-2">
-                                            <Edit2 size={14} />
-                                        </button>
-                                        <button onClick={() => handleDeleteFund(fund)} className="text-slate-400 hover:text-rose-600 transition-colors">
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                        <tbody className="divide-y divide-slate-100">
+                            {funds.map(fund => {
+                                const progress = calculateProgress(fund);
+                                return (
+                                    <tr key={fund.id} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-6 py-5 pl-8">
+                                            <div className="font-bold text-slate-900 text-sm">{fund.name}</div>
+                                            <div className="text-xs text-slate-500 truncate max-w-[200px] mt-0.5">{fund.description}</div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
+                                                fund.type === FundType.UNRESTRICTED ? 'bg-slate-100 text-slate-600 border-slate-200' : 
+                                                fund.type === FundType.RESTRICTED ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                                'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                             }`}>
+                                                 {fund.type}
+                                             </span>
+                                        </td>
+                                        <td className="px-6 py-5 text-right">
+                                            <div className="font-mono text-sm font-bold text-slate-800">£{fund.balance.toLocaleString()}</div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            {fund.targetAmount ? (
+                                                <div className="w-full max-w-xs">
+                                                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">
+                                                        <span>{progress.toFixed(0)}%</span>
+                                                        <span className="font-mono text-slate-400">Target: £{fund.targetAmount.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full rounded-full ${progress >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                                                            style={{ width: `${progress}%` }}
+                                                        ></div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400 italic">No target set</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-5 text-right pr-8">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors" title="Edit">
+                                                    <Edit2 size={14} />
+                                                </button>
+                                                <button onClick={() => handleDeleteFund(fund)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Delete">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
