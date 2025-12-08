@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Transaction, TransactionType, Fund, Pledge, AppUser } from '../types';
-import { categorizeTransactions } from '../services/gemini';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight } from 'lucide-react';
+import { categorizeTransactions, reconcilePledges } from '../services/gemini';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2 } from 'lucide-react';
 
 interface TransactionManagerProps {
   transactions: Transaction[];
@@ -25,6 +25,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState<Partial<Transaction>[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  
+  // Smart Link State
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [pledgeMatches, setPledgeMatches] = useState<any[]>([]);
+  const [showMatchModal, setShowMatchModal] = useState(false);
   
   // CSV Import State
   const [showColumnMapper, setShowColumnMapper] = useState(false);
@@ -185,6 +190,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           alert("Failed to auto-categorize. Please check API connection.");
       } finally {
           setIsBulkProcessingAI(false);
+      }
+  };
+
+  const handleSmartLinkPledges = async () => {
+      setIsReconciling(true);
+      try {
+          // Reconcile function already filters for unlinked income
+          const matches = await reconcilePledges(transactions, pledges);
+          if (matches.length > 0) {
+              setPledgeMatches(matches);
+              setShowMatchModal(true);
+          } else {
+              alert("No obvious pledge matches found for unlinked income.");
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Smart Link failed. Please check API connection.");
+      } finally {
+          setIsReconciling(false);
+      }
+  };
+
+  const handleConfirmMatch = (match: any) => {
+      const t = transactions.find(tx => tx.id === match.transactionId);
+      if (t) {
+          onUpdateTransaction({ ...t, pledgeId: match.pledgeId, donorName: match.donorName || t.donorName });
+          setPledgeMatches(prev => prev.filter(m => m !== match));
+          if (pledgeMatches.length <= 1) setShowMatchModal(false);
       }
   };
 
@@ -457,6 +490,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             {canEdit && (
                 <>
                 <button 
+                    onClick={handleSmartLinkPledges}
+                    disabled={isReconciling}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-md text-indigo-700 hover:text-indigo-900 hover:border-indigo-200 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                >
+                    {isReconciling ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14} />}
+                    Smart Link
+                </button>
+                <div className="w-px h-6 bg-slate-200 mx-1 self-center hidden md:block"></div>
+                <button 
                     onClick={handleSimulateSync}
                     disabled={isUploading}
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
@@ -696,6 +738,57 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <button type="submit" className="btn-primary px-4 py-2 text-xs font-bold uppercase tracking-wide">Apply</button>
                         </div>
                     </form>
+                </div>
+             </div>
+          </div>
+      )}
+
+      {/* Smart Link Review Modal */}
+      {showMatchModal && canEdit && (
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+             <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl animate-enter border border-slate-200 max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50 rounded-t-lg">
+                    <h3 className="font-bold text-indigo-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                        <Wand2 size={16} /> Smart Link Suggestions
+                    </h3>
+                    <button onClick={() => setShowMatchModal(false)} className="text-indigo-400 hover:text-indigo-600"><X size={16} /></button>
+                </div>
+                <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
+                    <p className="text-sm text-slate-500 mb-4">
+                        We found <strong>{pledgeMatches.length}</strong> possible matches for unlinked income.
+                    </p>
+                    <div className="space-y-3">
+                        {pledgeMatches.map((m, i) => {
+                            const txn = transactions.find(t => t.id === m.transactionId);
+                            if (!txn) return null;
+                            return (
+                                <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded border border-indigo-100 shadow-sm gap-4">
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="font-mono text-xs text-slate-500">{txn.date}</span>
+                                            <span className="font-medium text-slate-900 text-sm">{txn.description}</span>
+                                            <span className="font-mono text-xs font-bold text-emerald-600">£{txn.amount}</span>
+                                        </div>
+                                        <div className="flex gap-2 text-[10px] items-center">
+                                            <span className="text-indigo-600 font-bold uppercase">Match Reason:</span>
+                                            <span className="text-slate-600 italic">{m.reason}</span>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 uppercase tracking-wide">
+                                            Suggestion: Link to <strong>{m.donorName}</strong>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 shrink-0">
+                                         <button onClick={() => setPledgeMatches(prev => prev.filter(match => match !== m))} className="text-[10px] border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors bg-white">
+                                            <X size={12}/> Ignore
+                                        </button>
+                                        <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
+                                            <Check size={12}/> Confirm
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
              </div>
           </div>

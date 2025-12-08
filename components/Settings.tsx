@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef } from 'react';
 import { AppUser, UserRole, ChurchDetails, Fund, FundType } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target } from 'lucide-react';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon } from 'lucide-react';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -36,6 +37,10 @@ const Settings: React.FC<SettingsProps> = ({
   const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users'>('general');
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [localChurchDetails, setLocalChurchDetails] = useState<ChurchDetails>(churchDetails);
+  
+  // Refs for file inputs
+  const orgLogoInputRef = useRef<HTMLInputElement>(null);
+  const fundLogoInputRef = useRef<HTMLInputElement>(null);
 
   // User State
   const [showAddUser, setShowAddUser] = useState(false);
@@ -90,6 +95,27 @@ const Settings: React.FC<SettingsProps> = ({
       setIsEditingDetails(false);
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'org' | 'fund') => {
+    const file = e.target.files?.[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) {
+            alert("File size too large. Please upload an image under 5MB.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result as string;
+            if (target === 'org') {
+                setLocalChurchDetails(prev => ({ ...prev, logoUrl: base64 }));
+            } else {
+                setEditingFund(prev => ({ ...prev, logoUrl: base64 }));
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+  };
+
   const handleSaveFund = (e: React.FormEvent) => {
       e.preventDefault();
       if (editingFund?.name && editingFund.type) {
@@ -103,7 +129,8 @@ const Settings: React.FC<SettingsProps> = ({
                   balance: editingFund.balance || 0,
                   description: editingFund.description,
                   targetAmount: editingFund.targetAmount ? Number(editingFund.targetAmount) : undefined,
-                  deadline: editingFund.deadline
+                  deadline: editingFund.deadline,
+                  logoUrl: editingFund.logoUrl
               });
           }
           setShowFundModal(false);
@@ -180,6 +207,40 @@ const Settings: React.FC<SettingsProps> = ({
                 <div className="p-8">
                     {isEditingDetails ? (
                         <form onSubmit={handleSaveChurchDetails} className="space-y-8">
+                             <div className="flex items-start gap-6">
+                                <div className="w-24 h-24 bg-slate-100 border border-slate-200 border-dashed rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative group">
+                                    {localChurchDetails.logoUrl ? (
+                                        <img src={localChurchDetails.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                                    ) : (
+                                        <ImageIcon size={24} className="text-slate-300" />
+                                    )}
+                                    <input 
+                                        type="file" 
+                                        ref={orgLogoInputRef}
+                                        className="hidden" 
+                                        accept="image/*"
+                                        onChange={(e) => handleLogoUpload(e, 'org')}
+                                    />
+                                    <div 
+                                        className="absolute inset-0 bg-slate-900/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                        onClick={() => orgLogoInputRef.current?.click()}
+                                    >
+                                        <Upload size={16} className="text-white" />
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Organization Logo</label>
+                                    <p className="text-xs text-slate-400 mb-2">Used on PDF schedules and reports. Recommended size: 200x200px.</p>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => orgLogoInputRef.current?.click()}
+                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                                    >
+                                        {localChurchDetails.logoUrl ? 'Change Logo' : 'Upload Logo'}
+                                    </button>
+                                </div>
+                             </div>
+
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                                 <div className="col-span-2">
                                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Organization Name</label>
@@ -252,12 +313,19 @@ const Settings: React.FC<SettingsProps> = ({
                         </form>
                     ) : (
                         <div className="space-y-8">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="col-span-2 pb-6 border-b border-slate-50">
+                             <div className="flex items-start gap-6 pb-6 border-b border-slate-50">
+                                {churchDetails.logoUrl && (
+                                    <div className="w-20 h-20 bg-white border border-slate-100 rounded-lg p-1 shrink-0">
+                                        <img src={churchDetails.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                                    </div>
+                                )}
+                                <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><Building2 size={12}/> Legal Name</p>
                                     <p className="text-2xl font-bold text-slate-900 font-display">{churchDetails.name}</p>
                                 </div>
-                                
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-2"><Hash size={12}/> Charity Number</p>
                                     <p className="text-sm font-medium text-slate-700 font-mono bg-slate-50 inline-block px-2 py-1 rounded">{churchDetails.charityNumber || 'N/A'}</p>
@@ -344,8 +412,13 @@ const Settings: React.FC<SettingsProps> = ({
                                 return (
                                     <tr key={fund.id} className="hover:bg-slate-50 transition-colors group">
                                         <td className="px-6 py-5 pl-8">
-                                            <div className="font-bold text-slate-900 text-sm">{fund.name}</div>
-                                            <div className="text-xs text-slate-500 truncate max-w-[200px] mt-0.5">{fund.description}</div>
+                                            <div className="flex items-center gap-3">
+                                                 {fund.logoUrl && <img src={fund.logoUrl} className="w-8 h-8 rounded-md object-cover border border-slate-200" alt="Fund Logo" />}
+                                                 <div>
+                                                    <div className="font-bold text-slate-900 text-sm">{fund.name}</div>
+                                                    <div className="text-xs text-slate-500 truncate max-w-[200px] mt-0.5">{fund.description}</div>
+                                                 </div>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-5">
                                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
@@ -572,6 +645,31 @@ const Settings: React.FC<SettingsProps> = ({
                     <button onClick={() => setShowFundModal(false)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
                 </div>
                 <form onSubmit={handleSaveFund} className="p-6 space-y-4">
+                     {/* Fund Logo Upload */}
+                    <div className="flex items-center gap-4">
+                        <div 
+                            className="w-16 h-16 bg-slate-100 border border-slate-200 border-dashed rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative group cursor-pointer"
+                            onClick={() => fundLogoInputRef.current?.click()}
+                        >
+                             {editingFund?.logoUrl ? (
+                                <img src={editingFund.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                            ) : (
+                                <ImageIcon size={20} className="text-slate-300" />
+                            )}
+                             <input 
+                                type="file" 
+                                ref={fundLogoInputRef}
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={(e) => handleLogoUpload(e, 'fund')}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-0.5">Campaign Logo</label>
+                            <p className="text-[10px] text-slate-400">Optional. For specific reports.</p>
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Fund Name *</label>
                         <input 

@@ -462,3 +462,24 @@ export const generateDonorCommunication = async (donorName: string, transactions
     });
     return response.text;
 };
+
+export const generatePledgeCompletionMessage = async (donorName: string, pledgeAmount: number, fundName: string) => {
+    if (!apiKey) throw new Error("API Key missing");
+
+    const prompt = `
+        Write a short, celebratory message for WhatsApp/SMS to a donor named ${donorName}.
+        They have just successfully completed their pledge of £${pledgeAmount} for the '${fundName}' fund.
+        
+        Constraints:
+        - Max 50 words.
+        - Warm, Christian charity tone.
+        - Include 1-2 appropriate emojis.
+        - No placeholders like [Date].
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt
+    });
+    return response.text;
+};

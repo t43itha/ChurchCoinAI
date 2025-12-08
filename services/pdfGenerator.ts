@@ -1,3 +1,4 @@
+
 import { Donor, Pledge, Fund, ChurchDetails } from "../types";
 
 export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fund[], churchDetails: ChurchDetails) => {
@@ -42,6 +43,17 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
           padding-bottom: 20px;
           margin-bottom: 40px;
         }
+        .brand {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .logo {
+            height: 60px;
+            width: auto;
+            margin-bottom: 15px;
+            object-fit: contain;
+        }
         .brand h1 {
           font-family: 'DM Sans', sans-serif;
           font-size: 24px;
@@ -61,6 +73,7 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
           text-align: right;
           font-size: 11px;
           color: #57534e;
+          padding-top: 5px;
         }
         .recipient {
           margin-bottom: 60px;
@@ -191,8 +204,11 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
       
       <div class="header">
         <div class="brand">
-          <h1>${churchDetails.name}</h1>
-          <p>Finance & Stewardship</p>
+          ${churchDetails.logoUrl ? `<img src="${churchDetails.logoUrl}" class="logo" />` : ''}
+          <div>
+            <h1>${churchDetails.name}</h1>
+            <p>Finance & Stewardship</p>
+          </div>
         </div>
         <div class="meta">
           <p>Date: ${today}</p>

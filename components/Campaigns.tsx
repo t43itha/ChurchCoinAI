@@ -1,26 +1,33 @@
 import React, { useState, useRef } from 'react';
-import { Fund, Pledge, Transaction, AppUser } from '../types';
-import { reconcilePledges } from '../services/gemini';
+import { Fund, Pledge, Transaction, AppUser, Donor } from '../types';
+import { reconcilePledges, generatePledgeCompletionMessage } from '../services/gemini';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save } from 'lucide-react';
+import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy } from 'lucide-react';
 
 interface CampaignsProps {
     funds: Fund[];
     pledges: Pledge[];
     transactions: Transaction[];
+    donors: Donor[]; 
     onAddPledge: (p: Pledge) => void;
     onUpdatePledge: (p: Pledge) => void;
     onBulkAddPledges: (ps: Pledge[]) => void;
+    onBulkAddDonors: (ds: Donor[]) => void;
     onUpdateTransaction: (t: Transaction) => void;
     currentUser: AppUser;
 }
 
 const COLORS = ['#10b981', '#e2e8f0'];
 
-const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onAddPledge, onUpdatePledge, onBulkAddPledges, onUpdateTransaction, currentUser }) => {
+const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, donors, onAddPledge, onUpdatePledge, onBulkAddPledges, onBulkAddDonors, onUpdateTransaction, currentUser }) => {
     const [selectedFundId, setSelectedFundId] = useState<string>(funds.find(f => f.type === 'Restricted')?.id || funds[0].id);
     const [isReconciling, setIsReconciling] = useState(false);
     const [matches, setMatches] = useState<any[]>([]);
+
+    // Completion / Thank You Logic
+    const [thankYouModal, setThankYouModal] = useState<{ isOpen: boolean; pledge: Pledge | null; text: string; isGenerating: boolean }>({
+        isOpen: false, pledge: null, text: '', isGenerating: false
+    });
 
     // State for modals
     const [showAddModal, setShowAddModal] = useState(false);
@@ -37,7 +44,16 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
     const [showCsvMapper, setShowCsvMapper] = useState(false);
     const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
     const [csvRows, setCsvRows] = useState<string[][]>([]);
-    const [columnMapping, setColumnMapping] = useState({ donor: '', amount: '', frequency: '' });
+    const [columnMapping, setColumnMapping] = useState({ 
+        donor: '', 
+        amount: '', 
+        frequency: '',
+        email: '',
+        phone: '',
+        address: '',
+        postcode: '',
+        commPref: ''
+    });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
@@ -51,6 +67,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
     const percentComplete = Math.min((totalCollected / target) * 100, 100);
 
     const pieData = [{ name: 'Collected', value: totalCollected }, { name: 'Remaining', value: Math.max(0, target - totalCollected) }];
+
+    // --- Actions ---
 
     const handleAIReconcile = async () => {
         setIsReconciling(true);
@@ -76,6 +94,36 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
         setMatches(prev => prev.filter(m => m !== match));
     };
 
+    const handleThankDonor = async (pledge: Pledge) => {
+        setThankYouModal({ isOpen: true, pledge, text: '', isGenerating: true });
+        try {
+            const fundName = funds.find(f => f.id === pledge.fundId)?.name || 'Campaign';
+            const text = await generatePledgeCompletionMessage(pledge.donorName, pledge.amount, fundName);
+            setThankYouModal(prev => ({ ...prev, text: text || "Thank you for your generous support!", isGenerating: false }));
+        } catch (e) {
+            setThankYouModal(prev => ({ ...prev, text: "Error generating message.", isGenerating: false }));
+        }
+    };
+
+    const sendViaWhatsApp = () => {
+        if (!thankYouModal.pledge) return;
+        const donor = donors.find(d => d.id === thankYouModal.pledge?.donorId);
+        if (donor && donor.phone) {
+            const cleanPhone = donor.phone.replace(/[^0-9]/g, '');
+            // Simple robust check for UK international format
+            const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
+            const url = `https://wa.me/${formatted}?text=${encodeURIComponent(thankYouModal.text)}`;
+            window.open(url, '_blank');
+        } else {
+            alert("No phone number found for this donor.");
+        }
+    };
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(thankYouModal.text);
+        alert("Message copied to clipboard.");
+    };
+
     const handleAddPledgeClick = () => {
         setPledgeForm({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
         setShowAddModal(true);
@@ -98,10 +146,12 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
             });
             setEditingPledge(null);
         } else {
-            // Create
+            const existingDonor = donors.find(d => d.name.toLowerCase() === pledgeForm.donorName?.toLowerCase());
+            
             const pledge: Pledge = {
                 id: Math.random().toString(36).substr(2, 9),
                 donorName: pledgeForm.donorName,
+                donorId: existingDonor?.id,
                 amount: Number(pledgeForm.amount),
                 fundId: selectedFundId,
                 frequency: pledgeForm.frequency as any || 'Monthly',
@@ -133,12 +183,21 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
             setCsvRows(rows);
 
             // Auto-guess columns
-            const newMapping = { donor: '', amount: '', frequency: '' };
+            const newMapping = { 
+                donor: '', amount: '', frequency: '', 
+                email: '', phone: '', address: '', postcode: '', commPref: '' 
+            };
+            
             headers.forEach(h => {
                 const lower = h.toLowerCase();
                 if ((lower.includes('name') || lower.includes('donor')) && !newMapping.donor) newMapping.donor = h;
                 else if ((lower.includes('amount') || lower.includes('value')) && !newMapping.amount) newMapping.amount = h;
                 else if ((lower.includes('freq') || lower.includes('period')) && !newMapping.frequency) newMapping.frequency = h;
+                else if (lower.includes('email') && !newMapping.email) newMapping.email = h;
+                else if ((lower.includes('phone') || lower.includes('tel') || lower.includes('mobile')) && !newMapping.phone) newMapping.phone = h;
+                else if (lower.includes('postcode') && !newMapping.postcode) newMapping.postcode = h;
+                else if ((lower.includes('address') || lower.includes('street')) && !newMapping.address) newMapping.address = h;
+                else if ((lower.includes('pref') || lower.includes('comm') || lower.includes('contact')) && !newMapping.commPref) newMapping.commPref = h;
             });
             setColumnMapping(newMapping);
             setShowCsvMapper(true);
@@ -151,6 +210,13 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
         const donorIdx = csvHeaders.indexOf(columnMapping.donor);
         const amountIdx = csvHeaders.indexOf(columnMapping.amount);
         const freqIdx = csvHeaders.indexOf(columnMapping.frequency);
+        
+        // Optional indices
+        const emailIdx = csvHeaders.indexOf(columnMapping.email);
+        const phoneIdx = csvHeaders.indexOf(columnMapping.phone);
+        const addressIdx = csvHeaders.indexOf(columnMapping.address);
+        const postcodeIdx = csvHeaders.indexOf(columnMapping.postcode);
+        const commPrefIdx = csvHeaders.indexOf(columnMapping.commPref);
 
         if (donorIdx === -1 || amountIdx === -1) {
             alert("Donor Name and Amount columns are required.");
@@ -158,6 +224,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
         }
 
         const newPledges: Pledge[] = [];
+        const donorsToUpsert = new Map<string, Donor>(); // Key by ID
+
         csvRows.forEach(row => {
             const donorName = row[donorIdx];
             let amountStr = row[amountIdx] || '0';
@@ -172,9 +240,68 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
             else if (freqRaw.toLowerCase().includes('year') || freqRaw.toLowerCase().includes('ann')) frequency = 'Annual';
 
             if (donorName && amount > 0) {
+                // Check if donor exists in current database OR in the upsert map we are building
+                const existingDonor = donors.find(d => d.name.toLowerCase() === donorName.toLowerCase());
+                
+                let donorId = existingDonor?.id;
+                let donorObj: Donor;
+
+                // Extract optional details
+                const email = emailIdx !== -1 ? row[emailIdx] : undefined;
+                const phone = phoneIdx !== -1 ? row[phoneIdx] : undefined;
+                const address = addressIdx !== -1 ? row[addressIdx] : undefined;
+                const postcode = postcodeIdx !== -1 ? row[postcodeIdx] : undefined;
+                const commPrefRaw = commPrefIdx !== -1 ? row[commPrefIdx] : undefined;
+                
+                let commPref: 'Email'|'Post'|'Phone' | undefined;
+                if (commPrefRaw) {
+                    const c = commPrefRaw.toLowerCase();
+                    if (c.includes('email')) commPref = 'Email';
+                    else if (c.includes('post') || c.includes('mail')) commPref = 'Post';
+                    else if (c.includes('phone')) commPref = 'Phone';
+                }
+
+                if (existingDonor) {
+                    donorId = existingDonor.id;
+                    // Update existing with new info if present
+                    donorObj = {
+                        ...existingDonor,
+                        email: email || existingDonor.email,
+                        phone: phone || existingDonor.phone,
+                        address: address || existingDonor.address,
+                        postcode: postcode || existingDonor.postcode,
+                        communicationPreference: commPref || existingDonor.communicationPreference
+                    };
+                } else {
+                    // Check if we already created a donor for this name in this batch
+                    const foundInBatch = Array.from(donorsToUpsert.values()).find(d => d.name.toLowerCase() === donorName.toLowerCase());
+                    if (foundInBatch) {
+                        donorId = foundInBatch.id;
+                        donorObj = { ...foundInBatch }; // Use already created object
+                    } else {
+                        // Create New
+                        donorId = Math.random().toString(36).substr(2, 9);
+                        donorObj = {
+                            id: donorId,
+                            name: donorName,
+                            type: 'Individual',
+                            email,
+                            phone,
+                            address,
+                            postcode,
+                            communicationPreference: commPref,
+                            isGiftAidActive: false // Default to false for imports unless mapped
+                        };
+                    }
+                }
+                
+                // Add to upsert map (will overwrite previous entry for same ID, effectively merging last wins if duplicate rows for same donor)
+                donorsToUpsert.set(donorId!, donorObj);
+
                 newPledges.push({
                     id: Math.random().toString(36).substr(2, 9),
                     donorName,
+                    donorId: donorId, // Link to the donor
                     amount,
                     fundId: selectedFundId,
                     frequency,
@@ -184,7 +311,14 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
             }
         });
 
-        onBulkAddPledges(newPledges);
+        if (donorsToUpsert.size > 0) {
+            onBulkAddDonors(Array.from(donorsToUpsert.values()));
+        }
+        
+        if (newPledges.length > 0) {
+            onBulkAddPledges(newPledges);
+        }
+        
         setShowCsvMapper(false);
     };
 
@@ -353,7 +487,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                     <th className="px-6 py-3 text-xs text-slate-500 font-bold uppercase tracking-wide">Frequency</th>
                                     <th className="px-6 py-3 text-right text-xs text-slate-500 font-bold uppercase tracking-wide">Amount</th>
                                     <th className="px-6 py-3 text-center text-xs text-slate-500 font-bold uppercase tracking-wide">Status</th>
-                                    <th className="px-6 py-3"></th>
+                                    <th className="px-6 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -372,11 +506,21 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            {canEdit && (
-                                                <button onClick={() => handleEditPledgeClick(pledge)} className="text-slate-300 hover:text-slate-600 transition-colors opacity-0 group-hover:opacity-100">
-                                                    <Edit2 size={14} />
-                                                </button>
-                                            )}
+                                            <div className="flex justify-end gap-2">
+                                                {pledge.status === 'Completed' && (
+                                                    <button 
+                                                        onClick={() => handleThankDonor(pledge)} 
+                                                        className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded hover:text-emerald-600 hover:border-emerald-200 transition-colors shadow-sm"
+                                                    >
+                                                        <MessageSquare size={10} /> Say Thanks
+                                                    </button>
+                                                )}
+                                                {canEdit && (
+                                                    <button onClick={() => handleEditPledgeClick(pledge)} className="text-slate-300 hover:text-slate-600 transition-colors opacity-0 group-hover:opacity-100">
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -409,6 +553,59 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                     </div>
                 </div>
             </div>
+
+            {/* Thank You / Completion Modal */}
+            {thankYouModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-slate-200 animate-enter">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50 rounded-t-lg">
+                            <h3 className="font-bold text-emerald-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                                <Target size={16} /> Pledge Completed!
+                            </h3>
+                            <button onClick={() => setThankYouModal({ isOpen: false, pledge: null, text: '', isGenerating: false })} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                        </div>
+                        <div className="p-6">
+                            <div className="text-center mb-6">
+                                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Check size={24} strokeWidth={3} />
+                                </div>
+                                <h2 className="text-lg font-bold text-slate-900">Thank {thankYouModal.pledge?.donorName}</h2>
+                                <p className="text-sm text-slate-500">They have fulfilled their entire pledge amount.</p>
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 relative">
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex justify-between">
+                                    <span>Draft Message</span>
+                                    {thankYouModal.isGenerating && <span className="flex items-center gap-1 text-indigo-600"><Loader2 size={10} className="animate-spin"/> AI writing...</span>}
+                                </label>
+                                <textarea 
+                                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-slate-700 resize-none h-24 p-0 leading-relaxed"
+                                    value={thankYouModal.text}
+                                    onChange={(e) => setThankYouModal(prev => ({ ...prev, text: e.target.value }))}
+                                />
+                                <button onClick={copyToClipboard} className="absolute bottom-3 right-3 text-slate-400 hover:text-slate-600" title="Copy text">
+                                    <Copy size={14} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mt-6">
+                                <button 
+                                    onClick={sendViaWhatsApp}
+                                    className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366] text-white rounded-lg font-bold text-sm hover:bg-[#128C7E] transition-colors shadow-sm"
+                                >
+                                    <Phone size={16} /> WhatsApp
+                                </button>
+                                <button 
+                                    className="flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white rounded-lg font-bold text-sm hover:bg-slate-800 transition-colors shadow-sm"
+                                    onClick={() => { window.location.href = `mailto:?subject=Thank You&body=${encodeURIComponent(thankYouModal.text)}`; }}
+                                >
+                                    <Mail size={16} /> Email
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Add/Edit Pledge Modal */}
             {(showAddModal || editingPledge) && canEdit && (
@@ -519,10 +716,10 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
             {/* CSV Import Modal */}
             {showCsvMapper && canEdit && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl animate-enter border border-slate-200">
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl animate-enter border border-slate-200">
                         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
                             <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
-                                <TableIcon size={16} /> Import Pledges CSV
+                                <TableIcon size={16} /> Import Pledges & Donor Details
                             </h3>
                             <button onClick={() => setShowCsvMapper(false)} className="text-slate-400 hover:text-slate-600">
                                 <X size={16} />
@@ -535,9 +732,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Donor Name</label>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Donor Name *</label>
                                     <select 
                                         value={columnMapping.donor} 
                                         onChange={(e) => setColumnMapping({...columnMapping, donor: e.target.value})}
@@ -548,7 +745,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Amount</label>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Amount *</label>
                                     <select 
                                         value={columnMapping.amount} 
                                         onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
@@ -559,10 +756,65 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Frequency (Opt)</label>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Frequency</label>
                                     <select 
                                         value={columnMapping.frequency} 
                                         onChange={(e) => setColumnMapping({...columnMapping, frequency: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Email</label>
+                                    <select 
+                                        value={columnMapping.email} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, email: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Phone</label>
+                                    <select 
+                                        value={columnMapping.phone} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, phone: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Address</label>
+                                    <select 
+                                        value={columnMapping.address} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, address: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Postcode</label>
+                                    <select 
+                                        value={columnMapping.postcode} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, postcode: e.target.value})}
+                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                    >
+                                        <option value="">Select Column...</option>
+                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Comm Pref</label>
+                                    <select 
+                                        value={columnMapping.commPref} 
+                                        onChange={(e) => setColumnMapping({...columnMapping, commPref: e.target.value})}
                                         className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                                     >
                                         <option value="">Select Column...</option>
@@ -576,7 +828,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                                 <div className="overflow-x-auto border border-slate-100 rounded-lg">
                                     <table className="w-full text-left ledger-table text-[10px]">
                                         <thead className="bg-slate-50">
-                                            <tr>{csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-500 font-bold">{h}</th>)}</tr>
+                                            <tr>{csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-500 font-bold whitespace-nowrap">{h}</th>)}</tr>
                                         </thead>
                                         <tbody>
                                             {csvRows.slice(0, 3).map((row, i) => (
@@ -592,7 +844,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, onA
                             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
                                 <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
                                 <button onClick={handleProcessImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
-                                    Import Pledges <ArrowRight size={14} />
+                                    Import Data <ArrowRight size={14} />
                                 </button>
                             </div>
                         </div>

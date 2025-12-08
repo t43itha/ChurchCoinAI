@@ -1,3 +1,4 @@
+
 export enum TransactionType {
   INCOME = 'Income',
   EXPENDITURE = 'Expenditure'
@@ -27,6 +28,7 @@ export interface ChurchDetails {
   email?: string;
   website?: string;
   reportingPeriod?: 'tax_year' | 'calendar_year';
+  logoUrl?: string;
 }
 
 export interface Fund {
@@ -37,6 +39,7 @@ export interface Fund {
   description?: string;
   targetAmount?: number;
   deadline?: string; // For campaigns/projects
+  logoUrl?: string;
 }
 
 export interface Pledge {
@@ -57,9 +60,11 @@ export interface Donor {
   email?: string;
   phone?: string;
   address?: string;
+  postcode?: string;
   notes?: string;
   type: 'Individual' | 'Organization';
   isGiftAidActive?: boolean;
+  communicationPreference?: 'Email' | 'Post' | 'Phone';
 }
 
 export interface Transaction {
