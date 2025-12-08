@@ -147,18 +147,18 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
 
   return (
     <div className="space-y-6 animate-enter max-w-6xl mx-auto">
-      <header className="border-b border-slate-200 pb-6 flex flex-col md:flex-row justify-between md:items-end gap-4">
+      <header className="border-b border-ledger pb-6 flex flex-col md:flex-row justify-between md:items-end gap-4">
         <div>
-            <h2 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Reports</h2>
-            <p className="text-slate-500 mt-1 text-sm font-medium">AI-generated commentary and compliance documents.</p>
+            <h2 className="text-3xl font-bold text-ink font-mono tracking-tight">Reports</h2>
+            <p className="text-grey-mid mt-1 text-sm font-medium">AI-generated commentary and compliance documents.</p>
         </div>
         <div className="flex items-center gap-3">
-            <div className="bg-white border border-slate-200 rounded-md px-3 py-2 flex items-center gap-2">
-                <Calendar size={14} className="text-slate-400"/>
+            <div className="bg-white border border-ledger rounded-md px-3 py-2 flex items-center gap-2">
+                <Calendar size={14} className="text-grey-mid"/>
                 <select 
                     value={taxYear} 
                     onChange={(e) => setTaxYear(e.target.value)}
-                    className="text-sm font-medium text-slate-700 outline-none bg-transparent cursor-pointer"
+                    className="text-sm font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
                 >
                     <option value="current">
                         Current {churchDetails?.reportingPeriod === 'calendar_year' ? 'Calendar' : 'Tax'} Year
@@ -175,17 +175,17 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-4">
             {/* Treasurer Report Card */}
-            <div className="swiss-card p-6 cursor-pointer hover:border-slate-300 transition-colors group" onClick={handleGenerateTreasurerReport}>
+            <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateTreasurerReport}>
                 <div className="flex justify-between items-start mb-4">
-                     <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600">
+                     <div className="w-10 h-10 bg-sage-light rounded-lg flex items-center justify-center text-sage">
                         <Sparkles size={20} />
                     </div>
                 </div>
-                <h3 className="font-bold text-slate-900 mb-2">Treasurer's Commentary</h3>
-                <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+                <h3 className="font-bold text-ink mb-2">Treasurer's Commentary</h3>
+                <p className="text-sm text-grey-mid mb-4 leading-relaxed">
                     General financial health summary for the Board of Trustees meeting.
                 </p>
-                <div className="flex items-center text-xs font-bold text-indigo-600 uppercase tracking-wide group-hover:translate-x-1 transition-transform">
+                <div className="flex items-center text-xs font-bold text-sage uppercase tracking-wide group-hover:translate-x-1 transition-transform">
                     {isGenerating && reportTitle.includes("Treasurer") ? 'Generating...' : <span className="flex items-center gap-2">Create Draft <ArrowRight size={12}/></span>}
                 </div>
             </div>
@@ -193,24 +193,24 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
             {/* Financial Performance Card */}
             <div className="swiss-card p-6 group">
                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600">
+                    <div className="w-10 h-10 bg-grey-light rounded-lg flex items-center justify-center text-slate-600">
                         <TrendingUp size={20} />
                     </div>
                 </div>
-                 <h3 className="font-bold text-slate-900 mb-2">Financial Performance</h3>
-                 <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+                 <h3 className="font-bold text-ink mb-2">Financial Performance</h3>
+                 <p className="text-sm text-grey-mid mb-4 leading-relaxed">
                     Income and Expenditure statements for the selected tax year.
                  </p>
                  <div className="flex gap-2">
                      <button 
                         onClick={(e) => { e.stopPropagation(); handleGenerateAnnualStatement(); }}
-                        className="flex-1 py-1.5 bg-slate-900 text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-slate-800 transition-colors"
+                        className="flex-1 py-1.5 bg-ink text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-charcoal transition-colors"
                      >
                          Annual
                      </button>
                      <button 
                         onClick={(e) => { e.stopPropagation(); handleGenerateMonthlyBreakdown(); }}
-                        className="flex-1 py-1.5 bg-white border border-slate-200 text-slate-700 rounded text-xs font-bold uppercase tracking-wide hover:border-slate-300 transition-colors"
+                        className="flex-1 py-1.5 bg-white border border-ledger text-grey-dark rounded text-xs font-bold uppercase tracking-wide hover:border-grey-mid transition-colors"
                      >
                          Monthly
                      </button>
@@ -218,58 +218,58 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
             </div>
 
             {/* Gift Aid Card */}
-            <div className="swiss-card p-6 cursor-pointer hover:border-slate-300 transition-colors group" onClick={handleGenerateGiftAid}>
+            <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateGiftAid}>
                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600">
+                    <div className="w-10 h-10 bg-sage-light rounded-lg flex items-center justify-center text-sage">
                         <PoundSterling size={20} />
                     </div>
                 </div>
-                 <h3 className="font-bold text-slate-900 mb-2">Gift Aid Schedule</h3>
-                 <p className="text-sm text-slate-500 mb-4 leading-relaxed">
+                 <h3 className="font-bold text-ink mb-2">Gift Aid Schedule</h3>
+                 <p className="text-sm text-grey-mid mb-4 leading-relaxed">
                     Calculate claimable amounts (25%) and format schedule for HMRC.
                  </p>
-                 <div className="flex items-center text-xs font-bold text-emerald-600 uppercase tracking-wide group-hover:translate-x-1 transition-transform">
+                 <div className="flex items-center text-xs font-bold text-sage uppercase tracking-wide group-hover:translate-x-1 transition-transform">
                     {isGenerating && reportTitle.includes("HMRC") ? 'Calculating...' : <span className="flex items-center gap-2">Generate Schedule <ArrowRight size={12}/></span>}
                 </div>
             </div>
 
             {/* Project Impact Card */}
-            <div className="swiss-card p-6 cursor-pointer hover:border-slate-300 transition-colors group" onClick={handleGenerateProjectReport}>
+            <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateProjectReport}>
                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600">
+                    <div className="w-10 h-10 bg-amber-light rounded-lg flex items-center justify-center text-amber">
                         <Megaphone size={20} />
                     </div>
                 </div>
-                 <h3 className="font-bold text-slate-900 mb-2">Project Impact Update</h3>
-                 <p className="text-sm text-slate-500 mb-3 leading-relaxed">
+                 <h3 className="font-bold text-ink mb-2">Project Impact Update</h3>
+                 <p className="text-sm text-grey-mid mb-3 leading-relaxed">
                     Create a newsletter update for a specific restricted fund.
                  </p>
                  <select 
-                    className="w-full mb-4 text-xs p-2 bg-slate-50 border border-slate-200 rounded outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+                    className="w-full mb-4 text-xs p-2 bg-paper border border-ledger rounded outline-none focus:ring-1 focus:ring-ink cursor-pointer"
                     value={selectedFundId}
                     onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
                     onClick={(e) => e.stopPropagation()}
                  >
                     {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                  </select>
-                 <div className="flex items-center text-xs font-bold text-amber-600 uppercase tracking-wide group-hover:translate-x-1 transition-transform">
+                 <div className="flex items-center text-xs font-bold text-amber uppercase tracking-wide group-hover:translate-x-1 transition-transform">
                     {isGenerating && reportTitle.includes("Impact") ? 'Writing...' : <span className="flex items-center gap-2">Write Update <ArrowRight size={12}/></span>}
                 </div>
             </div>
 
              {/* Campaign Status Card */}
-            <div className="swiss-card p-6 cursor-pointer hover:border-slate-300 transition-colors group" onClick={handleGenerateCampaignReport}>
+            <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateCampaignReport}>
                  <div className="flex justify-between items-start mb-4">
-                    <div className="w-10 h-10 bg-rose-50 rounded-lg flex items-center justify-center text-rose-600">
+                    <div className="w-10 h-10 bg-error-light rounded-lg flex items-center justify-center text-error">
                         <Target size={20} />
                     </div>
                 </div>
-                 <h3 className="font-bold text-slate-900 mb-2">Campaign Status</h3>
-                 <p className="text-sm text-slate-500 mb-3 leading-relaxed">
+                 <h3 className="font-bold text-ink mb-2">Campaign Status</h3>
+                 <p className="text-sm text-grey-mid mb-3 leading-relaxed">
                     Analyze fundraising metrics, donor count, and projection to goal.
                  </p>
                  <select 
-                    className="w-full mb-4 text-xs p-2 bg-slate-50 border border-slate-200 rounded outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+                    className="w-full mb-4 text-xs p-2 bg-paper border border-ledger rounded outline-none focus:ring-1 focus:ring-ink cursor-pointer"
                     value={selectedFundId}
                     onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
                     onClick={(e) => e.stopPropagation()}
@@ -278,7 +278,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
                         <option key={f.id} value={f.id}>{f.name}</option>
                     ))}
                  </select>
-                 <div className="flex items-center text-xs font-bold text-rose-600 uppercase tracking-wide group-hover:translate-x-1 transition-transform">
+                 <div className="flex items-center text-xs font-bold text-error uppercase tracking-wide group-hover:translate-x-1 transition-transform">
                     {isGenerating && reportTitle.includes("Campaign") ? 'Analyzing...' : <span className="flex items-center gap-2">Run Analysis <ArrowRight size={12}/></span>}
                 </div>
             </div>
@@ -287,30 +287,30 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
         <div className="lg:col-span-2">
             <div className="swiss-card min-h-[600px] p-10 relative">
                 <div className="absolute top-6 right-6 flex gap-2">
-                     <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors" title="Download">
+                     <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded transition-colors" title="Download">
                         <Download size={18} />
                      </button>
-                     <button className="p-2 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors" title="Share">
+                     <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded transition-colors" title="Share">
                         <Share2 size={18} />
                      </button>
                 </div>
                 
                 {reportText ? (
-                    <article className="prose prose-slate prose-headings:font-display prose-p:font-serif max-w-none">
-                        <div className="mb-10 border-b border-slate-100 pb-6">
-                            <h1 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">{reportTitle}</h1>
-                            <div className="flex items-center gap-4 text-xs font-mono text-slate-400 uppercase tracking-widest">
+                    <article className="prose prose-slate prose-headings:font-mono prose-p:font-serif max-w-none">
+                        <div className="mb-10 border-b border-ledger pb-6">
+                            <h1 className="text-2xl font-bold text-ink mb-2 tracking-tight">{reportTitle}</h1>
+                            <div className="flex items-center gap-4 text-xs font-mono text-grey-mid uppercase tracking-widest">
                                 <span>Generated {new Date().toLocaleDateString()}</span>
                                 <span>•</span>
                                 <span>Period: {taxYear}</span>
                             </div>
                         </div>
-                        <div className="whitespace-pre-line text-slate-700 leading-relaxed text-sm">
+                        <div className="whitespace-pre-line text-grey-dark leading-relaxed text-sm">
                             {reportText}
                         </div>
                     </article>
                 ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                    <div className="h-full flex flex-col items-center justify-center text-ledger">
                         <FileText size={48} className="mb-4 opacity-20"/>
                         <p className="text-sm font-medium">Select a report type to generate.</p>
                     </div>

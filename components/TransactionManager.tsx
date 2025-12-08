@@ -593,39 +593,39 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   return (
     <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-ledger pb-6">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Ledger</h2>
-          <p className="text-slate-500 mt-1 text-sm font-medium">Recorded transactions and reconciliations.</p>
+          <h2 className="text-3xl font-bold text-ink tracking-tight">Ledger</h2>
+          <p className="text-grey-mid mt-1 text-sm font-medium">Recorded transactions and reconciliations.</p>
         </div>
         <div className="flex flex-wrap gap-2">
             {!canEdit && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded text-xs font-bold text-slate-500 uppercase tracking-wide">
+                <div className="flex items-center gap-2 px-3 py-1 bg-grey-light rounded text-xs font-bold text-grey-mid uppercase tracking-wide">
                     <Lock size={12} /> Read Only
                 </div>
             )}
             {canEdit && (
                 <>
-                <button 
+                <button
                     onClick={handleSmartLinkPledges}
                     disabled={isReconciling}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-md text-indigo-700 hover:text-indigo-900 hover:border-indigo-200 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-sage-light border border-sage/30 rounded-md text-sage-dark hover:text-ink hover:border-sage transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
                 >
                     {isReconciling ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14} />}
                     Smart Link
                 </button>
-                <div className="w-px h-6 bg-slate-200 mx-1 self-center hidden md:block"></div>
+                <div className="w-px h-6 bg-ledger mx-1 self-center hidden md:block"></div>
                 <button 
                     onClick={handleSimulateSync}
                     disabled={isUploading}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
                 >
                     {isUploading ? <Loader2 size={14} className="animate-spin"/> : <Building2 size={14} />}
                     Sync Bank
                 </button>
                 <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-md text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
                 >
                     <FileSpreadsheet size={14}/>
                     Import CSV
@@ -639,7 +639,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </button>
                 <button 
                     onClick={() => setShowAddModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition-all shadow-sm font-semibold text-xs uppercase tracking-wide btn-primary"
+                    className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md hover:bg-charcoal transition-all shadow-sm font-semibold text-xs uppercase tracking-wide btn-primary"
                 >
                     <Plus size={14} />
                     Entry
@@ -650,68 +650,68 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       </header>
 
       {/* Filter Bar */}
-      <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-3">
+      <div className="bg-white p-3 rounded-lg border border-ledger shadow-sm flex flex-col lg:flex-row gap-3">
           {/* Global Search */}
           <div className="relative flex-1">
-             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" />
              <input 
                 type="text" 
                 placeholder="Search transactions, donors, or categories..." 
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-md focus:ring-1 focus:ring-slate-900 outline-none transition-shadow" 
+                className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-md focus:ring-1 focus:ring-slate-900 outline-none transition-shadow" 
              />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
              {/* Simplified Date Range */}
-              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-md h-[34px]">
-                  <Calendar size={14} className="text-slate-400 shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-2 bg-paper border border-ledger rounded-md h-[34px]">
+                  <Calendar size={14} className="text-grey-mid shrink-0" />
                   <input 
                     type="date" 
                     value={filterDateStart} 
                     onChange={(e) => setFilterDateStart(e.target.value)} 
-                    className="bg-transparent border-none text-xs text-slate-700 font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
+                    className="bg-transparent border-none text-xs text-grey-dark font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
                   />
-                  <span className="text-slate-300 text-[10px] shrink-0 font-bold">—</span>
+                  <span className="text-ledger text-[10px] shrink-0 font-bold">—</span>
                   <input 
                     type="date" 
                     value={filterDateEnd} 
                     onChange={(e) => setFilterDateEnd(e.target.value)} 
-                    className="bg-transparent border-none text-xs text-slate-700 font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
+                    className="bg-transparent border-none text-xs text-grey-dark font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
                   />
               </div>
 
               {/* Status Filter */}
               <div className="relative group h-[34px]">
-                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-28">
+                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-28">
                       <option value="all">All Status</option>
                       <option value="reconciled">Reconciled</option>
                       <option value="unreconciled">Pending</option>
                   </select>
-                  <Filter size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Filter size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
               </div>
 
                {/* Fund Filter */}
                <div className="relative group h-[34px]">
-                  <select value={filterFund} onChange={(e) => setFilterFund(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-36">
+                  <select value={filterFund} onChange={(e) => setFilterFund(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-36">
                       <option value="">All Funds</option>
                       {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                   </select>
-                  <Wallet size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Wallet size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
               </div>
 
                {/* Category Filter */}
               <div className="relative group h-[34px]">
-                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
+                  <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
                       <option value="">Category...</option>
                       {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <Tag size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <Tag size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
               </div>
 
               {(searchTerm || filterDateStart || filterDateEnd || filterCategory || filterStatus !== 'all' || filterFund) && (
-                  <button onClick={clearFilters} className="h-[34px] px-3 text-xs text-rose-600 font-bold uppercase tracking-wide hover:bg-rose-50 rounded-md flex items-center gap-1 transition-colors">
+                  <button onClick={clearFilters} className="h-[34px] px-3 text-xs text-error font-bold uppercase tracking-wide hover:bg-error-light rounded-md flex items-center gap-1 transition-colors">
                       <RotateCcw size={12} />
                   </button>
               )}
@@ -722,11 +722,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       <div className="swiss-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left ledger-table">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-paper border-b border-ledger">
               <tr>
                 <th className="w-10 px-4 py-3">
                     {canEdit && (
-                         <input type="checkbox" checked={selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0} onChange={handleSelectAll} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
+                         <input type="checkbox" checked={selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0} onChange={handleSelectAll} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
                     )}
                 </th>
                 <th className="px-6 py-3 text-xs">Date</th>
@@ -745,36 +745,36 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 const linkedPledge = pledges.find(p => p._id === t.pledgeId);
                 
                 return (
-                  <tr key={t._id} className={`hover:bg-slate-50 transition-colors group ${isSelected ? 'bg-indigo-50/30' : ''}`}>
+                  <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''}`}>
                     <td className="px-4 py-3 border-b border-slate-100">
                         {canEdit && (
-                             <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-0 cursor-pointer" />
+                             <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
                         )}
                     </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-slate-500 font-mono text-xs">{formatDateUK(t.date)}</td>
+                    <td className="px-6 py-3 border-b border-slate-100 text-grey-mid font-mono text-xs">{formatDateUK(t.date)}</td>
                     <td className="px-6 py-3 border-b border-slate-100">
                         <div className="flex items-center gap-2">
-                           <div className="font-medium text-slate-800 text-sm truncate max-w-[200px]">{t.description}</div>
-                           {t.pledgeId && <LinkIcon size={12} className="text-indigo-500" />}
+                           <div className="font-medium text-ink text-sm truncate max-w-[200px]">{t.description}</div>
+                           {t.pledgeId && <LinkIcon size={12} className="text-sage" />}
                         </div>
-                        {t.donorName && <div className="text-[10px] text-slate-400 font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
-                        {linkedPledge && <div className="text-[9px] text-indigo-500 font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
+                        {t.donorName && <div className="text-[10px] text-grey-mid font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
+                        {linkedPledge && <div className="text-[9px] text-sage font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-grey-light text-grey-dark border border-ledger">
                         {t.category}
                       </span>
                     </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-slate-500 text-xs font-medium">{fund?.name}</td>
-                    <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === 'Income' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                    <td className="px-6 py-3 border-b border-slate-100 text-grey-mid text-xs font-medium">{fund?.name}</td>
+                    <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === 'Income' ? 'text-sage' : 'text-ink'}`}>
                       {t.type === 'Income' ? '+' : '-'}£{t.amount.toFixed(2)}
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100 text-center">
-                        {t.isReconciled ? <Check size={14} className="mx-auto text-emerald-500" /> : <div className="w-2 h-2 rounded-full bg-slate-300 mx-auto"></div>}
+                        {t.isReconciled ? <Check size={14} className="mx-auto text-sage" /> : <div className="w-2 h-2 rounded-full bg-ledger mx-auto"></div>}
                     </td>
                     <td className="px-6 py-3 border-b border-slate-100 text-right opacity-0 group-hover:opacity-100 transition-opacity">
                         {canEdit && (
-                            <button onClick={() => setEditingTransaction(t)} className="text-slate-400 hover:text-indigo-600 transition-colors">
+                            <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-sage transition-colors">
                                 <Edit2 size={14} />
                             </button>
                         )}
@@ -785,7 +785,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             </tbody>
           </table>
           {filteredTransactions.length === 0 && (
-              <div className="py-12 text-center text-slate-400">
+              <div className="py-12 text-center text-grey-mid">
                   <Filter size={32} className="mx-auto mb-2 opacity-20" />
                   <p className="text-sm">No transactions match your query.</p>
               </div>
@@ -795,26 +795,26 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Floating Bulk Actions */}
       {selectedIds.size > 0 && canEdit && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
               <div className="flex items-center gap-3 border-r border-slate-700 pr-5 shrink-0">
-                  <span className="text-xs font-bold font-mono text-emerald-400">{selectedIds.size} SELECTED</span>
+                  <span className="text-xs font-bold font-mono text-sage">{selectedIds.size} SELECTED</span>
               </div>
               <div className="flex items-center gap-2">
-                  <button onClick={handleBulkAutoCategorize} disabled={isBulkProcessingAI} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      {isBulkProcessingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-violet-400" />}
+                  <button onClick={handleBulkAutoCategorize} disabled={isBulkProcessingAI} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      {isBulkProcessingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-amber" />}
                       <span className="hidden sm:inline">AI Auto-Cat</span>
                   </button>
-                  <button onClick={() => executeBulkUpdate({ isReconciled: true })} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      <CheckSquare size={14} className="text-slate-400" /> <span className="hidden sm:inline">Reconcile</span>
+                  <button onClick={() => executeBulkUpdate({ isReconciled: true })} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      <CheckSquare size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Reconcile</span>
                   </button>
-                  <button onClick={() => setBulkActionType('category')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      <Tag size={14} className="text-slate-400" /> <span className="hidden sm:inline">Categorize</span>
+                  <button onClick={() => setBulkActionType('category')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      <Tag size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Categorize</span>
                   </button>
-                  <button onClick={() => setBulkActionType('fund')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-800 rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      <Wallet size={14} className="text-slate-400" /> <span className="hidden sm:inline">Move Fund</span>
+                  <button onClick={() => setBulkActionType('fund')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
+                      <Wallet size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Move Fund</span>
                   </button>
                   <div className="w-px h-4 bg-slate-700 mx-2"></div>
-                  <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white transition-colors">
+                  <button onClick={() => setSelectedIds(new Set())} className="text-grey-mid hover:text-white transition-colors">
                       <X size={16} />
                   </button>
               </div>
@@ -823,16 +823,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Bulk Action Modal */}
       {bulkActionType && canEdit && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-             <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm animate-enter border border-slate-200">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">
+          <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+             <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm animate-enter border border-ledger">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
                         {bulkActionType === 'category' ? 'Set Category' : 'Move to Fund'}
                     </h3>
-                    <button onClick={() => setBulkActionType(null)} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+                    <button onClick={() => setBulkActionType(null)} className="text-grey-mid hover:text-grey-dark"><X size={16} /></button>
                 </div>
                 <div className="p-6">
-                    <p className="text-sm text-slate-500 mb-4">Update <strong className="text-slate-900">{selectedIds.size}</strong> items:</p>
+                    <p className="text-sm text-grey-mid mb-4">Update <strong className="text-ink">{selectedIds.size}</strong> items:</p>
                     <form onSubmit={(e) => {
                         e.preventDefault();
                         const formData = new FormData(e.currentTarget);
@@ -842,7 +842,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         else executeBulkUpdate({ fundId: val as Id<"funds"> });
                     }}>
                         <div className="mb-6">
-                            <select name="value" className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none" required>
+                            <select name="value" className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none" required>
                                 <option value="">Select...</option>
                                 {bulkActionType === 'category'
                                     ? categoryNames.map(c => <option key={c} value={c}>{c}</option>)
@@ -851,7 +851,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             </select>
                         </div>
                         <div className="flex justify-end gap-3">
-                            <button type="button" onClick={() => setBulkActionType(null)} className="text-slate-500 text-xs font-bold uppercase hover:bg-slate-50 px-3 py-2 rounded">Cancel</button>
+                            <button type="button" onClick={() => setBulkActionType(null)} className="text-grey-mid text-xs font-bold uppercase hover:bg-paper px-3 py-2 rounded">Cancel</button>
                             <button type="submit" className="btn-primary px-4 py-2 text-xs font-bold uppercase tracking-wide">Apply</button>
                         </div>
                     </form>
@@ -862,16 +862,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Smart Link Review Modal */}
       {showMatchModal && canEdit && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-             <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl animate-enter border border-slate-200 max-h-[80vh] flex flex-col">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50 rounded-t-lg">
-                    <h3 className="font-bold text-indigo-900 text-sm uppercase tracking-wide flex items-center gap-2">
+          <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+             <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl animate-enter border border-ledger max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-sage-light rounded-t-lg">
+                    <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
                         <Wand2 size={16} /> Smart Link Suggestions
                     </h3>
-                    <button onClick={() => setShowMatchModal(false)} className="text-indigo-400 hover:text-indigo-600"><X size={16} /></button>
+                    <button onClick={() => setShowMatchModal(false)} className="text-sage hover:text-sage-dark"><X size={16} /></button>
                 </div>
-                <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
-                    <p className="text-sm text-slate-500 mb-4">
+                <div className="p-6 overflow-y-auto flex-1 bg-paper/50">
+                    <p className="text-sm text-grey-mid mb-4">
                         We found <strong>{pledgeMatches.length}</strong> possible matches for unlinked income.
                     </p>
                     <div className="space-y-3">
@@ -879,26 +879,26 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             const txn = transactions.find(t => t._id === m.transactionId);
                             if (!txn) return null;
                             return (
-                                <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded border border-indigo-100 shadow-sm gap-4">
+                                <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded border border-sage/30 shadow-sm gap-4">
                                     <div className="flex flex-col gap-1">
                                         <div className="flex items-baseline gap-2">
-                                            <span className="font-mono text-xs text-slate-500">{txn.date}</span>
-                                            <span className="font-medium text-slate-900 text-sm">{txn.description}</span>
-                                            <span className="font-mono text-xs font-bold text-emerald-600">£{txn.amount}</span>
+                                            <span className="font-mono text-xs text-grey-mid">{txn.date}</span>
+                                            <span className="font-medium text-ink text-sm">{txn.description}</span>
+                                            <span className="font-mono text-xs font-bold text-sage">£{txn.amount}</span>
                                         </div>
                                         <div className="flex gap-2 text-[10px] items-center">
-                                            <span className="text-indigo-600 font-bold uppercase">Match Reason:</span>
-                                            <span className="text-slate-600 italic">{m.reason}</span>
+                                            <span className="text-sage-dark font-bold uppercase">Match Reason:</span>
+                                            <span className="text-grey-dark italic">{m.reason}</span>
                                         </div>
-                                        <div className="text-[10px] text-slate-400 uppercase tracking-wide">
+                                        <div className="text-[10px] text-grey-mid uppercase tracking-wide">
                                             Suggestion: Link to <strong>{m.donorName}</strong>
                                         </div>
                                     </div>
                                     <div className="flex gap-2 shrink-0">
-                                         <button onClick={() => setPledgeMatches(prev => prev.filter(match => match !== m))} className="text-[10px] border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors bg-white">
+                                         <button onClick={() => setPledgeMatches(prev => prev.filter(match => match !== m))} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors bg-white">
                                             <X size={12}/> Ignore
                                         </button>
-                                        <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
+                                        <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
                                             <Check size={12}/> Confirm
                                         </button>
                                     </div>
@@ -913,16 +913,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* CSV Column Mapping Modal - REFINED UI 2.0 */}
       {showColumnMapper && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl animate-enter border border-slate-200 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl animate-enter border border-ledger overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-paper/50">
                     <div>
-                        <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
-                            <TableIcon size={16} className="text-slate-500" /> Map CSV Columns
+                        <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
+                            <TableIcon size={16} className="text-grey-mid" /> Map CSV Columns
                         </h3>
-                        <p className="text-[10px] text-slate-500 mt-1 font-medium">Match your bank statement columns to the ledger.</p>
+                        <p className="text-[10px] text-grey-mid mt-1 font-medium">Match your bank statement columns to the ledger.</p>
                     </div>
-                    <button onClick={() => setShowColumnMapper(false)} className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-full">
+                    <button onClick={() => setShowColumnMapper(false)} className="text-grey-mid hover:text-grey-dark transition-colors p-2 hover:bg-grey-light rounded-full">
                         <X size={18} />
                     </button>
                 </div>
@@ -930,16 +930,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <div className="p-8">
                     {/* Mode Toggle */}
                     <div className="flex justify-center mb-8">
-                            <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                            <div className="flex bg-grey-light p-1.5 rounded-xl border border-ledger">
                                 <button 
                                 onClick={() => setUseSplitAmount(false)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-sm text-slate-900 border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-sm text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
                             >
                                 Single Amount Column
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setUseSplitAmount(true)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-sm text-slate-900 border-slate-200' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-sm text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
                             >
                                 Split In/Out Columns
                                 <ArrowLeftRight size={14} />
@@ -949,100 +949,100 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
                     <div className={`grid grid-cols-1 gap-6 mb-8 ${useSplitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
                         <div className="space-y-2">
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Date Column</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Date Column</label>
                             <div className="relative">
                                 <select 
                                     value={columnMapping.date} 
                                     onChange={(e) => setColumnMapping({...columnMapping, date: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-slate-700 cursor-pointer"
+                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-grey-dark cursor-pointer"
                                 >
                                     <option value="">Select Column...</option>
                                     {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                 </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
                             </div>
                         </div>
                         
                          <div className="space-y-2">
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Description / Payee</label>
+                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Description / Payee</label>
                              <div className="relative">
                                 <select 
                                     value={columnMapping.description} 
                                     onChange={(e) => setColumnMapping({...columnMapping, description: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-slate-700 cursor-pointer"
+                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-grey-dark cursor-pointer"
                                 >
                                     <option value="">Select Column...</option>
                                     {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                 </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
                             </div>
                         </div>
                         
                         {useSplitAmount ? (
                              <>
                                 <div className="space-y-2">
-                                    <label className="block text-[10px] font-bold text-emerald-600 uppercase tracking-wide">Money In (Credit)</label>
+                                    <label className="block text-[10px] font-bold text-sage uppercase tracking-wide">Money In (Credit)</label>
                                     <div className="relative">
-                                    <select 
-                                        value={columnMapping.amountIn} 
+                                    <select
+                                        value={columnMapping.amountIn}
                                         onChange={(e) => setColumnMapping({...columnMapping, amountIn: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-emerald-200 rounded-lg text-xs bg-emerald-50/50 hover:bg-emerald-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all appearance-none font-medium text-emerald-900 cursor-pointer"
+                                        className="w-full py-2 pl-3 pr-8 border border-sage/30 rounded-lg text-xs bg-sage-light/50 hover:bg-sage-light focus:bg-white focus:ring-2 focus:ring-sage focus:border-transparent outline-none transition-all appearance-none font-medium text-sage-dark cursor-pointer"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
-                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400 pointer-events-none"/>
+                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-sage pointer-events-none"/>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="block text-[10px] font-bold text-rose-600 uppercase tracking-wide">Money Out (Debit)</label>
+                                    <label className="block text-[10px] font-bold text-error uppercase tracking-wide">Money Out (Debit)</label>
                                     <div className="relative">
-                                    <select 
-                                        value={columnMapping.amountOut} 
+                                    <select
+                                        value={columnMapping.amountOut}
                                         onChange={(e) => setColumnMapping({...columnMapping, amountOut: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-rose-200 rounded-lg text-xs bg-rose-50/50 hover:bg-rose-50 focus:bg-white focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none transition-all appearance-none font-medium text-rose-900 cursor-pointer"
+                                        className="w-full py-2 pl-3 pr-8 border border-error/30 rounded-lg text-xs bg-error-light/50 hover:bg-error-light focus:bg-white focus:ring-2 focus:ring-error focus:border-transparent outline-none transition-all appearance-none font-medium text-error cursor-pointer"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
-                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-400 pointer-events-none"/>
+                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-error pointer-events-none"/>
                                     </div>
                                 </div>
                              </>
                         ) : (
                             <div className="space-y-2">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Amount</label>
+                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Amount</label>
                                 <div className="relative">
                                 <select 
                                     value={columnMapping.amount} 
                                     onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-slate-200 rounded-lg text-xs bg-slate-50/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-slate-700 cursor-pointer"
+                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-grey-dark cursor-pointer"
                                 >
                                     <option value="">Select Column...</option>
                                     {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                 </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
+                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 overflow-hidden">
-                        <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
-                            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Preview (First 3 Rows)</h4>
-                            <span className="text-[10px] text-slate-400 font-mono">{csvRows.length} Rows Detected</span>
+                    <div className="rounded-lg border border-ledger overflow-hidden">
+                        <div className="bg-paper px-4 py-2 border-b border-ledger flex justify-between items-center">
+                            <h4 className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Preview (First 3 Rows)</h4>
+                            <span className="text-[10px] text-grey-mid font-mono">{csvRows.length} Rows Detected</span>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left ledger-table text-[10px]">
                                 <thead className="bg-white">
                                     <tr>
-                                        {csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-400 font-bold border-b border-slate-100 whitespace-nowrap">{h}</th>)}
+                                        {csvHeaders.map(h => <th key={h} className="px-3 py-2 text-grey-mid font-bold border-b border-slate-100 whitespace-nowrap">{h}</th>)}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {csvRows.slice(0, 3).map((row, i) => (
-                                        <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
-                                            {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
+                                        <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-paper/50 transition-colors">
+                                            {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-grey-dark whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1051,7 +1051,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
 
                     <div className="flex justify-end gap-3 pt-8 mt-4">
-                        <button onClick={() => setShowColumnMapper(false)} className="px-5 py-2.5 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded-lg transition-colors">Cancel</button>
+                        <button onClick={() => setShowColumnMapper(false)} className="px-5 py-2.5 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-lg transition-colors">Cancel</button>
                         <button onClick={handleProcessMapping} className="btn-primary px-6 py-2.5 font-bold uppercase text-xs tracking-wide flex items-center gap-2 shadow-lg shadow-slate-900/10">
                             Process Import <ArrowRight size={14} />
                         </button>
@@ -1063,37 +1063,37 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* New Transaction Modal */}
       {showAddModal && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-slate-200">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">New Entry</h3>
-                    <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Entry</h3>
+                    <button onClick={() => setShowAddModal(false)} className="text-grey-mid hover:text-grey-dark">
                         <X size={16} />
                     </button>
                 </div>
                 <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Date</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
                             <input 
                                 type="date" 
                                 required
                                 value={newTransaction.date} 
                                 onChange={(e) => setNewTransaction({...newTransaction, date: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                             />
                         </div>
                         <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Amount</label>
+                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label>
                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">£</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span>
                                 <input 
                                     type="number" 
                                     step="0.01"
                                     required
                                     value={newTransaction.amount || ''} 
                                     onChange={(e) => setNewTransaction({...newTransaction, amount: parseFloat(e.target.value)})}
-                                    className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                    className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                                     placeholder="0.00"
                                 />
                              </div>
@@ -1101,34 +1101,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
 
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Description</label>
+                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Description</label>
                         <input 
                             type="text" 
                             required
                             value={newTransaction.description || ''} 
                             onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
-                            className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                            className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
                             placeholder="e.g. Sunday Collection Cash"
                         />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Category</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Category</label>
                             <select 
                                 value={newTransaction.category} 
                                 onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Fund</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Fund</label>
                              <select 
                                 value={newTransaction.fundId} 
                                 onChange={(e) => setNewTransaction({...newTransaction, fundId: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                             </select>
@@ -1137,23 +1137,23 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     
                     <div className="grid grid-cols-2 gap-4">
                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Type</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
                              <select 
                                 value={newTransaction.type} 
                                 onChange={(e) => setNewTransaction({...newTransaction, type: e.target.value as TransactionType})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="Income">Income</option>
                                 <option value="Expenditure">Expenditure</option>
                             </select>
                         </div>
                         <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Donor Name (Optional)</label>
+                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Donor Name (Optional)</label>
                             <input 
                                 type="text" 
                                 value={newTransaction.donorName || ''} 
                                 onChange={(e) => setNewTransaction({...newTransaction, donorName: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
                                 placeholder="Name or Ref..."
                             />
                         </div>
@@ -1161,11 +1161,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
                     {newTransaction.type === 'Income' && (
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
                             <select
                                 value={newTransaction.pledgeId || ''}
                                 onChange={(e) => setNewTransaction({...newTransaction, pledgeId: e.target.value || undefined})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="">-- No Linked Pledge --</option>
                                 {relevantPledgesForNew.map(p => {
@@ -1178,7 +1178,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 })}
                             </select>
                              {relevantPledgesForNew.length === 0 && newTransaction.donorName && (
-                                <p className="text-[10px] text-slate-400 mt-1 italic">No pledges found for donor "{newTransaction.donorName}"</p>
+                                <p className="text-[10px] text-grey-mid mt-1 italic">No pledges found for donor "{newTransaction.donorName}"</p>
                             )}
                         </div>
                     )}
@@ -1189,9 +1189,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox" 
                                 checked={newTransaction.isReconciled}
                                 onChange={(e) => setNewTransaction({...newTransaction, isReconciled: e.target.checked})}
-                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
                             />
-                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Reconciled</span>
+                            <span className="text-sm text-grey-dark group-hover:text-ink">Reconciled</span>
                         </label>
                         
                          <label className="flex items-center gap-2 cursor-pointer group">
@@ -1199,14 +1199,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox" 
                                 checked={newTransaction.isGiftAidEligible || false}
                                 onChange={(e) => setNewTransaction({...newTransaction, isGiftAidEligible: e.target.checked})}
-                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
                             />
-                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Gift Aid Eligible</span>
+                            <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
-                        <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                        <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
                         <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                             <Plus size={14} /> Add Entry
                         </button>
@@ -1218,11 +1218,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Edit Transaction Modal */}
       {editingTransaction && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-slate-200">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                    <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">Edit Transaction</h3>
-                    <button onClick={() => setEditingTransaction(null)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Edit Transaction</h3>
+                    <button onClick={() => setEditingTransaction(null)} className="text-grey-mid hover:text-grey-dark">
                         <X size={16} />
                     </button>
                 </div>
@@ -1256,59 +1256,59 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 }} className="p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Date</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
                             <input 
                                 type="date" 
                                 required
                                 value={editingTransaction.date} 
                                 onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                             />
                         </div>
                         <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Amount</label>
+                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label>
                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">£</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span>
                                 <input 
                                     type="number" 
                                     step="0.01"
                                     required
                                     value={editingTransaction.amount} 
                                     onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
-                                    className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                    className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                                 />
                              </div>
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Description</label>
+                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Description</label>
                         <input 
                             type="text" 
                             required
                             value={editingTransaction.description} 
                             onChange={(e) => setEditingTransaction({...editingTransaction, description: e.target.value})}
-                            className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                            className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
                         />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Category</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Category</label>
                             <select 
                                 value={editingTransaction.category} 
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Fund</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Fund</label>
                              <select 
                                 value={editingTransaction.fundId} 
                                 onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                             </select>
@@ -1317,23 +1317,23 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     
                     <div className="grid grid-cols-2 gap-4">
                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Type</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
                              <select 
                                 value={editingTransaction.type} 
                                 onChange={(e) => setEditingTransaction({...editingTransaction, type: e.target.value as TransactionType})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="Income">Income</option>
                                 <option value="Expenditure">Expenditure</option>
                             </select>
                         </div>
                         <div>
-                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Donor Name (Optional)</label>
+                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Donor Name (Optional)</label>
                             <input 
                                 type="text" 
                                 value={editingTransaction.donorName || ''} 
                                 onChange={(e) => setEditingTransaction({...editingTransaction, donorName: e.target.value})}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
                                 placeholder="Ref..."
                             />
                         </div>
@@ -1341,7 +1341,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
                     {editingTransaction.type === 'Income' && (
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Link to Pledge / Schedule</label>
                             <select
                                 value={editingTransaction.pledgeId || ''}
                                 onChange={(e) => {
@@ -1353,7 +1353,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         donorName: (editingTransaction.donorName || !pid) ? editingTransaction.donorName : pledges.find(pl => pl._id === pid)?.donorName
                                     });
                                 }}
-                                className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="">-- No Linked Pledge --</option>
                                 {relevantPledges.map(p => {
@@ -1366,7 +1366,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 })}
                             </select>
                             {relevantPledges.length === 0 && editingTransaction.donorName && !editingTransaction.pledgeId && (
-                                <p className="text-[10px] text-slate-400 mt-1 italic">No pledges found for donor "{editingTransaction.donorName}"</p>
+                                <p className="text-[10px] text-grey-mid mt-1 italic">No pledges found for donor "{editingTransaction.donorName}"</p>
                             )}
                         </div>
                     )}
@@ -1377,9 +1377,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox" 
                                 checked={editingTransaction.isReconciled}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isReconciled: e.target.checked})}
-                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
                             />
-                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Reconciled</span>
+                            <span className="text-sm text-grey-dark group-hover:text-ink">Reconciled</span>
                         </label>
                         
                          <label className="flex items-center gap-2 cursor-pointer group">
@@ -1387,14 +1387,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox" 
                                 checked={editingTransaction.isGiftAidEligible || false}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isGiftAidEligible: e.target.checked})}
-                                className="rounded border-slate-300 text-slate-900 focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
                             />
-                            <span className="text-sm text-slate-600 group-hover:text-slate-900">Gift Aid Eligible</span>
+                            <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
-                        <button type="button" onClick={() => setEditingTransaction(null)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                        <button type="button" onClick={() => setEditingTransaction(null)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
                         <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                             <Save size={14} /> Save Changes
                         </button>
@@ -1406,14 +1406,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Review Modal */}
       {showReviewModal && canEdit && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-slate-200">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center rounded-t-lg">
                     <div>
-                        <h3 className="text-lg font-bold text-slate-900 font-display">Review Import</h3>
-                        <p className="text-xs text-slate-500 font-mono mt-1 uppercase tracking-wide">Found {pendingTransactions.length} items</p>
+                        <h3 className="text-lg font-bold text-ink">Review Import</h3>
+                        <p className="text-xs text-grey-mid font-mono mt-1 uppercase tracking-wide">Found {pendingTransactions.length} items</p>
                     </div>
-                    <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors font-bold text-xs uppercase tracking-wide">
+                    <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide">
                         {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
                     </button>
                 </div>
@@ -1431,18 +1431,18 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <tbody>
                             {pendingTransactions.map((t, i) => (
                                 <tr key={i}>
-                                    <td className="py-3 text-slate-500 font-mono text-xs">{t.date}</td>
-                                    <td className="py-3 font-medium text-slate-800 text-sm">{t.description}</td>
+                                    <td className="py-3 text-grey-mid font-mono text-xs">{t.date}</td>
+                                    <td className="py-3 font-medium text-ink text-sm">{t.description}</td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
-                                    <td className="py-3"><select className="bg-slate-50 border-transparent rounded text-xs font-bold text-slate-700 py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
+                                    <td className="py-3"><select className="bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
+                                    <td className="py-3"><select className="bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-                <div className="p-5 border-t border-slate-100 flex justify-end gap-3 rounded-b-lg bg-slate-50">
-                    <button onClick={() => setShowReviewModal(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-200 rounded transition-colors">Discard</button>
+                <div className="p-5 border-t border-slate-100 flex justify-end gap-3 rounded-b-lg bg-paper">
+                    <button onClick={() => setShowReviewModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors">Discard</button>
                     <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
                 </div>
             </div>

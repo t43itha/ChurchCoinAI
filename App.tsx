@@ -17,6 +17,7 @@ import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
 import AuthPage from "./components/AuthPage";
 import LoadingSpinner from "./components/LoadingSpinner";
+import LandingPage from "./components/landing/LandingPage";
 
 import { Menu, Command, CheckCircle2, X } from "lucide-react";
 
@@ -81,15 +82,19 @@ function App() {
   const [transactionFilterFundId, setTransactionFilterFundId] = useState<
     string | undefined
   >(undefined);
+  const [showAuth, setShowAuth] = useState(false);
 
   // Show loading while Clerk initializes
   if (!isLoaded) {
     return <LoadingSpinner message="Initializing..." />;
   }
 
-  // Show auth page if not signed in
+  // Show landing page or auth page if not signed in
   if (!isSignedIn) {
-    return <AuthPage />;
+    if (showAuth) {
+      return <AuthPage onBack={() => setShowAuth(false)} />;
+    }
+    return <LandingPage onGetStarted={() => setShowAuth(true)} />;
   }
 
   // Show loading while Convex fetches user data
@@ -243,16 +248,16 @@ function App() {
   };
 
   return (
-    <div className="flex bg-[#FDFCF8] min-h-screen font-sans text-slate-800 selection:bg-orange-100 selection:text-orange-900 animate-enter relative">
+    <div className="flex bg-paper min-h-screen text-ink selection:bg-amber-light selection:text-amber-dark animate-enter relative">
       {/* Global Toast Notification */}
       {notification.visible && (
-        <div className="fixed top-4 right-4 z-[100] bg-emerald-900 text-emerald-50 shadow-2xl rounded-lg p-4 flex items-start gap-3 animate-enter max-w-sm border border-emerald-800">
-          <div className="mt-0.5 w-6 h-6 rounded-full bg-emerald-800 flex items-center justify-center text-emerald-300 shrink-0 border border-emerald-700">
+        <div className="fixed top-4 right-4 z-[100] bg-charcoal text-white shadow-hard-md rounded-lg p-4 flex items-start gap-3 animate-enter max-w-sm border border-ink">
+          <div className="mt-0.5 w-6 h-6 rounded-full bg-sage flex items-center justify-center text-white shrink-0">
             <CheckCircle2 size={14} strokeWidth={3} />
           </div>
           <div>
             <h4 className="text-sm font-bold">{notification.title}</h4>
-            <p className="text-xs text-emerald-200 mt-0.5 leading-relaxed">
+            <p className="text-xs text-grey-light mt-0.5 leading-relaxed">
               {notification.message}
             </p>
           </div>
@@ -260,7 +265,7 @@ function App() {
             onClick={() =>
               setNotification((prev) => ({ ...prev, visible: false }))
             }
-            className="text-emerald-400 hover:text-white transition-colors ml-2"
+            className="text-grey-light hover:text-white transition-colors ml-2"
           >
             <X size={14} />
           </button>
@@ -277,12 +282,12 @@ function App() {
       />
 
       <main className="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden">
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-slate-200 bg-[#FDFCF8]/95 backdrop-blur-sm sticky top-0 z-10">
+        <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-slate-800 text-orange-50 flex items-center justify-center rounded-lg">
+            <div className="w-8 h-8 bg-ink text-white flex items-center justify-center rounded-lg">
               <Command size={16} />
             </div>
-            <span className="font-bold text-slate-900 font-display">
+            <span className="font-bold text-ink">
               ChurchCoin
             </span>
           </div>
@@ -290,7 +295,7 @@ function App() {
             <UserButton afterSignOutUrl="/" />
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="p-2 text-slate-600 hover:bg-slate-100 rounded-md"
+              className="p-2 text-grey-dark hover:bg-grey-light rounded-md"
             >
               <Menu size={24} />
             </button>

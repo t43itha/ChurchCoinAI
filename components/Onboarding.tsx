@@ -78,29 +78,29 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFCF8] flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-4">
       {/* Brand Header */}
       <div className="mb-8 flex items-center gap-3 animate-enter">
-        <div className="w-10 h-10 bg-slate-900 text-white flex items-center justify-center rounded-xl shadow-xl shadow-slate-200">
+        <div className="w-10 h-10 bg-ink text-white flex items-center justify-center rounded-xl shadow-xl shadow-ledger">
           <Command size={20} />
         </div>
         <div>
-          <h1 className="text-xl font-bold font-display tracking-tight leading-none text-slate-900">
+          <h1 className="text-xl font-bold font-mono tracking-tight leading-none text-ink">
             ChurchCoin
           </h1>
-          <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase tracking-wider">
+          <p className="text-[10px] font-mono text-grey-mid mt-1 uppercase tracking-wider">
             Finance OS
           </p>
         </div>
       </div>
 
       <div
-        className={`w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden transition-all duration-300 transform ${isAnimating ? "scale-95 opacity-50" : "scale-100 opacity-100"}`}
+        className={`w-full max-w-md bg-white border border-ledger rounded-2xl shadow-xl shadow-ledger/50 overflow-hidden transition-all duration-300 transform ${isAnimating ? "scale-95 opacity-50" : "scale-100 opacity-100"}`}
       >
         {/* Progress Bar */}
-        <div className="h-1 bg-slate-50 w-full flex">
+        <div className="h-1 bg-grey-light w-full flex">
           <div
-            className={`h-full bg-slate-900 transition-all duration-500 ease-out`}
+            className={`h-full bg-ink transition-all duration-500 ease-out`}
             style={{ width: step === 1 ? "50%" : "100%" }}
           ></div>
         </div>
@@ -109,29 +109,29 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
           {step === 1 && (
             <div className="space-y-6 animate-enter">
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold font-display text-slate-900">
+                <h2 className="text-2xl font-bold font-mono text-ink">
                   Welcome, Treasurer.
                 </h2>
-                <p className="text-slate-500 text-sm">
+                <p className="text-grey-mid text-sm">
                   Let's confirm your administrator profile.
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  <label className="block text-xs font-bold text-grey-mid uppercase tracking-wide mb-1.5">
                     Full Name
                   </label>
                   <div className="relative">
                     <User
                       size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid"
                     />
                     <input
                       type="text"
                       value={userName}
                       onChange={(e) => setUserName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-all placeholder-slate-400"
+                      className="w-full pl-10 pr-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-all placeholder-grey-mid"
                       placeholder="e.g. Sarah Jones"
                       autoFocus
                     />
@@ -139,19 +139,19 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  <label className="block text-xs font-bold text-grey-mid uppercase tracking-wide mb-1.5">
                     Email Address
                   </label>
                   <input
                     type="email"
                     value={userEmail}
                     onChange={(e) => setUserEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-all placeholder-slate-400"
+                    className="w-full px-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-all placeholder-grey-mid"
                     placeholder="name@church.org"
                     disabled={!!defaultEmail}
                   />
                   {defaultEmail && (
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-grey-mid mt-1">
                       Using your signed-in email address
                     </p>
                   )}
@@ -161,7 +161,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
               <button
                 onClick={handleNext}
                 disabled={!userName || !userEmail}
-                className="w-full py-3 bg-slate-900 text-white rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group"
+                className="w-full py-3 bg-ink text-white rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-charcoal disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group"
               >
                 Continue{" "}
                 <ArrowRight
@@ -175,29 +175,29 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
           {step === 2 && (
             <div className="space-y-6 animate-enter">
               <div className="space-y-2">
-                <h2 className="text-2xl font-bold font-display text-slate-900">
+                <h2 className="text-2xl font-bold font-mono text-ink">
                   Your Organization
                 </h2>
-                <p className="text-slate-500 text-sm">
+                <p className="text-grey-mid text-sm">
                   Create your digital ledger identity.
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  <label className="block text-xs font-bold text-grey-mid uppercase tracking-wide mb-1.5">
                     Organization Name
                   </label>
                   <div className="relative">
                     <Building2
                       size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid"
                     />
                     <input
                       type="text"
                       value={orgName}
                       onChange={(e) => setOrgName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-all placeholder-slate-400"
+                      className="w-full pl-10 pr-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-all placeholder-grey-mid"
                       placeholder="e.g. St Mary's Church"
                       autoFocus
                     />
@@ -205,9 +205,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  <label className="block text-xs font-bold text-grey-mid uppercase tracking-wide mb-1.5">
                     Charity Number{" "}
-                    <span className="text-slate-400 font-normal normal-case">
+                    <span className="text-grey-mid font-normal normal-case">
                       (Optional)
                     </span>
                   </label>
@@ -215,22 +215,22 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
                     type="text"
                     value={orgCharityNum}
                     onChange={(e) => setOrgCharityNum(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-all placeholder-slate-400 font-mono"
+                    className="w-full px-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-all placeholder-grey-mid font-mono"
                     placeholder="12345678"
                   />
                 </div>
 
-                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50">
+                <div className="p-4 rounded-xl border border-ledger bg-grey-light">
                   <div className="flex items-start gap-3">
                     <CheckCircle2
                       size={16}
-                      className="text-emerald-600 mt-0.5 shrink-0"
+                      className="text-sage mt-0.5 shrink-0"
                     />
                     <div>
-                      <h3 className="text-sm font-bold text-slate-700">
+                      <h3 className="text-sm font-bold text-grey-dark">
                         Ready to Go
                       </h3>
-                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      <p className="text-xs text-grey-mid mt-1 leading-relaxed">
                         Your organization will be created with a General Fund
                         and standard UK charity categories.
                       </p>
@@ -240,7 +240,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
               </div>
 
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <div className="p-3 bg-error-light border border-error rounded-lg text-sm text-error">
                   {error}
                 </div>
               )}
@@ -249,14 +249,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
                 <button
                   onClick={() => setStep(1)}
                   disabled={isSubmitting}
-                  className="px-4 py-3 bg-white border border-slate-200 text-slate-600 rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-slate-50 transition-all disabled:opacity-50"
+                  className="px-4 py-3 bg-white border border-ledger text-grey-dark rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-grey-light transition-all disabled:opacity-50"
                 >
                   Back
                 </button>
                 <button
                   onClick={handleSubmit}
                   disabled={!orgName || isSubmitting}
-                  className="flex-1 py-3 bg-slate-900 text-white rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-3 bg-ink text-white rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-charcoal disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <>
@@ -266,7 +266,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
                   ) : (
                     <>
                       Create Ledger{" "}
-                      <Sparkles size={16} className="text-orange-300" />
+                      <Sparkles size={16} className="text-amber" />
                     </>
                   )}
                 </button>
@@ -276,7 +276,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
         </div>
       </div>
 
-      <p className="mt-8 text-xs text-slate-400 font-medium">
+      <p className="mt-8 text-xs text-grey-mid font-medium">
         Secure. Private. Intelligent.
       </p>
     </div>

@@ -9,7 +9,7 @@ interface DashboardProps {
   transactions: Transaction[];
 }
 
-const COLORS = ['#292524', '#ea580c', '#d6d3d1'];
+const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -89,13 +89,13 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
 
   return (
     <div className="space-y-8 animate-enter max-w-6xl mx-auto pb-12">
-      <header className="flex items-end justify-between border-b border-slate-200 pb-6">
+      <header className="flex items-end justify-between border-b border-ledger pb-6">
         <div>
-            <h2 className="text-3xl font-bold text-slate-800 font-display tracking-tight">Overview</h2>
-            <p className="text-slate-500 mt-1 text-sm font-medium">Finance & Donor Health Status</p>
+            <h2 className="text-3xl font-bold text-ink tracking-tight">Overview</h2>
+            <p className="text-grey-mid mt-1 text-sm font-medium">Finance & Donor Health Status</p>
         </div>
         <div className="flex gap-2">
-             <span className="text-[10px] font-mono uppercase bg-slate-100 px-2 py-1 rounded text-slate-500 font-bold tracking-wider">
+             <span className="text-[10px] uppercase bg-grey-light px-2 py-1 rounded text-grey-mid font-bold tracking-wider">
                  {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
              </span>
         </div>
@@ -104,19 +104,19 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
       {/* Strategic KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Cash Flow Health */}
-        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group hover:border-emerald-200 transition-colors">
+        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group">
             <div className="flex justify-between items-start">
-                <div className={`p-2 rounded-lg border ${netCashFlow >= 0 ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
+                <div className={`p-2 rounded-lg border ${netCashFlow >= 0 ? 'bg-sage-light border-sage text-sage' : 'bg-error-light border-error text-error'}`}>
                     <Activity size={20} />
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${netCashFlow >= 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${netCashFlow >= 0 ? 'bg-sage-light text-sage-dark border-sage' : 'bg-error-light text-error border-error'}`}>
                     {netCashFlow >= 0 ? 'Positive' : 'Deficit'}
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide font-display">Net Monthly Movement</p>
+                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">Net Monthly Movement</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                    <h3 className={`text-2xl font-bold font-mono tracking-tighter ${netCashFlow >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                    <h3 className={`text-2xl font-bold tracking-tighter ${netCashFlow >= 0 ? 'text-ink' : 'text-error'}`}>
                         {netCashFlow >= 0 ? '+' : ''}£{Math.abs(netCashFlow).toLocaleString()}
                     </h3>
                 </div>
@@ -124,48 +124,48 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
         </div>
 
         {/* Donor Momentum */}
-        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group hover:border-indigo-200 transition-colors">
+        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group">
             <div className="flex justify-between items-start">
-                <div className="p-2 bg-indigo-50 rounded-lg border border-indigo-100 text-indigo-600">
+                <div className="p-2 bg-sage-light rounded-lg border border-sage text-sage">
                     <Users size={20} />
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${donorGrowth >= 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${donorGrowth >= 0 ? 'bg-sage-light text-sage-dark border-sage' : 'bg-grey-light text-grey-mid border-ledger'}`}>
                     {donorGrowth > 0 ? `+${donorGrowth} New` : donorGrowth === 0 ? 'Stable' : `${donorGrowth} Loss`}
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide font-display">Active Donors (This Month)</p>
+                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">Active Donors (This Month)</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                    <h3 className="text-2xl font-bold text-slate-800 font-mono tracking-tighter">{activeDonorsCurrent}</h3>
-                    <span className="text-xs text-slate-400 font-medium">vs {activeDonorsPrev} last month</span>
+                    <h3 className="text-2xl font-bold text-ink tracking-tighter">{activeDonorsCurrent}</h3>
+                    <span className="text-xs text-grey-mid font-medium">vs {activeDonorsPrev} last month</span>
                 </div>
             </div>
         </div>
 
         {/* Campaign Velocity */}
-        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group hover:border-amber-200 transition-colors">
+        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group">
             <div className="flex justify-between items-start">
-                <div className="p-2 bg-amber-50 rounded-lg border border-amber-100 text-amber-600">
+                <div className="p-2 bg-amber-light rounded-lg border border-amber text-amber">
                     <Target size={20} />
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border bg-amber-50 text-amber-700 border-amber-100">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border bg-amber-light text-amber-dark border-amber">
                     Velocity
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide font-display truncate">{campaignFund?.name || 'No Active Campaign'}</p>
+                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide truncate">{campaignFund?.name || 'No Active Campaign'}</p>
                 {campaignFund ? (
                     <div className="mt-2">
-                        <div className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                             <span className="font-mono">{campaignProgress.toFixed(1)}%</span>
-                             <span className="text-slate-400">of £{campaignFund.targetAmount?.toLocaleString()}</span>
+                        <div className="flex justify-between text-xs font-bold text-ink mb-1">
+                             <span>{campaignProgress.toFixed(1)}%</span>
+                             <span className="text-grey-mid">of £{campaignFund.targetAmount?.toLocaleString()}</span>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-amber-500 rounded-full" style={{ width: `${campaignProgress}%` }}></div>
+                        <div className="w-full h-1.5 bg-grey-light rounded-full overflow-hidden">
+                            <div className="h-full bg-amber rounded-full" style={{ width: `${campaignProgress}%` }}></div>
                         </div>
                     </div>
                 ) : (
-                    <p className="text-sm font-medium text-slate-400 mt-1">Start a restricted fund to track.</p>
+                    <p className="text-sm font-medium text-grey-mid mt-1">Start a restricted fund to track.</p>
                 )}
             </div>
         </div>
@@ -176,26 +176,26 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
         <div className="lg:col-span-2 swiss-card p-8">
           <div className="flex justify-between items-center mb-8">
             <div>
-                <h3 className="font-bold text-slate-800 font-display text-lg">Financial Trend</h3>
-                <p className="text-xs text-slate-400 font-medium">6 Month Income vs Expenditure</p>
+                <h3 className="font-bold text-ink text-lg">Financial Trend</h3>
+                <p className="text-xs text-grey-mid font-medium">6 Month Income vs Expenditure</p>
             </div>
             <div className="flex gap-4 text-xs font-bold uppercase tracking-wide">
-                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-slate-800"></div> Income</div>
-                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div> Expense</div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-ink"></div> Income</div>
+                <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber"></div> Expense</div>
             </div>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#a8a29e'}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#a8a29e'}} />
-                <Tooltip 
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#666666'}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#666666'}} />
+                <Tooltip
                     cursor={{fill: '#fafaf9'}}
-                    contentStyle={{ borderRadius: '8px', border: '1px solid #e7e5e4', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}
+                    contentStyle={{ borderRadius: '8px', border: '1px solid #000000', boxShadow: '4px 4px 0px rgba(0,0,0,1)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}
                 />
-                <Bar dataKey="Income" barSize={32} fill="#292524" radius={[4, 4, 0, 0]} />
-                <Line type="monotone" dataKey="Expenditure" stroke="#ea580c" strokeWidth={3} dot={{r: 4, fill: '#ea580c', strokeWidth: 2, stroke: '#fff'}} />
+                <Bar dataKey="Income" barSize={32} fill="#000000" radius={[4, 4, 0, 0]} />
+                <Line type="monotone" dataKey="Expenditure" stroke="#d4a574" strokeWidth={3} dot={{r: 4, fill: '#d4a574', strokeWidth: 2, stroke: '#fff'}} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -203,26 +203,26 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
 
         {/* Priority Fund List */}
         <div className="swiss-card overflow-hidden flex flex-col">
-           <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 className="font-bold text-slate-800 font-display text-sm uppercase tracking-wide">Priority Funds</h3>
-                <ArrowRight size={14} className="text-slate-400" />
+           <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper">
+                <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Priority Funds</h3>
+                <ArrowRight size={14} className="text-grey-mid" />
            </div>
            <div className="flex-1 overflow-y-auto">
                {priorityFunds.length === 0 ? (
-                   <div className="p-8 text-center text-slate-400 text-sm">All funds healthy.</div>
+                   <div className="p-8 text-center text-grey-mid text-sm">All funds healthy.</div>
                ) : (
                    <table className="w-full text-left">
                        <tbody>
                            {priorityFunds.map(f => (
-                               <tr key={f.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                               <tr key={f.id} className="border-b border-ledger last:border-0 hover:bg-amber-light transition-colors">
                                    <td className="px-6 py-4">
-                                       <div className="font-bold text-slate-800 text-sm">{f.name}</div>
-                                       <div className="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">{f.type}</div>
+                                       <div className="font-bold text-ink text-sm">{f.name}</div>
+                                       <div className="text-[10px] text-grey-mid uppercase tracking-wide mt-0.5">{f.type}</div>
                                    </td>
                                    <td className="px-6 py-4 text-right">
-                                       <div className="font-mono font-bold text-slate-800 text-sm">£{f.balance.toLocaleString()}</div>
+                                       <div className="font-bold text-ink text-sm">£{f.balance.toLocaleString()}</div>
                                        {f.targetAmount && (
-                                           <div className="text-[10px] text-amber-600 font-medium mt-0.5">
+                                           <div className="text-[10px] text-amber font-medium mt-0.5">
                                                {Math.round((f.balance / f.targetAmount)*100)}% of Goal
                                            </div>
                                        )}
@@ -237,34 +237,34 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
       </div>
 
       {/* AI Decision Panel */}
-      <div className="swiss-card p-0 flex flex-col bg-white overflow-hidden border-indigo-100 shadow-lg shadow-indigo-50/50">
-          <div className="p-6 border-b border-indigo-50 bg-indigo-50/30 flex items-center justify-between">
+      <div className="swiss-card p-0 flex flex-col bg-white overflow-hidden">
+          <div className="p-6 border-b border-ledger bg-sage-light/30 flex items-center justify-between">
              <div className="flex items-center gap-2">
-                <Sparkles size={18} className="text-indigo-600" />
-                <h3 className="font-bold text-slate-900 font-display">Decision Ready Insights</h3>
+                <Sparkles size={18} className="text-sage" />
+                <h3 className="font-bold text-ink">Decision Ready Insights</h3>
              </div>
-             {loadingInsights && <div className="animate-spin h-3 w-3 border-2 border-indigo-600 border-t-transparent rounded-full"></div>}
+             {loadingInsights && <div className="animate-spin h-3 w-3 border-2 border-sage border-t-transparent rounded-full"></div>}
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-100">
+
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-ledger">
             {insights.length === 0 && !loadingInsights && (
-               <div className="col-span-3 p-12 text-center text-slate-400 text-sm">
+               <div className="col-span-3 p-12 text-center text-grey-mid text-sm">
                    Waiting for ledger data to generate strategic insights...
                </div>
             )}
-            
+
             {insights.map((insight, idx) => (
-              <div key={idx} className="p-6 hover:bg-slate-50 transition-colors group">
+              <div key={idx} className="p-6 hover:bg-amber-light transition-colors group">
                  <div className="flex items-center gap-2 mb-3">
-                    {insight.type === 'warning' && <AlertCircle className="text-rose-500" size={16} />}
-                    {insight.type === 'success' && <TrendingUp className="text-emerald-500" size={16} />}
-                    {insight.type === 'info' && <Info className="text-sky-500" size={16} />}
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide group-hover:text-slate-800 transition-colors">
+                    {insight.type === 'warning' && <AlertCircle className="text-error" size={16} />}
+                    {insight.type === 'success' && <TrendingUp className="text-sage" size={16} />}
+                    {insight.type === 'info' && <Info className="text-amber" size={16} />}
+                    <h4 className="text-xs font-bold text-grey-mid uppercase tracking-wide group-hover:text-ink transition-colors">
                         {insight.type === 'warning' ? 'Action Required' : insight.type === 'success' ? 'Good News' : 'For Info'}
                     </h4>
                  </div>
-                 <h5 className="font-bold text-slate-900 text-sm mb-2">{insight.title}</h5>
-                 <p className="text-xs text-slate-500 leading-relaxed">{insight.description}</p>
+                 <h5 className="font-bold text-ink text-sm mb-2">{insight.title}</h5>
+                 <p className="text-xs text-grey-mid leading-relaxed">{insight.description}</p>
               </div>
             ))}
           </div>

@@ -17,7 +17,7 @@ interface CampaignsProps {
     currentUser: AppUser;
 }
 
-const COLORS = ['#10b981', '#e2e8f0'];
+const COLORS = ['#6B8068', '#E5E0D8'];
 
 const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, donors, onAddPledge, onUpdatePledge, onBulkAddPledges, onBulkAddDonors, onUpdateTransaction, currentUser }) => {
     const [selectedFundId, setSelectedFundId] = useState<string>(funds.find(f => f.type === 'Restricted')?.id || funds[0].id);
@@ -324,16 +324,16 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
     return (
         <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
-            <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-slate-200 pb-6">
+            <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-ledger pb-6">
                 <div>
-                    <h2 className="text-3xl font-bold text-slate-900 font-display tracking-tight">Campaigns</h2>
-                    <p className="text-slate-500 mt-1 text-sm font-medium">Capital projects and pledged giving.</p>
+                    <h2 className="text-3xl font-bold text-ink font-mono tracking-tight">Campaigns</h2>
+                    <p className="text-grey-mid mt-1 text-sm font-medium">Capital projects and pledged giving.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="bg-white border border-slate-200 rounded-md px-3 py-2 flex items-center gap-2 shadow-sm">
-                        <Target size={14} className="text-slate-400"/>
+                    <div className="bg-white border border-ledger rounded-md px-3 py-2 flex items-center gap-2 shadow-sm">
+                        <Target size={14} className="text-grey-mid"/>
                         <select 
-                            className="text-sm font-bold text-slate-700 outline-none bg-transparent cursor-pointer min-w-[150px]"
+                            className="text-sm font-bold text-grey-dark outline-none bg-transparent cursor-pointer min-w-[150px]"
                             value={selectedFundId}
                             onChange={(e) => setSelectedFundId(e.target.value)}
                         >
@@ -349,35 +349,35 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 <div className="md:col-span-2 swiss-card p-8">
                     <div className="flex justify-between items-start mb-8">
                         <div>
-                            <h3 className="text-2xl font-bold text-slate-900 font-display">{selectedFund?.name}</h3>
-                            <p className="text-slate-500 text-sm mt-1 max-w-md">{selectedFund?.description}</p>
+                            <h3 className="text-2xl font-bold text-ink font-mono">{selectedFund?.name}</h3>
+                            <p className="text-grey-mid text-sm mt-1 max-w-md">{selectedFund?.description}</p>
                         </div>
-                        <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-emerald-100">Active</span>
+                        <span className="bg-sage-light text-sage-dark px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-sage/30">Active</span>
                     </div>
 
                     <div className="space-y-8">
                         <div>
-                            <div className="flex justify-between text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">
+                            <div className="flex justify-between text-xs font-bold text-grey-mid mb-2 uppercase tracking-wide">
                                 <span>Collection Progress</span>
                                 <span>{percentComplete.toFixed(1)}%</span>
                             </div>
-                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000 ease-out" style={{ width: `${percentComplete}%` }}></div>
+                            <div className="w-full h-2 bg-grey-light rounded-full overflow-hidden">
+                                <div className="h-full bg-sage-light0 rounded-full transition-all duration-1000 ease-out" style={{ width: `${percentComplete}%` }}></div>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-8 border-t border-slate-50 pt-6">
+                        <div className="grid grid-cols-3 gap-8 border-t border-grey-light pt-6">
                             <div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-1">Pledged</p>
-                                <p className="text-xl font-bold text-slate-900 font-mono">£{totalPledged.toLocaleString()}</p>
+                                <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Pledged</p>
+                                <p className="text-xl font-bold text-ink font-mono">£{totalPledged.toLocaleString()}</p>
                             </div>
                             <div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-1">Collected</p>
-                                <p className="text-xl font-bold text-emerald-600 font-mono">£{totalCollected.toLocaleString()}</p>
+                                <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Collected</p>
+                                <p className="text-xl font-bold text-sage font-mono">£{totalCollected.toLocaleString()}</p>
                             </div>
                             <div>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wide mb-1">Target</p>
-                                <p className="text-xl font-bold text-slate-900 font-mono">£{target.toLocaleString()}</p>
+                                <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Target</p>
+                                <p className="text-xl font-bold text-ink font-mono">£{target.toLocaleString()}</p>
                             </div>
                         </div>
                     </div>
@@ -395,23 +395,23 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                         </ResponsiveContainer>
                     </div>
                     <div className="text-center mt-4">
-                        <p className="text-xs font-medium text-slate-400">Funds vs Target</p>
+                        <p className="text-xs font-medium text-grey-mid">Funds vs Target</p>
                     </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 swiss-card overflow-hidden flex flex-col">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper/50">
                         <div className="flex items-center gap-3">
-                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
-                            <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
+                            <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
+                            <span className="text-[10px] bg-ledger text-grey-dark px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
                         </div>
                         {canEdit ? (
                             <div className="flex gap-2">
                                 <button 
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="p-1.5 bg-white border border-slate-200 rounded hover:border-slate-300 text-slate-600 transition-colors shadow-sm" 
+                                    className="p-1.5 bg-white border border-ledger rounded hover:border-grey-mid text-grey-dark transition-colors shadow-sm" 
                                     title="Import CSV"
                                 >
                                     <FileSpreadsheet size={14} />
@@ -425,25 +425,25 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </button>
                                 <button 
                                     onClick={handleAddPledgeClick}
-                                    className="p-1.5 bg-slate-900 text-white border border-slate-900 rounded hover:bg-slate-800 transition-colors shadow-sm" 
+                                    className="p-1.5 bg-ink text-white border border-ink rounded hover:bg-charcoal transition-colors shadow-sm" 
                                     title="Add New Pledge"
                                 >
                                     <Plus size={14} />
                                 </button>
-                                <button onClick={handleAIReconcile} disabled={isReconciling} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-indigo-600 rounded-md hover:border-indigo-200 text-xs font-bold uppercase tracking-wide transition-colors">
+                                <button onClick={handleAIReconcile} disabled={isReconciling} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-ledger text-sage rounded-md hover:border-sage/30 text-xs font-bold uppercase tracking-wide transition-colors">
                                     {isReconciling ? <Wand2 size={14} className="animate-spin"/> : <Wand2 size={14} />} AI Match
                                 </button>
                             </div>
                         ) : (
-                             <div className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded text-xs font-bold text-slate-500 uppercase tracking-wide">
+                             <div className="flex items-center gap-2 px-3 py-1 bg-grey-light rounded text-xs font-bold text-grey-mid uppercase tracking-wide">
                                 <Lock size={12} /> Read Only
                             </div>
                         )}
                     </div>
                     
                     {matches.length > 0 && canEdit && (
-                        <div className="p-4 bg-indigo-50/30 border-b border-indigo-100">
-                            <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <div className="p-4 bg-sage-light/30 border-b border-sage/30">
+                            <h4 className="text-xs font-bold text-sage-dark uppercase tracking-wide mb-3 flex items-center gap-2">
                                 <Wand2 size={12} /> Suggested Links
                             </h4>
                             <div className="space-y-3">
@@ -452,23 +452,23 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     if (!txn) return null;
                                     
                                     return (
-                                        <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-3 rounded border border-indigo-100 shadow-sm gap-3">
+                                        <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-3 rounded border border-sage/30 shadow-sm gap-3">
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-baseline gap-2">
-                                                    <span className="font-mono text-xs text-slate-500">{txn.date}</span>
-                                                    <span className="font-medium text-slate-900 text-sm">{txn.description}</span>
-                                                    <span className="font-mono text-xs font-bold text-emerald-600">£{txn.amount}</span>
+                                                    <span className="font-mono text-xs text-grey-mid">{txn.date}</span>
+                                                    <span className="font-medium text-ink text-sm">{txn.description}</span>
+                                                    <span className="font-mono text-xs font-bold text-sage">£{txn.amount}</span>
                                                 </div>
                                                 <div className="flex gap-2 text-[10px] items-center">
-                                                    <span className="text-indigo-600 font-bold uppercase">Reason:</span>
-                                                    <span className="text-slate-600 italic">{m.reason}</span>
+                                                    <span className="text-sage font-bold uppercase">Reason:</span>
+                                                    <span className="text-grey-dark italic">{m.reason}</span>
                                                 </div>
                                             </div>
                                             <div className="flex gap-2 shrink-0">
-                                                 <button onClick={() => handleRejectMatch(m)} className="text-[10px] border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors">
+                                                 <button onClick={() => handleRejectMatch(m)} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors">
                                                     <X size={12}/> Dismiss
                                                 </button>
-                                                <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
+                                                <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
                                                     <Check size={12}/> Confirm Link
                                                 </button>
                                             </div>
@@ -481,26 +481,26 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full text-left ledger-table">
-                            <thead className="bg-slate-50 border-b border-slate-200">
+                            <thead className="bg-paper border-b border-ledger">
                                 <tr>
-                                    <th className="px-6 py-3 pl-6 text-xs text-slate-500 font-bold uppercase tracking-wide">Donor</th>
-                                    <th className="px-6 py-3 text-xs text-slate-500 font-bold uppercase tracking-wide">Frequency</th>
-                                    <th className="px-6 py-3 text-right text-xs text-slate-500 font-bold uppercase tracking-wide">Amount</th>
-                                    <th className="px-6 py-3 text-center text-xs text-slate-500 font-bold uppercase tracking-wide">Status</th>
+                                    <th className="px-6 py-3 pl-6 text-xs text-grey-mid font-bold uppercase tracking-wide">Donor</th>
+                                    <th className="px-6 py-3 text-xs text-grey-mid font-bold uppercase tracking-wide">Frequency</th>
+                                    <th className="px-6 py-3 text-right text-xs text-grey-mid font-bold uppercase tracking-wide">Amount</th>
+                                    <th className="px-6 py-3 text-center text-xs text-grey-mid font-bold uppercase tracking-wide">Status</th>
                                     <th className="px-6 py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {campaignPledges.map((pledge) => (
-                                    <tr key={pledge.id} className="hover:bg-slate-50 transition-colors group border-b border-slate-50 last:border-0">
-                                        <td className="px-6 py-4 pl-6 font-medium text-slate-900 text-sm">{pledge.donorName}</td>
-                                        <td className="px-6 py-4 text-slate-500 text-xs">{pledge.frequency}</td>
-                                        <td className="px-6 py-4 text-emerald-600 font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
+                                    <tr key={pledge.id} className="hover:bg-paper transition-colors group border-b border-grey-light last:border-0">
+                                        <td className="px-6 py-4 pl-6 font-medium text-ink text-sm">{pledge.donorName}</td>
+                                        <td className="px-6 py-4 text-grey-mid text-xs">{pledge.frequency}</td>
+                                        <td className="px-6 py-4 text-sage font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
-                                                pledge.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 
-                                                pledge.status === 'Completed' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
-                                                'bg-slate-100 text-slate-500 border-slate-200'
+                                                pledge.status === 'Active' ? 'bg-sage-light text-sage-dark border-sage/30' : 
+                                                pledge.status === 'Completed' ? 'bg-sage-light text-sage-dark border-sage/30' :
+                                                'bg-grey-light text-grey-mid border-ledger'
                                             }`}>
                                                 {pledge.status}
                                             </span>
@@ -510,13 +510,13 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                                 {pledge.status === 'Completed' && (
                                                     <button 
                                                         onClick={() => handleThankDonor(pledge)} 
-                                                        className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded hover:text-emerald-600 hover:border-emerald-200 transition-colors shadow-sm"
+                                                        className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-ledger text-grey-dark px-2 py-1 rounded hover:text-sage hover:border-sage/30 transition-colors shadow-sm"
                                                     >
                                                         <MessageSquare size={10} /> Say Thanks
                                                     </button>
                                                 )}
                                                 {canEdit && (
-                                                    <button onClick={() => handleEditPledgeClick(pledge)} className="text-slate-300 hover:text-slate-600 transition-colors opacity-0 group-hover:opacity-100">
+                                                    <button onClick={() => handleEditPledgeClick(pledge)} className="text-ledger hover:text-grey-dark transition-colors opacity-0 group-hover:opacity-100">
                                                         <Edit2 size={14} />
                                                     </button>
                                                 )}
@@ -526,7 +526,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 ))}
                                 {campaignPledges.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">
+                                        <td colSpan={5} className="px-6 py-12 text-center text-grey-mid text-sm">
                                             No pledges recorded for this campaign yet.
                                         </td>
                                     </tr>
@@ -537,17 +537,17 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 </div>
 
                 <div className="swiss-card p-6 h-full">
-                    <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2 font-display text-sm uppercase tracking-wide"><Calendar size={16} /> Campaign Timeline</h3>
+                    <h3 className="font-bold text-ink mb-6 flex items-center gap-2 font-mono text-sm uppercase tracking-wide"><Calendar size={16} /> Campaign Timeline</h3>
                     <div className="space-y-8 pl-2">
                         {[
-                            { date: 'OCT 2023', title: 'Launch', color: 'bg-emerald-500' },
-                            { date: 'DEC 2023', title: 'Milestone 1', color: 'bg-indigo-500' },
-                            { date: 'JUN 2024', title: 'Construction', color: 'bg-slate-300' }
+                            { date: 'OCT 2023', title: 'Launch', color: 'bg-sage-light0' },
+                            { date: 'DEC 2023', title: 'Milestone 1', color: 'bg-sage-light0' },
+                            { date: 'JUN 2024', title: 'Construction', color: 'bg-grey-mid' }
                         ].map((item, i) => (
-                            <div key={i} className="relative pl-6 border-l border-slate-200 last:border-0 pb-2">
+                            <div key={i} className="relative pl-6 border-l border-ledger last:border-0 pb-2">
                                 <div className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ${item.color} ring-4 ring-white`}></div>
-                                <p className="text-[10px] font-bold text-slate-400 font-mono mb-1">{item.date}</p>
-                                <h4 className="font-bold text-slate-900 text-sm">{item.title}</h4>
+                                <p className="text-[10px] font-bold text-grey-mid font-mono mb-1">{item.date}</p>
+                                <h4 className="font-bold text-ink text-sm">{item.title}</h4>
                             </div>
                         ))}
                     </div>
@@ -556,34 +556,34 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* Thank You / Completion Modal */}
             {thankYouModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-slate-200 animate-enter">
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-emerald-50 rounded-t-lg">
-                            <h3 className="font-bold text-emerald-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-ledger animate-enter">
+                        <div className="p-4 border-b border-ledger flex justify-between items-center bg-sage-light rounded-t-lg">
+                            <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
                                 <Target size={16} /> Pledge Completed!
                             </h3>
-                            <button onClick={() => setThankYouModal({ isOpen: false, pledge: null, text: '', isGenerating: false })} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                            <button onClick={() => setThankYouModal({ isOpen: false, pledge: null, text: '', isGenerating: false })} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                         </div>
                         <div className="p-6">
                             <div className="text-center mb-6">
-                                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <div className="w-12 h-12 bg-sage-light text-sage rounded-full flex items-center justify-center mx-auto mb-3">
                                     <Check size={24} strokeWidth={3} />
                                 </div>
-                                <h2 className="text-lg font-bold text-slate-900">Thank {thankYouModal.pledge?.donorName}</h2>
-                                <p className="text-sm text-slate-500">They have fulfilled their entire pledge amount.</p>
+                                <h2 className="text-lg font-bold text-ink">Thank {thankYouModal.pledge?.donorName}</h2>
+                                <p className="text-sm text-grey-mid">They have fulfilled their entire pledge amount.</p>
                             </div>
 
-                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 relative">
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2 flex justify-between">
+                            <div className="bg-paper p-4 rounded-lg border border-ledger relative">
+                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2 flex justify-between">
                                     <span>Draft Message</span>
-                                    {thankYouModal.isGenerating && <span className="flex items-center gap-1 text-indigo-600"><Loader2 size={10} className="animate-spin"/> AI writing...</span>}
+                                    {thankYouModal.isGenerating && <span className="flex items-center gap-1 text-sage"><Loader2 size={10} className="animate-spin"/> AI writing...</span>}
                                 </label>
                                 <textarea 
-                                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-slate-700 resize-none h-24 p-0 leading-relaxed"
+                                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-grey-dark resize-none h-24 p-0 leading-relaxed"
                                     value={thankYouModal.text}
                                     onChange={(e) => setThankYouModal(prev => ({ ...prev, text: e.target.value }))}
                                 />
-                                <button onClick={copyToClipboard} className="absolute bottom-3 right-3 text-slate-400 hover:text-slate-600" title="Copy text">
+                                <button onClick={copyToClipboard} className="absolute bottom-3 right-3 text-grey-mid hover:text-grey-dark" title="Copy text">
                                     <Copy size={14} />
                                 </button>
                             </div>
@@ -596,7 +596,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <Phone size={16} /> WhatsApp
                                 </button>
                                 <button 
-                                    className="flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white rounded-lg font-bold text-sm hover:bg-slate-800 transition-colors shadow-sm"
+                                    className="flex items-center justify-center gap-2 py-2.5 bg-ink text-white rounded-lg font-bold text-sm hover:bg-charcoal transition-colors shadow-sm"
                                     onClick={() => { window.location.href = `mailto:?subject=Thank You&body=${encodeURIComponent(thankYouModal.text)}`; }}
                                 >
                                     <Mail size={16} /> Email
@@ -609,52 +609,52 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* Add/Edit Pledge Modal */}
             {(showAddModal || editingPledge) && canEdit && (
-                <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-slate-200 animate-enter">
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide">
+                <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
+                        <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
+                            <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
                                 {editingPledge ? 'Edit Pledge' : 'New Pledge'}
                             </h3>
-                            <button onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                            <button onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                         </div>
                         <form onSubmit={handlePledgeSubmit} className="p-6 space-y-4">
-                            <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 mb-2">
+                            <div className="bg-sage-light p-3 rounded-lg border border-sage/30 text-xs text-sage-dark mb-2">
                                 {editingPledge ? 'Editing pledge for ' : 'Adding pledge to '} <strong>{selectedFund?.name}</strong>
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Donor Name</label>
+                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Donor Name</label>
                                 <input 
                                     type="text" 
                                     required
                                     value={pledgeForm.donorName || ''} 
                                     onChange={(e) => setPledgeForm({...pledgeForm, donorName: e.target.value})}
-                                    className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                    className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"
                                     placeholder="e.g. John Doe"
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Amount</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label>
                                     <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">£</span>
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span>
                                         <input 
                                             type="number" 
                                             required
                                             value={pledgeForm.amount || ''} 
                                             onChange={(e) => setPledgeForm({...pledgeForm, amount: parseFloat(e.target.value)})}
-                                            className="w-full pl-6 p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                            className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
                                             placeholder="0.00"
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Frequency</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Frequency</label>
                                     <select 
                                         value={pledgeForm.frequency} 
                                         onChange={(e) => setPledgeForm({...pledgeForm, frequency: e.target.value as any})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="One-off">One-off</option>
                                         <option value="Weekly">Weekly</option>
@@ -666,33 +666,33 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Start Date</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Start Date</label>
                                     <input 
                                         type="date"
                                         value={pledgeForm.startDate}
                                         onChange={e => setPledgeForm({...pledgeForm, startDate: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
                                         required
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">End Date</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">End Date</label>
                                     <input 
                                         type="date"
                                         value={pledgeForm.endDate || ''} 
                                         onChange={e => setPledgeForm({...pledgeForm, endDate: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none font-mono"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
                                     />
                                 </div>
                             </div>
 
                             {editingPledge && (
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">Status</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Status</label>
                                     <select 
                                         value={pledgeForm.status} 
                                         onChange={(e) => setPledgeForm({...pledgeForm, status: e.target.value as any})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-slate-50 focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="Active">Active</option>
                                         <option value="Completed">Completed</option>
@@ -701,8 +701,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
-                                <button type="button" onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                            <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4">
+                                <button type="button" onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
                                 <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                                     {editingPledge ? <Save size={14} /> : <Plus size={14} />} 
                                     {editingPledge ? 'Save Changes' : 'Add Pledge'}
@@ -715,107 +715,107 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* CSV Import Modal */}
             {showCsvMapper && canEdit && (
-                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl animate-enter border border-slate-200">
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-lg">
-                            <h3 className="font-bold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
+                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl animate-enter border border-ledger">
+                        <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
+                            <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
                                 <TableIcon size={16} /> Import Pledges & Donor Details
                             </h3>
-                            <button onClick={() => setShowCsvMapper(false)} className="text-slate-400 hover:text-slate-600">
+                            <button onClick={() => setShowCsvMapper(false)} className="text-grey-mid hover:text-grey-dark">
                                 <X size={16} />
                             </button>
                         </div>
                         <div className="p-6 space-y-6">
-                             <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 mb-4 flex justify-between items-center">
-                                <p className="text-xs text-indigo-900">
+                             <div className="bg-sage-light p-4 rounded-lg border border-sage/30 mb-4 flex justify-between items-center">
+                                <p className="text-xs text-sage-dark">
                                     Importing <strong>{csvRows.length}</strong> pledges into <strong>{selectedFund?.name}</strong>.
                                 </p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Donor Name *</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Donor Name *</label>
                                     <select 
                                         value={columnMapping.donor} 
                                         onChange={(e) => setColumnMapping({...columnMapping, donor: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Amount *</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Amount *</label>
                                     <select 
                                         value={columnMapping.amount} 
                                         onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Frequency</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Frequency</label>
                                     <select 
                                         value={columnMapping.frequency} 
                                         onChange={(e) => setColumnMapping({...columnMapping, frequency: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Email</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Email</label>
                                     <select 
                                         value={columnMapping.email} 
                                         onChange={(e) => setColumnMapping({...columnMapping, email: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Phone</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Phone</label>
                                     <select 
                                         value={columnMapping.phone} 
                                         onChange={(e) => setColumnMapping({...columnMapping, phone: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Address</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Address</label>
                                     <select 
                                         value={columnMapping.address} 
                                         onChange={(e) => setColumnMapping({...columnMapping, address: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Postcode</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Postcode</label>
                                     <select 
                                         value={columnMapping.postcode} 
                                         onChange={(e) => setColumnMapping({...columnMapping, postcode: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Comm Pref</label>
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Comm Pref</label>
                                     <select 
                                         value={columnMapping.commPref} 
                                         onChange={(e) => setColumnMapping({...columnMapping, commPref: e.target.value})}
-                                        className="w-full p-2.5 border border-slate-200 rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -824,16 +824,16 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </div>
 
                              <div className="mt-4">
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2">Preview (First 3 Rows)</label>
-                                <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Preview (First 3 Rows)</label>
+                                <div className="overflow-x-auto border border-ledger rounded-lg">
                                     <table className="w-full text-left ledger-table text-[10px]">
-                                        <thead className="bg-slate-50">
-                                            <tr>{csvHeaders.map(h => <th key={h} className="px-3 py-2 text-slate-500 font-bold whitespace-nowrap">{h}</th>)}</tr>
+                                        <thead className="bg-paper">
+                                            <tr>{csvHeaders.map(h => <th key={h} className="px-3 py-2 text-grey-mid font-bold whitespace-nowrap">{h}</th>)}</tr>
                                         </thead>
                                         <tbody>
                                             {csvRows.slice(0, 3).map((row, i) => (
-                                                <tr key={i} className="border-b border-slate-50 last:border-0">
-                                                    {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{cell}</td>)}
+                                                <tr key={i} className="border-b border-grey-light last:border-0">
+                                                    {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-grey-dark whitespace-nowrap">{cell}</td>)}
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -841,8 +841,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
-                                <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-slate-500 font-bold uppercase text-xs tracking-wide hover:bg-slate-50 rounded transition-colors">Cancel</button>
+                            <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4">
+                                <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
                                 <button onClick={handleProcessImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                                     Import Data <ArrowRight size={14} />
                                 </button>
