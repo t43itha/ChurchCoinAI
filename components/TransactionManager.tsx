@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
@@ -101,7 +102,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkActionType, setBulkActionType] = useState<'category' | 'fund' | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   // Manual Entry State
@@ -242,7 +242,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               }
           });
           setSelectedIds(new Set());
-          setBulkActionType(null);
       } catch (error) {
           console.error("Bulk update failed:", error);
           alert("Failed to update transactions.");
@@ -833,7 +832,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       </div>
 
       {/* Floating Bulk Actions */}
-      {selectedIds.size > 0 && canEdit && (
+      {selectedIds.size > 0 && canEdit && createPortal(
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
               <div className="flex items-center gap-3 border-r border-slate-700 pr-5 shrink-0">
                   <span className="text-xs font-bold font-mono text-sage">{selectedIds.size} SELECTED</span>
@@ -846,61 +845,36 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   <button onClick={() => executeBulkUpdate({ isReconciled: true })} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
                       <CheckSquare size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Reconcile</span>
                   </button>
-                  <button onClick={() => setBulkActionType('category')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      <Tag size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Categorize</span>
-                  </button>
-                  <button onClick={() => setBulkActionType('fund')} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      <Wallet size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Move Fund</span>
-                  </button>
+                  {/* Inline Category Dropdown */}
+                  <select
+                      className="bg-charcoal text-white text-xs rounded px-2 py-1.5 border border-slate-600 hover:border-slate-500 cursor-pointer outline-none"
+                      value=""
+                      onChange={(e) => e.target.value && executeBulkUpdate({ category: e.target.value })}
+                  >
+                      <option value="">Category...</option>
+                      {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  {/* Inline Fund Dropdown */}
+                  <select
+                      className="bg-charcoal text-white text-xs rounded px-2 py-1.5 border border-slate-600 hover:border-slate-500 cursor-pointer outline-none"
+                      value=""
+                      onChange={(e) => e.target.value && executeBulkUpdate({ fundId: e.target.value as Id<"funds"> })}
+                  >
+                      <option value="">Fund...</option>
+                      {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
+                  </select>
                   <div className="w-px h-4 bg-slate-700 mx-2"></div>
                   <button onClick={() => setSelectedIds(new Set())} className="text-grey-mid hover:text-white transition-colors">
                       <X size={16} />
                   </button>
               </div>
-          </div>
+          </div>,
+          document.body
       )}
 
-      {/* Bulk Action Modal */}
-      {bulkActionType && canEdit && (
-          <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-             <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm animate-enter border border-ledger">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
-                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
-                        {bulkActionType === 'category' ? 'Set Category' : 'Move to Fund'}
-                    </h3>
-                    <button onClick={() => setBulkActionType(null)} className="text-grey-mid hover:text-grey-dark"><X size={16} /></button>
-                </div>
-                <div className="p-6">
-                    <p className="text-sm text-grey-mid mb-4">Update <strong className="text-ink">{selectedIds.size}</strong> items:</p>
-                    <form onSubmit={(e) => {
-                        e.preventDefault();
-                        const formData = new FormData(e.currentTarget);
-                        const val = formData.get('value') as string;
-                        if (!val) return;
-                        if (bulkActionType === 'category') executeBulkUpdate({ category: val });
-                        else executeBulkUpdate({ fundId: val as Id<"funds"> });
-                    }}>
-                        <div className="mb-6">
-                            <select name="value" className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-slate-900 outline-none" required>
-                                <option value="">Select...</option>
-                                {bulkActionType === 'category'
-                                    ? categoryNames.map(c => <option key={c} value={c}>{c}</option>)
-                                    : funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)
-                                }
-                            </select>
-                        </div>
-                        <div className="flex justify-end gap-3">
-                            <button type="button" onClick={() => setBulkActionType(null)} className="text-grey-mid text-xs font-bold uppercase hover:bg-paper px-3 py-2 rounded">Cancel</button>
-                            <button type="submit" className="btn-primary px-4 py-2 text-xs font-bold uppercase tracking-wide">Apply</button>
-                        </div>
-                    </form>
-                </div>
-             </div>
-          </div>
-      )}
 
       {/* Smart Link Review Modal */}
-      {showMatchModal && canEdit && (
+      {showMatchModal && canEdit && createPortal(
           <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl animate-enter border border-ledger max-h-[80vh] flex flex-col">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-sage-light rounded-t-lg">
@@ -947,11 +921,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </div>
              </div>
-          </div>
+          </div>,
+          document.body
       )}
 
       {/* CSV Column Mapping Modal - REFINED UI 2.0 */}
-      {showColumnMapper && canEdit && (
+      {showColumnMapper && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl animate-enter border border-ledger overflow-hidden">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-paper/50">
@@ -1097,11 +1072,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* New Transaction Modal */}
-      {showAddModal && canEdit && (
+      {showAddModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
@@ -1252,11 +1228,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit Transaction Modal */}
-      {editingTransaction && canEdit && (
+      {editingTransaction && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
@@ -1440,11 +1417,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Review Modal */}
-      {showReviewModal && canEdit && (
+      {showReviewModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center rounded-t-lg">
@@ -1505,7 +1483,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
