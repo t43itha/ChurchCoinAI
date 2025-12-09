@@ -1,11 +1,30 @@
 
-import { Donor, Pledge, Fund, ChurchDetails } from "../types";
+import { Donor, Pledge, Fund, ChurchDetails, Transaction } from "../types";
 
-export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fund[], churchDetails: ChurchDetails) => {
+export const generateScheduleHTML = (
+  donor: Donor,
+  pledges: Pledge[],
+  funds: Fund[],
+  churchDetails: ChurchDetails,
+  logoOverride?: string,
+  transactions?: Transaction[]
+) => {
   const activePledges = pledges.filter(p => p.status === 'Active');
-  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  
-  // Calculate totals
+  const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const todayShort = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+
+  // Filter transactions for this donor and sort by date (newest first)
+  const donorTransactions = (transactions || [])
+    .filter(t => t.type === 'Income')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Calculate transaction totals
+  const totalGiven = donorTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+  // Calculate total pledged (from all pledges, not just active)
+  const totalPledged = pledges.reduce((sum, p) => sum + p.amount, 0);
+
+  // Calculate pledge totals
   const totalMonthly = activePledges.reduce((sum, p) => {
     if (p.frequency === 'Monthly') return sum + p.amount;
     if (p.frequency === 'Weekly') return sum + (p.amount * 4.33);
@@ -204,15 +223,16 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
       
       <div class="header">
         <div class="brand">
-          ${churchDetails.logoUrl ? `<img src="${churchDetails.logoUrl}" class="logo" />` : ''}
+          ${(logoOverride || churchDetails.logoUrl) ? `<img src="${logoOverride || churchDetails.logoUrl}" class="logo" />` : ''}
           <div>
             <h1>${churchDetails.name}</h1>
             <p>Finance & Stewardship</p>
           </div>
         </div>
         <div class="meta">
-          <p>Date: ${today}</p>
-          <p>Ref: SCH-${donor.id.toUpperCase()}</p>
+          <p>Date: ${todayFormatted}</p>
+          <p>Ref: SCH-${(donor._id || donor.id || '').slice(-6).toUpperCase()}</p>
+          <p>Period: 01-01-2025 – ${todayShort}</p>
           <p>Charity No: ${churchDetails.charityNumber || 'N/A'}</p>
         </div>
       </div>
@@ -222,7 +242,67 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
         <div>${donor.address ? donor.address.replace(/\n/g, '<br>') : 'Address on file'}</div>
       </div>
 
-      <div class="document-title">Confirmed Giving Schedule</div>
+      <div class="document-title">Giving Statement</div>
+
+      ${donorTransactions.length > 0 ? `
+      <table>
+        <thead>
+          <tr>
+            <th width="20%">Date</th>
+            <th width="40%">Description</th>
+            <th width="20%">Fund</th>
+            <th width="20%" style="text-align: right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${donorTransactions.map(t => {
+            const fund = funds.find(f => f._id === t.fundId || f.id === t.fundId);
+            return `
+              <tr>
+                <td>${new Date(t.date).toLocaleDateString('en-GB')}</td>
+                <td>${t.description || 'Donation'}</td>
+                <td><span class="fund-desc">${fund?.name || 'General'}</span></td>
+                <td class="amount">£${t.amount.toFixed(2)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        ${totalPledged > 0 ? `
+        <div class="total-item">
+          <div class="total-label">Amount Pledged</div>
+          <div class="total-value">£${totalPledged.toFixed(2)}</div>
+        </div>
+        ` : ''}
+        <div class="total-item">
+          <div class="total-label">Total Given</div>
+          <div class="total-value">£${totalGiven.toFixed(2)}</div>
+        </div>
+        <div class="total-item">
+          <div class="total-label">Transactions</div>
+          <div class="total-value">${donorTransactions.length}</div>
+        </div>
+      </div>
+      ` : `
+      <div class="totals">
+        ${totalPledged > 0 ? `
+        <div class="total-item">
+          <div class="total-label">Amount Pledged</div>
+          <div class="total-value">£${totalPledged.toFixed(2)}</div>
+        </div>
+        ` : ''}
+        <div class="total-item">
+          <div class="total-label">Total Given</div>
+          <div class="total-value">£0.00</div>
+        </div>
+      </div>
+      <p style="text-align:center; color:#999; padding: 30px;">No transactions found.</p>
+      `}
+
+      ${activePledges.length > 0 ? `
+      <div class="document-title" style="margin-top: 40px;">Active Giving Schedules</div>
 
       <table>
         <thead>
@@ -235,7 +315,7 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
         </thead>
         <tbody>
           ${activePledges.map(p => {
-            const fund = funds.find(f => f.id === p.fundId);
+            const fund = funds.find(f => f._id === p.fundId || f.id === p.fundId);
             return `
               <tr>
                 <td>
@@ -248,7 +328,6 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
               </tr>
             `;
           }).join('')}
-          ${activePledges.length === 0 ? '<tr><td colspan="4" style="text-align:center; color:#999; padding: 30px;">No active pledges found.</td></tr>' : ''}
         </tbody>
       </table>
 
@@ -262,6 +341,7 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
           <div class="total-value">£${totalAnnual.toFixed(2)}</div>
         </div>
       </div>
+      ` : ''}
 
       <div class="gift-aid-box">
         <h4>Gift Aid Declaration Status</h4>
@@ -275,10 +355,6 @@ export const generateScheduleHTML = (donor: Donor, pledges: Pledge[], funds: Fun
       <div class="footer">
         <div>
           <p>Thank you for your partnership and generosity.</p>
-          <p>${churchDetails.name} • ${churchDetails.address || 'Address Not Set'} • ${churchDetails.email || 'No Email'}</p>
-        </div>
-        <div class="signature-line">
-          Authorized Signature
         </div>
       </div>
 

@@ -16,7 +16,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
 
   // Calculate General Fund (Unrestricted) Expenditure Breakdown
   const generalFunds = funds.filter(f => f.type === FundType.UNRESTRICTED);
-  const generalFundIds = new Set(generalFunds.map(f => f.id));
+  const generalFundIds = new Set(generalFunds.map(f => f._id));
   
   const generalFundExpenditure = transactions.filter(t => 
     generalFundIds.has(t.fundId) && t.type === TransactionType.EXPENDITURE
@@ -42,8 +42,8 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="space-y-4">
             {funds.map((fund, index) => (
-                <div 
-                    key={fund.id} 
+                <div
+                    key={fund._id}
                     className="swiss-card p-6 group relative overflow-hidden"
                     style={{ transitionDelay: `${index * 50}ms` }}
                 >
@@ -80,8 +80,8 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
                     )}
                     
                     <div className="flex justify-end relative z-10">
-                        <button 
-                            onClick={() => onViewLedger(fund.id)}
+                        <button
+                            onClick={() => onViewLedger(fund._id)}
                             className="text-xs font-bold uppercase tracking-wide text-grey-mid group-hover:text-amber flex items-center gap-2 transition-colors"
                         >
                             Ledger History <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />

@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useMutation, useAction } from 'convex/react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2 } from 'lucide-react';
@@ -52,7 +52,6 @@ interface CurrentUser {
 }
 
 interface TransactionManagerProps {
-  transactions: Transaction[];
   funds: Fund[];
   pledges: Pledge[];
   categories: Category[];
@@ -61,9 +60,17 @@ interface TransactionManagerProps {
   onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
 
+// Pagination for large datasets
+const ITEMS_PER_PAGE = 100;
+
 const TransactionManager: React.FC<TransactionManagerProps> = ({
-  transactions, funds, pledges, categories, currentUser, initialFundId, onPledgeCompleted
+  funds, pledges, categories, currentUser, initialFundId, onPledgeCompleted
 }) => {
+  // Fetch all transactions - virtualization handles rendering performance
+  const allTransactions = useQuery(api.queries.transactions.list, {});
+  const isLoading = allTransactions === undefined;
+  const transactions = allTransactions ?? [];
+
   // Convex mutations and actions
   const createTransaction = useMutation(api.mutations.transactions.create);
   const updateTransaction = useMutation(api.mutations.transactions.update);
@@ -114,7 +121,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [filterDateEnd, setFilterDateEnd] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterFund, setFilterFund] = useState(initialFundId || '');
-  const [filterStatus, setFilterStatus] = useState('all'); 
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  // Client-side pagination for performance
+  const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE); 
 
   // Effect to apply initial fund filter if passed (e.g. navigation from Fund Manager)
   useEffect(() => {
@@ -151,10 +161,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       // Status
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
+      // Unlinked: Income transactions without a linked pledge (for manual intervention)
+      if (filterStatus === 'unlinked' && (t.type !== 'Income' || t.pledgeId)) return false;
 
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterFund, filterStatus]);
+
+  // Limit displayed transactions for performance
+  const displayedTransactions = useMemo(() => {
+    return filteredTransactions.slice(0, displayLimit);
+  }, [filteredTransactions, displayLimit]);
+
+  const hasMore = filteredTransactions.length > displayLimit;
 
   const relevantPledges = useMemo(() => {
       // Always include the currently linked pledge so it shows in the dropdown, even if name filter doesn't match
@@ -267,24 +286,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handleSmartLinkPledges = async () => {
       setIsReconciling(true);
       try {
-          // Filter for unlinked income transactions
-          const unlinkedIncome = transactions.filter(t => t.type === 'Income' && !t.pledgeId);
-          const matches = await reconcilePledgesAI({
-              candidateTransactions: JSON.stringify(unlinkedIncome.map(t => ({
-                  id: t._id,
-                  description: t.description,
-                  amount: t.amount,
-                  date: t.date,
-                  donorName: t.donorName
-              }))),
-              pledges: JSON.stringify(pledges.map(p => ({
-                  id: p._id,
-                  donorName: p.donorName,
-                  amount: p.amount,
-                  frequency: p.frequency,
-                  fundId: p.fundId
-              })))
-          });
+          // AI action now fetches unlinked income server-side for complete coverage
+          const matches = await reconcilePledgesAI({});
           if (matches.length > 0) {
               setPledgeMatches(matches);
               setShowMatchModal(true);
@@ -301,12 +304,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const handleConfirmMatch = async (match: any) => {
       const t = transactions.find(tx => tx._id === match.transactionId);
-      if (t) {
+      // Find the pledge by the AI-suggested pledgeId to get the proper typed ID
+      const matchedPledge = pledges.find(p => p._id === match.pledgeId);
+
+      if (t && matchedPledge) {
           try {
               const result = await updateTransaction({
                   transactionId: t._id,
-                  pledgeId: match.pledgeId as Id<"pledges">,
-                  donorName: match.donorName || t.donorName
+                  pledgeId: matchedPledge._id, // Use the actual pledge ID from our data
+                  donorName: match.donorName || matchedPledge.donorName || t.donorName
               });
               // Check if pledge was completed
               if (result?.pledgeCompleted && onPledgeCompleted) {
@@ -317,6 +323,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           } catch (error) {
               console.error("Failed to link transaction:", error);
           }
+      } else {
+          console.error("Could not find transaction or pledge for match:", match);
+          setPledgeMatches(prev => prev.filter(m => m !== match));
       }
   };
 
@@ -684,10 +693,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
               {/* Status Filter */}
               <div className="relative group h-[34px]">
-                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-28">
+                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
                       <option value="all">All Status</option>
                       <option value="reconciled">Reconciled</option>
                       <option value="unreconciled">Pending</option>
+                      <option value="unlinked">Unlinked Income</option>
                   </select>
                   <Filter size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
               </div>
@@ -739,58 +749,87 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               </tr>
             </thead>
             <tbody className="bg-white">
-              {filteredTransactions.map((t) => {
-                const fund = funds.find(f => f._id === t.fundId);
-                const isSelected = selectedIds.has(t._id);
-                const linkedPledge = pledges.find(p => p._id === t.pledgeId);
-                
-                return (
-                  <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''}`}>
-                    <td className="px-4 py-3 border-b border-slate-100">
-                        {canEdit && (
-                             <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
-                        )}
-                    </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-grey-mid font-mono text-xs">{formatDateUK(t.date)}</td>
-                    <td className="px-6 py-3 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                           <div className="font-medium text-ink text-sm truncate max-w-[200px]">{t.description}</div>
-                           {t.pledgeId && <LinkIcon size={12} className="text-sage" />}
-                        </div>
-                        {t.donorName && <div className="text-[10px] text-grey-mid font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
-                        {linkedPledge && <div className="text-[9px] text-sage font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
-                    </td>
-                    <td className="px-6 py-3 border-b border-slate-100">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-grey-light text-grey-dark border border-ledger">
-                        {t.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-grey-mid text-xs font-medium">{fund?.name}</td>
-                    <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === 'Income' ? 'text-sage' : 'text-ink'}`}>
-                      {t.type === 'Income' ? '+' : '-'}£{t.amount.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-center">
-                        {t.isReconciled ? <Check size={14} className="mx-auto text-sage" /> : <div className="w-2 h-2 rounded-full bg-ledger mx-auto"></div>}
-                    </td>
-                    <td className="px-6 py-3 border-b border-slate-100 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                        {canEdit && (
-                            <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-sage transition-colors">
-                                <Edit2 size={14} />
-                            </button>
-                        )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {isLoading ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-grey-mid">
+                    <Loader2 size={32} className="mx-auto mb-2 animate-spin opacity-40" />
+                    <p className="text-sm">Loading transactions...</p>
+                  </td>
+                </tr>
+              ) : displayedTransactions.length > 0 ? (
+                displayedTransactions.map((t) => {
+                  const fund = funds.find(f => f._id === t.fundId);
+                  const isSelected = selectedIds.has(t._id);
+                  const linkedPledge = pledges.find(p => p._id === t.pledgeId);
+
+                  return (
+                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''}`}>
+                      <td className="px-4 py-3 border-b border-slate-100">
+                          {canEdit && (
+                               <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
+                          )}
+                      </td>
+                      <td className="px-6 py-3 border-b border-slate-100 text-grey-mid font-mono text-xs">{formatDateUK(t.date)}</td>
+                      <td className="px-6 py-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2">
+                             <div className="font-medium text-ink text-sm truncate max-w-[200px]">{t.description}</div>
+                             {t.pledgeId && <LinkIcon size={12} className="text-sage" />}
+                          </div>
+                          {t.donorName && <div className="text-[10px] text-grey-mid font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
+                          {linkedPledge && <div className="text-[9px] text-sage font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
+                      </td>
+                      <td className="px-6 py-3 border-b border-slate-100">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-grey-light text-grey-dark border border-ledger">
+                          {t.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 border-b border-slate-100 text-grey-mid text-xs font-medium">{fund?.name}</td>
+                      <td className={`px-6 py-3 border-b border-slate-100 text-right font-mono text-sm font-medium ${t.type === 'Income' ? 'text-sage' : 'text-ink'}`}>
+                        {t.type === 'Income' ? '+' : '-'}£{t.amount.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-3 border-b border-slate-100 text-center">
+                          {t.isReconciled ? <Check size={14} className="mx-auto text-sage" /> : <div className="w-2 h-2 rounded-full bg-ledger mx-auto"></div>}
+                      </td>
+                      <td className="px-6 py-3 border-b border-slate-100 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                          {canEdit && (
+                              <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-sage transition-colors">
+                                  <Edit2 size={14} />
+                              </button>
+                          )}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-grey-mid">
+                    <Filter size={32} className="mx-auto mb-2 opacity-20" />
+                    <p className="text-sm">No transactions match your query.</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
-          {filteredTransactions.length === 0 && (
-              <div className="py-12 text-center text-grey-mid">
-                  <Filter size={32} className="mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">No transactions match your query.</p>
-              </div>
-          )}
         </div>
+
+        {/* Load More / Footer */}
+        {hasMore && (
+          <div className="border-t border-ledger bg-paper px-4 py-3 flex justify-center">
+            <button
+              onClick={() => setDisplayLimit(prev => prev + ITEMS_PER_PAGE)}
+              className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide text-grey-dark hover:text-ink hover:bg-grey-light rounded-md transition-colors"
+            >
+              Load More ({filteredTransactions.length - displayLimit} remaining)
+            </button>
+          </div>
+        )}
+        {displayedTransactions.length > 0 && (
+          <div className="border-t border-ledger bg-paper px-4 py-2 text-center">
+            <span className="text-[10px] text-grey-mid font-mono uppercase tracking-wide">
+              Showing {displayedTransactions.length} of {filteredTransactions.length} filtered ({transactions.length} total)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Floating Bulk Actions */}
@@ -1413,9 +1452,29 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <h3 className="text-lg font-bold text-ink">Review Import</h3>
                         <p className="text-xs text-grey-mid font-mono mt-1 uppercase tracking-wide">Found {pendingTransactions.length} items</p>
                     </div>
-                    <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide">
-                        {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <select
+                            onChange={(e) => {
+                                if (e.target.value) {
+                                    setPendingTransactions(prev => prev.map(t => ({
+                                        ...t,
+                                        category: 'Donations',
+                                        fundId: e.target.value
+                                    })));
+                                }
+                            }}
+                            className="px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer"
+                            defaultValue=""
+                        >
+                            <option value="">Assign to Campaign...</option>
+                            {funds.filter(f => f.type === 'Restricted').map(f => (
+                                <option key={f._id} value={f._id}>{f.name}</option>
+                            ))}
+                        </select>
+                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide">
+                            {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
+                        </button>
+                    </div>
                 </div>
                 <div className="overflow-y-auto flex-1 p-6">
                     <table className="w-full text-left ledger-table">

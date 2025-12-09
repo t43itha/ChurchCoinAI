@@ -97,7 +97,8 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_fund", ["fundId"])
     .index("by_donor", ["donorId"])
-    .index("by_organization_status", ["organizationId", "status"]),
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_donor_fund_amount", ["donorId", "fundId", "amount"]),
 
   // Transactions
   transactions: defineTable({

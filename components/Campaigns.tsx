@@ -1,18 +1,18 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Fund, Pledge, Transaction, AppUser, Donor } from '../types';
 import { reconcilePledges, generatePledgeCompletionMessage } from '../services/gemini';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy } from 'lucide-react';
+import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search } from 'lucide-react';
 
 interface CampaignsProps {
     funds: Fund[];
     pledges: Pledge[];
     transactions: Transaction[];
-    donors: Donor[]; 
+    donors: Donor[];
     onAddPledge: (p: Pledge) => void;
     onUpdatePledge: (p: Pledge) => void;
     onBulkAddPledges: (ps: Pledge[]) => void;
-    onBulkAddDonors: (ds: Donor[]) => void;
+    onBulkAddDonors: (ds: Donor[]) => Promise<{ id: string; name: string; isNew: boolean }[]>;
     onUpdateTransaction: (t: Transaction) => void;
     currentUser: AppUser;
 }
@@ -20,8 +20,17 @@ interface CampaignsProps {
 const COLORS = ['#6B8068', '#E5E0D8'];
 
 const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, donors, onAddPledge, onUpdatePledge, onBulkAddPledges, onBulkAddDonors, onUpdateTransaction, currentUser }) => {
-    const [selectedFundId, setSelectedFundId] = useState<string>(funds.find(f => f.type === 'Restricted')?.id || funds[0].id);
+    // Only show Restricted (campaign) funds
+    const campaignFunds = funds.filter(f => f.type === 'Restricted');
+    const [selectedFundId, setSelectedFundId] = useState<string>('');
     const [isReconciling, setIsReconciling] = useState(false);
+
+    // Set default selected fund when campaign funds are available
+    useEffect(() => {
+        if (campaignFunds.length > 0 && !selectedFundId) {
+            setSelectedFundId(campaignFunds[0]._id);
+        }
+    }, [campaignFunds, selectedFundId]);
     const [matches, setMatches] = useState<any[]>([]);
 
     // Completion / Thank You Logic
@@ -44,9 +53,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     const [showCsvMapper, setShowCsvMapper] = useState(false);
     const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
     const [csvRows, setCsvRows] = useState<string[][]>([]);
-    const [columnMapping, setColumnMapping] = useState({ 
-        donor: '', 
-        amount: '', 
+    const [columnMapping, setColumnMapping] = useState({
+        donor: '',
+        amount: '',
         frequency: '',
         email: '',
         phone: '',
@@ -56,14 +65,44 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+    // Import feedback state
+    const [importResult, setImportResult] = useState<{
+        show: boolean;
+        totalRows: number;
+        importedPledges: number;
+        importedDonors: number;
+        newDonors: number;
+        skippedRows: { row: number; reason: string }[];
+    } | null>(null);
 
-    const selectedFund = funds.find(f => f.id === selectedFundId);
-    const campaignPledges = pledges.filter(p => p.fundId === selectedFundId);
-    
+    const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+    const [pledgeSearch, setPledgeSearch] = useState('');
+
+    // Show empty state if no campaign funds exist
+    if (campaignFunds.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid animate-enter">
+                <div className="w-16 h-16 bg-grey-light rounded-2xl flex items-center justify-center mb-6 text-ledger">
+                    <Target size={32} />
+                </div>
+                <h2 className="text-lg font-bold text-ink font-mono mb-2">No Campaigns Yet</h2>
+                <p className="text-sm max-w-sm text-center mb-4">Create a Restricted fund in Settings to start tracking campaign pledges and donations.</p>
+                <p className="text-xs text-grey-mid">Go to Settings → Funds & Campaigns → Add Fund (Type: Restricted)</p>
+            </div>
+        );
+    }
+
+    // Get the selected fund, falling back to the first campaign fund if selectedFundId is not set or invalid
+    const selectedFund = campaignFunds.find(f => f._id === selectedFundId) || campaignFunds[0];
+    const currentFundId = selectedFund._id;
+    const campaignPledges = pledges.filter(p => p.fundId === currentFundId);
+    const filteredPledges = campaignPledges.filter(p =>
+        pledgeSearch === '' || p.donorName.toLowerCase().includes(pledgeSearch.toLowerCase())
+    );
+
     const totalPledged = campaignPledges.reduce((acc, p) => acc + p.amount, 0);
-    const totalCollected = transactions.filter(t => t.fundId === selectedFundId && t.type === 'Income').reduce((acc, t) => acc + t.amount, 0);
-    const target = selectedFund?.targetAmount || totalPledged * 1.2; 
+    const totalCollected = transactions.filter(t => t.fundId === currentFundId && t.type === 'Income').reduce((acc, t) => acc + t.amount, 0);
+    const target = selectedFund.targetAmount || totalPledged * 1.2;
     const percentComplete = Math.min((totalCollected / target) * 100, 100);
 
     const pieData = [{ name: 'Collected', value: totalCollected }, { name: 'Remaining', value: Math.max(0, target - totalCollected) }];
@@ -79,7 +118,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     };
 
     const handleConfirmMatch = (match: any) => {
-        const t = transactions.find(tr => tr.id === match.transactionId);
+        const t = transactions.find(tr => tr._id === match.transactionId);
         if (t) {
             onUpdateTransaction({
                 ...t,
@@ -97,7 +136,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     const handleThankDonor = async (pledge: Pledge) => {
         setThankYouModal({ isOpen: true, pledge, text: '', isGenerating: true });
         try {
-            const fundName = funds.find(f => f.id === pledge.fundId)?.name || 'Campaign';
+            const fundName = funds.find(f => f._id === pledge.fundId)?.name || 'Campaign';
             const text = await generatePledgeCompletionMessage(pledge.donorName, pledge.amount, fundName);
             setThankYouModal(prev => ({ ...prev, text: text || "Thank you for your generous support!", isGenerating: false }));
         } catch (e) {
@@ -107,7 +146,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
     const sendViaWhatsApp = () => {
         if (!thankYouModal.pledge) return;
-        const donor = donors.find(d => d.id === thankYouModal.pledge?.donorId);
+        const donor = donors.find(d => d._id === thankYouModal.pledge?.donorId);
         if (donor && donor.phone) {
             const cleanPhone = donor.phone.replace(/[^0-9]/g, '');
             // Simple robust check for UK international format
@@ -151,9 +190,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             const pledge: Pledge = {
                 id: Math.random().toString(36).substr(2, 9),
                 donorName: pledgeForm.donorName,
-                donorId: existingDonor?.id,
+                donorId: existingDonor?._id,
                 amount: Number(pledgeForm.amount),
-                fundId: selectedFundId,
+                fundId: currentFundId,
                 frequency: pledgeForm.frequency as any || 'Monthly',
                 startDate: pledgeForm.startDate || new Date().toISOString().split('T')[0],
                 endDate: pledgeForm.endDate,
@@ -206,11 +245,11 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const handleProcessImport = () => {
+    const handleProcessImport = async () => {
         const donorIdx = csvHeaders.indexOf(columnMapping.donor);
         const amountIdx = csvHeaders.indexOf(columnMapping.amount);
         const freqIdx = csvHeaders.indexOf(columnMapping.frequency);
-        
+
         // Optional indices
         const emailIdx = csvHeaders.indexOf(columnMapping.email);
         const phoneIdx = csvHeaders.indexOf(columnMapping.phone);
@@ -218,107 +257,176 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         const postcodeIdx = csvHeaders.indexOf(columnMapping.postcode);
         const commPrefIdx = csvHeaders.indexOf(columnMapping.commPref);
 
-        if (donorIdx === -1 || amountIdx === -1) {
-            alert("Donor Name and Amount columns are required.");
+        // Only donor name is required - amount is optional for outreach-only imports
+        if (donorIdx === -1) {
+            alert("Donor Name column is required.");
             return;
         }
 
         const newPledges: Pledge[] = [];
         const donorsToUpsert = new Map<string, Donor>(); // Key by ID
+        const skippedRows: { row: number; reason: string }[] = [];
+        const createdPledgeKeys = new Set<string>(); // Track pledges in this batch for duplicate detection
 
-        csvRows.forEach(row => {
-            const donorName = row[donorIdx];
-            let amountStr = row[amountIdx] || '0';
-            amountStr = amountStr.replace(/[£$,]/g, '');
-            const amount = parseFloat(amountStr);
-            const freqRaw = freqIdx !== -1 ? row[freqIdx] : 'Monthly';
-            
+        csvRows.forEach((row, rowIndex) => {
+            const donorName = row[donorIdx]?.trim();
+
+            // Skip rows with empty donor name
+            if (!donorName) {
+                skippedRows.push({ row: rowIndex + 2, reason: 'Empty donor name' }); // +2 for header row and 1-based
+                return;
+            }
+
+            // Parse amount - default to 0 if not provided or invalid
+            let amount = 0;
+            if (amountIdx !== -1) {
+                let amountStr = row[amountIdx] || '0';
+                amountStr = amountStr.replace(/[£$,]/g, '');
+                const parsed = parseFloat(amountStr);
+                amount = isNaN(parsed) ? 0 : parsed;
+            }
+
+            const freqRaw = freqIdx !== -1 ? row[freqIdx] : 'One-off';
+
             // Normalize frequency
             let frequency: any = 'One-off';
-            if (freqRaw.toLowerCase().includes('month')) frequency = 'Monthly';
-            else if (freqRaw.toLowerCase().includes('week')) frequency = 'Weekly';
-            else if (freqRaw.toLowerCase().includes('year') || freqRaw.toLowerCase().includes('ann')) frequency = 'Annual';
+            if (freqRaw && freqRaw.toLowerCase().includes('month')) frequency = 'Monthly';
+            else if (freqRaw && freqRaw.toLowerCase().includes('week')) frequency = 'Weekly';
+            else if (freqRaw && (freqRaw.toLowerCase().includes('year') || freqRaw.toLowerCase().includes('ann'))) frequency = 'Annual';
 
-            if (donorName && amount > 0) {
-                // Check if donor exists in current database OR in the upsert map we are building
-                const existingDonor = donors.find(d => d.name.toLowerCase() === donorName.toLowerCase());
-                
-                let donorId = existingDonor?.id;
-                let donorObj: Donor;
+            // Check if donor exists in current database OR in the upsert map we are building
+            const existingDonor = donors.find(d => d.name.toLowerCase() === donorName.toLowerCase());
 
-                // Extract optional details
-                const email = emailIdx !== -1 ? row[emailIdx] : undefined;
-                const phone = phoneIdx !== -1 ? row[phoneIdx] : undefined;
-                const address = addressIdx !== -1 ? row[addressIdx] : undefined;
-                const postcode = postcodeIdx !== -1 ? row[postcodeIdx] : undefined;
-                const commPrefRaw = commPrefIdx !== -1 ? row[commPrefIdx] : undefined;
-                
-                let commPref: 'Email'|'Post'|'Phone' | undefined;
-                if (commPrefRaw) {
-                    const c = commPrefRaw.toLowerCase();
-                    if (c.includes('email')) commPref = 'Email';
-                    else if (c.includes('post') || c.includes('mail')) commPref = 'Post';
-                    else if (c.includes('phone')) commPref = 'Phone';
+            // --- DUPLICATE PLEDGE DETECTION ---
+            // Check against existing pledges in database (by donorId or donorName + fundId + amount)
+            const existingDuplicate = pledges.find(p => {
+                if (existingDonor && p.donorId === existingDonor._id) {
+                    return p.fundId === currentFundId && p.amount === amount;
                 }
-
-                if (existingDonor) {
-                    donorId = existingDonor.id;
-                    // Update existing with new info if present
-                    donorObj = {
-                        ...existingDonor,
-                        email: email || existingDonor.email,
-                        phone: phone || existingDonor.phone,
-                        address: address || existingDonor.address,
-                        postcode: postcode || existingDonor.postcode,
-                        communicationPreference: commPref || existingDonor.communicationPreference
-                    };
-                } else {
-                    // Check if we already created a donor for this name in this batch
-                    const foundInBatch = Array.from(donorsToUpsert.values()).find(d => d.name.toLowerCase() === donorName.toLowerCase());
-                    if (foundInBatch) {
-                        donorId = foundInBatch.id;
-                        donorObj = { ...foundInBatch }; // Use already created object
-                    } else {
-                        // Create New
-                        donorId = Math.random().toString(36).substr(2, 9);
-                        donorObj = {
-                            id: donorId,
-                            name: donorName,
-                            type: 'Individual',
-                            email,
-                            phone,
-                            address,
-                            postcode,
-                            communicationPreference: commPref,
-                            isGiftAidActive: false // Default to false for imports unless mapped
-                        };
-                    }
+                if (!existingDonor && p.donorName.toLowerCase() === donorName.toLowerCase()) {
+                    return p.fundId === currentFundId && p.amount === amount;
                 }
-                
-                // Add to upsert map (will overwrite previous entry for same ID, effectively merging last wins if duplicate rows for same donor)
-                donorsToUpsert.set(donorId!, donorObj);
+                return false;
+            });
 
-                newPledges.push({
-                    id: Math.random().toString(36).substr(2, 9),
-                    donorName,
-                    donorId: donorId, // Link to the donor
-                    amount,
-                    fundId: selectedFundId,
-                    frequency,
-                    startDate: new Date().toISOString().split('T')[0],
-                    status: 'Active'
-                });
+            if (existingDuplicate) {
+                skippedRows.push({ row: rowIndex + 2, reason: `Duplicate pledge exists (${donorName}, £${amount})` });
+                return;
             }
+
+            // Check for duplicates within this import batch
+            const batchKey = `${donorName.toLowerCase()}|${currentFundId}|${amount}`;
+            if (createdPledgeKeys.has(batchKey)) {
+                skippedRows.push({ row: rowIndex + 2, reason: `Duplicate in CSV batch (${donorName}, £${amount})` });
+                return;
+            }
+            createdPledgeKeys.add(batchKey);
+
+            // Only use Convex _id for existing donors, undefined for new donors
+            let convexDonorId: string | undefined = existingDonor?._id;
+            let localDonorKey: string; // Key for the local upsert map
+            let donorObj: Donor;
+
+            // Extract optional details
+            const email = emailIdx !== -1 ? row[emailIdx] : undefined;
+            const phone = phoneIdx !== -1 ? row[phoneIdx] : undefined;
+            const address = addressIdx !== -1 ? row[addressIdx] : undefined;
+            const postcode = postcodeIdx !== -1 ? row[postcodeIdx] : undefined;
+            const commPrefRaw = commPrefIdx !== -1 ? row[commPrefIdx] : undefined;
+
+            let commPref: 'Email' | 'Post' | 'Phone' | undefined;
+            if (commPrefRaw) {
+                const c = commPrefRaw.toLowerCase();
+                if (c.includes('email')) commPref = 'Email';
+                else if (c.includes('post') || c.includes('mail')) commPref = 'Post';
+                else if (c.includes('phone')) commPref = 'Phone';
+            }
+
+            if (existingDonor) {
+                convexDonorId = existingDonor._id;
+                localDonorKey = existingDonor._id;
+                // Update existing with new info if present
+                donorObj = {
+                    ...existingDonor,
+                    email: email || existingDonor.email,
+                    phone: phone || existingDonor.phone,
+                    address: address || existingDonor.address,
+                    postcode: postcode || existingDonor.postcode,
+                    communicationPreference: commPref || existingDonor.communicationPreference
+                };
+            } else {
+                // Check if we already created a donor for this name in this batch
+                const foundInBatch = Array.from(donorsToUpsert.values()).find(d => d.name.toLowerCase() === donorName.toLowerCase());
+                if (foundInBatch) {
+                    // Use existing batch entry, but don't set convexDonorId (it's a new donor)
+                    localDonorKey = foundInBatch.id;
+                    donorObj = { ...foundInBatch };
+                } else {
+                    // Create New - generate temp ID for local tracking only
+                    localDonorKey = Math.random().toString(36).substr(2, 9);
+                    donorObj = {
+                        id: localDonorKey,  // Local temp ID - will be replaced by Convex _id on save
+                        name: donorName,
+                        type: 'Individual',
+                        email,
+                        phone,
+                        address,
+                        postcode,
+                        communicationPreference: commPref,
+                        isGiftAidActive: false // Default to false for imports unless mapped
+                    };
+                }
+                // New donors don't have a valid Convex ID yet
+                convexDonorId = undefined;
+            }
+
+            // Add to upsert map (will overwrite previous entry for same ID, effectively merging last wins if duplicate rows for same donor)
+            donorsToUpsert.set(localDonorKey, donorObj);
+
+            newPledges.push({
+                id: Math.random().toString(36).substr(2, 9),
+                donorName,
+                donorId: convexDonorId, // Only set for existing donors with valid Convex ID
+                amount,
+                fundId: currentFundId,
+                frequency,
+                startDate: new Date().toISOString().split('T')[0],
+                status: 'Active'
+            });
         });
 
+        // First, create/update donors and get their real Convex IDs
+        let donorIdMap = new Map<string, string>(); // Map donor name to Convex ID
+        let newDonorCount = 0;
+
         if (donorsToUpsert.size > 0) {
-            onBulkAddDonors(Array.from(donorsToUpsert.values()));
+            const donorResults = await onBulkAddDonors(Array.from(donorsToUpsert.values()));
+            // Build a map of donor name -> Convex ID
+            for (const result of donorResults) {
+                donorIdMap.set(result.name.toLowerCase(), result.id);
+                if (result.isNew) newDonorCount++;
+            }
         }
-        
+
+        // Now update pledges with real donor IDs and create them
         if (newPledges.length > 0) {
-            onBulkAddPledges(newPledges);
+            const linkedPledges = newPledges.map(pledge => ({
+                ...pledge,
+                donorId: donorIdMap.get(pledge.donorName.toLowerCase()) || pledge.donorId
+            }));
+            onBulkAddPledges(linkedPledges);
         }
-        
+
+        // Show import results
+        setImportResult({
+            show: true,
+            totalRows: csvRows.length,
+            importedPledges: newPledges.length,
+            importedDonors: donorsToUpsert.size,
+            newDonors: newDonorCount,
+            skippedRows
+        });
+
         setShowCsvMapper(false);
     };
 
@@ -332,13 +440,13 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 <div className="flex items-center gap-3">
                     <div className="bg-white border border-ledger rounded-md px-3 py-2 flex items-center gap-2 shadow-sm">
                         <Target size={14} className="text-grey-mid"/>
-                        <select 
+                        <select
                             className="text-sm font-bold text-grey-dark outline-none bg-transparent cursor-pointer min-w-[150px]"
-                            value={selectedFundId}
+                            value={currentFundId}
                             onChange={(e) => setSelectedFundId(e.target.value)}
                         >
-                            {funds.filter(f => f.type === 'Restricted' || f.type === 'Designated').map(f => (
-                                <option key={f.id} value={f.id}>{f.name}</option>
+                            {campaignFunds.map(f => (
+                                <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
                     </div>
@@ -406,6 +514,16 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                         <div className="flex items-center gap-3">
                             <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
                             <span className="text-[10px] bg-ledger text-grey-dark px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
+                            <div className="relative ml-2">
+                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-grey-mid" />
+                                <input
+                                    type="text"
+                                    placeholder="Search donors..."
+                                    value={pledgeSearch}
+                                    onChange={(e) => setPledgeSearch(e.target.value)}
+                                    className="pl-8 pr-3 py-1.5 text-xs border border-ledger rounded-md bg-white focus:ring-1 focus:ring-ink outline-none w-40"
+                                />
+                            </div>
                         </div>
                         {canEdit ? (
                             <div className="flex gap-2">
@@ -448,9 +566,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </h4>
                             <div className="space-y-3">
                                 {matches.map((m, i) => {
-                                    const txn = transactions.find(t => t.id === m.transactionId);
-                                    if (!txn) return null;
-                                    
+                                    const txn = transactions.find(t => t._id === m.transactionId);
+                                    if (!txn) return <div key={i} style={{display: 'none'}} />;
+
                                     return (
                                         <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-3 rounded border border-sage/30 shadow-sm gap-3">
                                             <div className="flex flex-col gap-1">
@@ -491,8 +609,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </tr>
                             </thead>
                             <tbody>
-                                {campaignPledges.map((pledge) => (
-                                    <tr key={pledge.id} className="hover:bg-paper transition-colors group border-b border-grey-light last:border-0">
+                                {filteredPledges.map((pledge) => (
+                                    <tr key={pledge._id} className="hover:bg-paper transition-colors group border-b border-grey-light last:border-0">
                                         <td className="px-6 py-4 pl-6 font-medium text-ink text-sm">{pledge.donorName}</td>
                                         <td className="px-6 py-4 text-grey-mid text-xs">{pledge.frequency}</td>
                                         <td className="px-6 py-4 text-sage font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
@@ -524,10 +642,10 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                         </td>
                                     </tr>
                                 ))}
-                                {campaignPledges.length === 0 && (
+                                {filteredPledges.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-12 text-center text-grey-mid text-sm">
-                                            No pledges recorded for this campaign yet.
+                                            {pledgeSearch ? `No pledges matching "${pledgeSearch}"` : 'No pledges recorded for this campaign yet.'}
                                         </td>
                                     </tr>
                                 )}
@@ -726,9 +844,12 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </button>
                         </div>
                         <div className="p-6 space-y-6">
-                             <div className="bg-sage-light p-4 rounded-lg border border-sage/30 mb-4 flex justify-between items-center">
+                            <div className="bg-sage-light p-4 rounded-lg border border-sage/30 mb-4 flex justify-between items-center">
                                 <p className="text-xs text-sage-dark">
-                                    Importing <strong>{csvRows.length}</strong> pledges into <strong>{selectedFund?.name}</strong>.
+                                    <strong>{csvRows.length}</strong> rows found • Importing into <strong>{selectedFund?.name}</strong>
+                                </p>
+                                <p className="text-[10px] text-sage-dark/70">
+                                    Donors with same name will be merged
                                 </p>
                             </div>
 
@@ -745,9 +866,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Amount *</label>
-                                    <select 
-                                        value={columnMapping.amount} 
+                                    <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Amount</label>
+                                    <select
+                                        value={columnMapping.amount}
                                         onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
                                         className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
                                     >
@@ -845,6 +966,78 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
                                 <button onClick={handleProcessImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                                     Import Data <ArrowRight size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Import Results Modal */}
+            {importResult?.show && (
+                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-md animate-enter border border-ledger">
+                        <div className="p-4 border-b border-ledger flex justify-between items-center bg-sage-light rounded-t-lg">
+                            <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
+                                <Check size={16} /> Import Complete
+                            </h3>
+                            <button onClick={() => setImportResult(null)} className="text-grey-mid hover:text-grey-dark">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            {/* Summary Stats */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-paper p-3 rounded-lg border border-ledger text-center">
+                                    <div className="text-2xl font-bold text-ink font-mono">{importResult.importedPledges}</div>
+                                    <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Pledges Imported</div>
+                                </div>
+                                <div className="bg-paper p-3 rounded-lg border border-ledger text-center">
+                                    <div className="text-2xl font-bold text-ink font-mono">{importResult.importedDonors}</div>
+                                    <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Unique Donors</div>
+                                </div>
+                                <div className="bg-sage-light p-3 rounded-lg border border-sage/30 text-center">
+                                    <div className="text-2xl font-bold text-sage-dark font-mono">{importResult.newDonors}</div>
+                                    <div className="text-[10px] font-bold text-sage-dark uppercase tracking-wide">New Donors</div>
+                                </div>
+                                <div className="bg-paper p-3 rounded-lg border border-ledger text-center">
+                                    <div className="text-2xl font-bold text-grey-mid font-mono">{importResult.importedDonors - importResult.newDonors}</div>
+                                    <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Existing Updated</div>
+                                </div>
+                            </div>
+
+                            {/* Skipped Rows */}
+                            {importResult.skippedRows.length > 0 && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    <div className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-2">
+                                        {importResult.skippedRows.length} Rows Skipped
+                                    </div>
+                                    <div className="max-h-32 overflow-y-auto space-y-1">
+                                        {importResult.skippedRows.slice(0, 10).map((skip, i) => (
+                                            <div key={i} className="text-xs text-amber-700">
+                                                Row {skip.row}: {skip.reason}
+                                            </div>
+                                        ))}
+                                        {importResult.skippedRows.length > 10 && (
+                                            <div className="text-xs text-amber-600 italic">
+                                                ...and {importResult.skippedRows.length - 10} more
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Total processed info */}
+                            <div className="text-xs text-grey-mid text-center pt-2 border-t border-ledger">
+                                Processed {importResult.totalRows} total rows from CSV
+                            </div>
+
+                            <div className="flex justify-center pt-2">
+                                <button
+                                    onClick={() => setImportResult(null)}
+                                    className="btn-primary px-6 py-2 font-bold uppercase text-xs tracking-wide"
+                                >
+                                    Done
                                 </button>
                             </div>
                         </div>

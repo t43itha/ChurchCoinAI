@@ -214,7 +214,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
                    <table className="w-full text-left">
                        <tbody>
                            {priorityFunds.map(f => (
-                               <tr key={f.id} className="border-b border-ledger last:border-0 hover:bg-amber-light transition-colors">
+                               <tr key={f._id} className="border-b border-ledger last:border-0 hover:bg-amber-light transition-colors">
                                    <td className="px-6 py-4">
                                        <div className="font-bold text-ink text-sm">{f.name}</div>
                                        <div className="text-[10px] text-grey-mid uppercase tracking-wide mt-0.5">{f.type}</div>
@@ -253,8 +253,8 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
                </div>
             )}
 
-            {insights.map((insight, idx) => (
-              <div key={idx} className="p-6 hover:bg-amber-light transition-colors group">
+            {insights.map((insight) => (
+              <div key={insight.id} className="p-6 hover:bg-amber-light transition-colors group">
                  <div className="flex items-center gap-2 mb-3">
                     {insight.type === 'warning' && <AlertCircle className="text-error" size={16} />}
                     {insight.type === 'success' && <TrendingUp className="text-sage" size={16} />}

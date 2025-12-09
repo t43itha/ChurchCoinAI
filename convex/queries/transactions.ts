@@ -1,4 +1,5 @@
 import { query } from "../_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
 
@@ -20,25 +21,19 @@ export const list = query({
   },
 });
 
-// Get transactions with pagination
+// Get transactions with pagination (for usePaginatedQuery hook)
 export const listPaginated = query({
-  args: {
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.string()),
-  },
+  args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    const limit = args.limit ?? 50;
 
-    const result = await ctx.db
+    return await ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
       )
       .order("desc")
-      .paginate({ numItems: limit, cursor: args.cursor ?? null });
-
-    return result;
+      .paginate(args.paginationOpts);
   },
 });
 
@@ -242,6 +237,30 @@ export const aggregateByCategory = query({
       category,
       total,
     }));
+  },
+});
+
+// Get unlinked income transactions (for Smart Link AI)
+export const listUnlinkedIncome = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("type"), "Income"),
+          q.eq(q.field("pledgeId"), undefined)
+        )
+      )
+      .order("desc")
+      .collect();
+
+    return transactions;
   },
 });
 

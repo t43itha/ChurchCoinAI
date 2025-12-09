@@ -3,6 +3,7 @@ import { useUser, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "./convex/_generated/api";
 import { Id } from "./convex/_generated/dataModel";
+import { Donor, Pledge, Fund, ChurchDetails, AppUser, UserRole, Transaction } from "./types";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -63,13 +64,48 @@ function App() {
     hasUser ? {} : "skip"
   );
   const categories = useQuery(
-    api.queries.categories.list,
+    api.queries.categories.listWithDetails,
     hasUser ? {} : "skip"
   );
   const users = useQuery(
     api.queries.users.listByOrganization,
     hasUser ? {} : "skip"
   );
+
+  // ============ MUTATIONS ============
+
+  // Donor mutations
+  const createDonor = useMutation(api.mutations.donors.create);
+  const updateDonor = useMutation(api.mutations.donors.update);
+  const removeDonor = useMutation(api.mutations.donors.remove);
+  const bulkUpsertDonors = useMutation(api.mutations.donors.bulkUpsert);
+  const linkOrphanedRecords = useMutation(api.mutations.donors.linkOrphanedRecords);
+
+  // Pledge mutations
+  const createPledge = useMutation(api.mutations.pledges.create);
+  const updatePledge = useMutation(api.mutations.pledges.update);
+  const removePledge = useMutation(api.mutations.pledges.remove);
+  const bulkCreatePledges = useMutation(api.mutations.pledges.bulkCreate);
+
+  // Fund mutations
+  const createFund = useMutation(api.mutations.funds.create);
+  const updateFund = useMutation(api.mutations.funds.update);
+  const removeFund = useMutation(api.mutations.funds.remove);
+
+  // Category mutations
+  const createCategory = useMutation(api.mutations.categories.create);
+  const removeCategory = useMutation(api.mutations.categories.remove);
+
+  // User mutations
+  const inviteUser = useMutation(api.mutations.users.invite);
+  const updateUserRole = useMutation(api.mutations.users.updateRole);
+  const removeUser = useMutation(api.mutations.users.remove);
+
+  // Organization mutations
+  const updateOrganization = useMutation(api.mutations.organizations.update);
+
+  // Transaction mutations (for linking to pledges)
+  const updateTransaction = useMutation(api.mutations.transactions.update);
 
   // UI State (local only)
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -139,7 +175,7 @@ function App() {
   };
 
   // Map organization details for backwards compatibility
-  const churchDetails = {
+  const churchDetails: ChurchDetails = {
     name: organization.name,
     charityNumber: organization.charityNumber,
     address: organization.address,
@@ -147,6 +183,289 @@ function App() {
     website: organization.website,
     reportingPeriod: organization.reportingPeriod,
     logoUrl: organization.logoUrl,
+  };
+
+  // ============ HANDLER FUNCTIONS ============
+
+  // Donor handlers
+  const handleAddDonor = async (donor: Donor) => {
+    try {
+      await createDonor({
+        name: donor.name,
+        email: donor.email,
+        phone: donor.phone,
+        address: donor.address,
+        postcode: donor.postcode,
+        notes: donor.notes,
+        type: donor.type,
+        isGiftAidActive: donor.isGiftAidActive,
+        communicationPreference: donor.communicationPreference,
+      });
+      showNotification("Donor Added", `${donor.name} has been added successfully.`);
+    } catch (error) {
+      console.error("Failed to add donor:", error);
+      showNotification("Error", "Failed to add donor. Please try again.");
+    }
+  };
+
+  const handleUpdateDonor = async (donor: Donor) => {
+    try {
+      await updateDonor({
+        donorId: (donor._id || donor.id) as Id<"donors">,
+        name: donor.name,
+        email: donor.email,
+        phone: donor.phone,
+        address: donor.address,
+        postcode: donor.postcode,
+        notes: donor.notes,
+        type: donor.type,
+        isGiftAidActive: donor.isGiftAidActive,
+        communicationPreference: donor.communicationPreference,
+      });
+      showNotification("Donor Updated", `${donor.name} has been updated.`);
+    } catch (error) {
+      console.error("Failed to update donor:", error);
+      showNotification("Error", "Failed to update donor. Please try again.");
+    }
+  };
+
+  const handleLinkOrphanedRecords = async (donorId: string, oldName: string) => {
+    try {
+      const result = await linkOrphanedRecords({
+        donorId: donorId as Id<"donors">,
+        oldName,
+      });
+      showNotification(
+        "Records Linked",
+        `Linked ${result.linkedTransactions} transactions and ${result.linkedPledges} pledges.`
+      );
+      return result;
+    } catch (error) {
+      console.error("Failed to link records:", error);
+      showNotification("Error", "Failed to link records. Please try again.");
+      return { linkedTransactions: 0, linkedPledges: 0 };
+    }
+  };
+
+  // Pledge handlers
+  const handleAddPledge = async (pledge: Pledge) => {
+    try {
+      await createPledge({
+        donorId: pledge.donorId ? pledge.donorId as Id<"donors"> : undefined,
+        donorName: pledge.donorName,
+        amount: pledge.amount,
+        fundId: pledge.fundId as Id<"funds">,
+        frequency: pledge.frequency,
+        startDate: pledge.startDate,
+        endDate: pledge.endDate,
+        status: pledge.status,
+      });
+      showNotification("Pledge Added", `Pledge from ${pledge.donorName} has been recorded.`);
+    } catch (error) {
+      console.error("Failed to add pledge:", error);
+      showNotification("Error", "Failed to add pledge. Please try again.");
+    }
+  };
+
+  const handleUpdatePledge = async (pledge: Pledge) => {
+    try {
+      await updatePledge({
+        pledgeId: pledge.id as Id<"pledges">,
+        donorId: pledge.donorId ? pledge.donorId as Id<"donors"> : undefined,
+        donorName: pledge.donorName,
+        amount: pledge.amount,
+        fundId: pledge.fundId as Id<"funds">,
+        frequency: pledge.frequency,
+        startDate: pledge.startDate,
+        endDate: pledge.endDate,
+        status: pledge.status,
+      });
+      showNotification("Pledge Updated", `Pledge from ${pledge.donorName} has been updated.`);
+    } catch (error) {
+      console.error("Failed to update pledge:", error);
+      showNotification("Error", "Failed to update pledge. Please try again.");
+    }
+  };
+
+  const handleBulkAddPledges = async (pledgesToAdd: Pledge[]) => {
+    try {
+      const formattedPledges = pledgesToAdd.map(p => ({
+        donorId: p.donorId ? p.donorId as Id<"donors"> : undefined,
+        donorName: p.donorName,
+        amount: p.amount,
+        fundId: p.fundId as Id<"funds">,
+        frequency: p.frequency,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        status: p.status,
+      }));
+      const result = await bulkCreatePledges({ pledges: formattedPledges });
+      showNotification("Pledges Imported", `${result.count} pledges have been imported.`);
+    } catch (error) {
+      console.error("Failed to bulk add pledges:", error);
+      showNotification("Error", "Failed to import pledges. Please try again.");
+    }
+  };
+
+  const handleBulkAddDonors = async (donorsToAdd: Donor[]): Promise<{ id: string; name: string; isNew: boolean }[]> => {
+    try {
+      const formattedDonors = donorsToAdd.map(d => ({
+        name: d.name,
+        email: d.email,
+        phone: d.phone,
+        address: d.address,
+        postcode: d.postcode,
+        type: d.type,
+        isGiftAidActive: d.isGiftAidActive,
+      }));
+      const result = await bulkUpsertDonors({ donors: formattedDonors });
+      const newCount = result.filter(r => r.isNew).length;
+      const updatedCount = result.filter(r => !r.isNew).length;
+      showNotification("Donors Imported", `${newCount} new donors added, ${updatedCount} updated.`);
+      return result; // Return results so caller can link pledges
+    } catch (error) {
+      console.error("Failed to bulk add donors:", error);
+      showNotification("Error", "Failed to import donors. Please try again.");
+      return [];
+    }
+  };
+
+  // Transaction handler (for linking to pledges)
+  const handleUpdateTransaction = async (transaction: Transaction) => {
+    try {
+      await updateTransaction({
+        transactionId: transaction.id as Id<"transactions">,
+        pledgeId: transaction.pledgeId ? transaction.pledgeId as Id<"pledges"> : undefined,
+        donorId: transaction.donorId ? transaction.donorId as Id<"donors"> : undefined,
+        donorName: transaction.donorName,
+      });
+    } catch (error) {
+      console.error("Failed to update transaction:", error);
+      showNotification("Error", "Failed to update transaction. Please try again.");
+    }
+  };
+
+  // Fund handlers
+  const handleAddFund = async (fund: Fund) => {
+    try {
+      await createFund({
+        name: fund.name,
+        type: fund.type,
+        description: fund.description,
+        targetAmount: fund.targetAmount,
+        deadline: fund.deadline,
+        logoUrl: fund.logoUrl,
+      });
+      showNotification("Fund Created", `${fund.name} has been created.`);
+    } catch (error) {
+      console.error("Failed to add fund:", error);
+      showNotification("Error", "Failed to create fund. Please try again.");
+    }
+  };
+
+  const handleUpdateFund = async (fund: Fund) => {
+    try {
+      await updateFund({
+        fundId: fund.id as Id<"funds">,
+        name: fund.name,
+        type: fund.type,
+        description: fund.description,
+        targetAmount: fund.targetAmount,
+        deadline: fund.deadline,
+        logoUrl: fund.logoUrl,
+      });
+      showNotification("Fund Updated", `${fund.name} has been updated.`);
+    } catch (error) {
+      console.error("Failed to update fund:", error);
+      showNotification("Error", "Failed to update fund. Please try again.");
+    }
+  };
+
+  const handleRemoveFund = async (fundId: string) => {
+    try {
+      await removeFund({ fundId: fundId as Id<"funds"> });
+      showNotification("Fund Deleted", "The fund has been deleted.");
+    } catch (error: any) {
+      console.error("Failed to remove fund:", error);
+      showNotification("Error", error.message || "Failed to delete fund. Please try again.");
+    }
+  };
+
+  // Category handlers
+  const handleAddCategory = async (categoryName: string) => {
+    try {
+      await createCategory({ name: categoryName });
+      showNotification("Category Added", `"${categoryName}" has been added.`);
+    } catch (error: any) {
+      console.error("Failed to add category:", error);
+      showNotification("Error", error.message || "Failed to add category. Please try again.");
+    }
+  };
+
+  const handleRemoveCategory = async (categoryName: string) => {
+    // Find the category ID from the categories list
+    const category = categories?.find(c => c.name === categoryName);
+    if (!category) {
+      showNotification("Error", "Category not found.");
+      return;
+    }
+    try {
+      await removeCategory({ categoryId: category._id });
+      showNotification("Category Removed", `"${categoryName}" has been removed.`);
+    } catch (error: any) {
+      console.error("Failed to remove category:", error);
+      showNotification("Error", error.message || "Failed to remove category. Please try again.");
+    }
+  };
+
+  // User handlers
+  const handleAddUser = async (user: AppUser) => {
+    try {
+      // Note: In a real app, you'd need to get the Clerk ID for the user
+      // For now, we'll use their email as a placeholder clerkId
+      await inviteUser({
+        clerkId: user.email, // This should be the actual Clerk ID in production
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      });
+      showNotification("User Invited", `${user.name} has been added to the organization.`);
+    } catch (error: any) {
+      console.error("Failed to add user:", error);
+      showNotification("Error", error.message || "Failed to add user. Please try again.");
+    }
+  };
+
+  const handleUpdateUserRole = async (userId: string, newRole: UserRole) => {
+    try {
+      await updateUserRole({
+        userId: userId as Id<"users">,
+        role: newRole,
+      });
+      showNotification("Role Updated", "User role has been updated.");
+    } catch (error: any) {
+      console.error("Failed to update user role:", error);
+      showNotification("Error", error.message || "Failed to update user role. Please try again.");
+    }
+  };
+
+  // Church details handler
+  const handleUpdateChurchDetails = async (details: ChurchDetails) => {
+    try {
+      await updateOrganization({
+        name: details.name,
+        charityNumber: details.charityNumber,
+        address: details.address,
+        email: details.email,
+        website: details.website,
+        reportingPeriod: details.reportingPeriod,
+        logoUrl: details.logoUrl,
+      });
+      showNotification("Organization Updated", "Organization details have been saved.");
+    } catch (error) {
+      console.error("Failed to update organization:", error);
+      showNotification("Error", "Failed to update organization. Please try again.");
+    }
   };
 
   // Render main content based on active tab
@@ -162,7 +481,6 @@ function App() {
       case "transactions":
         return (
           <TransactionManager
-            transactions={transactions ?? []}
             funds={funds ?? []}
             pledges={pledges ?? []}
             categories={categories ?? []}
@@ -170,7 +488,7 @@ function App() {
             initialFundId={transactionFilterFundId}
             onPledgeCompleted={(donorName, amount) =>
               showNotification(
-                "Pledge Fulfilled! 🎉",
+                "Pledge Fulfilled!",
                 `${donorName} has completed their goal of £${amount.toLocaleString()}.`
               )
             }
@@ -191,6 +509,11 @@ function App() {
             transactions={transactions ?? []}
             pledges={pledges ?? []}
             funds={funds ?? []}
+            onAddDonor={handleAddDonor}
+            onUpdateDonor={handleUpdateDonor}
+            onAddPledge={handleAddPledge}
+            onUpdatePledge={handleUpdatePledge}
+            onUpdateTransaction={handleUpdateTransaction}
             currentUser={currentUser}
             churchDetails={churchDetails}
           />
@@ -202,10 +525,15 @@ function App() {
             pledges={pledges ?? []}
             transactions={transactions ?? []}
             donors={donors ?? []}
+            onAddPledge={handleAddPledge}
+            onUpdatePledge={handleUpdatePledge}
+            onBulkAddPledges={handleBulkAddPledges}
+            onBulkAddDonors={handleBulkAddDonors}
+            onUpdateTransaction={handleUpdateTransaction}
             currentUser={currentUser}
             onPledgeCompleted={(donorName, amount) =>
               showNotification(
-                "Pledge Fulfilled! 🎉",
+                "Pledge Fulfilled!",
                 `${donorName} has completed their goal of £${amount.toLocaleString()}.`
               )
             }
@@ -232,9 +560,17 @@ function App() {
           <Settings
             currentUser={currentUser}
             users={users ?? []}
-            categories={categories ?? []}
+            categories={categories?.map(c => c.name) ?? []}
             funds={funds ?? []}
             churchDetails={churchDetails}
+            onUpdateUserRole={handleUpdateUserRole}
+            onAddCategory={handleAddCategory}
+            onRemoveCategory={handleRemoveCategory}
+            onAddUser={handleAddUser}
+            onUpdateChurchDetails={handleUpdateChurchDetails}
+            onAddFund={handleAddFund}
+            onUpdateFund={handleUpdateFund}
+            onRemoveFund={handleRemoveFund}
           />
         );
       default:

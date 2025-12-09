@@ -145,6 +145,22 @@ export const bulkCreate = mutation({
         throw new Error(`Invalid fund: ${pledge.fundId}`);
       }
 
+      // Check for duplicate pledge (donorId + fundId + amount)
+      if (pledge.donorId) {
+        const existingPledge = await ctx.db
+          .query("pledges")
+          .withIndex("by_donor_fund_amount", (q) =>
+            q.eq("donorId", pledge.donorId!)
+              .eq("fundId", pledge.fundId)
+              .eq("amount", pledge.amount)
+          )
+          .first();
+
+        if (existingPledge) {
+          continue; // Skip duplicate
+        }
+      }
+
       const pledgeId = await ctx.db.insert("pledges", {
         organizationId: user.organizationId,
         donorId: pledge.donorId,
@@ -279,5 +295,82 @@ export const remove = mutation({
     await ctx.db.delete(args.pledgeId);
 
     return args.pledgeId;
+  },
+});
+
+// Cleanup duplicate pledges (keeps oldest, deletes newer duplicates)
+// Duplicates are identified by: donorId + fundId + amount
+// Internal version for CLI use - pass organizationId directly
+export const cleanupDuplicates = internalMutation({
+  args: {
+    organizationId: v.optional(v.id("organizations")),
+  },
+  handler: async (ctx, args) => {
+    // If no org specified, get all orgs and process each
+    let orgIds: Id<"organizations">[] = [];
+
+    if (args.organizationId) {
+      orgIds = [args.organizationId];
+    } else {
+      const orgs = await ctx.db.query("organizations").collect();
+      orgIds = orgs.map(o => o._id);
+    }
+
+    let totalDeleted = 0;
+    const allDeletedIds: string[] = [];
+
+    for (const orgId of orgIds) {
+      // Get all pledges for this organization
+      const allPledges = await ctx.db
+        .query("pledges")
+        .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
+        .collect();
+
+      // Group by donorId + fundId + amount
+      const groups = new Map<string, typeof allPledges>();
+
+      for (const pledge of allPledges) {
+        // Use donorId if available, otherwise use donorName
+        const donorKey = pledge.donorId ?? pledge.donorName.toLowerCase();
+        const key = `${donorKey}|${pledge.fundId}|${pledge.amount}`;
+
+        if (!groups.has(key)) {
+          groups.set(key, []);
+        }
+        groups.get(key)!.push(pledge);
+      }
+
+      // Find and delete duplicates (keep the oldest by createdAt)
+      for (const [, pledges] of groups) {
+        if (pledges.length > 1) {
+          // Sort by createdAt ascending (oldest first)
+          pledges.sort((a, b) => a.createdAt - b.createdAt);
+
+          // Keep the first (oldest), delete the rest
+          const toDelete = pledges.slice(1);
+
+          for (const pledge of toDelete) {
+            // Unlink any transactions from this pledge before deleting
+            const linkedTransactions = await ctx.db
+              .query("transactions")
+              .withIndex("by_pledge", (q) => q.eq("pledgeId", pledge._id))
+              .collect();
+
+            for (const t of linkedTransactions) {
+              await ctx.db.patch(t._id, { pledgeId: undefined });
+            }
+
+            await ctx.db.delete(pledge._id);
+            allDeletedIds.push(pledge._id);
+            totalDeleted++;
+          }
+        }
+      }
+    }
+
+    return {
+      duplicatesDeleted: totalDeleted,
+      deletedIds: allDeletedIds,
+    };
   },
 });

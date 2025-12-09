@@ -16,11 +16,11 @@ interface DonorManagerProps {
   onUpdatePledge: (p: Pledge) => void;
   onUpdateTransaction: (t: Transaction) => void;
   currentUser: AppUser;
-  churchDetails?: ChurchDetails; 
+  churchDetails?: ChurchDetails;
 }
 
 const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
-  const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?.id || null);
+  const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [generatedComm, setGeneratedComm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'profile' | 'communicate'>('overview');
@@ -28,6 +28,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   // Modals state
   const [showAddPledgeModal, setShowAddPledgeModal] = useState(false);
   const [showAddDonorModal, setShowAddDonorModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   
   // Forms state
@@ -49,7 +50,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   }
 
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  const selectedDonor = donors.find(d => d.id === selectedDonorId);
+  const selectedDonor = donors.find(d => d._id === selectedDonorId);
   const donorTransactions = transactions.filter(t => t.donorId === selectedDonorId || t.donorName === selectedDonor?.name)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
@@ -73,11 +74,39 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
 
   const handleEditClick = () => { if (selectedDonor && canEdit) { setFormData(selectedDonor); setIsEditing(true); } };
 
-  const handlePrintSchedule = () => {
+  const handlePrintSchedule = (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
     if (!selectedDonor) return;
-    // Default to a placeholder if churchDetails is not yet propagated or set
+
+    let filteredPledges = donorPledges;
+    let filteredTransactions = donorTransactions;
+    let logoOverride: string | undefined;
+
+    if (filterType === 'tithes') {
+      // Filter to only unrestricted (tithe) funds
+      const titheFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
+      filteredPledges = donorPledges.filter(p => titheFundIds.includes(p.fundId));
+      // Include transactions by fundId OR by pledgeId linked to matching pledges
+      const tithePledgeIds = pledges.filter(p => titheFundIds.includes(p.fundId)).map(p => p._id);
+      filteredTransactions = donorTransactions.filter(t =>
+        titheFundIds.includes(t.fundId) || (t.pledgeId && tithePledgeIds.includes(t.pledgeId))
+      );
+    } else if (filterType === 'campaign' && fundId) {
+      // Filter to specific campaign/fund
+      filteredPledges = donorPledges.filter(p => p.fundId === fundId);
+      // Include transactions by fundId OR by pledgeId linked to matching pledges
+      const campaignPledgeIds = pledges.filter(p => p.fundId === fundId).map(p => p._id);
+      filteredTransactions = donorTransactions.filter(t =>
+        t.fundId === fundId || (t.pledgeId && campaignPledgeIds.includes(t.pledgeId))
+      );
+      // Use the campaign's logo if available
+      const campaignFund = funds.find(f => f._id === fundId);
+      if (campaignFund?.logoUrl) {
+        logoOverride = campaignFund.logoUrl;
+      }
+    }
+
     const details = churchDetails || { name: 'ChurchCoin', address: '', email: '' };
-    const html = generateScheduleHTML(selectedDonor, donorPledges, funds, details);
+    const html = generateScheduleHTML(selectedDonor, filteredPledges, funds, details, logoOverride, filteredTransactions);
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(html);
@@ -85,6 +114,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       printWindow.focus();
       setTimeout(() => { printWindow.print(); }, 500);
     }
+    setShowExportModal(false);
   };
 
   const openWhatsApp = () => {
@@ -128,7 +158,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     if (selectedDonor && newPledgeData.amount && newPledgeData.fundId) {
         const pledge: Pledge = {
             id: Math.random().toString(36).substr(2, 9),
-            donorId: selectedDonor.id,
+            donorId: selectedDonor._id,
             donorName: selectedDonor.name,
             amount: Number(newPledgeData.amount),
             fundId: newPledgeData.fundId,
@@ -156,10 +186,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       onUpdateTransaction({ ...transaction, pledgeId: undefined });
 
       // Check if unlinking should reactivate a completed pledge
-      const pledge = pledges.find(p => p.id === oldPledgeId);
+      const pledge = pledges.find(p => p._id === oldPledgeId);
       if (pledge && pledge.status === 'Completed') {
            const remainingSum = transactions
-              .filter(t => t.pledgeId === oldPledgeId && t.id !== transaction.id)
+              .filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
               .reduce((sum, t) => sum + t.amount, 0);
            
            if (remainingSum < pledge.amount) {
@@ -184,9 +214,9 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
         </div>
         <div className="flex-1 overflow-y-auto">
           {filteredDonors.map(donor => (
-            <button key={donor.id} onClick={() => { setSelectedDonorId(donor.id); setGeneratedComm(''); }} className={`w-full text-left px-4 py-3 border-b border-grey-light transition-colors flex items-center gap-3 ${selectedDonorId === donor.id ? 'bg-paper border-l-4 border-l-ink' : 'hover:bg-paper border-l-4 border-l-transparent'}`}>
+            <button key={donor._id} onClick={() => { setSelectedDonorId(donor._id); setGeneratedComm(''); }} className={`w-full text-left px-4 py-3 border-b border-grey-light transition-colors flex items-center gap-3 ${selectedDonorId === donor._id ? 'bg-paper border-l-4 border-l-ink' : 'hover:bg-paper border-l-4 border-l-transparent'}`}>
               <div className="w-8 h-8 bg-ledger rounded-full flex items-center justify-center text-xs font-bold text-grey-dark shrink-0">{donor.name.charAt(0)}</div>
-              <div className="min-w-0"><div className={`text-sm font-bold truncate ${selectedDonorId === donor.id ? 'text-ink' : 'text-grey-dark'}`}>{donor.name}</div><div className="text-[10px] text-grey-mid truncate">{donor.email || donor.type}</div></div>
+              <div className="min-w-0"><div className={`text-sm font-bold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>{donor.name}</div><div className="text-[10px] text-grey-mid truncate">{donor.email || donor.type}</div></div>
             </button>
           ))}
           {filteredDonors.length === 0 && <div className="p-8 text-center text-grey-mid text-xs">No donors found.</div>}
@@ -213,7 +243,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                    <div className="h-8 w-px bg-grey-light hidden sm:block"></div>
                    <div className="flex gap-2">
                        {canEdit && <button onClick={handleEditClick} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Edit2 size={14} /> <span className="hidden lg:inline">Edit</span></button>}
-                       <button onClick={handlePrintSchedule} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
+                       <button onClick={() => setShowExportModal(true)} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
                    </div>
                </div>
             </div>
@@ -240,10 +270,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                              {donorPledges.length === 0 ? <div className="p-8 text-center bg-paper rounded-lg border border-dashed border-ledger"><p className="text-sm text-grey-mid font-medium">No active pledges.</p></div> : (
                                 <div className="space-y-3">
                                 {donorPledges.map(p => (
-                                    <div key={p.id} className="flex justify-between items-center p-3 border border-ledger rounded-lg hover:bg-paper transition-colors">
+                                    <div key={p._id} className="flex justify-between items-center p-3 border border-ledger rounded-lg hover:bg-paper transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2 rounded-md ${p.status === 'Active' ? 'bg-sage-light text-sage' : 'bg-grey-light text-grey-mid'}`}><Wallet size={16} /></div>
-                                            <div><div className="font-bold text-ink text-sm">{funds.find(f => f.id === p.fundId)?.name}</div><div className="text-xs text-grey-mid font-medium">{p.frequency}</div></div>
+                                            <div><div className="font-bold text-ink text-sm">{funds.find(f => f._id === p.fundId)?.name}</div><div className="text-xs text-grey-mid font-medium">{p.frequency}</div></div>
                                         </div>
                                         <div className="text-right"><div className="font-bold text-ink font-mono">£{p.amount}</div><div className={`text-[10px] font-bold uppercase tracking-wide ${p.status === 'Active' ? 'text-sage' : 'text-grey-mid'}`}>{p.status}</div></div>
                                     </div>
@@ -273,20 +303,20 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                                 <thead className="bg-white"><tr><th className="pl-6 py-4">Date</th><th className="px-4 py-4">Description</th><th className="px-4 py-4 text-right">Amount</th><th className="px-4 py-4">Fund</th><th className="px-4 py-4">Pledge Link</th></tr></thead>
                                 <tbody>
                                     {donorTransactions.map(t => {
-                                        const linkedPledge = pledges.find(p => p.id === t.pledgeId);
+                                        const linkedPledge = pledges.find(p => p._id === t.pledgeId);
                                         return (
-                                            <tr key={t.id} className="hover:bg-paper transition-colors group">
+                                            <tr key={t._id} className="hover:bg-paper transition-colors group">
                                                 <td className="pl-6 py-3 text-grey-mid font-mono text-xs border-b border-grey-light">{t.date}</td>
                                                 <td className="px-4 py-3 font-medium text-ink text-sm border-b border-grey-light">{t.description}</td>
                                                 <td className={`px-4 py-3 font-mono text-sm font-bold text-right border-b border-grey-light ${t.type === TransactionType.INCOME ? 'text-sage' : 'text-ink'}`}>{t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}</td>
-                                                <td className="px-4 py-3 border-b border-grey-light"><span className="px-2 py-0.5 bg-grey-light rounded text-[10px] font-bold text-grey-dark uppercase tracking-wide border border-ledger">{funds.find(f => f.id === t.fundId)?.name}</span></td>
+                                                <td className="px-4 py-3 border-b border-grey-light"><span className="px-2 py-0.5 bg-grey-light rounded text-[10px] font-bold text-grey-dark uppercase tracking-wide border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span></td>
                                                 <td className="px-4 py-3 border-b border-grey-light">
                                                     {t.type === TransactionType.INCOME && canEdit ? (
-                                                        linkedPledge ? <div className="flex items-center gap-2"><div className="px-2 py-1 bg-sage-light text-sage-dark rounded text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30"><LinkIcon size={10} /> Linked</div><button onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Unlink"><Unlink size={12} /></button></div> : 
+                                                        linkedPledge ? <div className="flex items-center gap-2"><div className="px-2 py-1 bg-sage-light text-sage-dark rounded text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30"><LinkIcon size={10} /> Linked</div><button onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Unlink"><Unlink size={12} /></button></div> :
                                                         <div className="relative group/select">
                                                             <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="appearance-none bg-white border border-ledger hover:border-grey-mid text-xs text-grey-mid rounded px-2 py-1 pr-6 focus:ring-1 focus:ring-ink outline-none w-full max-w-[140px] cursor-pointer">
                                                                 <option value="">Link Pledge...</option>
-                                                                {activePledges.map(p => <option key={p.id} value={p.id}>{funds.find(f => f.id === p.fundId)?.name} (£{p.amount})</option>)}
+                                                                {activePledges.map(p => <option key={p._id} value={p._id}>{funds.find(f => f._id === p.fundId)?.name} (£{p.amount})</option>)}
                                                             </select>
                                                             <LinkIcon size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
                                                         </div>
@@ -414,7 +444,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
             <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
                 <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Schedule</h3><button onClick={() => setShowAddPledgeModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                 <form onSubmit={handleAddPledgeSubmit} className="p-6 space-y-4">
-                    <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select></div>
+                    <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f._id} value={f._id}>{f.name}</option>))}</select></div>
                     <div className="grid grid-cols-2 gap-4">
                          <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span><input type="number" value={newPledgeData.amount || ''} onChange={e => setNewPledgeData({...newPledgeData, amount: parseFloat(e.target.value)})} className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono" placeholder="0.00" required/></div></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Frequency</label><select value={newPledgeData.frequency} onChange={e => setNewPledgeData({...newPledgeData, frequency: e.target.value as any})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="One-off">One-off</option><option value="Weekly">Weekly</option><option value="Monthly">Monthly</option><option value="Annual">Annual</option></select></div>
@@ -425,6 +455,104 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                     </div>
                     <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4"><button type="button" onClick={() => setShowAddPledgeModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button><button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2"><Plus size={14} /> Create Schedule</button></div>
                 </form>
+            </div>
+        </div>
+      )}
+
+      {showExportModal && selectedDonor && (
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
+                <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
+                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
+                        <Printer size={16} /> Export Schedule
+                    </h3>
+                    <button onClick={() => setShowExportModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
+                </div>
+                <div className="p-6 space-y-3">
+                    <p className="text-xs text-grey-mid mb-4">Select which giving schedule to export for <strong>{selectedDonor.name}</strong></p>
+
+                    {(() => {
+                        const incomeTransactions = donorTransactions.filter(t => t.type === 'Income');
+                        const unrestrictedFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
+                        const titheTransactions = incomeTransactions.filter(t => unrestrictedFundIds.includes(t.fundId));
+                        const hasAllTransactions = incomeTransactions.length > 0;
+                        const hasTitheTransactions = titheTransactions.length > 0;
+
+                        return (
+                            <>
+                                <button
+                                    onClick={() => handlePrintSchedule('all')}
+                                    className="w-full p-4 text-left border border-ledger rounded-lg hover:border-ink hover:bg-paper transition-colors group"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold text-ink text-sm">All Schedules</div>
+                                            <div className="text-xs text-grey-mid mt-1">Export complete giving statement across all funds</div>
+                                        </div>
+                                        {hasAllTransactions && (
+                                            <div className="text-[10px] font-mono text-grey-mid bg-grey-light px-2 py-1 rounded">
+                                                Available
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => handlePrintSchedule('tithes')}
+                                    className="w-full p-4 text-left border border-ledger rounded-lg hover:border-ink hover:bg-paper transition-colors group"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="font-bold text-ink text-sm">Tithes</div>
+                                            <div className="text-xs text-grey-mid mt-1">Export tithe statement only</div>
+                                        </div>
+                                        {hasTitheTransactions && (
+                                            <div className="text-[10px] font-mono text-grey-mid bg-grey-light px-2 py-1 rounded">
+                                                Available
+                                            </div>
+                                        )}
+                                    </div>
+                                </button>
+
+                                {funds.filter(f => f.type === 'Restricted').length > 0 && (
+                                    <>
+                                        <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide pt-3 pb-1">Campaigns</div>
+                                        {funds.filter(f => f.type === 'Restricted').map(fund => {
+                                            const campaignTransactions = incomeTransactions.filter(t => t.fundId === fund._id);
+                                            const hasCampaignTransactions = campaignTransactions.length > 0;
+
+                                            return (
+                                                <button
+                                                    key={fund._id}
+                                                    onClick={() => handlePrintSchedule('campaign', fund._id)}
+                                                    className="w-full p-4 text-left border border-ledger rounded-lg hover:border-ink hover:bg-paper transition-colors group"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <div className="font-bold text-ink text-sm">{fund.name}</div>
+                                                            <div className="text-xs text-grey-mid mt-1">{fund.description || 'Campaign fund'}</div>
+                                                        </div>
+                                                        {hasCampaignTransactions && (
+                                                            <div className="text-[10px] font-mono text-grey-mid bg-grey-light px-2 py-1 rounded">
+                                                                Available
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
+
+                    <div className="flex justify-end pt-4 border-t border-ledger mt-4">
+                        <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
       )}

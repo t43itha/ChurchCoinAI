@@ -69,6 +69,7 @@ export interface Donor {
 
 export interface Transaction {
   id: string;
+  _id: string;
   date: string;
   description: string;
   amount: number;

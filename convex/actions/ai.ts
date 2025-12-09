@@ -133,17 +133,18 @@ export const generateInsights = action({
   },
 });
 
-// Reconcile pledges with transactions
+// Reconcile pledges with transactions (fetches data server-side)
 export const reconcilePledges = action({
-  args: {
-    candidateTransactions: v.string(), // JSON array of unlinked income transactions
-    pledges: v.string(), // JSON array of pledges
-  },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
     const ai = getAI();
 
-    const candidates = JSON.parse(args.candidateTransactions);
-    const pledgeList = JSON.parse(args.pledges);
+    // Fetch unlinked income and pledges server-side
+    const { api } = await import("../_generated/api");
+    const [candidates, pledgeList] = await Promise.all([
+      ctx.runQuery(api.queries.pledges.getUnlinkedIncomeForMatching, {}),
+      ctx.runQuery(api.queries.pledges.list, {}),
+    ]);
 
     if (candidates.length === 0) return [];
 

@@ -62,6 +62,9 @@ export const update = mutation({
       throw new Error("Donor not found");
     }
 
+    const oldName = donor.name;
+    const newName = args.name;
+
     const updates: Record<string, any> = {};
     if (args.name !== undefined) updates.name = args.name;
     if (args.email !== undefined) updates.email = args.email;
@@ -76,6 +79,57 @@ export const update = mutation({
       updates.communicationPreference = args.communicationPreference;
 
     await ctx.db.patch(args.donorId, updates);
+
+    // If name changed, update donorName on related transactions and pledges
+    if (newName && newName !== oldName) {
+      // Update transactions linked by donorId
+      const transactionsByDonorId = await ctx.db
+        .query("transactions")
+        .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
+        .collect();
+
+      for (const t of transactionsByDonorId) {
+        await ctx.db.patch(t._id, { donorName: newName });
+      }
+
+      // Update transactions linked by old donorName (but no donorId)
+      const transactionsByName = await ctx.db
+        .query("transactions")
+        .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
+        .filter((q) => q.and(
+          q.eq(q.field("donorName"), oldName),
+          q.eq(q.field("donorId"), undefined)
+        ))
+        .collect();
+
+      for (const t of transactionsByName) {
+        await ctx.db.patch(t._id, { donorName: newName, donorId: args.donorId });
+      }
+
+      // Update pledges linked by donorId
+      const pledgesByDonorId = await ctx.db
+        .query("pledges")
+        .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
+        .collect();
+
+      for (const p of pledgesByDonorId) {
+        await ctx.db.patch(p._id, { donorName: newName });
+      }
+
+      // Update pledges linked by old donorName (but no donorId)
+      const pledgesByName = await ctx.db
+        .query("pledges")
+        .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
+        .filter((q) => q.and(
+          q.eq(q.field("donorName"), oldName),
+          q.eq(q.field("donorId"), undefined)
+        ))
+        .collect();
+
+      for (const p of pledgesByName) {
+        await ctx.db.patch(p._id, { donorName: newName, donorId: args.donorId });
+      }
+    }
 
     return args.donorId;
   },
@@ -145,6 +199,51 @@ export const bulkUpsert = mutation({
     }
 
     return results;
+  },
+});
+
+// Link orphaned transactions/pledges by old donor name to a donor
+export const linkOrphanedRecords = mutation({
+  args: {
+    donorId: v.id("donors"),
+    oldName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const donor = await ctx.db.get(args.donorId);
+    if (!donor || donor.organizationId !== user.organizationId) {
+      throw new Error("Donor not found");
+    }
+
+    let linkedTransactions = 0;
+    let linkedPledges = 0;
+
+    // Find transactions with the old name
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
+      .filter((q) => q.eq(q.field("donorName"), args.oldName))
+      .collect();
+
+    for (const t of transactions) {
+      await ctx.db.patch(t._id, { donorName: donor.name, donorId: args.donorId });
+      linkedTransactions++;
+    }
+
+    // Find pledges with the old name
+    const pledges = await ctx.db
+      .query("pledges")
+      .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
+      .filter((q) => q.eq(q.field("donorName"), args.oldName))
+      .collect();
+
+    for (const p of pledges) {
+      await ctx.db.patch(p._id, { donorName: donor.name, donorId: args.donorId });
+      linkedPledges++;
+    }
+
+    return { linkedTransactions, linkedPledges };
   },
 });
 
