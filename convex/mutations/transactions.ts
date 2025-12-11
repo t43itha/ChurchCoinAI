@@ -10,7 +10,9 @@ async function checkPledgeCompletion(
   organizationId: Id<"organizations">
 ) {
   const pledge = await ctx.db.get(pledgeId);
-  if (!pledge || pledge.status !== "Active") return null;
+  if (!pledge || pledge.organizationId !== organizationId || pledge.status !== "Active") {
+    return null;
+  }
 
   const linkedTransactions = await ctx.db
     .query("transactions")
@@ -50,7 +52,7 @@ export const create = mutation({
     isGiftAidEligible: v.optional(v.boolean()),
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
-    pledgeId: v.optional(v.id("pledges")),
+    pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -59,6 +61,25 @@ export const create = mutation({
     const fund = await ctx.db.get(args.fundId);
     if (!fund || fund.organizationId !== user.organizationId) {
       throw new Error("Invalid fund");
+    }
+
+    // Verify donor belongs to organization if provided
+    if (args.donorId) {
+      const donor = await ctx.db.get(args.donorId);
+      if (!donor || donor.organizationId !== user.organizationId) {
+        throw new Error("Invalid donor");
+      }
+    }
+
+    // Verify pledge belongs to organization if provided
+    if (args.pledgeId) {
+      const pledge = await ctx.db.get(args.pledgeId as Id<"pledges">);
+      if (!pledge || pledge.organizationId !== user.organizationId) {
+        throw new Error("Invalid pledge");
+      }
+      if (args.type !== "Income") {
+        throw new Error("Only income transactions can be linked to pledges");
+      }
     }
 
     const transactionId = await ctx.db.insert("transactions", {
@@ -107,7 +128,7 @@ export const update = mutation({
     isGiftAidEligible: v.optional(v.boolean()),
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
-    pledgeId: v.optional(v.id("pledges")),
+    pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -122,6 +143,26 @@ export const update = mutation({
       const fund = await ctx.db.get(args.fundId);
       if (!fund || fund.organizationId !== user.organizationId) {
         throw new Error("Invalid fund");
+      }
+    }
+
+    // Verify donor belongs to organization if provided
+    if (args.donorId) {
+      const donor = await ctx.db.get(args.donorId);
+      if (!donor || donor.organizationId !== user.organizationId) {
+        throw new Error("Invalid donor");
+      }
+    }
+
+    // Verify pledge belongs to organization if provided
+    if (args.pledgeId) {
+      const pledge = await ctx.db.get(args.pledgeId as Id<"pledges">);
+      if (!pledge || pledge.organizationId !== user.organizationId) {
+        throw new Error("Invalid pledge");
+      }
+      const finalType = args.type ?? transaction.type;
+      if (finalType !== "Income") {
+        throw new Error("Only income transactions can be linked to pledges");
       }
     }
 
@@ -157,10 +198,14 @@ export const update = mutation({
       );
     }
 
-    // If pledge was unlinked, check if old pledge should be reactivated
+    // If pledge was unlinked (set to null), check if old pledge should be reactivated
     if (oldPledgeId && args.pledgeId === null) {
       const oldPledge = await ctx.db.get(oldPledgeId);
-      if (oldPledge && oldPledge.status === "Completed") {
+      if (
+        oldPledge &&
+        oldPledge.organizationId === user.organizationId &&
+        oldPledge.status === "Completed"
+      ) {
         const linkedTransactions = await ctx.db
           .query("transactions")
           .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
@@ -197,7 +242,8 @@ export const bulkCreate = mutation({
         notes: v.optional(v.string()),
         isGiftAidEligible: v.optional(v.boolean()),
         donorName: v.optional(v.string()),
-        pledgeId: v.optional(v.id("pledges")),
+        donorId: v.optional(v.id("donors")),
+        pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
       })
     ),
   },
@@ -214,6 +260,23 @@ export const bulkCreate = mutation({
         throw new Error(`Invalid fund: ${t.fundId}`);
       }
 
+      if (t.donorId) {
+        const donor = await ctx.db.get(t.donorId);
+        if (!donor || donor.organizationId !== user.organizationId) {
+          throw new Error(`Invalid donor: ${t.donorId}`);
+        }
+      }
+
+      if (t.pledgeId) {
+        const pledge = await ctx.db.get(t.pledgeId as Id<"pledges">);
+        if (!pledge || pledge.organizationId !== user.organizationId) {
+          throw new Error(`Invalid pledge: ${t.pledgeId}`);
+        }
+        if (t.type !== "Income") {
+          throw new Error("Only income transactions can be linked to pledges");
+        }
+      }
+
       const transactionId = await ctx.db.insert("transactions", {
         organizationId: user.organizationId,
         date: t.date,
@@ -226,6 +289,7 @@ export const bulkCreate = mutation({
         notes: t.notes,
         isGiftAidEligible: t.isGiftAidEligible,
         donorName: t.donorName,
+        donorId: t.donorId,
         pledgeId: t.pledgeId,
         createdAt: Date.now(),
       });
@@ -233,7 +297,7 @@ export const bulkCreate = mutation({
       transactionIds.push(transactionId);
 
       if (t.pledgeId && t.type === "Income") {
-        pledgesToCheck.add(t.pledgeId);
+        pledgesToCheck.add(t.pledgeId as string);
       }
     }
 
@@ -316,7 +380,7 @@ export const batchUpdate = mutation({
           isReconciled: v.optional(v.boolean()),
           isGiftAidEligible: v.optional(v.boolean()),
           donorName: v.optional(v.string()),
-          pledgeId: v.optional(v.id("pledges")),
+          pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
         }),
       })
     ),
@@ -348,9 +412,18 @@ export const batchUpdate = mutation({
         if (update.changes.donorName !== undefined)
           changes.donorName = update.changes.donorName;
         if (update.changes.pledgeId !== undefined) {
-          changes.pledgeId = update.changes.pledgeId;
-          if (update.changes.pledgeId && transaction.type === "Income") {
-            pledgesToCheck.add(update.changes.pledgeId);
+          if (update.changes.pledgeId) {
+            const pledge = await ctx.db.get(update.changes.pledgeId as Id<"pledges">);
+            if (!pledge || pledge.organizationId !== user.organizationId) {
+              throw new Error(`Invalid pledge: ${update.changes.pledgeId}`);
+            }
+            if (transaction.type !== "Income") {
+              throw new Error("Only income transactions can be linked to pledges");
+            }
+            pledgesToCheck.add(update.changes.pledgeId as string);
+            changes.pledgeId = update.changes.pledgeId;
+          } else {
+            changes.pledgeId = null;
           }
         }
 
@@ -430,11 +503,15 @@ export const unlinkFromPledge = mutation({
       return { transactionId: args.transactionId, reactivated: false };
     }
 
-    await ctx.db.patch(args.transactionId, { pledgeId: undefined });
+    await ctx.db.patch(args.transactionId, { pledgeId: null });
 
     // Check if pledge should be reactivated
     const oldPledge = await ctx.db.get(oldPledgeId);
-    if (oldPledge && oldPledge.status === "Completed") {
+    if (
+      oldPledge &&
+      oldPledge.organizationId === user.organizationId &&
+      oldPledge.status === "Completed"
+    ) {
       const linkedTransactions = await ctx.db
         .query("transactions")
         .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
@@ -476,7 +553,11 @@ export const remove = mutation({
     // Check if pledge should be reactivated
     if (pledgeId) {
       const pledge = await ctx.db.get(pledgeId);
-      if (pledge && pledge.status === "Completed") {
+      if (
+        pledge &&
+        pledge.organizationId === user.organizationId &&
+        pledge.status === "Completed"
+      ) {
         const linkedTransactions = await ctx.db
           .query("transactions")
           .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))

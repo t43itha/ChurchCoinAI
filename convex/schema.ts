@@ -114,7 +114,7 @@ export default defineSchema({
     isGiftAidEligible: v.optional(v.boolean()),
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
-    pledgeId: v.optional(v.id("pledges")),
+    pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])

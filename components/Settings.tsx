@@ -76,16 +76,19 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newUser.name && newUser.email) {
+    if (newUser.name && newUser.email && newUser.clerkId) {
       onAddUser({
         id: Math.random().toString(36).substr(2, 9),
+        clerkId: newUser.clerkId,
         name: newUser.name,
         email: newUser.email,
         role: newUser.role as UserRole,
-        avatarUrl: undefined // Default avatar will be used
+        avatarUrl: undefined, // Default avatar will be used
       });
       setShowAddUser(false);
-      setNewUser({ role: 'Guest' });
+      setNewUser({ role: "Guest" });
+    } else {
+      alert("Please provide Name, Email, and Clerk User ID.");
     }
   };
 
@@ -98,6 +101,11 @@ const Settings: React.FC<SettingsProps> = ({
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'org' | 'fund') => {
     const file = e.target.files?.[0];
     if (file) {
+        const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+        if (!allowedTypes.includes(file.type)) {
+            alert("Unsupported image type. Please upload PNG/JPEG/WEBP/GIF (SVG is not allowed).");
+            return;
+        }
         if (file.size > 5 * 1024 * 1024) {
             alert("File size too large. Please upload an image under 5MB.");
             return;
@@ -119,7 +127,7 @@ const Settings: React.FC<SettingsProps> = ({
   const handleSaveFund = (e: React.FormEvent) => {
       e.preventDefault();
       if (editingFund?.name && editingFund.type) {
-          if (editingFund.id) {
+          if (editingFund._id || editingFund.id) {
               onUpdateFund(editingFund as Fund);
           } else {
               onAddFund({
@@ -144,7 +152,7 @@ const Settings: React.FC<SettingsProps> = ({
           return;
       }
       if (window.confirm(`Are you sure you want to delete '${fund.name}'? This action cannot be undone.`)) {
-          onRemoveFund(fund.id);
+          onRemoveFund(fund._id || fund.id);
       }
   };
 
@@ -609,6 +617,18 @@ const Settings: React.FC<SettingsProps> = ({
                             onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                             className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"
                         />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Clerk User ID</label>
+                        <input
+                            type="text"
+                            required
+                            value={newUser.clerkId || ""}
+                            onChange={(e) => setNewUser({ ...newUser, clerkId: e.target.value })}
+                            placeholder="user_..."
+                            className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
+                        />
+                        <p className="text-[10px] text-grey-mid mt-1">Find this in the Clerk dashboard or user profile.</p>
                     </div>
                     <div>
                         <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Role</label>

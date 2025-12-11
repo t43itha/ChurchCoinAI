@@ -1,6 +1,25 @@
 
 import { Donor, Pledge, Fund, ChurchDetails, Transaction } from "../types";
 
+// Escape HTML entities to prevent injection when rendering user-supplied data
+const escapeHtml = (value?: string) =>
+  (value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const safeUrl = (url?: string) => {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    return ["https:", "http:"].includes(parsed.protocol) ? url : "";
+  } catch {
+    return "";
+  }
+};
+
 export const generateScheduleHTML = (
   donor: Donor,
   pledges: Pledge[],
@@ -9,7 +28,6 @@ export const generateScheduleHTML = (
   logoOverride?: string,
   transactions?: Transaction[]
 ) => {
-  const activePledges = pledges.filter(p => p.status === 'Active');
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const todayShort = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
 
@@ -24,21 +42,11 @@ export const generateScheduleHTML = (
   // Calculate total pledged (from all pledges, not just active)
   const totalPledged = pledges.reduce((sum, p) => sum + p.amount, 0);
 
-  // Calculate pledge totals
-  const totalMonthly = activePledges.reduce((sum, p) => {
-    if (p.frequency === 'Monthly') return sum + p.amount;
-    if (p.frequency === 'Weekly') return sum + (p.amount * 4.33);
-    if (p.frequency === 'Annual') return sum + (p.amount / 12);
-    return sum;
-  }, 0);
-
-  const totalAnnual = totalMonthly * 12;
-
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Giving Schedule - ${donor.name}</title>
+      <title>Giving Schedule - ${escapeHtml(donor.name)}</title>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
       <style>
         @page {
@@ -223,23 +231,26 @@ export const generateScheduleHTML = (
       
       <div class="header">
         <div class="brand">
-          ${(logoOverride || churchDetails.logoUrl) ? `<img src="${logoOverride || churchDetails.logoUrl}" class="logo" />` : ''}
+          ${(() => {
+            const logo = safeUrl(logoOverride || churchDetails.logoUrl);
+            return logo ? `<img src="${logo}" class="logo" />` : '';
+          })()}
           <div>
-            <h1>${churchDetails.name}</h1>
+            <h1>${escapeHtml(churchDetails.name)}</h1>
             <p>Finance & Stewardship</p>
           </div>
         </div>
         <div class="meta">
           <p>Date: ${todayFormatted}</p>
-          <p>Ref: SCH-${(donor._id || donor.id || '').slice(-6).toUpperCase()}</p>
+          <p>Ref: SCH-${escapeHtml((donor._id || donor.id || '').slice(-6).toUpperCase())}</p>
           <p>Period: 01-01-2025 – ${todayShort}</p>
-          <p>Charity No: ${churchDetails.charityNumber || 'N/A'}</p>
+          <p>Charity No: ${escapeHtml(churchDetails.charityNumber || 'N/A')}</p>
         </div>
       </div>
 
       <div class="recipient">
-        <strong>${donor.name}</strong>
-        <div>${donor.address ? donor.address.replace(/\n/g, '<br>') : 'Address on file'}</div>
+        <strong>${escapeHtml(donor.name)}</strong>
+        <div>${donor.address ? escapeHtml(donor.address).replace(/\n/g, '<br>') : 'Address on file'}</div>
       </div>
 
       <div class="document-title">Giving Statement</div>
@@ -260,8 +271,8 @@ export const generateScheduleHTML = (
             return `
               <tr>
                 <td>${new Date(t.date).toLocaleDateString('en-GB')}</td>
-                <td>${t.description || 'Donation'}</td>
-                <td><span class="fund-desc">${fund?.name || 'General'}</span></td>
+                <td>${escapeHtml(t.description || 'Donation')}</td>
+                <td><span class="fund-desc">${escapeHtml(fund?.name || 'General')}</span></td>
                 <td class="amount">£${t.amount.toFixed(2)}</td>
               </tr>
             `;
@@ -300,48 +311,6 @@ export const generateScheduleHTML = (
       </div>
       <p style="text-align:center; color:#999; padding: 30px;">No transactions found.</p>
       `}
-
-      ${activePledges.length > 0 ? `
-      <div class="document-title" style="margin-top: 40px;">Active Giving Schedules</div>
-
-      <table>
-        <thead>
-          <tr>
-            <th width="40%">Fund / Designation</th>
-            <th width="20%">Frequency</th>
-            <th width="20%">Start Date</th>
-            <th width="20%" style="text-align: right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${activePledges.map(p => {
-            const fund = funds.find(f => f._id === p.fundId || f.id === p.fundId);
-            return `
-              <tr>
-                <td>
-                  <div class="fund-name">${fund?.name || 'Unknown Fund'}</div>
-                  <div class="fund-desc">${fund?.type || 'General'}</div>
-                </td>
-                <td>${p.frequency}</td>
-                <td>${new Date(p.startDate).toLocaleDateString()}</td>
-                <td class="amount">£${p.amount.toFixed(2)}</td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-
-      <div class="totals">
-        <div class="total-item">
-          <div class="total-label">Monthly Projection</div>
-          <div class="total-value">£${totalMonthly.toFixed(2)}</div>
-        </div>
-        <div class="total-item">
-          <div class="total-label">Annual Projection</div>
-          <div class="total-value">£${totalAnnual.toFixed(2)}</div>
-        </div>
-      </div>
-      ` : ''}
 
       <div class="gift-aid-box">
         <h4>Gift Aid Declaration Status</h4>

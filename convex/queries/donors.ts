@@ -106,3 +106,65 @@ export const listGiftAidEligible = query({
     return donors;
   },
 });
+
+// Helper to normalize donor names for matching
+const normalizeName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/^(mr|mrs|ms|miss|dr|rev|pastor|deacon)\.?\s+/i, "")
+    .replace(/\s+/g, " ");
+};
+
+// Find donor by fuzzy name match
+export const findByNameFuzzy = query({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    if (!args.name || args.name.trim().length < 2) {
+      return null;
+    }
+
+    const normalized = normalizeName(args.name);
+
+    const donors = await ctx.db
+      .query("donors")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    // Priority 1: Exact match (normalized)
+    const exactMatch = donors.find(
+      (d) => normalizeName(d.name) === normalized
+    );
+    if (exactMatch) return exactMatch;
+
+    // Priority 2: One name contains the other
+    const containsMatch = donors.find((d) => {
+      const donorNormalized = normalizeName(d.name);
+      return (
+        donorNormalized.includes(normalized) ||
+        normalized.includes(donorNormalized)
+      );
+    });
+    if (containsMatch) return containsMatch;
+
+    // Priority 3: Word-based matching (e.g., "J Smith" matches "John Smith")
+    const inputWords = normalized.split(" ").filter((w) => w.length > 1);
+    const wordMatch = donors.find((d) => {
+      const donorWords = normalizeName(d.name).split(" ");
+      // Check if all input words match start of donor words
+      return inputWords.every((inputWord) =>
+        donorWords.some(
+          (donorWord) =>
+            donorWord.startsWith(inputWord) || inputWord.startsWith(donorWord)
+        )
+      );
+    });
+    if (wordMatch) return wordMatch;
+
+    return null;
+  },
+});

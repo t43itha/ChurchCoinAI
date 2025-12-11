@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Fund, Pledge, Transaction, AppUser, Donor } from '../types';
-import { reconcilePledges, generatePledgeCompletionMessage } from '../services/gemini';
+import { useAction } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search } from 'lucide-react';
 
@@ -24,6 +25,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     const campaignFunds = funds.filter(f => f.type === 'Restricted');
     const [selectedFundId, setSelectedFundId] = useState<string>('');
     const [isReconciling, setIsReconciling] = useState(false);
+    const reconcilePledgesAction = useAction(api.actions.ai.reconcilePledges);
+    const generatePledgeCompletionMessageAction = useAction(api.actions.ai.generatePledgeCompletionMessage);
 
     // Set default selected fund when campaign funds are available
     useEffect(() => {
@@ -112,7 +115,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     const handleAIReconcile = async () => {
         setIsReconciling(true);
         try {
-            const results = await reconcilePledges(transactions, pledges);
+            const results = await reconcilePledgesAction({});
             setMatches(results);
         } catch (e) { console.error(e); } finally { setIsReconciling(false); }
     };
@@ -137,7 +140,11 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         setThankYouModal({ isOpen: true, pledge, text: '', isGenerating: true });
         try {
             const fundName = funds.find(f => f._id === pledge.fundId)?.name || 'Campaign';
-            const text = await generatePledgeCompletionMessage(pledge.donorName, pledge.amount, fundName);
+            const text = await generatePledgeCompletionMessageAction({
+                donorName: pledge.donorName,
+                pledgeAmount: pledge.amount,
+                fundName
+            });
             setThankYouModal(prev => ({ ...prev, text: text || "Thank you for your generous support!", isGenerating: false }));
         } catch (e) {
             setThankYouModal(prev => ({ ...prev, text: "Error generating message.", isGenerating: false }));

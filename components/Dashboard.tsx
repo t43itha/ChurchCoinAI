@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Fund, Transaction, Insight, FundType } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, Legend, Area } from 'recharts';
 import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info, ArrowUpRight, Sparkles, Activity, Users, Target, ArrowRight } from 'lucide-react';
-import { generateInsights } from '../services/gemini';
+import { useAction } from 'convex/react';
+import { api } from '../convex/_generated/api';
 
 interface DashboardProps {
   funds: Fund[];
@@ -14,16 +15,22 @@ const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loadingInsights, setLoadingInsights] = useState(false);
+  const generateInsightsAction = useAction(api.actions.ai.generateInsights);
 
   useEffect(() => {
     let isMounted = true;
     const fetchInsights = async () => {
         if (transactions.length > 0) {
             setLoadingInsights(true);
-            const generated = await generateInsights(transactions);
-            if (isMounted) {
-                setInsights(generated.map((g: any, i: number) => ({ ...g, id: `ai-${i}`, date: new Date().toISOString() })));
-                setLoadingInsights(false);
+            try {
+                const generated = await generateInsightsAction({ transactionData: JSON.stringify(transactions) });
+                if (isMounted && generated) {
+                    setInsights(generated.map((g: any, i: number) => ({ ...g, id: `ai-${i}`, date: new Date().toISOString() })));
+                }
+            } catch (err) {
+                console.error("AI insights failed", err);
+            } finally {
+                if (isMounted) setLoadingInsights(false);
             }
         }
     };

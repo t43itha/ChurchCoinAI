@@ -13,6 +13,20 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// Require an authenticated Convex user (protects all AI actions)
+const requireUser = async (ctx: any) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Unauthorized: please sign in");
+  }
+  const { api } = await import("../_generated/api");
+  const currentUser = await ctx.runQuery(api.queries.users.current, {});
+  if (!currentUser) {
+    throw new Error("Forbidden: complete onboarding first");
+  }
+  return currentUser;
+};
+
 // Check if API key is configured
 export const hasApiKey = action({
   args: {},
@@ -29,6 +43,7 @@ export const categorizeTransactions = action({
     categories: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -71,6 +86,8 @@ export const categorizeTransactions = action({
               },
             },
           },
+          // Disable thinking mode to get clean JSON output
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -84,12 +101,215 @@ export const categorizeTransactions = action({
   },
 });
 
+// Helper to normalize donor names for matching
+const normalizeName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/^(mr|mrs|ms|miss|dr|rev|pastor|deacon)\.?\s+/i, "")
+    .replace(/\s+/g, " ");
+};
+
+// Enhanced categorization with donor and pledge matching
+export const categorizeWithMatching = action({
+  args: {
+    transactions: v.array(
+      v.object({
+        description: v.string(),
+        amount: v.number(),
+        type: v.union(v.literal("Income"), v.literal("Expenditure")),
+      })
+    ),
+    fundNames: v.array(v.string()),
+    categories: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const ai = getAI();
+    const { api } = await import("../_generated/api");
+
+    // Only process income transactions for donor matching
+    const descriptions = args.transactions.map((t) => t.description);
+
+    const prompt = `
+      You are an expert UK Charity Treasurer assistant.
+      I have a list of bank transaction descriptions.
+      For each description:
+      1. Suggest the most appropriate Category and Fund Name.
+      2. Determine if it is likely Gift Aid Eligible (Individual donations usually are, business/cash/grants usually aren't).
+      3. Extract a Donor Name if present (e.g., "Ref: J SMITH" -> "J Smith", "FT-JOHN DOE" -> "John Doe").
+
+      Available Categories: ${args.categories.join(", ")}
+      Available Funds: ${args.fundNames.join(", ")}
+
+      Rules:
+      - "Tithe" or "Donation" from a person is usually Gift Aid eligible.
+      - Utility bills go to General Fund / Utilities.
+      - Specific project references (e.g. 'Roof', 'Building') go to that Fund.
+      - Look for names after patterns like "Ref:", "FT-", "TFR", or at the start/end of descriptions.
+
+      Input Descriptions:
+      ${JSON.stringify(descriptions)}
+    `;
+
+    let aiSuggestions: any[] = [];
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                description: { type: Type.STRING },
+                category: { type: Type.STRING },
+                fundName: { type: Type.STRING },
+                confidence: {
+                  type: Type.STRING,
+                  description: "High, Medium, or Low",
+                },
+                isGiftAidEligible: { type: Type.BOOLEAN },
+                donorName: { type: Type.STRING },
+              },
+            },
+          },
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      });
+
+      const text = response.text;
+      if (text) {
+        aiSuggestions = JSON.parse(text);
+      }
+    } catch (error) {
+      console.error("Gemini Categorization Error:", error);
+    }
+
+    // Fetch existing donors and pledges for matching
+    const [donors, pledges, funds] = await Promise.all([
+      ctx.runQuery(api.queries.donors.list, {}),
+      ctx.runQuery(api.queries.pledges.list, {}),
+      ctx.runQuery(api.queries.funds.list, {}),
+    ]);
+
+    // Create fund name to ID mapping
+    const fundNameToId = new Map<string, string>();
+    for (const fund of funds) {
+      fundNameToId.set(fund.name.toLowerCase(), fund._id);
+    }
+
+    // Build enhanced results with donor/pledge matching
+    const results = args.transactions.map((transaction, index) => {
+      const suggestion = aiSuggestions[index] || {};
+      const extractedDonorName = suggestion.donorName || null;
+      const suggestedFundName = suggestion.fundName || "";
+
+      let matchedDonor: any = null;
+      let matchedPledge: any = null;
+      let isNewDonor = false;
+
+      // Only match donors for income transactions with extracted names
+      if (transaction.type === "Income" && extractedDonorName) {
+        const normalized = normalizeName(extractedDonorName);
+
+        // Try to find matching donor
+        matchedDonor = donors.find(
+          (d) => normalizeName(d.name) === normalized
+        );
+
+        if (!matchedDonor) {
+          matchedDonor = donors.find((d) => {
+            const donorNormalized = normalizeName(d.name);
+            return (
+              donorNormalized.includes(normalized) ||
+              normalized.includes(donorNormalized)
+            );
+          });
+        }
+
+        if (!matchedDonor) {
+          const inputWords = normalized.split(" ").filter((w) => w.length > 1);
+          matchedDonor = donors.find((d) => {
+            const donorWords = normalizeName(d.name).split(" ");
+            return inputWords.every((inputWord) =>
+              donorWords.some(
+                (donorWord) =>
+                  donorWord.startsWith(inputWord) ||
+                  inputWord.startsWith(donorWord)
+              )
+            );
+          });
+        }
+
+        // If no match, flag as new donor
+        if (!matchedDonor) {
+          isNewDonor = true;
+        }
+
+        // Try to match pledge if donor found
+        if (matchedDonor) {
+          const donorPledges = pledges.filter(
+            (p: any) =>
+              p.donorId === matchedDonor._id && p.status === "Active"
+          );
+
+          // Find pledge with matching fund and similar amount
+          const suggestedFundId = fundNameToId.get(
+            suggestedFundName.toLowerCase()
+          );
+
+          for (const pledge of donorPledges) {
+            // Check fund match (if suggested)
+            const fundMatches =
+              !suggestedFundId || pledge.fundId === suggestedFundId;
+
+            // Check amount match (within 10% tolerance for recurring, exact for one-off)
+            const amountDiff = Math.abs(pledge.amount - transaction.amount);
+            const tolerance =
+              pledge.frequency === "One-off" ? 0.01 : pledge.amount * 0.1;
+            const amountMatches = amountDiff <= tolerance;
+
+            if (fundMatches && amountMatches) {
+              matchedPledge = pledge;
+              break;
+            }
+          }
+        }
+      }
+
+      return {
+        description: transaction.description,
+        amount: transaction.amount,
+        type: transaction.type,
+        category: suggestion.category || "",
+        fundName: suggestedFundName,
+        confidence: suggestion.confidence || "Low",
+        isGiftAidEligible: suggestion.isGiftAidEligible ?? false,
+        extractedDonorName,
+        matchedDonorId: matchedDonor?._id || null,
+        matchedDonorName: matchedDonor?.name || null,
+        isNewDonor,
+        matchedPledgeId: matchedPledge?._id || null,
+        matchedPledgeName: matchedPledge
+          ? `${matchedPledge.donorName} - £${matchedPledge.amount}`
+          : null,
+      };
+    });
+
+    return results;
+  },
+});
+
 // Generate strategic insights for dashboard
 export const generateInsights = action({
   args: {
     transactionData: v.string(), // JSON string of transactions
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -121,6 +341,8 @@ export const generateInsights = action({
               },
             },
           },
+          // Disable thinking mode to get clean JSON output
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -137,6 +359,7 @@ export const generateInsights = action({
 export const reconcilePledges = action({
   args: {},
   handler: async (ctx) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     // Fetch unlinked income and pledges server-side
@@ -176,6 +399,8 @@ export const reconcilePledges = action({
               },
             },
           },
+          // Disable thinking mode to get clean JSON output
+          thinkingConfig: { thinkingBudget: 0 },
         },
       });
 
@@ -196,6 +421,7 @@ export const generateGiftAidSchedule = action({
     endDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const eligible = JSON.parse(args.eligibleTransactions);
@@ -237,7 +463,7 @@ export const generateGiftAidSchedule = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -251,6 +477,7 @@ export const generateTreasurerReport = action({
     summaryData: v.string(), // JSON with totalIncome, totalExpenditure, fundsStatus, recentLargeTransactions
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -261,7 +488,7 @@ export const generateTreasurerReport = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -280,6 +507,7 @@ export const generateProjectReport = action({
     recentTransactions: v.string(), // JSON array
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -304,7 +532,7 @@ export const generateProjectReport = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -324,6 +552,7 @@ export const generateCampaignReport = action({
     deadline: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const stats = {
@@ -352,7 +581,7 @@ export const generateCampaignReport = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -370,6 +599,7 @@ export const generateAnnualStatement = action({
     totalExpenditure: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const data = {
@@ -399,7 +629,7 @@ export const generateAnnualStatement = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -413,6 +643,7 @@ export const generateMonthlyBreakdown = action({
     monthlyData: v.string(), // JSON array of { month, income, expense }
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -429,7 +660,7 @@ export const generateMonthlyBreakdown = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -445,6 +676,7 @@ export const generateDonorCommunication = action({
     recentDonations: v.string(), // JSON array
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -458,7 +690,7 @@ export const generateDonorCommunication = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -474,6 +706,7 @@ export const generatePledgeCompletionMessage = action({
     fundName: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const prompt = `
@@ -488,7 +721,7 @@ export const generatePledgeCompletionMessage = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
     });
 
@@ -503,6 +736,7 @@ export const chatWithTreasurer = action({
     contextData: v.string(), // JSON with funds and recent transactions
   },
   handler: async (ctx, args) => {
+    await requireUser(ctx);
     const ai = getAI();
 
     const systemInstruction = `
@@ -514,7 +748,7 @@ export const chatWithTreasurer = action({
     `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: `Context Data: ${args.contextData}\n\nUser Question: ${args.message}`,
       config: {
         systemInstruction: systemInstruction,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Transaction, Fund, Pledge, ChurchDetails } from '../types';
-import { generateTreasurerReport, generateGiftAidSchedule, generateProjectReport, generateCampaignReport, generateAnnualStatement, generateMonthlyBreakdown } from '../services/gemini';
+import { useAction } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import { FileText, Download, Share2, Sparkles, PoundSterling, Calendar, Megaphone, ArrowRight, Target, TrendingUp } from 'lucide-react';
 
 interface ReportsProps {
@@ -14,6 +15,12 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
   const [isGenerating, setIsGenerating] = useState(false);
+  const treasurerReport = useAction(api.actions.ai.generateTreasurerReport);
+  const giftAidSchedule = useAction(api.actions.ai.generateGiftAidSchedule);
+  const projectReport = useAction(api.actions.ai.generateProjectReport);
+  const campaignReport = useAction(api.actions.ai.generateCampaignReport);
+  const annualStatement = useAction(api.actions.ai.generateAnnualStatement);
+  const monthlyBreakdown = useAction(api.actions.ai.generateMonthlyBreakdown);
   
   // Tax Year Configuration
   const [taxYear, setTaxYear] = useState('current'); // 'current', 'previous', 'all'
@@ -55,7 +62,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
     setIsGenerating(true);
     setReportTitle("Treasurer's Financial Commentary");
     try {
-        const text = await generateTreasurerReport(transactions, funds);
+        const totalIncome = transactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+        const totalExpenditure = transactions.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
+        const fundsStatus = funds.map(f => ({ name: f.name, balance: f.balance }));
+        const recentLargeTransactions = transactions
+          .filter(t => t.amount > 500)
+          .map(t => ({ desc: t.description, amount: t.amount }));
+        const summaryData = JSON.stringify({ totalIncome, totalExpenditure, fundsStatus, recentLargeTransactions });
+        const text = await treasurerReport({ summaryData });
         setReportText(text || "No report generated.");
     } catch (e) {
         console.error(e);
@@ -70,7 +84,17 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       setReportTitle("HMRC Gift Aid Schedule");
       const { start, end } = getDatesForTaxYear(taxYear);
       try {
-          const text = await generateGiftAidSchedule(transactions, start, end);
+          const eligible = transactions.filter(t =>
+            t.type === 'Income' &&
+            t.isGiftAidEligible &&
+            (!start || t.date >= start) &&
+            (!end || t.date <= end)
+          );
+          const text = await giftAidSchedule({
+            eligibleTransactions: JSON.stringify(eligible),
+            startDate: start,
+            endDate: end
+          });
           setReportText(text || "No gift aid transactions found.");
       } catch (e) {
           console.error(e);
@@ -88,7 +112,22 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       setReportTitle(`${fund.name} Impact Report`);
       const { start, end } = getDatesForTaxYear(taxYear);
       try {
-          const text = await generateProjectReport(transactions, fund, start, end);
+          const periodTxns = transactions.filter(t =>
+            t.fundId === fund.id &&
+            (!start || t.date >= start) &&
+            (!end || t.date <= end)
+          );
+          const periodIncome = periodTxns.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+          const periodExpense = periodTxns.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
+          const recentTransactions = JSON.stringify(periodTxns.slice(0, 15));
+          const text = await projectReport({
+            fundName: fund.name,
+            fundBalance: fund.balance,
+            targetAmount: fund.targetAmount,
+            periodIncome,
+            periodExpense,
+            recentTransactions
+          });
           setReportText(text || "No activity found.");
       } catch (e) {
           console.error(e);
@@ -105,7 +144,22 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       setIsGenerating(true);
       setReportTitle(`${fund.name} Campaign Analysis`);
       try {
-          const text = await generateCampaignReport(transactions, fund, pledges);
+          const fundTxns = transactions.filter(t => t.fundId === fund.id && t.type === 'Income');
+          const fundPledges = pledges.filter(p => p.fundId === fund.id);
+          const totalRaisedCash = fundTxns.reduce((s, t) => s + t.amount, 0);
+          const totalPledged = fundPledges.reduce((s, p) => s + p.amount, 0);
+          const donorSet = new Set(fundTxns.map(t => t.donorName).filter(Boolean));
+          const donorCount = donorSet.size || fundTxns.length;
+          const avgDonation = fundTxns.length ? totalRaisedCash / fundTxns.length : 0;
+          const text = await campaignReport({
+            fundName: fund.name,
+            target: fund.targetAmount,
+            totalRaisedCash,
+            totalPledged,
+            donorCount,
+            avgDonation,
+            deadline: fund.deadline
+          });
           setReportText(text || "No campaign data analysis available.");
       } catch (e) {
           console.error(e);
@@ -120,7 +174,30 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       setReportTitle("Annual Financial Statement");
       const { start, end } = getDatesForTaxYear(taxYear);
       try {
-          const text = await generateAnnualStatement(transactions, start, end);
+          const periodTxns = transactions.filter(t =>
+            (!start || t.date >= start) &&
+            (!end || t.date <= end)
+          );
+          const incomeByCategory: Record<string, number> = {};
+          const expenditureByCategory: Record<string, number> = {};
+          let totalIncome = 0;
+          let totalExpenditure = 0;
+          periodTxns.forEach(t => {
+            if (t.type === 'Income') {
+              incomeByCategory[t.category] = (incomeByCategory[t.category] || 0) + t.amount;
+              totalIncome += t.amount;
+            } else {
+              expenditureByCategory[t.category] = (expenditureByCategory[t.category] || 0) + t.amount;
+              totalExpenditure += t.amount;
+            }
+          });
+          const text = await annualStatement({
+            period: `${start || 'Start'} to ${end || 'End'}`,
+            incomeByCategory: JSON.stringify(incomeByCategory),
+            expenditureByCategory: JSON.stringify(expenditureByCategory),
+            totalIncome,
+            totalExpenditure
+          });
           setReportText(text || "No transactions found for this period.");
       } catch (e) {
           console.error(e);
@@ -135,7 +212,21 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       setReportTitle("Monthly Income & Expense Breakdown");
       const { start, end } = getDatesForTaxYear(taxYear);
       try {
-          const text = await generateMonthlyBreakdown(transactions, start, end);
+          const periodTxns = transactions.filter(t =>
+            (!start || t.date >= start) &&
+            (!end || t.date <= end)
+          );
+          const monthly: Record<string, { income: number; expense: number }> = {};
+          periodTxns.forEach(t => {
+            const monthKey = t.date.substring(0, 7);
+            if (!monthly[monthKey]) monthly[monthKey] = { income: 0, expense: 0 };
+            if (t.type === 'Income') monthly[monthKey].income += t.amount;
+            else monthly[monthKey].expense += t.amount;
+          });
+          const monthlyData = Object.entries(monthly)
+            .map(([month, data]) => ({ month, income: data.income, expense: data.expense }))
+            .sort((a, b) => a.month.localeCompare(b.month));
+          const text = await monthlyBreakdown({ monthlyData: JSON.stringify(monthlyData) });
           setReportText(text || "No transactions found for this period.");
       } catch (e) {
           console.error(e);

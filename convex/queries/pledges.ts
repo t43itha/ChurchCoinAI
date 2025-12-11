@@ -137,14 +137,9 @@ export const getUnlinkedIncomeForMatching = query({
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
       )
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("type"), "Income"),
-          q.eq(q.field("pledgeId"), undefined)
-        )
-      )
+      .filter((q) => q.eq(q.field("type"), "Income"))
       .collect();
 
-    return unlinkedIncome;
+    return unlinkedIncome.filter((t) => t.pledgeId == null);
   },
 });

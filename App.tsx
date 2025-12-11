@@ -335,7 +335,7 @@ function App() {
     try {
       await updateTransaction({
         transactionId: transaction.id as Id<"transactions">,
-        pledgeId: transaction.pledgeId ? transaction.pledgeId as Id<"pledges"> : undefined,
+        pledgeId: transaction.pledgeId ? transaction.pledgeId as Id<"pledges"> : null,
         donorId: transaction.donorId ? transaction.donorId as Id<"donors"> : undefined,
         donorName: transaction.donorName,
       });
@@ -421,10 +421,12 @@ function App() {
   // User handlers
   const handleAddUser = async (user: AppUser) => {
     try {
-      // Note: In a real app, you'd need to get the Clerk ID for the user
-      // For now, we'll use their email as a placeholder clerkId
+      if (!user.clerkId) {
+        showNotification("Missing Clerk ID", "Please provide the user's Clerk User ID.");
+        return;
+      }
       await inviteUser({
-        clerkId: user.email, // This should be the actual Clerk ID in production
+        clerkId: user.clerkId,
         name: user.name,
         email: user.email,
         role: user.role,

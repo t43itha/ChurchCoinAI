@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, Loader2, Sparkles } from 'lucide-react';
 import { Transaction, Fund } from '../types';
-import { chatWithTreasurer } from '../services/gemini';
+import { useAction } from 'convex/react';
+import { api } from '../convex/_generated/api';
 
 interface AICoPilotProps {
     transactions: Transaction[];
@@ -27,6 +28,7 @@ const AICoPilot: React.FC<AICoPilotProps> = ({ transactions, funds }) => {
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const chatWithTreasurer = useAction(api.actions.ai.chatWithTreasurer);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -47,7 +49,7 @@ const AICoPilot: React.FC<AICoPilotProps> = ({ transactions, funds }) => {
                 funds: funds.map(f => ({ name: f.name, balance: f.balance, type: f.type })),
                 recentTransactions: transactions.slice(0, 20).map(t => ({ date: t.date, desc: t.description, amount: t.amount, type: t.type, category: t.category }))
             });
-            const responseText = await chatWithTreasurer(userMsg.text, contextSummary);
+            const responseText = await chatWithTreasurer({ message: userMsg.text, contextData: contextSummary });
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: responseText || "I couldn't process that.", timestamp: new Date() }]);
         } catch (error) {
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: "Connection error.", timestamp: new Date() }]);

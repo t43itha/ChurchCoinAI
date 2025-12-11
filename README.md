@@ -15,6 +15,11 @@ View your app in AI Studio: https://ai.studio/apps/drive/1sDhTn3BB6kg5CNiS48vz-t
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Create a `.env.local` for frontend values (see `.env.example`), e.g.:
+   - `VITE_CONVEX_URL=...`
+   - `VITE_CLERK_PUBLISHABLE_KEY=...`
+3. Set `GEMINI_API_KEY` **only in the Convex backend environment**
+   (Convex Dashboard or `npx convex env set GEMINI_API_KEY ...`).
+   Do **not** put it in any Vite/`VITE_*` env file.
+4. Run the app:
    `npm run dev`

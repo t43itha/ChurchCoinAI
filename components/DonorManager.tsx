@@ -1,8 +1,63 @@
 import React, { useState } from 'react';
+import { useMutation } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { Id } from '../convex/_generated/dataModel';
 import { Donor, Transaction, Pledge, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
-import { generateDonorCommunication } from '../services/gemini';
 import { generateScheduleHTML } from '../services/pdfGenerator';
-import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Sparkles, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check } from 'lucide-react';
+
+// WhatsApp message template types
+type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
+
+interface MessageTemplate {
+  name: string;
+  description: string;
+  template: string;
+  requiresPledge: boolean;
+}
+
+const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
+  newPledge: {
+    name: 'New Pledge',
+    description: 'Thank you for signing up',
+    template: `Hi {donorName}, thank you for committing to support our church with your pledge of £{pledgeAmount} ({frequency}) towards {fundName}. Your generosity makes a real difference. We look forward to partnering with you on this journey. God bless!
+
+— NCC Finance Team`,
+    requiresPledge: true
+  },
+  pledgeChaser: {
+    name: 'Pledge Reminder',
+    description: 'Gentle reminder to start giving',
+    template: `Hi {donorName}, we hope you're doing well! This is a gentle reminder about your pledge of £{pledgeAmount} ({frequency}) towards {fundName}. When you're ready, your contribution will help us continue our mission. Every gift matters. Thank you for your commitment!
+
+— NCC Finance Team`,
+    requiresPledge: true
+  },
+  pledgeFulfillment: {
+    name: 'Pledge Complete',
+    description: 'Thank you for fulfilling pledge',
+    template: `Hi {donorName}, amazing news! You've completed your pledge of £{pledgeAmount} towards {fundName}. Thank you for your faithful giving - it's made a real impact. If you'd like to continue supporting this cause or explore other giving opportunities, we'd love to hear from you.
+
+— NCC Finance Team`,
+    requiresPledge: true
+  },
+  generalUpdate: {
+    name: 'General Update',
+    description: 'General appreciation message',
+    template: `Hi {donorName}, thank you for being part of our church community. Your faithful giving towards {fundName} has helped us serve and grow. We're grateful for your ongoing support and partnership in our mission.
+
+— NCC Finance Team`,
+    requiresPledge: false
+  },
+  endOfYear: {
+    name: 'End of Year',
+    description: 'Annual giving summary',
+    template: `Hi {donorName}, as we reflect on the past year, we want to thank you for your generosity. Your total giving of £{yearTotal} towards {fundName} has made a meaningful difference in our community. Wishing you a blessed year ahead!
+
+— NCC Finance Team`,
+    requiresPledge: false
+  }
+};
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface DonorManagerProps {
@@ -22,15 +77,38 @@ interface DonorManagerProps {
 const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id || null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [generatedComm, setGeneratedComm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'profile' | 'communicate'>('overview');
-  
+
+  // Message template state
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null);
+  const [selectedPledgeForTemplate, setSelectedPledgeForTemplate] = useState<string | null>(null);
+  const [selectedFundForTemplate, setSelectedFundForTemplate] = useState<string | null>(null);
+  const [generatedMessage, setGeneratedMessage] = useState('');
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+
   // Modals state
   const [showAddPledgeModal, setShowAddPledgeModal] = useState(false);
   const [showAddDonorModal, setShowAddDonorModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  
+
+  // Merge state
+  const [duplicateGroups, setDuplicateGroups] = useState<any[]>([]);
+  const [isFindingDuplicates, setIsFindingDuplicates] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+  const [selectedMergeGroup, setSelectedMergeGroup] = useState<number | null>(null);
+  const [selectedPrimaryId, setSelectedPrimaryId] = useState<string | null>(null);
+
+  // Manual merge state
+  const [manualMergeMode, setManualMergeMode] = useState(false);
+  const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+  const [manualPrimaryId, setManualPrimaryId] = useState<string | null>(null);
+
+  // Convex mutations for merge
+  const findDuplicates = useMutation(api.mutations.donors.findDuplicates);
+  const mergeDonors = useMutation(api.mutations.donors.merge);
+
   // Forms state
   const [formData, setFormData] = useState<Partial<Donor>>({});
   const [newDonorData, setNewDonorData] = useState<Partial<Donor>>({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
@@ -63,13 +141,120 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       amount: t.amount
   })).reverse();
 
-  const handleGenerateCommunication = async () => {
-    if (!selectedDonor) return;
+  // Calculate year total for End of Year template
+  const currentYear = new Date().getFullYear();
+  const yearTotal = donorTransactions
+    .filter(t => t.type === 'Income' && new Date(t.date).getFullYear() === currentYear)
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  // Get completed pledges for the donor
+  const completedPledges = donorPledges.filter(p => p.status === 'Completed');
+
+  // Generate message from template with variable substitution
+  const generateMessageFromTemplate = (templateType: TemplateType, pledgeId?: string, fundId?: string): string => {
+    if (!selectedDonor) return '';
+
+    const template = MESSAGE_TEMPLATES[templateType];
+    let message = template.template;
+
+    // Replace donor name
+    message = message.replace(/{donorName}/g, selectedDonor.name);
+
+    // Replace year total for end of year template
+    message = message.replace(/{yearTotal}/g, yearTotal.toLocaleString());
+
+    // Replace pledge-specific variables if a pledge is selected
+    if (pledgeId) {
+      const pledge = donorPledges.find(p => p._id === pledgeId);
+      if (pledge) {
+        const fundName = funds.find(f => f._id === pledge.fundId)?.name || 'General Fund';
+        message = message.replace(/{pledgeAmount}/g, pledge.amount.toLocaleString());
+        message = message.replace(/{frequency}/g, pledge.frequency);
+        message = message.replace(/{fundName}/g, fundName);
+      }
+    } else if (fundId) {
+      // For non-pledge templates, use selected fund
+      const fundName = funds.find(f => f._id === fundId)?.name || 'General Fund';
+      message = message.replace(/{fundName}/g, fundName);
+    }
+
+    return message;
+  };
+
+  // Handle template selection
+  const handleSelectTemplate = (templateType: TemplateType) => {
+    setSelectedTemplate(templateType);
+    setCopiedToClipboard(false);
+
+    const template = MESSAGE_TEMPLATES[templateType];
+    if (template.requiresPledge) {
+      // For pledge fulfillment, only show completed pledges
+      const availablePledges = templateType === 'pledgeFulfillment' ? completedPledges : donorPledges;
+
+      if (availablePledges.length > 0) {
+        const firstPledge = availablePledges[0];
+        setSelectedPledgeForTemplate(firstPledge._id);
+        setSelectedFundForTemplate(null);
+        setGeneratedMessage(generateMessageFromTemplate(templateType, firstPledge._id));
+      } else {
+        setSelectedPledgeForTemplate(null);
+        setSelectedFundForTemplate(null);
+        if (templateType === 'pledgeFulfillment') {
+          setGeneratedMessage('No completed pledges found for this donor.');
+        } else {
+          setGeneratedMessage('No pledges found for this donor. Please add a pledge first.');
+        }
+      }
+    } else {
+      // For non-pledge templates, select first fund
+      setSelectedPledgeForTemplate(null);
+      if (funds.length > 0) {
+        const firstFund = funds[0];
+        setSelectedFundForTemplate(firstFund._id);
+        setGeneratedMessage(generateMessageFromTemplate(templateType, undefined, firstFund._id));
+      } else {
+        setSelectedFundForTemplate(null);
+        setGeneratedMessage(generateMessageFromTemplate(templateType));
+      }
+    }
+  };
+
+  // Handle pledge selection for template
+  const handlePledgeSelectForTemplate = (pledgeId: string) => {
+    setSelectedPledgeForTemplate(pledgeId);
+    setCopiedToClipboard(false);
+    if (selectedTemplate) {
+      setGeneratedMessage(generateMessageFromTemplate(selectedTemplate, pledgeId));
+    }
+  };
+
+  // Handle fund selection for template (non-pledge templates)
+  const handleFundSelectForTemplate = (fundId: string) => {
+    setSelectedFundForTemplate(fundId);
+    setCopiedToClipboard(false);
+    if (selectedTemplate) {
+      setGeneratedMessage(generateMessageFromTemplate(selectedTemplate, undefined, fundId));
+    }
+  };
+
+  // Copy message to clipboard
+  const copyMessageToClipboard = async () => {
+    if (!generatedMessage) return;
     try {
-      setGeneratedComm("Drafting...");
-      const comm = await generateDonorCommunication(selectedDonor.name, donorTransactions, lifetimeValue);
-      setGeneratedComm(comm || "Error generating draft.");
-    } catch (e) { console.error(e); }
+      await navigator.clipboard.writeText(generatedMessage);
+      setCopiedToClipboard(true);
+      setTimeout(() => setCopiedToClipboard(false), 2000);
+    } catch (e) {
+      console.error('Failed to copy to clipboard:', e);
+    }
+  };
+
+  // Share via WhatsApp
+  const shareMessageViaWhatsApp = () => {
+    if (!selectedDonor?.phone || !generatedMessage) return;
+    const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
+    const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(generatedMessage)}`, '_blank');
   };
 
   const handleEditClick = () => { if (selectedDonor && canEdit) { setFormData(selectedDonor); setIsEditing(true); } };
@@ -191,11 +376,117 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
            const remainingSum = transactions
               .filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
               .reduce((sum, t) => sum + t.amount, 0);
-           
+
            if (remainingSum < pledge.amount) {
                 onUpdatePledge({ ...pledge, status: 'Active' });
            }
       }
+  };
+
+  // Handle finding duplicate donors
+  const handleFindDuplicates = async () => {
+    setIsFindingDuplicates(true);
+    try {
+      const groups = await findDuplicates({});
+      setDuplicateGroups(groups);
+      if (groups.length === 0) {
+        alert('No duplicate donors found!');
+      } else {
+        setShowMergeModal(true);
+      }
+    } catch (error) {
+      console.error('Error finding duplicates:', error);
+      alert('Failed to find duplicates');
+    } finally {
+      setIsFindingDuplicates(false);
+    }
+  };
+
+  // Handle merging donors (auto-detected)
+  const handleMergeDonors = async (groupIndex: number) => {
+    const group = duplicateGroups[groupIndex];
+    if (!group || !selectedPrimaryId) return;
+
+    setIsMerging(true);
+    try {
+      const duplicateIds = group.donors
+        .filter((d: any) => d._id !== selectedPrimaryId)
+        .map((d: any) => d._id);
+
+      const result = await mergeDonors({
+        primaryDonorId: selectedPrimaryId as Id<"donors">,
+        duplicateDonorIds: duplicateIds as Id<"donors">[],
+      });
+
+      alert(`Merged successfully!\n• ${result.mergedTransactions} transactions moved\n• ${result.mergedPledges} pledges moved\n• ${result.deletedDonors} duplicate(s) removed`);
+
+      // Remove this group from the list
+      setDuplicateGroups(prev => prev.filter((_, i) => i !== groupIndex));
+      setSelectedMergeGroup(null);
+      setSelectedPrimaryId(null);
+
+      // If no more groups, close modal
+      if (duplicateGroups.length <= 1) {
+        setShowMergeModal(false);
+      }
+    } catch (error) {
+      console.error('Error merging donors:', error);
+      alert('Failed to merge donors');
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  // Toggle donor selection for manual merge
+  const toggleDonorForMerge = (donorId: string) => {
+    setSelectedForMerge(prev => {
+      const next = new Set(prev);
+      if (next.has(donorId)) {
+        next.delete(donorId);
+        // If we removed the primary, reset it
+        if (manualPrimaryId === donorId) {
+          setManualPrimaryId(null);
+        }
+      } else {
+        next.add(donorId);
+      }
+      return next;
+    });
+  };
+
+  // Handle manual merge
+  const handleManualMerge = async () => {
+    if (!manualPrimaryId || selectedForMerge.size < 2) return;
+
+    setIsMerging(true);
+    try {
+      const duplicateIds = Array.from(selectedForMerge)
+        .filter(id => id !== manualPrimaryId);
+
+      const result = await mergeDonors({
+        primaryDonorId: manualPrimaryId as Id<"donors">,
+        duplicateDonorIds: duplicateIds as Id<"donors">[],
+      });
+
+      alert(`Merged successfully!\n• ${result.mergedTransactions} transactions moved\n• ${result.mergedPledges} pledges moved\n• ${result.deletedDonors} duplicate(s) removed`);
+
+      // Reset manual merge state
+      setManualMergeMode(false);
+      setSelectedForMerge(new Set());
+      setManualPrimaryId(null);
+    } catch (error) {
+      console.error('Error merging donors:', error);
+      alert('Failed to merge donors');
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  // Cancel manual merge mode
+  const cancelManualMerge = () => {
+    setManualMergeMode(false);
+    setSelectedForMerge(new Set());
+    setManualPrimaryId(null);
   };
 
   return (
@@ -205,20 +496,121 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
         <div className="p-4 border-b border-ledger space-y-3">
           <div className="flex justify-between items-center">
               <h3 className="font-bold text-ink text-sm font-mono">Directory</h3>
-              {canEdit && <button onClick={() => setShowAddDonorModal(true)} className="p-1.5 bg-grey-light hover:bg-ledger rounded text-grey-dark transition-colors shadow-sm" title="Add New Donor"><Plus size={14} /></button>}
+              <div className="flex gap-1">
+                {canEdit && !manualMergeMode && (
+                  <button
+                    onClick={() => setManualMergeMode(true)}
+                    className="p-1.5 bg-amber-50 hover:bg-amber-100 rounded text-amber-700 transition-colors shadow-sm"
+                    title="Select donors to merge"
+                  >
+                    <Merge size={14} />
+                  </button>
+                )}
+                {canEdit && !manualMergeMode && <button onClick={() => setShowAddDonorModal(true)} className="p-1.5 bg-grey-light hover:bg-ledger rounded text-grey-dark transition-colors shadow-sm" title="Add New Donor"><Plus size={14} /></button>}
+              </div>
           </div>
+          {/* Manual merge mode banner */}
+          {manualMergeMode && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-800">Select donors to merge</span>
+                <button onClick={cancelManualMerge} className="text-amber-600 hover:text-amber-800">
+                  <X size={14} />
+                </button>
+              </div>
+              <p className="text-[10px] text-amber-700">
+                {selectedForMerge.size === 0 && "Click donors below to select them"}
+                {selectedForMerge.size === 1 && "Select at least one more donor"}
+                {selectedForMerge.size >= 2 && !manualPrimaryId && "Now click 'Keep' on the donor to keep as primary"}
+                {selectedForMerge.size >= 2 && manualPrimaryId && `Ready to merge ${selectedForMerge.size} donors`}
+              </p>
+              {selectedForMerge.size >= 2 && manualPrimaryId && (
+                <button
+                  onClick={handleManualMerge}
+                  disabled={isMerging}
+                  className="w-full py-2 bg-amber-500 text-white rounded text-xs font-bold uppercase hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {isMerging ? 'Merging...' : `Merge ${selectedForMerge.size} Donors`}
+                </button>
+              )}
+            </div>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" size={14} />
             <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-md focus:outline-none focus:ring-1 focus:ring-ink bg-paper focus:bg-white transition-colors" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {filteredDonors.map(donor => (
-            <button key={donor._id} onClick={() => { setSelectedDonorId(donor._id); setGeneratedComm(''); }} className={`w-full text-left px-4 py-3 border-b border-grey-light transition-colors flex items-center gap-3 ${selectedDonorId === donor._id ? 'bg-paper border-l-4 border-l-ink' : 'hover:bg-paper border-l-4 border-l-transparent'}`}>
-              <div className="w-8 h-8 bg-ledger rounded-full flex items-center justify-center text-xs font-bold text-grey-dark shrink-0">{donor.name.charAt(0)}</div>
-              <div className="min-w-0"><div className={`text-sm font-bold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>{donor.name}</div><div className="text-[10px] text-grey-mid truncate">{donor.email || donor.type}</div></div>
-            </button>
-          ))}
+          {filteredDonors.map(donor => {
+            const isSelectedForMerge = selectedForMerge.has(donor._id);
+            const isPrimary = manualPrimaryId === donor._id;
+
+            return (
+              <div
+                key={donor._id}
+                className={`w-full text-left px-4 py-3 border-b border-grey-light transition-colors flex items-center gap-3 ${
+                  manualMergeMode && isSelectedForMerge
+                    ? 'bg-amber-50 border-l-4 border-l-amber-500'
+                    : selectedDonorId === donor._id
+                    ? 'bg-paper border-l-4 border-l-ink'
+                    : 'hover:bg-paper border-l-4 border-l-transparent'
+                }`}
+              >
+                {/* Merge mode checkbox */}
+                {manualMergeMode && (
+                  <button
+                    onClick={() => toggleDonorForMerge(donor._id)}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                      isSelectedForMerge
+                        ? 'bg-amber-500 border-amber-500 text-white'
+                        : 'border-grey-mid hover:border-amber-500'
+                    }`}
+                  >
+                    {isSelectedForMerge && <Check size={12} />}
+                  </button>
+                )}
+
+                {/* Donor info - clickable */}
+                <button
+                  onClick={() => {
+                    if (manualMergeMode) {
+                      toggleDonorForMerge(donor._id);
+                    } else {
+                      setSelectedDonorId(donor._id);
+                      setGeneratedMessage('');
+                      setSelectedTemplate(null);
+                      setSelectedPledgeForTemplate(null);
+                      setSelectedFundForTemplate(null);
+                    }
+                  }}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    isPrimary ? 'bg-amber-500 text-white' : 'bg-ledger text-grey-dark'
+                  }`}>
+                    {donor.name.charAt(0)}
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className={`text-sm font-bold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>
+                      {donor.name}
+                      {isPrimary && <span className="ml-1 text-[10px] text-amber-600">(Primary)</span>}
+                    </div>
+                    <div className="text-[10px] text-grey-mid truncate">{donor.email || donor.type}</div>
+                  </div>
+                </button>
+
+                {/* Keep as primary button */}
+                {manualMergeMode && isSelectedForMerge && selectedForMerge.size >= 2 && !isPrimary && (
+                  <button
+                    onClick={() => setManualPrimaryId(donor._id)}
+                    className="text-[10px] px-2 py-1 bg-amber-100 text-amber-700 rounded hover:bg-amber-200 shrink-0"
+                  >
+                    Keep
+                  </button>
+                )}
+              </div>
+            );
+          })}
           {filteredDonors.length === 0 && <div className="p-8 text-center text-grey-mid text-xs">No donors found.</div>}
         </div>
       </div>
@@ -368,12 +760,132 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                 )}
                 {activeTab === 'communicate' && (
                     <div className="swiss-card p-6 bg-white max-w-4xl">
-                        <div className="flex justify-between items-center mb-4">
-                           <h3 className="font-bold text-ink flex items-center gap-2 text-sm uppercase tracking-wide"><Sparkles size={16} className="text-amber"/> AI Draft Assistant</h3>
-                           {canEdit && <button onClick={handleGenerateCommunication} className="flex items-center gap-2 px-3 py-1.5 bg-sage-light text-sage-dark hover:bg-sage/20 rounded text-xs font-bold uppercase tracking-wide transition-colors"><Sparkles size={12}/> Generate Draft</button>}
-                       </div>
-                       <textarea className="w-full h-64 p-4 text-sm border border-ledger rounded-lg focus:ring-1 focus:ring-ink focus:border-grey-mid outline-none leading-relaxed resize-none font-serif text-grey-dark" value={generatedComm} placeholder="Select 'Generate Draft' to create a personalized email based on recent giving..." readOnly />
-                        <div className="flex justify-end gap-3 mt-4"><button className="px-4 py-2 text-xs font-bold text-grey-mid uppercase tracking-wide hover:text-ink">Copy to Clipboard</button></div>
+                        <h3 className="font-bold text-ink flex items-center gap-2 text-sm uppercase tracking-wide mb-4">
+                            <MessageSquare size={16} /> Message Templates
+                        </h3>
+
+                        {/* Template Selection Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+                            {(Object.entries(MESSAGE_TEMPLATES) as [TemplateType, MessageTemplate][]).map(([key, template]) => (
+                                <button
+                                    key={key}
+                                    onClick={() => handleSelectTemplate(key)}
+                                    className={`p-3 text-left border rounded-lg transition-all ${
+                                        selectedTemplate === key
+                                            ? 'border-ink bg-ink text-white'
+                                            : 'border-ledger bg-white hover:border-grey-mid hover:bg-paper'
+                                    }`}
+                                >
+                                    <div className={`text-xs font-bold mb-1 ${selectedTemplate === key ? 'text-white' : 'text-ink'}`}>
+                                        {template.name}
+                                    </div>
+                                    <div className={`text-[10px] ${selectedTemplate === key ? 'text-grey-light' : 'text-grey-mid'}`}>
+                                        {template.description}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Pledge Selector (for pledge-specific templates) */}
+                        {selectedTemplate && MESSAGE_TEMPLATES[selectedTemplate].requiresPledge && (
+                            <div className="mb-4">
+                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">
+                                    Select Pledge
+                                </label>
+                                {(() => {
+                                    const availablePledges = selectedTemplate === 'pledgeFulfillment' ? completedPledges : donorPledges;
+                                    return availablePledges.length > 0 ? (
+                                        <select
+                                            value={selectedPledgeForTemplate || ''}
+                                            onChange={(e) => handlePledgeSelectForTemplate(e.target.value)}
+                                            className="w-full max-w-sm p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"
+                                        >
+                                            {availablePledges.map(p => (
+                                                <option key={p._id} value={p._id}>
+                                                    {funds.find(f => f._id === p.fundId)?.name} - £{p.amount} ({p.frequency}) - {p.status}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <p className="text-xs text-grey-mid italic">
+                                            {selectedTemplate === 'pledgeFulfillment'
+                                                ? 'No completed pledges found for this donor.'
+                                                : 'No pledges found for this donor.'}
+                                        </p>
+                                    );
+                                })()}
+                            </div>
+                        )}
+
+                        {/* Fund Selector (for non-pledge templates) */}
+                        {selectedTemplate && !MESSAGE_TEMPLATES[selectedTemplate].requiresPledge && funds.length > 0 && (
+                            <div className="mb-4">
+                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">
+                                    Select Fund
+                                </label>
+                                <select
+                                    value={selectedFundForTemplate || ''}
+                                    onChange={(e) => handleFundSelectForTemplate(e.target.value)}
+                                    className="w-full max-w-sm p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"
+                                >
+                                    {funds.map(f => (
+                                        <option key={f._id} value={f._id}>
+                                            {f.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Generated Message Preview */}
+                        <div className="mb-4">
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">
+                                Message Preview
+                            </label>
+                            <textarea
+                                className="w-full h-48 p-4 text-sm border border-ledger rounded-lg focus:ring-1 focus:ring-ink focus:border-grey-mid outline-none leading-relaxed resize-none bg-paper text-grey-dark"
+                                value={generatedMessage}
+                                onChange={(e) => setGeneratedMessage(e.target.value)}
+                                placeholder="Select a template above to generate a message..."
+                            />
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={copyMessageToClipboard}
+                                disabled={!generatedMessage}
+                                className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+                                    copiedToClipboard
+                                        ? 'bg-sage-light text-sage-dark'
+                                        : generatedMessage
+                                            ? 'bg-grey-light text-grey-dark hover:bg-ledger'
+                                            : 'bg-grey-light text-grey-mid cursor-not-allowed'
+                                }`}
+                            >
+                                {copiedToClipboard ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                                {copiedToClipboard ? 'Copied!' : 'Copy'}
+                            </button>
+                            <button
+                                onClick={shareMessageViaWhatsApp}
+                                disabled={!generatedMessage || !selectedDonor?.phone}
+                                className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+                                    generatedMessage && selectedDonor?.phone
+                                        ? 'bg-[#25D366] text-white hover:bg-[#128C7E]'
+                                        : 'bg-grey-light text-grey-mid cursor-not-allowed'
+                                }`}
+                                title={!selectedDonor?.phone ? 'No phone number on file' : ''}
+                            >
+                                <Send size={14} /> WhatsApp
+                            </button>
+                        </div>
+
+                        {/* No phone warning */}
+                        {generatedMessage && !selectedDonor?.phone && (
+                            <p className="text-[10px] text-amber-dark mt-2 text-right">
+                                No phone number on file for this donor
+                            </p>
+                        )}
                     </div>
                 )}
             </div>
@@ -554,6 +1066,112 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                     </div>
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* Merge Duplicates Modal */}
+      {showMergeModal && canEdit && (
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-lg shadow-2xl border border-ledger animate-enter max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
+              <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
+                <Users size={16} /> Merge Duplicate Donors
+              </h3>
+              <button onClick={() => setShowMergeModal(false)} className="text-grey-mid hover:text-grey-dark">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {duplicateGroups.length === 0 ? (
+                <p className="text-grey-mid text-sm text-center py-8">No duplicate donors found.</p>
+              ) : (
+                <div className="space-y-6">
+                  <p className="text-xs text-grey-mid">
+                    Found {duplicateGroups.length} group(s) of potential duplicates. Select the primary donor to keep, and duplicates will be merged into it.
+                  </p>
+
+                  {duplicateGroups.map((group, groupIndex) => (
+                    <div key={groupIndex} className="border border-ledger rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-grey-mid uppercase">
+                          Group {groupIndex + 1} - {group.donors.length} donors
+                        </span>
+                        {selectedMergeGroup === groupIndex && selectedPrimaryId && (
+                          <button
+                            onClick={() => handleMergeDonors(groupIndex)}
+                            disabled={isMerging}
+                            className="px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-bold uppercase hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {isMerging ? 'Merging...' : <><Merge size={12} /> Merge</>}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        {group.donors.map((donor: any) => {
+                          const isSelected = selectedMergeGroup === groupIndex && selectedPrimaryId === donor._id;
+                          const isSuggested = group.suggestedPrimary === donor._id;
+
+                          return (
+                            <button
+                              key={donor._id}
+                              onClick={() => {
+                                setSelectedMergeGroup(groupIndex);
+                                setSelectedPrimaryId(donor._id);
+                              }}
+                              className={`w-full p-3 text-left border rounded-lg transition-colors ${
+                                isSelected
+                                  ? 'border-amber-500 bg-amber-50'
+                                  : 'border-ledger hover:border-grey-mid hover:bg-paper'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="font-bold text-ink text-sm flex items-center gap-2">
+                                    {donor.name}
+                                    {isSuggested && (
+                                      <span className="text-[10px] bg-sage/20 text-sage-dark px-1.5 py-0.5 rounded">
+                                        Suggested
+                                      </span>
+                                    )}
+                                    {isSelected && (
+                                      <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                                        Primary
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-grey-mid mt-1 flex gap-3">
+                                    {donor.email && <span>{donor.email}</span>}
+                                    {donor.phone && <span>{donor.phone}</span>}
+                                    {!donor.email && !donor.phone && <span className="italic">No contact info</span>}
+                                  </div>
+                                </div>
+                                <div className="text-right text-xs text-grey-mid">
+                                  {donor.isGiftAidActive && (
+                                    <span className="text-sage">Gift Aid ✓</span>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-ledger flex justify-end">
+              <button
+                onClick={() => setShowMergeModal(false)}
+                className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

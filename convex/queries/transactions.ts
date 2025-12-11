@@ -65,6 +65,12 @@ export const byDonor = query({
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
 
+    // Ensure the donor belongs to the caller's organization
+    const donor = await ctx.db.get(args.donorId);
+    if (!donor || donor.organizationId !== user.organizationId) {
+      throw new Error("Donor not found in your organization");
+    }
+
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
@@ -251,16 +257,11 @@ export const listUnlinkedIncome = query({
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
       )
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("type"), "Income"),
-          q.eq(q.field("pledgeId"), undefined)
-        )
-      )
+      .filter((q) => q.eq(q.field("type"), "Income"))
       .order("desc")
       .collect();
 
-    return transactions;
+    return transactions.filter((t) => t.pledgeId == null);
   },
 });
 

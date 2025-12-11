@@ -15,6 +15,8 @@ export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
 
 export interface AppUser {
   id: string;
+  /** Clerk userId (required for backend invites) */
+  clerkId?: string;
   name: string;
   email: string;
   role: UserRole;
@@ -81,7 +83,7 @@ export interface Transaction {
   isGiftAidEligible?: boolean;
   donorName?: string; // For linking to pledges
   donorId?: string;
-  pledgeId?: string;
+  pledgeId?: string | null;
 }
 
 export interface Insight {

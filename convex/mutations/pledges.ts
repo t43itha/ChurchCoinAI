@@ -289,7 +289,7 @@ export const remove = mutation({
       .collect();
 
     for (const t of linkedTransactions) {
-      await ctx.db.patch(t._id, { pledgeId: undefined });
+      await ctx.db.patch(t._id, { pledgeId: null });
     }
 
     await ctx.db.delete(args.pledgeId);
@@ -357,7 +357,7 @@ export const cleanupDuplicates = internalMutation({
               .collect();
 
             for (const t of linkedTransactions) {
-              await ctx.db.patch(t._id, { pledgeId: undefined });
+              await ctx.db.patch(t._id, { pledgeId: null });
             }
 
             await ctx.db.delete(pledge._id);

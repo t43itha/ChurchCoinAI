@@ -20,7 +20,7 @@ interface Transaction {
   isGiftAidEligible?: boolean;
   donorId?: Id<"donors">;
   donorName?: string;
-  pledgeId?: Id<"pledges">;
+  pledgeId?: Id<"pledges"> | null;
   notes?: string;
 }
 
@@ -503,24 +503,32 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const handleApplyAI = async () => {
     setIsProcessingAI(true);
-    const descriptions = pendingTransactions.map(t => t.description || '');
     try {
+        // Use simple categorization - no auto-matching donors/pledges
+        const transactionsToProcess = pendingTransactions.map(t => ({
+            description: t.description || '',
+            amount: t.amount || 0,
+            type: (t.type || 'Income') as 'Income' | 'Expenditure',
+        }));
+
         const suggestions = await categorizeTransactionsAI({
-            descriptions,
+            transactions: transactionsToProcess,
             fundNames: funds.map(f => f.name),
             categories: categoryNames
         });
+
         const updatedPending = pendingTransactions.map((t, idx) => {
             const suggestion = suggestions[idx];
             if (!suggestion) return t;
             const suggestedFund = funds.find(f => f.name === suggestion.fundName);
+
             return {
                 ...t,
                 category: suggestion.category,
                 fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
                 isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.donorName || (t.description?.includes('Ref:') ? t.description.split('Ref:')[1].trim() : undefined),
-                notes: `AI Confidence: ${suggestion.confidence}`
+                donorName: suggestion.extractedDonorName || undefined,
+                notes: `AI Confidence: ${suggestion.confidence}`,
             };
         });
         setPendingTransactions(updatedPending);
@@ -533,19 +541,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const handleConfirmImport = async () => {
     try {
-        const transactionsToCreate = pendingTransactions.map(pt => ({
-            date: pt.date || new Date().toISOString().split('T')[0],
-            description: pt.description || '',
-            amount: pt.amount || 0,
-            type: (pt.type || 'Income') as 'Income' | 'Expenditure',
-            category: pt.category || categoryNames[0] || 'Donations',
-            fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
-            isReconciled: false,
-            isGiftAidEligible: pt.isGiftAidEligible || false,
-            donorName: pt.donorName,
-            notes: pt.notes,
-        }));
-        await bulkCreateTransactions({ transactions: transactionsToCreate });
+        // Build transactions - NO auto-donor creation or pledge linking
+        // Just store the extracted donor name as text for manual linking later
+        const transactionsToCreate = pendingTransactions.map((pt: any) => {
+            return {
+                date: pt.date || new Date().toISOString().split('T')[0],
+                description: pt.description || '',
+                amount: pt.amount || 0,
+                type: (pt.type || 'Income') as 'Income' | 'Expenditure',
+                category: pt.category || categoryNames[0] || 'Donations',
+                fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+                isReconciled: false,
+                isGiftAidEligible: pt.isGiftAidEligible || false,
+                donorName: pt.donorName, // Keep extracted name for reference
+                // No auto-linking: donorId and pledgeId left undefined
+                // User can manually link transactions to donors/pledges later
+                notes: pt.notes?.replace(/ \| New Donor:.*$/, '').replace(/ \| Donor:.*$/, '').replace(/ \| Pledge:.*$/, '') || undefined,
+            };
+        });
+
+        const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
+
+        // Notify about completed pledges (if any were manually linked)
+        if (result?.completedPledges && onPledgeCompleted) {
+            for (const completed of result.completedPledges) {
+                onPledgeCompleted(completed.donorName, completed.amount);
+            }
+        }
+
         setShowReviewModal(false);
         setPendingTransactions([]);
     } catch (error) {
@@ -1257,7 +1280,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 isReconciled: editingTransaction.isReconciled,
                                 isGiftAidEligible: editingTransaction.isGiftAidEligible,
                                 donorName: editingTransaction.donorName,
-                                pledgeId: editingTransaction.pledgeId
+                                pledgeId: editingTransaction.pledgeId ?? null
                             });
                             // Check if pledge was completed
                             if (result?.pledgeCompleted && onPledgeCompleted) {
