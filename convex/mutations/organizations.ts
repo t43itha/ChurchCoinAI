@@ -1,4 +1,4 @@
-import { mutation } from "../_generated/server";
+import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getIdentity, requireAuth, isAdmin } from "../lib/auth";
 
@@ -129,5 +129,19 @@ export const update = mutation({
     await ctx.db.patch(user.organizationId, updates);
 
     return user.organizationId;
+  },
+});
+
+// Internal mutation to update Stripe customer ID (called by stripe action)
+export const updateStripeCustomerId = internalMutation({
+  args: {
+    organizationId: v.id("organizations"),
+    stripeCustomerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.organizationId, {
+      stripeCustomerId: args.stripeCustomerId,
+    });
+    return args.organizationId;
   },
 });

@@ -1,7 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { AppUser, AppUserInviteInput, FundCreateInput, UserRole, ChurchDetails, Fund, FundType } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon } from 'lucide-react';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, CreditCard } from 'lucide-react';
+import BillingSettings from './BillingSettings';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -34,7 +35,7 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users' | 'billing'>('general');
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [localChurchDetails, setLocalChurchDetails] = useState<ChurchDetails>(churchDetails);
   
@@ -172,6 +173,7 @@ const Settings: React.FC<SettingsProps> = ({
             { id: 'funds', label: 'Funds & Campaigns', icon: Wallet },
             { id: 'categories', label: 'Categories', icon: Tag },
             { id: 'users', label: 'Users', icon: Users },
+            { id: 'billing', label: 'Billing', icon: CreditCard },
         ].map(tab => (
             <button
                 key={tab.id}
@@ -543,18 +545,18 @@ const Settings: React.FC<SettingsProps> = ({
                         <Tag size={16} /> Financial Codes
                     </h3>
                 </div>
-                
+
                 <div className="p-6 flex-1 bg-white">
                     <form onSubmit={handleAddCategory} className="flex gap-2 mb-6">
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value)}
                             placeholder="New Category Name..."
                             className="flex-1 bg-paper border border-ledger rounded text-sm px-3 py-2 outline-none focus:ring-1 focus:ring-ink transition-colors"
                         />
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             disabled={!newCategory.trim()}
                             className="px-4 py-2 bg-ink text-white rounded text-xs font-bold uppercase hover:bg-charcoal disabled:opacity-50 transition-colors"
                         >
@@ -566,7 +568,7 @@ const Settings: React.FC<SettingsProps> = ({
                     {categories.map(category => (
                         <div key={category} className="group flex items-center gap-2 px-3 py-1.5 bg-white border border-ledger rounded-md shadow-sm hover:border-grey-mid transition-colors">
                         <span className="text-xs font-medium text-grey-dark">{category}</span>
-                        <button 
+                        <button
                             onClick={() => onRemoveCategory(category)}
                             className="text-slate-300 hover:text-error transition-colors"
                         >
@@ -575,7 +577,7 @@ const Settings: React.FC<SettingsProps> = ({
                         </div>
                     ))}
                     </div>
-                    
+
                     <div className="mt-8 p-4 bg-orange-50 border border-orange-100 rounded-lg">
                     <p className="text-xs text-orange-900 leading-relaxed">
                         <strong>Note:</strong> Deleting a category will not remove it from historical transactions, but it will no longer be available for new entries or the AI auto-categorization.
@@ -583,6 +585,11 @@ const Settings: React.FC<SettingsProps> = ({
                     </div>
                 </div>
             </div>
+        )}
+
+        {/* BILLING TAB */}
+        {activeTab === 'billing' && (
+            <BillingSettings />
         )}
       </div>
 

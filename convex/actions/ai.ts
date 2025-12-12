@@ -217,11 +217,11 @@ export const categorizeWithMatching = action({
 
         // Try to find matching donor
         matchedDonor = donors.find(
-          (d) => normalizeName(d.name) === normalized
+          (d: any) => normalizeName(d.name) === normalized
         );
 
         if (!matchedDonor) {
-          matchedDonor = donors.find((d) => {
+          matchedDonor = donors.find((d: any) => {
             const donorNormalized = normalizeName(d.name);
             return (
               donorNormalized.includes(normalized) ||
@@ -232,7 +232,7 @@ export const categorizeWithMatching = action({
 
         if (!matchedDonor) {
           const inputWords = normalized.split(" ").filter((w) => w.length > 1);
-          matchedDonor = donors.find((d) => {
+          matchedDonor = donors.find((d: any) => {
             const donorWords = normalizeName(d.name).split(" ");
             return inputWords.every((inputWord) =>
               donorWords.some(

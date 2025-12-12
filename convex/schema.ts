@@ -11,9 +11,12 @@ export default defineSchema({
     website: v.optional(v.string()),
     reportingPeriod: v.optional(v.union(v.literal("tax_year"), v.literal("calendar_year"))),
     logoUrl: v.optional(v.string()),
+    stripeCustomerId: v.optional(v.string()), // Stripe customer ID for billing
     createdAt: v.number(),
     createdBy: v.string(), // Clerk userId
-  }).index("by_createdBy", ["createdBy"]),
+  })
+    .index("by_createdBy", ["createdBy"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"]),
 
   // Users within an organization
   users: defineTable({
@@ -185,4 +188,30 @@ export default defineSchema({
     .index("by_organization_status", ["organizationId", "status", "createdAt"])
     .index("by_organization_type", ["organizationId", "insightType", "createdAt"])
     .index("by_organization_rule", ["organizationId", "ruleId"]),
+
+  // Subscriptions (billing per organization)
+  subscriptions: defineTable({
+    organizationId: v.id("organizations"),
+    stripeCustomerId: v.string(),
+    stripeSubscriptionId: v.string(),
+    stripePriceId: v.string(),
+    plan: v.union(
+      v.literal("starter"),
+      v.literal("growing"),
+      v.literal("thriving")
+    ),
+    status: v.union(
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("incomplete")
+    ),
+    currentPeriodEnd: v.number(),
+    cancelAtPeriodEnd: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"])
+    .index("by_stripeSubscriptionId", ["stripeSubscriptionId"]),
 });

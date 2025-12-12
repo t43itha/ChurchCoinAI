@@ -139,16 +139,16 @@ export const generateForOrganization = internalMutation({
     // Evaluate donor rules
     for (const donor of context.donors) {
       const donorTransactions = context.transactions.filter(
-        (t) => t.donorId === donor._id
+        (t: any) => t.donorId === donor._id
       );
       const donorPledges = context.pledges.filter(
-        (p) => p.donorId === donor._id
+        (p: any) => p.donorId === donor._id
       );
 
       // Calculate donor-specific metrics
       const incomeTransactions = donorTransactions
-        .filter((t) => t.type === "Income")
-        .sort((a, b) => b.date.localeCompare(a.date));
+        .filter((t: any) => t.type === "Income")
+        .sort((a: any, b: any) => b.date.localeCompare(a.date));
 
       if (incomeTransactions.length === 0) continue; // Skip donors with no income transactions
 
@@ -163,25 +163,25 @@ export const generateForOrganization = internalMutation({
       // Calculate average frequency
       let avgGiftFrequencyDays: number | null = null;
       if (incomeTransactions.length >= 2) {
-        const dates = incomeTransactions.map((t) =>
+        const dates = incomeTransactions.map((t: any) =>
           new Date(t.date).getTime()
         );
         const gaps = dates
           .slice(0, -1)
-          .map((d, i) => d - dates[i + 1]);
+          .map((d: number, i: number) => d - dates[i + 1]);
         avgGiftFrequencyDays =
-          gaps.reduce((a, b) => a + b, 0) / gaps.length / (1000 * 60 * 60 * 24);
+          gaps.reduce((a: number, b: number) => a + b, 0) / gaps.length / (1000 * 60 * 60 * 24);
       }
 
       // YTD calculations
       const ytdGiving = incomeTransactions
-        .filter((t) => t.date.startsWith(currentYear))
-        .reduce((sum, t) => sum + t.amount, 0);
+        .filter((t: any) => t.date.startsWith(currentYear))
+        .reduce((sum: number, t: any) => sum + t.amount, 0);
       const prevYtdGiving = incomeTransactions
-        .filter((t) => t.date.startsWith(prevYear))
-        .reduce((sum, t) => sum + t.amount, 0);
+        .filter((t: any) => t.date.startsWith(prevYear))
+        .reduce((sum: number, t: any) => sum + t.amount, 0);
 
-      const uniqueFunds = new Set(incomeTransactions.map((t) => t.fundId)).size;
+      const uniqueFunds = new Set(incomeTransactions.map((t: any) => t.fundId)).size;
       const firstGiftDate =
         incomeTransactions.length > 0
           ? incomeTransactions[incomeTransactions.length - 1].date
@@ -193,7 +193,7 @@ export const generateForOrganization = internalMutation({
         pledges: donorPledges,
         daysSinceLastGift,
         avgGiftFrequencyDays,
-        totalGiving: incomeTransactions.reduce((sum, t) => sum + t.amount, 0),
+        totalGiving: incomeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0),
         ytdGiving,
         prevYtdGiving,
         giftCount: incomeTransactions.length,

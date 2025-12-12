@@ -9,17 +9,21 @@
  */
 
 import type * as actions_ai from "../actions/ai.js";
+import type * as actions_stripe from "../actions/stripe.js";
+import type * as http from "../http.js";
 import type * as intelligence_generateInsights from "../intelligence/generateInsights.js";
 import type * as intelligence_index from "../intelligence/index.js";
 import type * as intelligence_rules_donorRules from "../intelligence/rules/donorRules.js";
 import type * as intelligence_rules_operationsRules from "../intelligence/rules/operationsRules.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_stripe from "../lib/stripe.js";
 import type * as mutations_categories from "../mutations/categories.js";
 import type * as mutations_donors from "../mutations/donors.js";
 import type * as mutations_funds from "../mutations/funds.js";
 import type * as mutations_intelligence from "../mutations/intelligence.js";
 import type * as mutations_organizations from "../mutations/organizations.js";
 import type * as mutations_pledges from "../mutations/pledges.js";
+import type * as mutations_subscriptions from "../mutations/subscriptions.js";
 import type * as mutations_transactions from "../mutations/transactions.js";
 import type * as mutations_users from "../mutations/users.js";
 import type * as queries_aiContext from "../queries/aiContext.js";
@@ -30,6 +34,7 @@ import type * as queries_funds from "../queries/funds.js";
 import type * as queries_intelligence from "../queries/intelligence.js";
 import type * as queries_organizations from "../queries/organizations.js";
 import type * as queries_pledges from "../queries/pledges.js";
+import type * as queries_subscriptions from "../queries/subscriptions.js";
 import type * as queries_transactions from "../queries/transactions.js";
 import type * as queries_users from "../queries/users.js";
 
@@ -41,17 +46,21 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "actions/ai": typeof actions_ai;
+  "actions/stripe": typeof actions_stripe;
+  http: typeof http;
   "intelligence/generateInsights": typeof intelligence_generateInsights;
   "intelligence/index": typeof intelligence_index;
   "intelligence/rules/donorRules": typeof intelligence_rules_donorRules;
   "intelligence/rules/operationsRules": typeof intelligence_rules_operationsRules;
   "lib/auth": typeof lib_auth;
+  "lib/stripe": typeof lib_stripe;
   "mutations/categories": typeof mutations_categories;
   "mutations/donors": typeof mutations_donors;
   "mutations/funds": typeof mutations_funds;
   "mutations/intelligence": typeof mutations_intelligence;
   "mutations/organizations": typeof mutations_organizations;
   "mutations/pledges": typeof mutations_pledges;
+  "mutations/subscriptions": typeof mutations_subscriptions;
   "mutations/transactions": typeof mutations_transactions;
   "mutations/users": typeof mutations_users;
   "queries/aiContext": typeof queries_aiContext;
@@ -62,6 +71,7 @@ declare const fullApi: ApiFromModules<{
   "queries/intelligence": typeof queries_intelligence;
   "queries/organizations": typeof queries_organizations;
   "queries/pledges": typeof queries_pledges;
+  "queries/subscriptions": typeof queries_subscriptions;
   "queries/transactions": typeof queries_transactions;
   "queries/users": typeof queries_users;
 }>;
