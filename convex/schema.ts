@@ -214,4 +214,39 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_stripeCustomerId", ["stripeCustomerId"])
     .index("by_stripeSubscriptionId", ["stripeSubscriptionId"]),
+
+  // Plaid bank connections
+  plaidItems: defineTable({
+    organizationId: v.id("organizations"),
+    itemId: v.string(), // Plaid item_id
+    accessToken: v.string(), // Plaid access_token (encrypted at rest by Convex)
+    institutionId: v.string(),
+    institutionName: v.string(),
+    accounts: v.array(
+      v.object({
+        accountId: v.string(), // Plaid account_id
+        name: v.string(),
+        mask: v.optional(v.string()), // Last 4 digits
+        type: v.string(), // depository, credit, etc.
+        subtype: v.optional(v.string()), // checking, savings, etc.
+        fundId: v.optional(v.id("funds")), // Mapped fund for this account
+      })
+    ),
+    status: v.union(
+      v.literal("active"),
+      v.literal("error"),
+      v.literal("consent_expired"),
+      v.literal("pending_reauth")
+    ),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    lastSyncAt: v.optional(v.number()),
+    lastSyncCursor: v.optional(v.string()), // Plaid cursor for incremental sync
+    consentExpiresAt: v.optional(v.number()), // UK Open Banking 90-day consent
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_itemId", ["itemId"])
+    .index("by_organization_status", ["organizationId", "status"]),
 });

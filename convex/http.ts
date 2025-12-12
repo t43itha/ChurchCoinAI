@@ -56,7 +56,7 @@ http.route({
     let event: Stripe.Event;
     try {
       const body = await request.text();
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     } catch (err: any) {
       console.error("Webhook signature verification failed:", err.message);
       return new Response(`Webhook Error: ${err.message}`, { status: 400 });
@@ -144,6 +144,100 @@ http.route({
     } catch (err: any) {
       console.error(`Error handling event ${event.type}:`, err.message);
       // Return 500 so Stripe will retry the webhook
+      return new Response(
+        JSON.stringify({ error: err.message }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(JSON.stringify({ received: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+// Plaid webhook endpoint
+http.route({
+  path: "/plaid/webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    // Plaid webhooks don't have signature verification like Stripe
+    // Instead, verify using the webhook_type and item_id
+    // For production, consider using Plaid's webhook verification
+
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (err: any) {
+      console.error("Failed to parse Plaid webhook body:", err.message);
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    const { webhook_type, webhook_code, item_id, error } = body;
+    console.log(`Plaid webhook: ${webhook_type}/${webhook_code} for item ${item_id}`);
+
+    try {
+      // Handle different webhook types
+      switch (webhook_type) {
+        case "ITEM": {
+          switch (webhook_code) {
+            case "ERROR": {
+              // Item has an error that needs attention
+              await ctx.runMutation(internal.mutations.plaid.updateItemStatus, {
+                itemId: item_id,
+                status: "error",
+                errorCode: error?.error_code,
+                errorMessage: error?.error_message,
+              });
+              break;
+            }
+            case "PENDING_EXPIRATION": {
+              // UK Open Banking: Consent is about to expire
+              await ctx.runMutation(internal.mutations.plaid.updateItemStatus, {
+                itemId: item_id,
+                status: "pending_reauth",
+              });
+              break;
+            }
+            case "USER_PERMISSION_REVOKED": {
+              // User revoked permission via bank
+              await ctx.runMutation(internal.mutations.plaid.updateItemStatus, {
+                itemId: item_id,
+                status: "consent_expired",
+                errorMessage: "User revoked bank permission",
+              });
+              break;
+            }
+            default:
+              console.log(`Unhandled ITEM webhook code: ${webhook_code}`);
+          }
+          break;
+        }
+
+        case "TRANSACTIONS": {
+          switch (webhook_code) {
+            case "SYNC_UPDATES_AVAILABLE": {
+              // New transactions available - just log for manual sync model
+              console.log(`New transactions available for item ${item_id}`);
+              break;
+            }
+            case "INITIAL_UPDATE":
+            case "HISTORICAL_UPDATE": {
+              console.log(`Transaction data ready for item ${item_id}: ${webhook_code}`);
+              break;
+            }
+            default:
+              console.log(`Unhandled TRANSACTIONS webhook code: ${webhook_code}`);
+          }
+          break;
+        }
+
+        default:
+          console.log(`Unhandled Plaid webhook type: ${webhook_type}`);
+      }
+    } catch (err: any) {
+      console.error(`Error handling Plaid webhook ${webhook_type}/${webhook_code}:`, err.message);
       return new Response(
         JSON.stringify({ error: err.message }),
         { status: 500, headers: { "Content-Type": "application/json" } }

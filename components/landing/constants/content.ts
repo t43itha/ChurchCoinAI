@@ -9,9 +9,9 @@ export const landingContent: LandingContent = {
     highlightedWord: "ministry.",
     subheadline:
       "The AI-powered finance platform that saves church treasurers 15 hours monthly. Join 500+ UK churches who've already made the switch.",
-    primaryCta: "Start Free 30-Day Trial",
+    primaryCta: "Get Started",
     secondaryCta: "Book a Demo",
-    trustBadge: "No credit card required • 10-minute setup • Cancel anytime",
+    trustBadge: "10-minute setup • Cancel anytime • Secure payments via Stripe",
   },
 
   heroCard: {
@@ -181,7 +181,7 @@ export const landingContent: LandingContent = {
         "Monthly reports",
         "Email support",
       ],
-      cta: "Start Free Trial",
+      cta: "Get Started",
     },
     {
       id: "growing",
@@ -198,7 +198,7 @@ export const landingContent: LandingContent = {
         "Priority support",
       ],
       highlighted: true,
-      cta: "Start Free Trial",
+      cta: "Get Started",
     },
     {
       id: "thriving",
@@ -282,7 +282,7 @@ export const navItems = ["Features", "Pricing", "Testimonials", "FAQ"];
 export const secondaryCTAContent = {
   headline: "Ready to give your treasurer their weekends back?",
   subheadline: "Join 500+ UK churches who've already made the switch.",
-  primaryCta: "Start Free 30-Day Trial",
+  primaryCta: "Get Started",
   secondaryCta: "Book a Demo",
-  trustText: "No credit card required • 10-minute setup • Cancel anytime",
+  trustText: "10-minute setup • Cancel anytime • Secure payments via Stripe",
 };

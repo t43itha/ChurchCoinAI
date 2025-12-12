@@ -4,7 +4,7 @@ import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2 } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Category {
   _id: string;
@@ -39,6 +39,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
 
+  // Plaid bank sync
+  const plaidItems = useQuery(api.queries.plaid.getActiveItemsWithMappedAccounts) || [];
+  const syncTransactions = useAction(api.actions.plaid.syncTransactions);
+
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
   const [isUploading, setIsUploading] = useState(false);
@@ -59,6 +63,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [columnMapping, setColumnMapping] = useState({ date: '', description: '', amount: '', amountIn: '', amountOut: '' });
   const [useSplitAmount, setUseSplitAmount] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Bank Sync State
+  const [showBankSelector, setShowBankSelector] = useState(false);
+  const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -445,19 +453,68 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
   // --------------------
 
-  const handleSimulateSync = () => {
+  // Bank sync: show selector if multiple banks, otherwise sync directly
+  const handleSyncBank = () => {
+    if (plaidItems.length === 0) {
+      alert('No bank accounts connected. Please connect a bank account in Settings > Bank Connections first.');
+      return;
+    }
+    if (plaidItems.length === 1) {
+      // Single bank - sync directly
+      handleSyncFromBank(plaidItems[0]._id);
+    } else {
+      // Multiple banks - show selector
+      setShowBankSelector(true);
+    }
+  };
+
+  // Sync transactions from a specific bank connection
+  const handleSyncFromBank = async (plaidItemId: Id<"plaidItems">) => {
+    setShowBankSelector(false);
     setIsUploading(true);
-    setTimeout(() => {
-        const newMockTransactions: Partial<Transaction>[] = [
-            { description: 'Stripe Payout 10239', amount: 320.00, type: 'Income' as TransactionType, date: '2023-11-01' },
-            { description: 'British Gas Bill Oct', amount: 145.00, type: 'Expenditure' as TransactionType, date: '2023-11-02' },
-            { description: 'Donation Ref: Sarah Jenkins', amount: 200.00, type: 'Income' as TransactionType, date: '2023-11-04' },
-            { description: 'Cash Collection - Sunday', amount: 450.00, type: 'Income' as TransactionType, date: '2023-11-05' },
-        ];
-        setPendingTransactions(newMockTransactions);
-        setIsUploading(false);
-        setShowReviewModal(true);
-    }, 1500);
+    setDuplicateWarnings(new Set());
+
+    try {
+      const result = await syncTransactions({ plaidItemId });
+
+      // Check for potential duplicates (same date + amount)
+      const duplicates = new Set<number>();
+      result.transactions.forEach((syncedTx, idx) => {
+        const isDuplicate = transactions.some(
+          (existingTx) =>
+            existingTx.date === syncedTx.date &&
+            Math.abs(existingTx.amount - syncedTx.amount) < 0.01
+        );
+        if (isDuplicate) {
+          duplicates.add(idx);
+        }
+      });
+      setDuplicateWarnings(duplicates);
+
+      // Transform to pending transaction format
+      const pending: Partial<Transaction>[] = result.transactions.map((tx) => ({
+        date: tx.date,
+        description: tx.description,
+        amount: tx.amount,
+        type: tx.type,
+        fundId: tx.fundId || funds[0]?._id,
+        category: tx.type === 'Income' ? 'Donations' : 'Operating Expenses',
+        isReconciled: false,
+        isGiftAidEligible: false,
+      }));
+
+      setPendingTransactions(pending);
+      setShowReviewModal(true);
+
+      if (result.hasMore) {
+        console.log('More transactions available - sync again for additional batches');
+      }
+    } catch (error: any) {
+      console.error('Bank sync error:', error);
+      alert(error.message || 'Failed to sync transactions from bank. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleApplyAI = async () => {
@@ -600,13 +657,18 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     Smart Link
                 </button>
                 <div className="w-px h-6 bg-ledger mx-1 self-center hidden md:block"></div>
-                <button 
-                    onClick={handleSimulateSync}
+                <button
+                    onClick={handleSyncBank}
                     disabled={isUploading}
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
                 >
                     {isUploading ? <Loader2 size={14} className="animate-spin"/> : <Building2 size={14} />}
                     Sync Bank
+                    {plaidItems.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-sage-light text-sage-dark rounded text-[10px] font-bold">
+                        {plaidItems.length}
+                      </span>
+                    )}
                 </button>
                 <button 
                     onClick={() => fileInputRef.current?.click()}
@@ -1432,6 +1494,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </div>
                 <div className="overflow-y-auto flex-1 p-6">
+                    {duplicateWarnings.size > 0 && (
+                      <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-amber-600" />
+                        <p className="text-xs text-amber-800">
+                          <strong>{duplicateWarnings.size} potential duplicate{duplicateWarnings.size > 1 ? 's' : ''} found</strong> -
+                          transactions with matching date and amount already exist. Review and remove if needed.
+                        </p>
+                      </div>
+                    )}
                     <table className="w-full text-left ledger-table">
                         <thead>
                             <tr>
@@ -1440,16 +1511,49 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <th className="pb-2">Amount</th>
                                 <th className="pb-2">Category</th>
                                 <th className="pb-2">Fund</th>
+                                <th className="pb-2 w-10"></th>
                             </tr>
                         </thead>
                         <tbody>
                             {pendingTransactions.map((t, i) => (
-                                <tr key={i}>
-                                    <td className="py-3 text-grey-mid font-mono text-xs">{t.date}</td>
+                                <tr key={i} className={duplicateWarnings.has(i) ? 'bg-amber-50' : ''}>
+                                    <td className="py-3 text-grey-mid font-mono text-xs">
+                                      <div className="flex items-center gap-2">
+                                        {duplicateWarnings.has(i) && (
+                                          <span title="Potential duplicate">
+                                            <AlertTriangle size={12} className="text-amber-600 shrink-0" />
+                                          </span>
+                                        )}
+                                        {t.date}
+                                      </div>
+                                    </td>
                                     <td className="py-3 font-medium text-ink text-sm">{t.description}</td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
                                     <td className="py-3"><select className="bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
                                     <td className="py-3"><select className="bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
+                                    <td className="py-3 text-center">
+                                      {duplicateWarnings.has(i) && (
+                                        <button
+                                          onClick={() => {
+                                            const newPending = pendingTransactions.filter((_, idx) => idx !== i);
+                                            setPendingTransactions(newPending);
+                                            const newWarnings = new Set(duplicateWarnings);
+                                            newWarnings.delete(i);
+                                            // Reindex warnings
+                                            const reindexed = new Set<number>();
+                                            newWarnings.forEach(w => {
+                                              if (w > i) reindexed.add(w - 1);
+                                              else reindexed.add(w);
+                                            });
+                                            setDuplicateWarnings(reindexed);
+                                          }}
+                                          className="text-error hover:text-error-dark text-xs font-bold"
+                                          title="Remove duplicate"
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      )}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -1460,6 +1564,45 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
                 </div>
             </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Bank Selector Modal */}
+      {showBankSelector && createPortal(
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md animate-enter border border-ledger">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center rounded-t-lg">
+              <div>
+                <h3 className="text-lg font-bold text-ink">Select Bank Account</h3>
+                <p className="text-xs text-grey-mid font-mono mt-1 uppercase tracking-wide">Choose which bank to sync</p>
+              </div>
+              <button onClick={() => setShowBankSelector(false)} className="text-grey-mid hover:text-grey-dark">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              {plaidItems.map((item) => (
+                <button
+                  key={item._id}
+                  onClick={() => handleSyncFromBank(item._id)}
+                  className="w-full p-4 bg-paper border border-ledger rounded-lg hover:border-sage hover:bg-sage-light/30 transition-all flex items-center gap-4 text-left group"
+                >
+                  <div className="w-10 h-10 bg-white border border-ledger rounded-lg flex items-center justify-center group-hover:border-sage">
+                    <Building2 size={18} className="text-grey-dark group-hover:text-sage-dark" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-ink text-sm">{item.institutionName}</p>
+                    <p className="text-[10px] text-grey-mid mt-0.5">
+                      {item.accounts.length} account{item.accounts.length > 1 ? 's' : ''} mapped
+                      {item.lastSyncAt && ` • Last sync: ${new Date(item.lastSyncAt).toLocaleDateString()}`}
+                    </p>
+                  </div>
+                  <RefreshCw size={16} className="text-grey-mid group-hover:text-sage-dark" />
+                </button>
+              ))}
+            </div>
+          </div>
         </div>,
         document.body
       )}

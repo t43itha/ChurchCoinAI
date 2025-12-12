@@ -1,8 +1,9 @@
 
 import React, { useState, useRef } from 'react';
 import { AppUser, AppUserInviteInput, FundCreateInput, UserRole, ChurchDetails, Fund, FundType } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, CreditCard } from 'lucide-react';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, CreditCard, Landmark } from 'lucide-react';
 import BillingSettings from './BillingSettings';
+import BankConnectionsSettings from './BankConnectionsSettings';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -35,7 +36,7 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users' | 'billing'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users' | 'bank' | 'billing'>('general');
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [localChurchDetails, setLocalChurchDetails] = useState<ChurchDetails>(churchDetails);
   
@@ -173,6 +174,7 @@ const Settings: React.FC<SettingsProps> = ({
             { id: 'funds', label: 'Funds & Campaigns', icon: Wallet },
             { id: 'categories', label: 'Categories', icon: Tag },
             { id: 'users', label: 'Users', icon: Users },
+            { id: 'bank', label: 'Bank Connections', icon: Landmark },
             { id: 'billing', label: 'Billing', icon: CreditCard },
         ].map(tab => (
             <button
@@ -585,6 +587,11 @@ const Settings: React.FC<SettingsProps> = ({
                     </div>
                 </div>
             </div>
+        )}
+
+        {/* BANK CONNECTIONS TAB */}
+        {activeTab === 'bank' && (
+            <BankConnectionsSettings funds={funds} />
         )}
 
         {/* BILLING TAB */}

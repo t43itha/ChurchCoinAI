@@ -30,7 +30,7 @@ export default function Pricing({ onGetStarted }: PricingProps) {
             Simple, transparent<br />pricing
           </h2>
           <p className="text-[#666666] max-w-2xl">
-            Start free, upgrade as you grow. All plans include a 30-day trial.
+            Choose the plan that fits your church. Cancel anytime.
           </p>
         </motion.div>
 

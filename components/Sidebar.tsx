@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserButton } from '@clerk/clerk-react';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, Command, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, Calculator, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 
 // Type for Convex user from database
 interface ConvexUser {
@@ -57,8 +57,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
         {/* Brand Header */}
         <div className="p-8 flex items-center justify-between">
           <div className="flex items-center gap-3 text-ink">
-              <div className="w-8 h-8 bg-ink text-white flex items-center justify-center rounded-lg">
-                  <Command size={16} />
+              <div className="w-8 h-8 border-2 border-ink flex items-center justify-center">
+                  <Calculator size={16} strokeWidth={2} />
               </div>
               <div>
                   <h1 className="text-lg font-bold tracking-tight leading-none text-ink">ChurchCoin</h1>
