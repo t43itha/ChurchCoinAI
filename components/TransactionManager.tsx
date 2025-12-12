@@ -3,60 +3,19 @@ import { createPortal } from 'react-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
+import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2 } from 'lucide-react';
 
-// Types
-type TransactionType = 'Income' | 'Expenditure';
-
-interface Transaction {
-  _id: Id<"transactions">;
-  date: string;
-  description: string;
-  amount: number;
-  type: TransactionType;
-  category: string;
-  fundId: Id<"funds">;
-  isReconciled: boolean;
-  isGiftAidEligible?: boolean;
-  donorId?: Id<"donors">;
-  donorName?: string;
-  pledgeId?: Id<"pledges"> | null;
-  notes?: string;
-}
-
-interface Fund {
-  _id: Id<"funds">;
-  name: string;
-  type: string;
-  balance: number;
-}
-
-interface Pledge {
-  _id: Id<"pledges">;
-  donorId: Id<"donors">;
-  donorName: string;
-  amount: number;
-  frequency: string;
-  fundId: Id<"funds">;
-  status: string;
-}
-
 interface Category {
-  _id: Id<"categories">;
+  _id: string;
   name: string;
-}
-
-interface CurrentUser {
-  _id: Id<"users">;
-  name: string;
-  role: 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
 }
 
 interface TransactionManagerProps {
   funds: Fund[];
   pledges: Pledge[];
   categories: Category[];
-  currentUser: CurrentUser;
+  currentUser: AppUser;
   initialFundId?: string;
   onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
@@ -266,10 +225,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               if (!suggestion) continue;
               const suggestedFund = funds.find(f => f.name === suggestion.fundName);
               await updateTransaction({
-                  transactionId: t._id,
+                  transactionId: t._id as Id<"transactions">,
                   category: suggestion.category,
                   isGiftAidEligible: suggestion.isGiftAidEligible,
-                  fundId: suggestedFund?._id,
+                  fundId: suggestedFund?._id ? (suggestedFund._id as Id<"funds">) : undefined,
                   donorName: suggestion.donorName || undefined,
               });
           }
@@ -309,8 +268,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (t && matchedPledge) {
           try {
               const result = await updateTransaction({
-                  transactionId: t._id,
-                  pledgeId: matchedPledge._id, // Use the actual pledge ID from our data
+                  transactionId: t._id as Id<"transactions">,
+                  pledgeId: matchedPledge._id as Id<"pledges">, // Use the actual pledge ID from our data
                   donorName: match.donorName || matchedPledge.donorName || t.donorName
               });
               // Check if pledge was completed
@@ -505,14 +464,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setIsProcessingAI(true);
     try {
         // Use simple categorization - no auto-matching donors/pledges
-        const transactionsToProcess = pendingTransactions.map(t => ({
-            description: t.description || '',
-            amount: t.amount || 0,
-            type: (t.type || 'Income') as 'Income' | 'Expenditure',
-        }));
-
+        const descriptions = pendingTransactions.map(t => t.description || '');
         const suggestions = await categorizeTransactionsAI({
-            transactions: transactionsToProcess,
+            descriptions,
             fundNames: funds.map(f => f.name),
             categories: categoryNames
         });
@@ -527,7 +481,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 category: suggestion.category,
                 fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
                 isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.extractedDonorName || undefined,
+                donorName: suggestion.donorName || undefined,
                 notes: `AI Confidence: ${suggestion.confidence}`,
             };
         });
@@ -1270,17 +1224,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     if (editingTransaction) {
                         try {
                             const result = await updateTransaction({
-                                transactionId: editingTransaction._id,
+                                transactionId: editingTransaction._id as Id<"transactions">,
                                 date: editingTransaction.date,
                                 description: editingTransaction.description,
                                 amount: editingTransaction.amount,
                                 type: editingTransaction.type,
                                 category: editingTransaction.category,
-                                fundId: editingTransaction.fundId,
+                                fundId: editingTransaction.fundId as Id<"funds">,
                                 isReconciled: editingTransaction.isReconciled,
                                 isGiftAidEligible: editingTransaction.isGiftAidEligible,
                                 donorName: editingTransaction.donorName,
-                                pledgeId: editingTransaction.pledgeId ?? null
+                                pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null
                             });
                             // Check if pledge was completed
                             if (result?.pledgeCompleted && onPledgeCompleted) {

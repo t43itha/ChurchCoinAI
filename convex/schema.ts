@@ -146,4 +146,43 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organization_user", ["organizationId", "clerkId"]),
+
+  // Intelligence suggestions (rules-based insights with feedback tracking)
+  intelligenceSuggestions: defineTable({
+    organizationId: v.id("organizations"),
+    insightType: v.union(
+      v.literal("donor"),
+      v.literal("operations"),
+      v.literal("financial"),
+      v.literal("compliance")
+    ),
+    ruleId: v.string(),
+    title: v.string(),
+    description: v.string(),
+    severity: v.union(
+      v.literal("info"),
+      v.literal("warning"),
+      v.literal("critical")
+    ),
+    confidence: v.number(),
+    suggestedAction: v.optional(v.string()),
+    actionUrl: v.optional(v.string()),
+    actionData: v.optional(v.any()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("dismissed"),
+      v.literal("deferred")
+    ),
+    acceptedAt: v.optional(v.number()),
+    dismissedAt: v.optional(v.number()),
+    deferredUntil: v.optional(v.number()),
+    dismissReason: v.optional(v.string()),
+    wasHelpful: v.optional(v.boolean()),
+    createdAt: v.number(),
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_organization_status", ["organizationId", "status", "createdAt"])
+    .index("by_organization_type", ["organizationId", "insightType", "createdAt"])
+    .index("by_organization_rule", ["organizationId", "ruleId"]),
 });

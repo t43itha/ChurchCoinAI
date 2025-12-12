@@ -1,27 +1,36 @@
 
-export enum TransactionType {
-  INCOME = 'Income',
-  EXPENDITURE = 'Expenditure'
-}
+export const TransactionType = {
+  INCOME: "Income",
+  EXPENDITURE: "Expenditure",
+} as const;
 
-export enum FundType {
-  UNRESTRICTED = 'Unrestricted',
-  RESTRICTED = 'Restricted',
-  DESIGNATED = 'Designated',
-  ENDOWMENT = 'Endowment'
-}
+export type TransactionType = (typeof TransactionType)[keyof typeof TransactionType];
+
+export const FundType = {
+  UNRESTRICTED: "Unrestricted",
+  RESTRICTED: "Restricted",
+  DESIGNATED: "Designated",
+  ENDOWMENT: "Endowment",
+} as const;
+
+export type FundType = (typeof FundType)[keyof typeof FundType];
 
 export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
 
 export interface AppUser {
-  id: string;
+  _id: string;
   /** Clerk userId (required for backend invites) */
-  clerkId?: string;
+  clerkId: string;
   name: string;
   email: string;
   role: UserRole;
   avatarUrl?: string;
 }
+
+export type AppUserInviteInput = Pick<
+  AppUser,
+  "clerkId" | "name" | "email" | "role" | "avatarUrl"
+>;
 
 export interface ChurchDetails {
   name: string;
@@ -34,7 +43,7 @@ export interface ChurchDetails {
 }
 
 export interface Fund {
-  id: string;
+  _id: string;
   name: string;
   type: FundType;
   balance: number;
@@ -44,8 +53,13 @@ export interface Fund {
   logoUrl?: string;
 }
 
+export type FundCreateInput = Pick<
+  Fund,
+  "name" | "type" | "description" | "targetAmount" | "deadline" | "logoUrl"
+>;
+
 export interface Pledge {
-  id: string;
+  _id: string;
   donorName: string; // Acts as foreign key to Donor.name or Donor.id logic
   donorId?: string;
   amount: number;
@@ -56,8 +70,10 @@ export interface Pledge {
   status: 'Active' | 'Completed' | 'Cancelled';
 }
 
+export type PledgeCreateInput = Omit<Pledge, "_id">;
+
 export interface Donor {
-  id: string;
+  _id: string;
   name: string;
   email?: string;
   phone?: string;
@@ -69,8 +85,9 @@ export interface Donor {
   communicationPreference?: 'Email' | 'Post' | 'Phone';
 }
 
+export type DonorCreateInput = Omit<Donor, "_id">;
+
 export interface Transaction {
-  id: string;
   _id: string;
   date: string;
   description: string;
@@ -85,6 +102,8 @@ export interface Transaction {
   donorId?: string;
   pledgeId?: string | null;
 }
+
+export type TransactionCreateInput = Omit<Transaction, "_id">;
 
 export interface Insight {
   id: string;

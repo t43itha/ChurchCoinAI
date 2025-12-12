@@ -3,7 +3,19 @@ import { useUser, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "./convex/_generated/api";
 import { Id } from "./convex/_generated/dataModel";
-import { Donor, Pledge, Fund, ChurchDetails, AppUser, UserRole, Transaction } from "./types";
+import {
+  AppUser,
+  AppUserInviteInput,
+  ChurchDetails,
+  Donor,
+  DonorCreateInput,
+  Fund,
+  FundCreateInput,
+  Pledge,
+  PledgeCreateInput,
+  Transaction,
+  UserRole,
+} from "./types";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -188,9 +200,9 @@ function App() {
   // ============ HANDLER FUNCTIONS ============
 
   // Donor handlers
-  const handleAddDonor = async (donor: Donor) => {
+  const handleAddDonor = async (donor: DonorCreateInput): Promise<string | undefined> => {
     try {
-      await createDonor({
+      const donorId = await createDonor({
         name: donor.name,
         email: donor.email,
         phone: donor.phone,
@@ -202,16 +214,18 @@ function App() {
         communicationPreference: donor.communicationPreference,
       });
       showNotification("Donor Added", `${donor.name} has been added successfully.`);
+      return donorId as string;
     } catch (error) {
       console.error("Failed to add donor:", error);
       showNotification("Error", "Failed to add donor. Please try again.");
+      return undefined;
     }
   };
 
   const handleUpdateDonor = async (donor: Donor) => {
     try {
       await updateDonor({
-        donorId: (donor._id || donor.id) as Id<"donors">,
+        donorId: donor._id as Id<"donors">,
         name: donor.name,
         email: donor.email,
         phone: donor.phone,
@@ -248,7 +262,7 @@ function App() {
   };
 
   // Pledge handlers
-  const handleAddPledge = async (pledge: Pledge) => {
+  const handleAddPledge = async (pledge: PledgeCreateInput) => {
     try {
       await createPledge({
         donorId: pledge.donorId ? pledge.donorId as Id<"donors"> : undefined,
@@ -270,7 +284,7 @@ function App() {
   const handleUpdatePledge = async (pledge: Pledge) => {
     try {
       await updatePledge({
-        pledgeId: pledge.id as Id<"pledges">,
+        pledgeId: pledge._id as Id<"pledges">,
         donorId: pledge.donorId ? pledge.donorId as Id<"donors"> : undefined,
         donorName: pledge.donorName,
         amount: pledge.amount,
@@ -287,7 +301,7 @@ function App() {
     }
   };
 
-  const handleBulkAddPledges = async (pledgesToAdd: Pledge[]) => {
+  const handleBulkAddPledges = async (pledgesToAdd: PledgeCreateInput[]) => {
     try {
       const formattedPledges = pledgesToAdd.map(p => ({
         donorId: p.donorId ? p.donorId as Id<"donors"> : undefined,
@@ -307,7 +321,7 @@ function App() {
     }
   };
 
-  const handleBulkAddDonors = async (donorsToAdd: Donor[]): Promise<{ id: string; name: string; isNew: boolean }[]> => {
+  const handleBulkAddDonors = async (donorsToAdd: DonorCreateInput[]): Promise<{ id: string; name: string; isNew: boolean }[]> => {
     try {
       const formattedDonors = donorsToAdd.map(d => ({
         name: d.name,
@@ -334,7 +348,7 @@ function App() {
   const handleUpdateTransaction = async (transaction: Transaction) => {
     try {
       await updateTransaction({
-        transactionId: transaction.id as Id<"transactions">,
+        transactionId: transaction._id as Id<"transactions">,
         pledgeId: transaction.pledgeId ? transaction.pledgeId as Id<"pledges"> : null,
         donorId: transaction.donorId ? transaction.donorId as Id<"donors"> : undefined,
         donorName: transaction.donorName,
@@ -346,7 +360,7 @@ function App() {
   };
 
   // Fund handlers
-  const handleAddFund = async (fund: Fund) => {
+  const handleAddFund = async (fund: FundCreateInput) => {
     try {
       await createFund({
         name: fund.name,
@@ -366,7 +380,7 @@ function App() {
   const handleUpdateFund = async (fund: Fund) => {
     try {
       await updateFund({
-        fundId: fund.id as Id<"funds">,
+        fundId: fund._id as Id<"funds">,
         name: fund.name,
         type: fund.type,
         description: fund.description,
@@ -419,12 +433,8 @@ function App() {
   };
 
   // User handlers
-  const handleAddUser = async (user: AppUser) => {
+  const handleAddUser = async (user: AppUserInviteInput) => {
     try {
-      if (!user.clerkId) {
-        showNotification("Missing Clerk ID", "Please provide the user's Clerk User ID.");
-        return;
-      }
       await inviteUser({
         clerkId: user.clerkId,
         name: user.name,
@@ -551,12 +561,7 @@ function App() {
           />
         );
       case "copilot":
-        return (
-          <AICoPilot
-            transactions={transactions ?? []}
-            funds={funds ?? []}
-          />
-        );
+        return <AICoPilot />;
       case "settings":
         return (
           <Settings

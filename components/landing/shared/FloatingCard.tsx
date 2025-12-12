@@ -21,7 +21,7 @@ export default function FloatingCard({
       animate={disableFloat ? undefined : floatingAnimation}
       whileHover={{
         y: -12,
-        transition: { duration: 0.3, ease: EASING.snappy as unknown as string },
+        transition: { duration: 0.3, ease: EASING.snappy },
       }}
     >
       {children}

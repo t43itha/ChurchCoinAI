@@ -242,7 +242,7 @@ export const generateScheduleHTML = (
         </div>
         <div class="meta">
           <p>Date: ${todayFormatted}</p>
-          <p>Ref: SCH-${escapeHtml((donor._id || donor.id || '').slice(-6).toUpperCase())}</p>
+          <p>Ref: SCH-${escapeHtml((donor._id || '').slice(-6).toUpperCase())}</p>
           <p>Period: 01-01-2025 – ${todayShort}</p>
           <p>Charity No: ${escapeHtml(churchDetails.charityNumber || 'N/A')}</p>
         </div>
@@ -267,7 +267,7 @@ export const generateScheduleHTML = (
         </thead>
         <tbody>
           ${donorTransactions.map(t => {
-            const fund = funds.find(f => f._id === t.fundId || f.id === t.fundId);
+            const fund = funds.find(f => f._id === t.fundId);
             return `
               <tr>
                 <td>${new Date(t.date).toLocaleDateString('en-GB')}</td>

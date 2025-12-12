@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
-import { Donor, Transaction, Pledge, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
+import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
 import { generateScheduleHTML } from '../services/pdfGenerator';
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check } from 'lucide-react';
 
@@ -65,9 +65,9 @@ interface DonorManagerProps {
   transactions: Transaction[];
   pledges: Pledge[];
   funds: Fund[];
-  onAddDonor: (d: Donor) => void;
+  onAddDonor: (d: DonorCreateInput) => Promise<string | undefined>;
   onUpdateDonor: (d: Donor) => void;
-  onAddPledge: (p: Pledge) => void;
+  onAddPledge: (p: PledgeCreateInput) => void;
   onUpdatePledge: (p: Pledge) => void;
   onUpdateTransaction: (t: Transaction) => void;
   currentUser: AppUser;
@@ -314,12 +314,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       if (selectedDonor && formData.name) { onUpdateDonor({ ...selectedDonor, ...formData } as Donor); setIsEditing(false); }
   };
 
-  const handleAddDonorSubmit = (e: React.FormEvent) => {
+  const handleAddDonorSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (newDonorData.name) {
-          const newId = Math.random().toString(36).substr(2, 9);
-          const newDonor: Donor = {
-              id: newId,
+          const newDonor: DonorCreateInput = {
               name: newDonorData.name,
               email: newDonorData.email,
               phone: newDonorData.phone,
@@ -330,10 +328,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
               isGiftAidActive: newDonorData.isGiftAidActive,
               communicationPreference: newDonorData.communicationPreference
           };
-          onAddDonor(newDonor);
+          const createdId = await onAddDonor(newDonor);
           setShowAddDonorModal(false);
           setNewDonorData({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
-          setSelectedDonorId(newId);
+          if (createdId) setSelectedDonorId(createdId);
           setActiveTab('profile'); 
       }
   };
@@ -341,8 +339,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const handleAddPledgeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedDonor && newPledgeData.amount && newPledgeData.fundId) {
-        const pledge: Pledge = {
-            id: Math.random().toString(36).substr(2, 9),
+        const pledge: PledgeCreateInput = {
             donorId: selectedDonor._id,
             donorName: selectedDonor.name,
             amount: Number(newPledgeData.amount),

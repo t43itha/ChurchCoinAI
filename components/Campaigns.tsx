@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Fund, Pledge, Transaction, AppUser, Donor } from '../types';
+import { AppUser, Donor, DonorCreateInput, Fund, FundType, Pledge, PledgeCreateInput, Transaction } from '../types';
 import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -10,19 +10,20 @@ interface CampaignsProps {
     pledges: Pledge[];
     transactions: Transaction[];
     donors: Donor[];
-    onAddPledge: (p: Pledge) => void;
+    onAddPledge: (p: PledgeCreateInput) => void;
     onUpdatePledge: (p: Pledge) => void;
-    onBulkAddPledges: (ps: Pledge[]) => void;
-    onBulkAddDonors: (ds: Donor[]) => Promise<{ id: string; name: string; isNew: boolean }[]>;
+    onBulkAddPledges: (ps: PledgeCreateInput[]) => void;
+    onBulkAddDonors: (ds: DonorCreateInput[]) => Promise<{ id: string; name: string; isNew: boolean }[]>;
     onUpdateTransaction: (t: Transaction) => void;
     currentUser: AppUser;
+    onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
 
 const COLORS = ['#6B8068', '#E5E0D8'];
 
-const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, donors, onAddPledge, onUpdatePledge, onBulkAddPledges, onBulkAddDonors, onUpdateTransaction, currentUser }) => {
+const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, donors, onAddPledge, onUpdatePledge, onBulkAddPledges, onBulkAddDonors, onUpdateTransaction, currentUser, onPledgeCompleted }) => {
     // Only show Restricted (campaign) funds
-    const campaignFunds = funds.filter(f => f.type === 'Restricted');
+    const campaignFunds = funds.filter(f => f.type === FundType.RESTRICTED);
     const [selectedFundId, setSelectedFundId] = useState<string>('');
     const [isReconciling, setIsReconciling] = useState(false);
     const reconcilePledgesAction = useAction(api.actions.ai.reconcilePledges);
@@ -194,16 +195,15 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         } else {
             const existingDonor = donors.find(d => d.name.toLowerCase() === pledgeForm.donorName?.toLowerCase());
             
-            const pledge: Pledge = {
-                id: Math.random().toString(36).substr(2, 9),
+            const pledge: PledgeCreateInput = {
                 donorName: pledgeForm.donorName,
                 donorId: existingDonor?._id,
                 amount: Number(pledgeForm.amount),
                 fundId: currentFundId,
-                frequency: pledgeForm.frequency as any || 'Monthly',
+                frequency: (pledgeForm.frequency as PledgeCreateInput["frequency"]) || 'Monthly',
                 startDate: pledgeForm.startDate || new Date().toISOString().split('T')[0],
                 endDate: pledgeForm.endDate,
-                status: pledgeForm.status || 'Active'
+                status: (pledgeForm.status as PledgeCreateInput["status"]) || 'Active'
             };
             onAddPledge(pledge);
             setShowAddModal(false);
@@ -270,8 +270,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             return;
         }
 
-        const newPledges: Pledge[] = [];
-        const donorsToUpsert = new Map<string, Donor>(); // Key by ID
+        const newPledges: PledgeCreateInput[] = [];
+        const donorsToUpsert = new Map<string, DonorCreateInput>(); // Key by ID
         const skippedRows: { row: number; reason: string }[] = [];
         const createdPledgeKeys = new Set<string>(); // Track pledges in this batch for duplicate detection
 
@@ -332,7 +332,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             // Only use Convex _id for existing donors, undefined for new donors
             let convexDonorId: string | undefined = existingDonor?._id;
             let localDonorKey: string; // Key for the local upsert map
-            let donorObj: Donor;
+            let donorObj: DonorCreateInput;
 
             // Extract optional details
             const email = emailIdx !== -1 ? row[emailIdx] : undefined;
@@ -354,7 +354,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 localDonorKey = existingDonor._id;
                 // Update existing with new info if present
                 donorObj = {
-                    ...existingDonor,
+                    name: existingDonor.name,
+                    type: existingDonor.type,
                     email: email || existingDonor.email,
                     phone: phone || existingDonor.phone,
                     address: address || existingDonor.address,
@@ -363,16 +364,22 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 };
             } else {
                 // Check if we already created a donor for this name in this batch
-                const foundInBatch = Array.from(donorsToUpsert.values()).find(d => d.name.toLowerCase() === donorName.toLowerCase());
+                const foundInBatch = Array.from(donorsToUpsert.entries()).find(([, d]) => d.name.toLowerCase() === donorName.toLowerCase());
                 if (foundInBatch) {
                     // Use existing batch entry, but don't set convexDonorId (it's a new donor)
-                    localDonorKey = foundInBatch.id;
-                    donorObj = { ...foundInBatch };
+                    localDonorKey = foundInBatch[0];
+                    donorObj = {
+                        ...foundInBatch[1],
+                        email: email || foundInBatch[1].email,
+                        phone: phone || foundInBatch[1].phone,
+                        address: address || foundInBatch[1].address,
+                        postcode: postcode || foundInBatch[1].postcode,
+                        communicationPreference: commPref || foundInBatch[1].communicationPreference,
+                    };
                 } else {
                     // Create New - generate temp ID for local tracking only
                     localDonorKey = Math.random().toString(36).substr(2, 9);
                     donorObj = {
-                        id: localDonorKey,  // Local temp ID - will be replaced by Convex _id on save
                         name: donorName,
                         type: 'Individual',
                         email,
@@ -391,7 +398,6 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             donorsToUpsert.set(localDonorKey, donorObj);
 
             newPledges.push({
-                id: Math.random().toString(36).substr(2, 9),
                 donorName,
                 donorId: convexDonorId, // Only set for existing donors with valid Convex ID
                 amount,

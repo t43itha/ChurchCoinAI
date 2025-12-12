@@ -1,5 +1,7 @@
 // Animation System - Timing, Easing, and Variants
 
+import type { TargetAndTransition, Variants } from "framer-motion";
+
 // Timing Constants (in seconds)
 export const TIMING = {
   eyebrow: 0.1,
@@ -22,7 +24,7 @@ export const EASING = {
 };
 
 // Eyebrow Badge (Clip-path reveal)
-export const eyebrowVariants = {
+export const eyebrowVariants: Variants = {
   hidden: {
     opacity: 0,
     clipPath: "inset(0 100% 0 0)",
@@ -35,7 +37,7 @@ export const eyebrowVariants = {
 };
 
 // Pulsing Indicator Dot
-export const indicatorPulseVariants = {
+export const indicatorPulseVariants: Variants = {
   hidden: { scale: 0, opacity: 0 },
   visible: {
     scale: 1,
@@ -55,13 +57,13 @@ export const indicatorPulseVariants = {
     transition: {
       duration: 1.8,
       repeat: Infinity,
-      ease: "easeOut",
+      ease: EASING.smooth,
     },
   },
 };
 
 // Headline Words (Staggered 3D reveal)
-export const headlineContainerVariants = {
+export const headlineContainerVariants: Variants = {
   hidden: {},
   visible: {
     transition: {
@@ -71,7 +73,7 @@ export const headlineContainerVariants = {
   },
 };
 
-export const wordVariants = {
+export const wordVariants: Variants = {
   hidden: {
     opacity: 0,
     y: 40,
@@ -88,7 +90,7 @@ export const wordVariants = {
 };
 
 // Hero Card (3D entrance)
-export const cardVariants = {
+export const cardVariants: Variants = {
   hidden: {
     opacity: 0,
     x: 80,
@@ -105,7 +107,7 @@ export const cardVariants = {
 };
 
 // Card Shadow (Delayed offset)
-export const shadowVariants = {
+export const shadowVariants: Variants = {
   hidden: { x: 0, y: 0, opacity: 0 },
   visible: {
     x: 8,
@@ -116,7 +118,7 @@ export const shadowVariants = {
 };
 
 // CTA Buttons (Staggered)
-export const ctaContainerVariants = {
+export const ctaContainerVariants: Variants = {
   hidden: {},
   visible: {
     transition: {
@@ -126,7 +128,7 @@ export const ctaContainerVariants = {
   },
 };
 
-export const ctaVariants = {
+export const ctaVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
@@ -136,7 +138,7 @@ export const ctaVariants = {
 };
 
 // Progress Bars (Staggered)
-export const progressBarContainerVariants = {
+export const progressBarContainerVariants: Variants = {
   hidden: {},
   visible: {
     transition: {
@@ -146,7 +148,7 @@ export const progressBarContainerVariants = {
   },
 };
 
-export const progressBarVariants = {
+export const progressBarVariants: Variants = {
   hidden: { opacity: 0, scaleX: 0 },
   visible: {
     opacity: 1,
@@ -156,7 +158,7 @@ export const progressBarVariants = {
 };
 
 // Decorative Shapes (Breathing)
-export const decorativeShapeVariants = {
+export const decorativeShapeVariants: Variants = {
   hidden: { scale: 0.8, opacity: 0 },
   visible: (delay: number) => ({
     scale: 1,
@@ -165,24 +167,24 @@ export const decorativeShapeVariants = {
   }),
 };
 
-export const breathingAnimation = (duration: number) => ({
+export const breathingAnimation = (duration: number): TargetAndTransition => ({
   scale: [1, 1.08, 1],
   opacity: [0.5, 0.7, 0.5],
-  transition: { duration, repeat: Infinity, ease: "easeInOut" },
+  transition: { duration, repeat: Infinity, ease: EASING.smooth },
 });
 
 // Floating Card (Subtle bob)
-export const floatingAnimation = {
+export const floatingAnimation: TargetAndTransition = {
   y: [0, -8, 0],
   transition: {
     duration: 5,
     repeat: Infinity,
-    ease: "easeInOut",
+    ease: EASING.smooth,
   },
 };
 
 // Fade In Up (Generic section animation)
-export const fadeInUpVariants = {
+export const fadeInUpVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
@@ -192,7 +194,7 @@ export const fadeInUpVariants = {
 };
 
 // Stagger Container (Generic)
-export const staggerContainerVariants = {
+export const staggerContainerVariants: Variants = {
   hidden: {},
   visible: {
     transition: {
@@ -217,7 +219,7 @@ export const cardHoverAnimation = {
 };
 
 // CTA Button Hover (Spring)
-export const ctaButtonHover = {
+export const ctaButtonHover: Record<"rest" | "hover" | "tap", TargetAndTransition> = {
   rest: {
     x: 0,
     y: 0,
@@ -237,7 +239,7 @@ export const ctaButtonHover = {
 };
 
 // Subheadline fade
-export const subheadlineVariants = {
+export const subheadlineVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -246,7 +248,7 @@ export const subheadlineVariants = {
 };
 
 // Trust badge fade
-export const trustBadgeVariants = {
+export const trustBadgeVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -255,7 +257,7 @@ export const trustBadgeVariants = {
 };
 
 // Stats Container (Staggered)
-export const statsContainerVariants = {
+export const statsContainerVariants: Variants = {
   hidden: {},
   visible: {
     transition: {
@@ -266,7 +268,7 @@ export const statsContainerVariants = {
 };
 
 // Stat Item
-export const statItemVariants = {
+export const statItemVariants: Variants = {
   hidden: { opacity: 0, y: 25 },
   visible: {
     opacity: 1,
@@ -279,7 +281,7 @@ export const statItemVariants = {
 };
 
 // Highlighted Word (special animation for the green word)
-export const highlightedWordVariants = {
+export const highlightedWordVariants: Variants = {
   hidden: {
     opacity: 0,
     y: 50,
@@ -299,7 +301,7 @@ export const highlightedWordVariants = {
 };
 
 // Decorative Shape Variant 2 (different breathing params)
-export const decorativeShapeVariants2 = {
+export const decorativeShapeVariants2: Variants = {
   hidden: { scale: 0.8, opacity: 0 },
   visible: (delay: number) => ({
     scale: 1,
@@ -313,7 +315,7 @@ export const decorativeShapeVariants2 = {
     transition: {
       duration: 7,
       repeat: Infinity,
-      ease: "easeInOut",
+      ease: EASING.smooth,
     },
   },
 };

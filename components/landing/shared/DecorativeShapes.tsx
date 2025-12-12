@@ -61,9 +61,12 @@ export default function DecorativeShapes({
           style={{
             ...shape.position,
           }}
-          variants={decorativeShapeVariants}
+          variants={{
+            ...decorativeShapeVariants,
+            breathing: breathingAnimation(shape.breathingDuration),
+          }}
           initial="hidden"
-          animate={["visible", breathingAnimation(shape.breathingDuration)]}
+          animate={["visible", "breathing"]}
           custom={shape.delay}
         />
       ))}

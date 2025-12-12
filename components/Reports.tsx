@@ -24,7 +24,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
   
   // Tax Year Configuration
   const [taxYear, setTaxYear] = useState('current'); // 'current', 'previous', 'all'
-  const [selectedFundId, setSelectedFundId] = useState(funds[0]?.id || '');
+  const [selectedFundId, setSelectedFundId] = useState(funds[0]?._id || '');
 
   const getDatesForTaxYear = (year: string) => {
       const today = new Date();
@@ -105,7 +105,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
   };
 
   const handleGenerateProjectReport = async () => {
-      const fund = funds.find(f => f.id === selectedFundId);
+      const fund = funds.find(f => f._id === selectedFundId);
       if (!fund) return;
       
       setIsGenerating(true);
@@ -113,7 +113,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       const { start, end } = getDatesForTaxYear(taxYear);
       try {
           const periodTxns = transactions.filter(t =>
-            t.fundId === fund.id &&
+            t.fundId === fund._id &&
             (!start || t.date >= start) &&
             (!end || t.date <= end)
           );
@@ -138,14 +138,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
   };
 
   const handleGenerateCampaignReport = async () => {
-      const fund = funds.find(f => f.id === selectedFundId);
+      const fund = funds.find(f => f._id === selectedFundId);
       if (!fund) return;
 
       setIsGenerating(true);
       setReportTitle(`${fund.name} Campaign Analysis`);
       try {
-          const fundTxns = transactions.filter(t => t.fundId === fund.id && t.type === 'Income');
-          const fundPledges = pledges.filter(p => p.fundId === fund.id);
+          const fundTxns = transactions.filter(t => t.fundId === fund._id && t.type === 'Income');
+          const fundPledges = pledges.filter(p => p.fundId === fund._id);
           const totalRaisedCash = fundTxns.reduce((s, t) => s + t.amount, 0);
           const totalPledged = fundPledges.reduce((s, p) => s + p.amount, 0);
           const donorSet = new Set(fundTxns.map(t => t.donorName).filter(Boolean));
@@ -341,7 +341,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
                     onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
                     onClick={(e) => e.stopPropagation()}
                  >
-                    {funds.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                  </select>
                  <div className="flex items-center text-xs font-bold text-amber uppercase tracking-wide group-hover:translate-x-1 transition-transform">
                     {isGenerating && reportTitle.includes("Impact") ? 'Writing...' : <span className="flex items-center gap-2">Write Update <ArrowRight size={12}/></span>}
@@ -366,7 +366,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
                     onClick={(e) => e.stopPropagation()}
                  >
                     {funds.filter(f => f.type === 'Restricted' || f.type === 'Designated').map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
+                        <option key={f._id} value={f._id}>{f.name}</option>
                     ))}
                  </select>
                  <div className="flex items-center text-xs font-bold text-error uppercase tracking-wide group-hover:translate-x-1 transition-transform">

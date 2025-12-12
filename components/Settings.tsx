@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { AppUser, UserRole, ChurchDetails, Fund, FundType } from '../types';
+import { AppUser, AppUserInviteInput, FundCreateInput, UserRole, ChurchDetails, Fund, FundType } from '../types';
 import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon } from 'lucide-react';
 
 interface SettingsProps {
@@ -12,9 +12,9 @@ interface SettingsProps {
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
   onAddCategory: (category: string) => void;
   onRemoveCategory: (category: string) => void;
-  onAddUser: (user: AppUser) => void;
+  onAddUser: (user: AppUserInviteInput) => void;
   onUpdateChurchDetails: (details: ChurchDetails) => void;
-  onAddFund: (fund: Fund) => void;
+  onAddFund: (fund: FundCreateInput) => void;
   onUpdateFund: (fund: Fund) => void;
   onRemoveFund: (fundId: string) => void;
 }
@@ -44,7 +44,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   // User State
   const [showAddUser, setShowAddUser] = useState(false);
-  const [newUser, setNewUser] = useState<Partial<AppUser>>({ role: 'Guest' });
+  const [newUser, setNewUser] = useState<Partial<AppUserInviteInput>>({ role: 'Guest' });
 
   // Category State
   const [newCategory, setNewCategory] = useState('');
@@ -78,7 +78,6 @@ const Settings: React.FC<SettingsProps> = ({
     e.preventDefault();
     if (newUser.name && newUser.email && newUser.clerkId) {
       onAddUser({
-        id: Math.random().toString(36).substr(2, 9),
         clerkId: newUser.clerkId,
         name: newUser.name,
         email: newUser.email,
@@ -127,14 +126,12 @@ const Settings: React.FC<SettingsProps> = ({
   const handleSaveFund = (e: React.FormEvent) => {
       e.preventDefault();
       if (editingFund?.name && editingFund.type) {
-          if (editingFund._id || editingFund.id) {
+          if (editingFund._id) {
               onUpdateFund(editingFund as Fund);
           } else {
               onAddFund({
-                  id: Math.random().toString(36).substr(2, 9),
                   name: editingFund.name,
                   type: editingFund.type as FundType,
-                  balance: editingFund.balance || 0,
                   description: editingFund.description,
                   targetAmount: editingFund.targetAmount ? Number(editingFund.targetAmount) : undefined,
                   deadline: editingFund.deadline,
@@ -152,7 +149,7 @@ const Settings: React.FC<SettingsProps> = ({
           return;
       }
       if (window.confirm(`Are you sure you want to delete '${fund.name}'? This action cannot be undone.`)) {
-          onRemoveFund(fund._id || fund.id);
+          onRemoveFund(fund._id);
       }
   };
 
@@ -418,7 +415,7 @@ const Settings: React.FC<SettingsProps> = ({
                             {funds.map(fund => {
                                 const progress = calculateProgress(fund);
                                 return (
-                                    <tr key={fund.id} className="hover:bg-paper transition-colors group">
+                                    <tr key={fund._id} className="hover:bg-paper transition-colors group">
                                         <td className="px-6 py-5 pl-8">
                                             <div className="flex items-center gap-3">
                                                  {fund.logoUrl && <img src={fund.logoUrl} className="w-8 h-8 rounded-md object-cover border border-ledger" alt="Fund Logo" />}
@@ -500,7 +497,7 @@ const Settings: React.FC<SettingsProps> = ({
                         </thead>
                         <tbody>
                             {users.map(user => (
-                            <tr key={user.id} className="group hover:bg-paper transition-colors">
+                            <tr key={user._id} className="group hover:bg-paper transition-colors">
                                 <td className="px-6 py-4 border-b border-grey-light">
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-ledger flex items-center justify-center text-xs font-bold text-grey-dark">
@@ -515,8 +512,8 @@ const Settings: React.FC<SettingsProps> = ({
                                 <td className="px-6 py-4 border-b border-grey-light">
                                 <select 
                                     value={user.role}
-                                    onChange={(e) => onUpdateUserRole(user.id, e.target.value as UserRole)}
-                                    disabled={user.id === currentUser.id}
+                                    onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
+                                    disabled={user._id === currentUser._id}
                                     className="bg-transparent border border-transparent hover:border-ledger hover:bg-white rounded px-2 py-1 text-xs font-medium text-grey-dark outline-none focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                 >
                                     <option value="Admin">Admin</option>
@@ -660,7 +657,7 @@ const Settings: React.FC<SettingsProps> = ({
             <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
                 <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                     <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
-                        {editingFund?.id ? 'Edit Fund / Campaign' : 'Create Fund / Campaign'}
+                        {editingFund?._id ? 'Edit Fund / Campaign' : 'Create Fund / Campaign'}
                     </h3>
                     <button onClick={() => setShowFundModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                 </div>

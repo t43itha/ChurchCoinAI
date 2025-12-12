@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, Loader2, Sparkles } from 'lucide-react';
-import { Transaction, Fund } from '../types';
-import { useAction } from 'convex/react';
+import { useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
 interface AICoPilotProps {
-    transactions: Transaction[];
-    funds: Fund[];
+    // Props kept for backwards compatibility but no longer used
+    // AI context is now fetched via useQuery for comprehensive data
 }
 
 interface Message {
@@ -16,12 +15,12 @@ interface Message {
     timestamp: Date;
 }
 
-const AICoPilot: React.FC<AICoPilotProps> = ({ transactions, funds }) => {
+const AICoPilot: React.FC<AICoPilotProps> = () => {
     const [messages, setMessages] = useState<Message[]>([
         {
             id: 'welcome',
             sender: 'ai',
-            text: "Hello. I'm Steward, your AI finance assistant. How can I help with the ledger today?",
+            text: "Hello. I'm Steward, your AI finance assistant. I can see your complete financial history and answer questions like 'Which month was best for donations?' or 'Who are our top donors?'",
             timestamp: new Date()
         }
     ]);
@@ -29,6 +28,9 @@ const AICoPilot: React.FC<AICoPilotProps> = ({ transactions, funds }) => {
     const [isThinking, setIsThinking] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatWithTreasurer = useAction(api.actions.ai.chatWithTreasurer);
+
+    // Use pre-computed AI context with comprehensive summaries
+    const aiContext = useQuery(api.queries.aiContext.getAIContext, {});
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -45,9 +47,39 @@ const AICoPilot: React.FC<AICoPilotProps> = ({ transactions, funds }) => {
         setIsThinking(true);
 
         try {
+            // Use pre-computed comprehensive context instead of limited transactions
             const contextSummary = JSON.stringify({
-                funds: funds.map(f => ({ name: f.name, balance: f.balance, type: f.type })),
-                recentTransactions: transactions.slice(0, 20).map(t => ({ date: t.date, desc: t.description, amount: t.amount, type: t.type, category: t.category }))
+                // Monthly summaries for aggregate questions
+                monthlySummaries: aiContext?.monthlySummaries,
+                // Top donors for "who are our best donors" questions
+                topDonors: aiContext?.topDonors,
+                // Fund balances with progress
+                fundBalances: aiContext?.fundBalances,
+                // Category breakdowns
+                incomeByCategory: aiContext?.incomeByCategory,
+                expenditureByCategory: aiContext?.expenditureByCategory,
+                // Key totals
+                totals: {
+                    totalIncome: aiContext?.totalIncome,
+                    totalExpenditure: aiContext?.totalExpenditure,
+                    netBalance: aiContext?.netBalance,
+                    ytdIncome: aiContext?.ytdIncome,
+                    ytdExpenditure: aiContext?.ytdExpenditure,
+                },
+                // Pre-computed insights for common questions
+                insights: {
+                    bestMonth: aiContext?.bestMonth,
+                    worstMonth: aiContext?.worstMonth,
+                    dateRange: aiContext?.dateRange,
+                },
+                // Operational status
+                metrics: {
+                    transactionCount: aiContext?.transactionCount,
+                    donorCount: aiContext?.donorCount,
+                    uncategorizedCount: aiContext?.uncategorizedCount,
+                },
+                // Recent transactions for context
+                recentTransactions: aiContext?.recentTransactions,
             });
             const responseText = await chatWithTreasurer({ message: userMsg.text, contextData: contextSummary });
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: responseText || "I couldn't process that.", timestamp: new Date() }]);

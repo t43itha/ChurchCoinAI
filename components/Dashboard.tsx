@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Fund, Transaction, Insight, FundType } from '../types';
+import React, { useMemo } from 'react';
+import { Fund, Transaction, FundType } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, Legend, Area } from 'recharts';
 import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info, ArrowUpRight, Sparkles, Activity, Users, Target, ArrowRight } from 'lucide-react';
-import { useAction } from 'convex/react';
-import { api } from '../convex/_generated/api';
+import SmartSuggestionsPanel from './intelligence/SmartSuggestionsPanel';
 
 interface DashboardProps {
   funds: Fund[];
@@ -13,31 +12,6 @@ interface DashboardProps {
 const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [loadingInsights, setLoadingInsights] = useState(false);
-  const generateInsightsAction = useAction(api.actions.ai.generateInsights);
-
-  useEffect(() => {
-    let isMounted = true;
-    const fetchInsights = async () => {
-        if (transactions.length > 0) {
-            setLoadingInsights(true);
-            try {
-                const generated = await generateInsightsAction({ transactionData: JSON.stringify(transactions) });
-                if (isMounted && generated) {
-                    setInsights(generated.map((g: any, i: number) => ({ ...g, id: `ai-${i}`, date: new Date().toISOString() })));
-                }
-            } catch (err) {
-                console.error("AI insights failed", err);
-            } finally {
-                if (isMounted) setLoadingInsights(false);
-            }
-        }
-    };
-    fetchInsights();
-    return () => { isMounted = false; };
-  }, [transactions]); 
-
   // --- Calculations ---
 
   // 1. Cash Flow Health (Current Month)
@@ -243,39 +217,8 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
         </div>
       </div>
 
-      {/* AI Decision Panel */}
-      <div className="swiss-card p-0 flex flex-col bg-white overflow-hidden">
-          <div className="p-6 border-b border-ledger bg-sage-light/30 flex items-center justify-between">
-             <div className="flex items-center gap-2">
-                <Sparkles size={18} className="text-sage" />
-                <h3 className="font-bold text-ink">Decision Ready Insights</h3>
-             </div>
-             {loadingInsights && <div className="animate-spin h-3 w-3 border-2 border-sage border-t-transparent rounded-full"></div>}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-ledger">
-            {insights.length === 0 && !loadingInsights && (
-               <div className="col-span-3 p-12 text-center text-grey-mid text-sm">
-                   Waiting for ledger data to generate strategic insights...
-               </div>
-            )}
-
-            {insights.map((insight) => (
-              <div key={insight.id} className="p-6 hover:bg-amber-light transition-colors group">
-                 <div className="flex items-center gap-2 mb-3">
-                    {insight.type === 'warning' && <AlertCircle className="text-error" size={16} />}
-                    {insight.type === 'success' && <TrendingUp className="text-sage" size={16} />}
-                    {insight.type === 'info' && <Info className="text-amber" size={16} />}
-                    <h4 className="text-xs font-bold text-grey-mid uppercase tracking-wide group-hover:text-ink transition-colors">
-                        {insight.type === 'warning' ? 'Action Required' : insight.type === 'success' ? 'Good News' : 'For Info'}
-                    </h4>
-                 </div>
-                 <h5 className="font-bold text-ink text-sm mb-2">{insight.title}</h5>
-                 <p className="text-xs text-grey-mid leading-relaxed">{insight.description}</p>
-              </div>
-            ))}
-          </div>
-      </div>
+      {/* Smart Suggestions Panel - Rules-based, zero AI cost */}
+      <SmartSuggestionsPanel maxItems={5} />
     </div>
   );
 };

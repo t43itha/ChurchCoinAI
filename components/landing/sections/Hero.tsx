@@ -122,7 +122,7 @@ function LiveProgressBar({
             times: [0, 0.25, 0.5, 0.75, 1],
             duration: duration,
             repeat: Infinity,
-            ease: "easeInOut",
+            ease: EASING.smooth,
             delay: delay,
           }}
           className="h-full"
@@ -159,7 +159,7 @@ function FloatingCard({ children }: { children: React.ReactNode }) {
       transition={{
         duration: 5,
         repeat: Infinity,
-        ease: "easeInOut",
+        ease: EASING.smooth,
       }}
       whileHover={{
         y: -12,
@@ -190,7 +190,7 @@ export default function Hero({ onGetStarted }: HeroProps) {
             transition: {
               duration: 6,
               repeat: Infinity,
-              ease: "easeInOut",
+              ease: EASING.smooth,
             },
           },
         }}
@@ -216,7 +216,7 @@ export default function Hero({ onGetStarted }: HeroProps) {
           delay: 0.8,
           duration: 9,
           repeat: Infinity,
-          ease: "easeInOut",
+          ease: EASING.smooth,
         }}
         className="absolute top-1/2 right-1/4 w-16 h-16 rounded-full border border-[#6b8e6b]/30"
       />
@@ -400,7 +400,7 @@ export default function Hero({ onGetStarted }: HeroProps) {
                           transition={{
                             duration: 2,
                             repeat: Infinity,
-                            ease: "easeOut",
+                            ease: EASING.smooth,
                             delay: TIMING.indicator + 0.5,
                           }}
                           className="w-8 h-8 bg-[#6b8e6b]"
