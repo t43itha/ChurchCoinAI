@@ -5,12 +5,13 @@ import { api } from "./convex/_generated/api";
 import { Id } from "./convex/_generated/dataModel";
 import {
   AppUser,
-  AppUserInviteInput,
   ChurchDetails,
   Donor,
   DonorCreateInput,
   Fund,
   FundCreateInput,
+  Invitation,
+  InvitationCreateInput,
   Pledge,
   PledgeCreateInput,
   Transaction,
@@ -88,6 +89,10 @@ function App() {
     api.queries.users.listByOrganization,
     hasUser ? {} : "skip"
   );
+  const pendingInvitations = useQuery(
+    api.queries.invitations.listPending,
+    hasUser ? {} : "skip"
+  );
 
   // ============ MUTATIONS ============
 
@@ -114,9 +119,12 @@ function App() {
   const removeCategory = useMutation(api.mutations.categories.remove);
 
   // User mutations
-  const inviteUser = useMutation(api.mutations.users.invite);
   const updateUserRole = useMutation(api.mutations.users.updateRole);
   const removeUser = useMutation(api.mutations.users.remove);
+
+  // Invitation mutations
+  const createInvitation = useMutation(api.mutations.invitations.create);
+  const cancelInvitation = useMutation(api.mutations.invitations.cancel);
 
   // Organization mutations
   const updateOrganization = useMutation(api.mutations.organizations.update);
@@ -460,22 +468,33 @@ function App() {
     }
   };
 
-  // User handlers
-  const handleAddUser = async (user: AppUserInviteInput) => {
+  // Invitation handlers
+  const handleInviteUser = async (invitation: InvitationCreateInput) => {
     try {
-      await inviteUser({
-        clerkId: user.clerkId,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+      await createInvitation({
+        email: invitation.email,
+        role: invitation.role,
       });
-      showNotification("User Invited", `${user.name} has been added to the organization.`);
+      showNotification("Invitation Sent", `An invitation has been sent to ${invitation.email}.`);
     } catch (error: any) {
-      console.error("Failed to add user:", error);
-      showNotification("Error", error.message || "Failed to add user. Please try again.");
+      console.error("Failed to invite user:", error);
+      showNotification("Error", error.message || "Failed to send invitation. Please try again.");
     }
   };
 
+  const handleCancelInvitation = async (invitationId: string) => {
+    try {
+      await cancelInvitation({
+        invitationId: invitationId as Id<"invitations">,
+      });
+      showNotification("Invitation Cancelled", "The invitation has been cancelled.");
+    } catch (error: any) {
+      console.error("Failed to cancel invitation:", error);
+      showNotification("Error", error.message || "Failed to cancel invitation. Please try again.");
+    }
+  };
+
+  // User handlers
   const handleUpdateUserRole = async (userId: string, newRole: UserRole) => {
     try {
       await updateUserRole({
@@ -598,10 +617,12 @@ function App() {
             categories={categories?.map(c => c.name) ?? []}
             funds={funds ?? []}
             churchDetails={churchDetails}
+            pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
             onUpdateUserRole={handleUpdateUserRole}
             onAddCategory={handleAddCategory}
             onRemoveCategory={handleRemoveCategory}
-            onAddUser={handleAddUser}
+            onInviteUser={handleInviteUser}
+            onCancelInvitation={handleCancelInvitation}
             onUpdateChurchDetails={handleUpdateChurchDetails}
             onAddFund={handleAddFund}
             onUpdateFund={handleUpdateFund}

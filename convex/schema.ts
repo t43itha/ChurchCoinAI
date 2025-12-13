@@ -35,7 +35,32 @@ export default defineSchema({
   })
     .index("by_clerkId", ["clerkId"])
     .index("by_organization", ["organizationId"])
-    .index("by_clerkId_organization", ["clerkId", "organizationId"]),
+    .index("by_clerkId_organization", ["clerkId", "organizationId"])
+    .index("by_email", ["email"]),
+
+  // Pending invitations for users not yet registered
+  invitations: defineTable({
+    organizationId: v.id("organizations"),
+    email: v.string(),
+    role: v.union(
+      v.literal("Admin"),
+      v.literal("Finance Team"),
+      v.literal("Pastorate"),
+      v.literal("Guest")
+    ),
+    invitedBy: v.id("users"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("expired")
+    ),
+    createdAt: v.number(),
+    expiresAt: v.number(), // 30 days from creation
+  })
+    .index("by_email", ["email"])
+    .index("by_organization", ["organizationId"])
+    .index("by_email_organization", ["email", "organizationId"])
+    .index("by_status", ["status"]),
 
   // Funds (no stored balance - computed from transactions)
   funds: defineTable({

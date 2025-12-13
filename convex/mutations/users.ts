@@ -1,8 +1,69 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, requireRole, isAdmin } from "../lib/auth";
+import { getIdentity, requireAuth, requireRole, isAdmin } from "../lib/auth";
 
-// Invite a new user to the organization
+// Join an organization via pending invitation (for new users)
+export const joinByInvitation = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await getIdentity(ctx);
+    if (!identity) {
+      throw new Error("Must be signed in");
+    }
+
+    // Check if user already exists
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject))
+      .first();
+
+    if (existingUser) {
+      throw new Error("User already belongs to an organization");
+    }
+
+    // Get email from Clerk identity
+    const email = identity.email?.toLowerCase().trim();
+    if (!email) {
+      throw new Error("No email found in your account");
+    }
+
+    // Find pending invitation for this email
+    const now = Date.now();
+    const invitation = await ctx.db
+      .query("invitations")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status"), "pending"),
+          q.gt(q.field("expiresAt"), now) // Not expired
+        )
+      )
+      .first();
+
+    if (!invitation) {
+      return null; // No invitation found - user should create new org
+    }
+
+    // Create the user record
+    const userId = await ctx.db.insert("users", {
+      clerkId: identity.subject,
+      organizationId: invitation.organizationId,
+      name: identity.name ?? email.split("@")[0],
+      email,
+      role: invitation.role,
+      createdAt: now,
+    });
+
+    // Mark invitation as accepted
+    await ctx.db.patch(invitation._id, {
+      status: "accepted",
+    });
+
+    return { userId, organizationId: invitation.organizationId };
+  },
+});
+
+// Invite a new user to the organization (DEPRECATED - use invitations.create)
 export const invite = mutation({
   args: {
     clerkId: v.string(),

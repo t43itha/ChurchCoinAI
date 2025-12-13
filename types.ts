@@ -17,9 +17,10 @@ export type FundType = (typeof FundType)[keyof typeof FundType];
 
 export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
 
+export type InvitationStatus = 'pending' | 'accepted' | 'expired';
+
 export interface AppUser {
   _id: string;
-  /** Clerk userId (required for backend invites) */
   clerkId: string;
   name: string;
   email: string;
@@ -27,10 +28,18 @@ export interface AppUser {
   avatarUrl?: string;
 }
 
-export type AppUserInviteInput = Pick<
-  AppUser,
-  "clerkId" | "name" | "email" | "role" | "avatarUrl"
->;
+export interface Invitation {
+  _id: string;
+  organizationId: string;
+  email: string;
+  role: UserRole;
+  invitedBy: string;
+  status: InvitationStatus;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export type InvitationCreateInput = Pick<Invitation, 'email' | 'role'>;
 
 export interface ChurchDetails {
   name: string;

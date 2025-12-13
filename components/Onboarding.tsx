@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import {
@@ -9,6 +9,7 @@ import {
   Command,
   CheckCircle2,
   Loader2,
+  Mail,
 } from "lucide-react";
 
 interface OnboardingProps {
@@ -22,10 +23,11 @@ interface OnboardingProps {
 }
 
 const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // 0 = checking invitations, 1 = user info, 2 = org info
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCheckingInvitation, setIsCheckingInvitation] = useState(true);
 
   // Pre-fill from Clerk user if available
   const defaultName =
@@ -40,16 +42,66 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
   const [orgName, setOrgName] = useState("");
   const [orgCharityNum, setOrgCharityNum] = useState("");
 
-  // Convex mutation
+  // Convex mutations
   const createOrganization = useMutation(api.mutations.organizations.create);
+  const joinByInvitation = useMutation(api.mutations.users.joinByInvitation);
+
+  // Check for pending invitation on mount
+  useEffect(() => {
+    const checkInvitation = async () => {
+      try {
+        const result = await joinByInvitation({});
+        if (result) {
+          // Successfully joined via invitation
+          onComplete();
+        } else {
+          // No invitation found, show create org flow
+          setIsCheckingInvitation(false);
+          setStep(1);
+        }
+      } catch (err) {
+        // Error or already has org - show create org flow
+        console.error("Invitation check error:", err);
+        setIsCheckingInvitation(false);
+        setStep(1);
+      }
+    };
+
+    checkInvitation();
+  }, [joinByInvitation, onComplete]);
 
   const handleNext = () => {
     setIsAnimating(true);
     setTimeout(() => {
-      setStep((prev) => prev + 1);
+      setStep(2); // Go to org info step
       setIsAnimating(false);
     }, 300);
   };
+
+  // Show loading state while checking invitation
+  if (isCheckingInvitation) {
+    return (
+      <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-4">
+        <div className="mb-8 flex items-center gap-3 animate-enter">
+          <div className="w-10 h-10 bg-ink text-white flex items-center justify-center rounded-xl shadow-xl shadow-ledger">
+            <Command size={20} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold font-mono tracking-tight leading-none text-ink">
+              ChurchCoin
+            </h1>
+            <p className="text-[10px] font-mono text-grey-mid mt-1 uppercase tracking-wider">
+              Finance OS
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-grey-mid">
+          <Loader2 size={20} className="animate-spin" />
+          <span className="text-sm">Checking for invitation...</span>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -101,7 +153,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
         <div className="h-1 bg-grey-light w-full flex">
           <div
             className={`h-full bg-ink transition-all duration-500 ease-out`}
-            style={{ width: step === 1 ? "50%" : "100%" }}
+            style={{ width: step === 1 ? "50%" : step === 2 ? "100%" : "0%" }}
           ></div>
         </div>
 

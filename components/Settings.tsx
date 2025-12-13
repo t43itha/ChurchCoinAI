@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
-import { AppUser, AppUserInviteInput, FundCreateInput, UserRole, ChurchDetails, Fund, FundType } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, CreditCard, Landmark } from 'lucide-react';
+import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput } from '../types';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, CreditCard, Landmark, Clock, Copy, Check } from 'lucide-react';
 import BillingSettings from './BillingSettings';
 import BankConnectionsSettings from './BankConnectionsSettings';
 
@@ -11,26 +11,30 @@ interface SettingsProps {
   funds: Fund[];
   categories: string[];
   churchDetails: ChurchDetails;
+  pendingInvitations: Invitation[];
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
   onAddCategory: (category: string) => void;
   onRemoveCategory: (category: string) => void;
-  onAddUser: (user: AppUserInviteInput) => void;
+  onInviteUser: (invitation: InvitationCreateInput) => void;
+  onCancelInvitation: (invitationId: string) => void;
   onUpdateChurchDetails: (details: ChurchDetails) => void;
   onAddFund: (fund: FundCreateInput) => void;
   onUpdateFund: (fund: Fund) => void;
   onRemoveFund: (fundId: string) => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ 
-  currentUser, 
-  users, 
+const Settings: React.FC<SettingsProps> = ({
+  currentUser,
+  users,
   funds,
-  categories, 
+  categories,
   churchDetails,
-  onUpdateUserRole, 
-  onAddCategory, 
+  pendingInvitations,
+  onUpdateUserRole,
+  onAddCategory,
   onRemoveCategory,
-  onAddUser,
+  onInviteUser,
+  onCancelInvitation,
   onUpdateChurchDetails,
   onAddFund,
   onUpdateFund,
@@ -44,9 +48,12 @@ const Settings: React.FC<SettingsProps> = ({
   const orgLogoInputRef = useRef<HTMLInputElement>(null);
   const fundLogoInputRef = useRef<HTMLInputElement>(null);
 
-  // User State
+  // User/Invitation State
   const [showAddUser, setShowAddUser] = useState(false);
-  const [newUser, setNewUser] = useState<Partial<AppUserInviteInput>>({ role: 'Guest' });
+  const [newInvitation, setNewInvitation] = useState<InvitationCreateInput>({ email: '', role: 'Guest' });
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<{ email: string; role: string } | null>(null);
+  const [copiedNewInvite, setCopiedNewInvite] = useState(false);
 
   // Category State
   const [newCategory, setNewCategory] = useState('');
@@ -76,20 +83,68 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateInvitation = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newUser.name && newUser.email && newUser.clerkId) {
-      onAddUser({
-        clerkId: newUser.clerkId,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role as UserRole,
-        avatarUrl: undefined, // Default avatar will be used
-      });
-      setShowAddUser(false);
-      setNewUser({ role: "Guest" });
+    if (newInvitation.email) {
+      onInviteUser(newInvitation);
+      // Show success state with copy option
+      setInviteSuccess({ email: newInvitation.email, role: newInvitation.role });
+      setCopiedNewInvite(false);
     } else {
-      alert("Please provide Name, Email, and Clerk User ID.");
+      alert("Please provide an email address.");
+    }
+  };
+
+  const handleCloseInviteModal = () => {
+    setShowAddUser(false);
+    setNewInvitation({ email: '', role: 'Guest' });
+    setInviteSuccess(null);
+    setCopiedNewInvite(false);
+  };
+
+  const formatExpiryDate = (expiresAt: number) => {
+    const days = Math.ceil((expiresAt - Date.now()) / (1000 * 60 * 60 * 24));
+    if (days <= 0) return 'Expired';
+    if (days === 1) return '1 day left';
+    return `${days} days left`;
+  };
+
+  const generateInviteMessage = (email: string, role: string) => {
+    const appUrl = window.location.origin;
+    return `Hi there!
+
+You've been invited to join ${churchDetails.name} on ChurchCoin as a ${role} member.
+
+To accept this invitation:
+1. Go to ${appUrl}
+2. Sign up or log in using this email address: ${email}
+3. You'll be automatically added to our organization
+
+This invitation expires in 30 days.
+
+See you soon!
+${currentUser.name}`;
+  };
+
+  const handleCopyInvite = async (invitation: Invitation) => {
+    const message = generateInviteMessage(invitation.email, invitation.role);
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopiedInviteId(invitation._id);
+      setTimeout(() => setCopiedInviteId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleCopyNewInvite = async (email: string, role: string) => {
+    const message = generateInviteMessage(email, role);
+    try {
+      await navigator.clipboard.writeText(message);
+      return true;
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      return false;
     }
   };
 
@@ -480,62 +535,140 @@ const Settings: React.FC<SettingsProps> = ({
 
         {/* USERS TAB */}
         {activeTab === 'users' && (
-            <div className="swiss-card overflow-hidden">
-                <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper/50">
-                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">User Permissions</h3>
-                    <button 
-                        onClick={() => setShowAddUser(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-ledger text-grey-dark hover:border-grey-mid rounded text-xs font-bold uppercase tracking-wide transition-colors"
-                    >
-                        <Plus size={12} /> Invite
-                    </button>
+            <div className="space-y-6">
+                {/* Active Users */}
+                <div className="swiss-card overflow-hidden">
+                    <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper/50">
+                        <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Active Users</h3>
+                        <button
+                            onClick={() => setShowAddUser(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-ledger text-grey-dark hover:border-grey-mid rounded text-xs font-bold uppercase tracking-wide transition-colors"
+                        >
+                            <Plus size={12} /> Invite
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left ledger-table">
+                            <thead>
+                                <tr>
+                                    <th className="px-6 pl-6">User</th>
+                                    <th className="px-6">Role</th>
+                                    <th className="px-6 text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {users.map(user => (
+                                <tr key={user._id} className="group hover:bg-paper transition-colors">
+                                    <td className="px-6 py-4 border-b border-grey-light">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-ledger flex items-center justify-center text-xs font-bold text-grey-dark">
+                                        {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full rounded-full object-cover"/> : user.name.charAt(0)}
+                                        </div>
+                                        <div>
+                                        <div className="font-bold text-ink text-sm">{user.name}</div>
+                                        <div className="font-mono text-[10px] text-grey-mid">{user.email}</div>
+                                        </div>
+                                    </div>
+                                    </td>
+                                    <td className="px-6 py-4 border-b border-grey-light">
+                                    <select
+                                        value={user.role}
+                                        onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
+                                        disabled={user._id === currentUser._id}
+                                        className="bg-transparent border border-transparent hover:border-ledger hover:bg-white rounded px-2 py-1 text-xs font-medium text-grey-dark outline-none focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        <option value="Admin">Admin</option>
+                                        <option value="Finance Team">Finance Team</option>
+                                        <option value="Pastorate">Pastorate</option>
+                                        <option value="Guest">Guest</option>
+                                    </select>
+                                    </td>
+                                    <td className="px-6 py-4 border-b border-grey-light text-right">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-sage-light text-sage-dark border border-sage/30">
+                                        Active
+                                    </span>
+                                    </td>
+                                </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left ledger-table">
-                        <thead>
-                            <tr>
-                                <th className="px-6 pl-6">User</th>
-                                <th className="px-6">Role</th>
-                                <th className="px-6 text-right">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map(user => (
-                            <tr key={user._id} className="group hover:bg-paper transition-colors">
-                                <td className="px-6 py-4 border-b border-grey-light">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-ledger flex items-center justify-center text-xs font-bold text-grey-dark">
-                                    {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full rounded-full object-cover"/> : user.name.charAt(0)}
-                                    </div>
-                                    <div>
-                                    <div className="font-bold text-ink text-sm">{user.name}</div>
-                                    <div className="font-mono text-[10px] text-grey-mid">{user.email}</div>
-                                    </div>
-                                </div>
-                                </td>
-                                <td className="px-6 py-4 border-b border-grey-light">
-                                <select 
-                                    value={user.role}
-                                    onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
-                                    disabled={user._id === currentUser._id}
-                                    className="bg-transparent border border-transparent hover:border-ledger hover:bg-white rounded px-2 py-1 text-xs font-medium text-grey-dark outline-none focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                                >
-                                    <option value="Admin">Admin</option>
-                                    <option value="Finance Team">Finance Team</option>
-                                    <option value="Pastorate">Pastorate</option>
-                                    <option value="Guest">Guest</option>
-                                </select>
-                                </td>
-                                <td className="px-6 py-4 border-b border-grey-light text-right">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-sage-light text-sage-dark border border-sage/30">
-                                    Active
+
+                {/* Pending Invitations */}
+                {pendingInvitations.length > 0 && (
+                    <div className="swiss-card overflow-hidden">
+                        <div className="p-6 border-b border-ledger bg-amber-50/50">
+                            <div className="flex items-center gap-2">
+                                <Clock size={16} className="text-amber-600" />
+                                <h3 className="font-bold text-amber-900 text-sm uppercase tracking-wide">Pending Invitations</h3>
+                                <span className="ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">
+                                    {pendingInvitations.length}
                                 </span>
-                                </td>
-                            </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                            </div>
+                            <p className="text-xs text-amber-700 mt-1">These users have been invited but haven't signed up yet.</p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left ledger-table">
+                                <thead>
+                                    <tr>
+                                        <th className="px-6 pl-6">Email</th>
+                                        <th className="px-6">Role</th>
+                                        <th className="px-6">Expires</th>
+                                        <th className="px-6 text-right pr-6">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pendingInvitations.map(invitation => (
+                                    <tr key={invitation._id} className="group hover:bg-paper transition-colors">
+                                        <td className="px-6 py-4 border-b border-grey-light">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700">
+                                                    <Mail size={14} />
+                                                </div>
+                                                <div className="font-mono text-sm text-grey-dark">{invitation.email}</div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 border-b border-grey-light">
+                                            <span className="text-xs font-medium text-grey-dark">{invitation.role}</span>
+                                        </td>
+                                        <td className="px-6 py-4 border-b border-grey-light">
+                                            <span className="text-xs text-grey-mid">{formatExpiryDate(invitation.expiresAt)}</span>
+                                        </td>
+                                        <td className="px-6 py-4 border-b border-grey-light text-right pr-6">
+                                            <div className="flex items-center justify-end gap-3">
+                                                <button
+                                                    onClick={() => handleCopyInvite(invitation)}
+                                                    className="flex items-center gap-1.5 text-xs font-bold text-sage hover:text-sage-dark transition-colors"
+                                                    title="Copy invite message"
+                                                >
+                                                    {copiedInviteId === invitation._id ? (
+                                                        <>
+                                                            <Check size={14} />
+                                                            Copied!
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Copy size={14} />
+                                                            Copy Invite
+                                                        </>
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() => onCancelInvitation(invitation._id)}
+                                                    className="text-xs font-bold text-error hover:text-error-dark transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
             </div>
         )}
 
@@ -600,67 +733,110 @@ const Settings: React.FC<SettingsProps> = ({
         )}
       </div>
 
-      {/* Add User Modal */}
+      {/* Invite User Modal */}
       {showAddUser && (
         <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-sm rounded-lg shadow-2xl border border-ledger animate-enter">
                 <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
-                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Invite User</h3>
-                    <button onClick={() => setShowAddUser(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
+                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
+                        {inviteSuccess ? 'Invitation Created' : 'Invite User'}
+                    </h3>
+                    <button onClick={handleCloseInviteModal} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                 </div>
-                <form onSubmit={handleCreateUser} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Name</label>
-                        <input 
-                            type="text" 
-                            required
-                            value={newUser.name || ''} 
-                            onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-                            className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"
-                        />
+
+                {inviteSuccess ? (
+                    // Success state with copy option
+                    <div className="p-6 space-y-4">
+                        <div className="text-center">
+                            <div className="w-12 h-12 bg-sage-light rounded-full flex items-center justify-center mx-auto mb-3">
+                                <Check size={24} className="text-sage" />
+                            </div>
+                            <h4 className="font-bold text-ink">Invitation Sent!</h4>
+                            <p className="text-sm text-grey-mid mt-1">
+                                Invited <span className="font-mono text-ink">{inviteSuccess.email}</span> as {inviteSuccess.role}
+                            </p>
+                        </div>
+
+                        <div className="p-4 bg-paper border border-ledger rounded-lg">
+                            <p className="text-xs font-bold text-grey-mid uppercase tracking-wide mb-2">Share Instructions</p>
+                            <p className="text-xs text-grey-dark leading-relaxed mb-3">
+                                Copy the invite message below and send it to the user via email, WhatsApp, or any messenger.
+                            </p>
+                            <button
+                                onClick={async () => {
+                                    const copied = await handleCopyNewInvite(inviteSuccess.email, inviteSuccess.role);
+                                    if (copied) setCopiedNewInvite(true);
+                                }}
+                                className={`w-full py-2.5 rounded text-sm font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-all ${
+                                    copiedNewInvite
+                                        ? 'bg-sage-light text-sage-dark border border-sage'
+                                        : 'bg-ink text-white hover:bg-charcoal'
+                                }`}
+                            >
+                                {copiedNewInvite ? (
+                                    <>
+                                        <Check size={16} />
+                                        Copied to Clipboard!
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy size={16} />
+                                        Copy Invite Message
+                                    </>
+                                )}
+                            </button>
+                        </div>
+
+                        <div className="flex justify-end pt-2">
+                            <button
+                                onClick={handleCloseInviteModal}
+                                className="px-6 py-2 bg-white border border-ledger text-grey-dark rounded text-xs font-bold uppercase tracking-wide hover:bg-grey-light"
+                            >
+                                Done
+                            </button>
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label>
-                        <input 
-                            type="email" 
-                            required
-                            value={newUser.email || ''} 
-                            onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                            className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Clerk User ID</label>
-                        <input
-                            type="text"
-                            required
-                            value={newUser.clerkId || ""}
-                            onChange={(e) => setNewUser({ ...newUser, clerkId: e.target.value })}
-                            placeholder="user_..."
-                            className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
-                        />
-                        <p className="text-[10px] text-grey-mid mt-1">Find this in the Clerk dashboard or user profile.</p>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Role</label>
-                        <select 
-                            value={newUser.role}
-                            onChange={(e) => setNewUser({...newUser, role: e.target.value as UserRole})}
-                            className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"
-                        >
-                            <option value="Admin">Admin</option>
-                            <option value="Finance Team">Finance Team</option>
-                            <option value="Pastorate">Pastorate</option>
-                            <option value="Guest">Guest</option>
-                        </select>
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2">
-                        <button type="button" onClick={() => setShowAddUser(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded">Cancel</button>
-                        <button type="submit" className="px-6 py-2 bg-ink text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-charcoal flex items-center gap-2">
-                            <Plus size={14} /> Add User
-                        </button>
-                    </div>
-                </form>
+                ) : (
+                    // Form state
+                    <form onSubmit={handleCreateInvitation} className="p-6 space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email Address</label>
+                            <input
+                                type="email"
+                                required
+                                value={newInvitation.email}
+                                onChange={(e) => setNewInvitation({...newInvitation, email: e.target.value})}
+                                placeholder="user@example.com"
+                                className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"
+                            />
+                            <p className="text-[10px] text-grey-mid mt-1">The user will need to sign up with this email address.</p>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Role</label>
+                            <select
+                                value={newInvitation.role}
+                                onChange={(e) => setNewInvitation({...newInvitation, role: e.target.value as UserRole})}
+                                className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"
+                            >
+                                <option value="Admin">Admin</option>
+                                <option value="Finance Team">Finance Team</option>
+                                <option value="Pastorate">Pastorate</option>
+                                <option value="Guest">Guest</option>
+                            </select>
+                        </div>
+                        <div className="p-3 bg-amber-50 border border-amber-100 rounded-md">
+                            <p className="text-xs text-amber-800">
+                                The invitation will expire in 30 days. After creating, you'll get a message to share with the user.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button type="button" onClick={handleCloseInviteModal} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded">Cancel</button>
+                            <button type="submit" className="px-6 py-2 bg-ink text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-charcoal flex items-center gap-2">
+                                <Mail size={14} /> Create Invitation
+                            </button>
+                        </div>
+                    </form>
+                )}
             </div>
         </div>
       )}
