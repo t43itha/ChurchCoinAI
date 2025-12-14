@@ -1125,16 +1125,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <X size={16} />
                     </button>
                 </div>
-                <form onSubmit={handleAddSubmit} className="p-4 sm:p-6 space-y-4">
+                <form onSubmit={handleAddSubmit} className="p-4 sm:p-6 space-y-4 overflow-hidden">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
+                        <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
-                            <input 
-                                type="date" 
+                            <input
+                                type="date"
                                 required
-                                value={newTransaction.date} 
+                                value={newTransaction.date}
                                 onChange={(e) => setNewTransaction({...newTransaction, date: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                className="w-full min-w-0 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                             />
                         </div>
                         <div>
@@ -1308,16 +1308,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             alert("Failed to update transaction.");
                         }
                     }
-                }} className="p-4 sm:p-6 space-y-4">
+                }} className="p-4 sm:p-6 space-y-4 overflow-hidden">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
+                        <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
-                            <input 
-                                type="date" 
+                            <input
+                                type="date"
                                 required
-                                value={editingTransaction.date} 
+                                value={editingTransaction.date}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                className="w-full min-w-0 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                             />
                         </div>
                         <div>
