@@ -14,16 +14,18 @@ const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
   // --- Calculations ---
 
-  // 1. Cash Flow Health (Current Month)
-  const currentMonthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
+  // 1. Cash Flow Health (Previous Month - has complete data)
+  const defaultDate = new Date();
+  defaultDate.setMonth(defaultDate.getMonth() - 1);
+  const currentMonthKey = defaultDate.toISOString().slice(0, 7); // Previous month
   const currentMonthTxns = transactions.filter(t => t.date.startsWith(currentMonthKey));
   const incomeMonth = currentMonthTxns.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
   const expenseMonth = currentMonthTxns.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
   const netCashFlow = incomeMonth - expenseMonth;
 
-  // 2. Donor Momentum (Active Donors Current vs Previous Month)
+  // 2. Donor Momentum (Active Donors vs Previous Month)
   const prevDate = new Date();
-  prevDate.setMonth(prevDate.getMonth() - 1);
+  prevDate.setMonth(prevDate.getMonth() - 2);
   const prevMonthKey = prevDate.toISOString().slice(0, 7);
   
   const getActiveDonorCount = (monthKey: string) => {
@@ -77,7 +79,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
         </div>
         <div className="flex gap-2">
              <span className="text-[10px] uppercase bg-grey-light px-2 py-1 rounded text-grey-mid font-bold tracking-wider">
-                 {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
+                 {defaultDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
              </span>
         </div>
       </header>
@@ -115,7 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">Active Donors (This Month)</p>
+                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">Active Donors</p>
                 <div className="flex items-baseline gap-2 mt-1">
                     <h3 className="text-2xl font-bold text-ink tracking-tighter">{activeDonorsCurrent}</h3>
                     <span className="text-xs text-grey-mid font-medium">vs {activeDonorsPrev} last month</span>
