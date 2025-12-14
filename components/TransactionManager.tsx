@@ -1117,16 +1117,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* New Transaction Modal */}
       {showAddModal && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger my-auto sm:my-8">
+                <div className="sticky top-0 p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg z-10">
                     <h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Entry</h3>
                     <button onClick={() => setShowAddModal(false)} className="text-grey-mid hover:text-grey-dark">
                         <X size={16} />
                     </button>
                 </div>
-                <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={handleAddSubmit} className="p-4 sm:p-6 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
                             <input 
@@ -1166,11 +1166,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Category</label>
-                            <select 
-                                value={newTransaction.category} 
+                            <select
+                                value={newTransaction.category}
                                 onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
@@ -1179,8 +1179,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Fund</label>
-                             <select 
-                                value={newTransaction.fundId} 
+                             <select
+                                value={newTransaction.fundId}
                                 onChange={(e) => setNewTransaction({...newTransaction, fundId: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
@@ -1188,12 +1188,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             </select>
                         </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                          <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
-                             <select 
-                                value={newTransaction.type} 
+                             <select
+                                value={newTransaction.type}
                                 onChange={(e) => setNewTransaction({...newTransaction, type: e.target.value as TransactionType})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
@@ -1203,9 +1203,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                         <div>
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Donor Name (Optional)</label>
-                            <input 
-                                type="text" 
-                                value={newTransaction.donorName || ''} 
+                            <input
+                                type="text"
+                                value={newTransaction.donorName || ''}
                                 onChange={(e) => setNewTransaction({...newTransaction, donorName: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
                                 placeholder="Name or Ref..."
@@ -1273,9 +1273,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Edit Transaction Modal */}
       {editingTransaction && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg animate-enter border border-ledger my-auto sm:my-8">
+                <div className="sticky top-0 p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg z-10">
                     <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Edit Transaction</h3>
                     <button onClick={() => setEditingTransaction(null)} className="text-grey-mid hover:text-grey-dark">
                         <X size={16} />
@@ -1308,8 +1308,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             alert("Failed to update transaction.");
                         }
                     }
-                }} className="p-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                }} className="p-4 sm:p-6 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
                             <input 
@@ -1347,11 +1347,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Category</label>
-                            <select 
-                                value={editingTransaction.category} 
+                            <select
+                                value={editingTransaction.category}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
@@ -1360,8 +1360,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Fund</label>
-                             <select 
-                                value={editingTransaction.fundId} 
+                             <select
+                                value={editingTransaction.fundId}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
@@ -1369,12 +1369,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             </select>
                         </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                          <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
-                             <select 
-                                value={editingTransaction.type} 
+                             <select
+                                value={editingTransaction.type}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, type: e.target.value as TransactionType})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
@@ -1384,8 +1384,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                         <div>
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Donor Name (Optional)</label>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 value={editingTransaction.donorName || ''} 
                                 onChange={(e) => setEditingTransaction({...editingTransaction, donorName: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
