@@ -1127,14 +1127,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </div>
                 <form onSubmit={handleAddSubmit} className="p-4 sm:p-6 space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="min-w-0 overflow-hidden">
+                        <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
                             <input
                                 type="date"
                                 required
                                 value={newTransaction.date}
                                 onChange={(e) => setNewTransaction({...newTransaction, date: e.target.value})}
-                                className="w-full max-w-full min-w-0 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono box-border"
+                                className="block w-full min-w-0 appearance-none p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                             />
                         </div>
                         <div>
@@ -1310,14 +1310,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     }
                 }} className="p-4 sm:p-6 space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="min-w-0 overflow-hidden">
+                        <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
                             <input
                                 type="date"
                                 required
                                 value={editingTransaction.date}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
-                                className="w-full max-w-full min-w-0 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono box-border"
+                                className="block w-full min-w-0 appearance-none p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
                             />
                         </div>
                         <div>
