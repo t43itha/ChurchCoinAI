@@ -466,8 +466,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="md:col-span-2 swiss-card p-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 swiss-card p-6 md:p-8">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <h3 className="text-2xl font-bold text-ink font-mono">{selectedFund?.name}</h3>
@@ -487,7 +487,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-8 border-t border-grey-light pt-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8 border-t border-grey-light pt-6">
                             <div>
                                 <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Pledged</p>
                                 <p className="text-xl font-bold text-ink font-mono">£{totalPledged.toLocaleString()}</p>
@@ -505,7 +505,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 </div>
 
                 <div className="swiss-card p-6 flex flex-col items-center justify-center">
-                    <div className="w-48 h-48">
+                    <div className="w-32 h-32 sm:w-48 sm:h-48">
                          <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie data={pieData} innerRadius={40} outerRadius={65} paddingAngle={5} dataKey="value" stroke="none">
@@ -534,7 +534,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     placeholder="Search donors..."
                                     value={pledgeSearch}
                                     onChange={(e) => setPledgeSearch(e.target.value)}
-                                    className="pl-8 pr-3 py-1.5 text-xs border border-ledger rounded-md bg-white focus:ring-1 focus:ring-ink outline-none w-40"
+                                    className="pl-8 pr-3 py-1.5 text-xs border border-ledger rounded-md bg-white focus:ring-1 focus:ring-ink outline-none w-full sm:w-40"
                                 />
                             </div>
                         </div>
@@ -610,7 +610,52 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                         </div>
                     )}
 
-                    <div className="overflow-x-auto flex-1">
+                    {/* Mobile Cards View */}
+                    <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-3">
+                        {filteredPledges.map((pledge) => (
+                            <div key={pledge._id} className="bg-white p-4 rounded-lg border border-ledger">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <div className="font-bold text-ink text-sm">{pledge.donorName}</div>
+                                        <div className="text-xs text-grey-mid">{pledge.frequency}</div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
+                                        pledge.status === 'Active' ? 'bg-sage-light text-sage-dark border-sage/30' :
+                                        pledge.status === 'Completed' ? 'bg-sage-light text-sage-dark border-sage/30' :
+                                        'bg-grey-light text-grey-mid border-ledger'
+                                    }`}>
+                                        {pledge.status}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-grey-light">
+                                    <span className="text-sage font-mono font-bold text-lg">£{pledge.amount.toLocaleString()}</span>
+                                    <div className="flex gap-2">
+                                        {pledge.status === 'Completed' && (
+                                            <button
+                                                onClick={() => handleThankDonor(pledge)}
+                                                className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-ledger text-grey-dark px-3 py-1.5 rounded hover:text-sage hover:border-sage/30 transition-colors shadow-sm"
+                                            >
+                                                <MessageSquare size={12} /> Thanks
+                                            </button>
+                                        )}
+                                        {canEdit && (
+                                            <button onClick={() => handleEditPledgeClick(pledge)} className="p-2 text-grey-mid hover:text-grey-dark hover:bg-grey-light rounded transition-colors">
+                                                <Edit2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {filteredPledges.length === 0 && (
+                            <div className="py-12 text-center text-grey-mid text-sm">
+                                {pledgeSearch ? `No pledges matching "${pledgeSearch}"` : 'No pledges recorded for this campaign yet.'}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto flex-1">
                         <table className="w-full text-left ledger-table">
                             <thead className="bg-paper border-b border-ledger">
                                 <tr>
@@ -629,7 +674,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                         <td className="px-6 py-4 text-sage font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
-                                                pledge.status === 'Active' ? 'bg-sage-light text-sage-dark border-sage/30' : 
+                                                pledge.status === 'Active' ? 'bg-sage-light text-sage-dark border-sage/30' :
                                                 pledge.status === 'Completed' ? 'bg-sage-light text-sage-dark border-sage/30' :
                                                 'bg-grey-light text-grey-mid border-ledger'
                                             }`}>
@@ -639,15 +684,15 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 {pledge.status === 'Completed' && (
-                                                    <button 
-                                                        onClick={() => handleThankDonor(pledge)} 
+                                                    <button
+                                                        onClick={() => handleThankDonor(pledge)}
                                                         className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-ledger text-grey-dark px-2 py-1 rounded hover:text-sage hover:border-sage/30 transition-colors shadow-sm"
                                                     >
                                                         <MessageSquare size={10} /> Say Thanks
                                                     </button>
                                                 )}
                                                 {canEdit && (
-                                                    <button onClick={() => handleEditPledgeClick(pledge)} className="text-ledger hover:text-grey-dark transition-colors opacity-0 group-hover:opacity-100">
+                                                    <button onClick={() => handleEditPledgeClick(pledge)} className="text-ledger hover:text-grey-dark transition-colors md:opacity-0 md:group-hover:opacity-100">
                                                         <Edit2 size={14} />
                                                     </button>
                                                 )}
@@ -719,8 +764,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 mt-6">
-                                <button 
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
+                                <button
                                     onClick={sendViaWhatsApp}
                                     className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366] text-white rounded-lg font-bold text-sm hover:bg-[#128C7E] transition-colors shadow-sm"
                                 >
@@ -765,7 +810,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label>
                                     <div className="relative">
@@ -795,7 +840,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Start Date</label>
                                     <input 
@@ -866,7 +911,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                                 <div>
                                     <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">Donor Name *</label>
                                     <select 
@@ -1000,7 +1045,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                         </div>
                         <div className="p-6 space-y-4">
                             {/* Summary Stats */}
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="bg-paper p-3 rounded-lg border border-ledger text-center">
                                     <div className="text-2xl font-bold text-ink font-mono">{importResult.importedPledges}</div>
                                     <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Pledges Imported</div>

@@ -223,7 +223,7 @@ ${currentUser.name}`;
       </header>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-ledger px-2 flex items-center gap-8 sticky top-0 z-10">
+      <div className="bg-white border-b border-ledger px-2 flex items-center gap-4 md:gap-8 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
         {[
             { id: 'general', label: 'Organization', icon: Building2 },
             { id: 'funds', label: 'Funds & Campaigns', icon: Wallet },
@@ -440,7 +440,7 @@ ${currentUser.name}`;
                 </div>
                 
                 {/* Stats Summary */}
-                <div className="grid grid-cols-3 gap-6 p-6 border-b border-ledger bg-white">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 p-6 border-b border-ledger bg-white">
                     <div className="p-4 bg-paper rounded-lg border border-ledger">
                         <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Total Funds</p>
                         <p className="text-xl font-bold text-ink font-mono">{funds.length}</p>
@@ -459,7 +459,58 @@ ${currentUser.name}`;
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                {/* Mobile Cards View */}
+                <div className="md:hidden p-4 space-y-3">
+                    {funds.map(fund => {
+                        const progress = calculateProgress(fund);
+                        return (
+                            <div key={fund._id} className="bg-white p-4 rounded-lg border border-ledger">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex items-center gap-3">
+                                        {fund.logoUrl && <img src={fund.logoUrl} className="w-10 h-10 rounded-md object-cover border border-ledger" alt="Fund Logo" />}
+                                        <div>
+                                            <div className="font-bold text-ink text-sm">{fund.name}</div>
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border mt-1 ${
+                                                fund.type === FundType.UNRESTRICTED ? 'bg-grey-light text-grey-dark border-ledger' :
+                                                fund.type === FundType.RESTRICTED ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                                'bg-sage-light text-sage-dark border-sage/30'
+                                            }`}>
+                                                {fund.type}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="p-2 text-grey-mid hover:text-sage hover:bg-sage-light rounded transition-colors" title="Edit">
+                                            <Edit2 size={16} />
+                                        </button>
+                                        <button onClick={() => handleDeleteFund(fund)} className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded transition-colors" title="Delete">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="text-xs text-grey-mid mb-3 line-clamp-2">{fund.description}</div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <span className="text-[10px] font-bold text-grey-mid uppercase">Balance</span>
+                                    <span className="font-mono text-lg font-bold text-ink">£{fund.balance.toLocaleString()}</span>
+                                </div>
+                                {fund.targetAmount && (
+                                    <div>
+                                        <div className="flex justify-between text-[10px] font-bold uppercase tracking-wide text-grey-mid mb-1.5">
+                                            <span>{progress.toFixed(0)}%</span>
+                                            <span className="font-mono">Target: £{fund.targetAmount.toLocaleString()}</span>
+                                        </div>
+                                        <div className="h-2 w-full bg-grey-light rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-sage-light0' : 'bg-amber-500'}`} style={{ width: `${progress}%` }}></div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left ledger-table">
                         <thead>
                             <tr className="bg-paper/50 border-b border-ledger">
@@ -486,7 +537,7 @@ ${currentUser.name}`;
                                         </td>
                                         <td className="px-6 py-5">
                                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
-                                                fund.type === FundType.UNRESTRICTED ? 'bg-grey-light text-grey-dark border-ledger' : 
+                                                fund.type === FundType.UNRESTRICTED ? 'bg-grey-light text-grey-dark border-ledger' :
                                                 fund.type === FundType.RESTRICTED ? 'bg-amber-50 text-amber-700 border-amber-100' :
                                                 'bg-sage-light text-sage-dark border-sage/30'
                                              }`}>
@@ -504,8 +555,8 @@ ${currentUser.name}`;
                                                         <span className="font-mono text-grey-mid">Target: £{fund.targetAmount.toLocaleString()}</span>
                                                     </div>
                                                     <div className="h-1.5 w-full bg-grey-light rounded-full overflow-hidden">
-                                                        <div 
-                                                            className={`h-full rounded-full ${progress >= 100 ? 'bg-sage-light0' : 'bg-amber-500'}`} 
+                                                        <div
+                                                            className={`h-full rounded-full ${progress >= 100 ? 'bg-sage-light0' : 'bg-amber-500'}`}
                                                             style={{ width: `${progress}%` }}
                                                         ></div>
                                                     </div>
@@ -515,7 +566,7 @@ ${currentUser.name}`;
                                             )}
                                         </td>
                                         <td className="px-6 py-5 text-right pr-8">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="flex justify-end gap-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                                 <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="p-1.5 text-grey-mid hover:text-sage hover:bg-sage-light rounded transition-colors" title="Edit">
                                                     <Edit2 size={14} />
                                                 </button>
@@ -547,7 +598,44 @@ ${currentUser.name}`;
                             <Plus size={12} /> Invite
                         </button>
                     </div>
-                    <div className="overflow-x-auto">
+                    {/* Mobile Cards View */}
+                    <div className="md:hidden p-4 space-y-3">
+                        {users.map(user => (
+                            <div key={user._id} className="bg-white p-4 rounded-lg border border-ledger">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-ledger flex items-center justify-center text-sm font-bold text-grey-dark">
+                                            {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full rounded-full object-cover"/> : user.name.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-ink text-sm">{user.name}</div>
+                                            <div className="font-mono text-[10px] text-grey-mid">{user.email}</div>
+                                        </div>
+                                    </div>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-sage-light text-sage-dark border border-sage/30">
+                                        Active
+                                    </span>
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-grey-light">
+                                    <label className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Role</label>
+                                    <select
+                                        value={user.role}
+                                        onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
+                                        disabled={user._id === currentUser._id}
+                                        className="w-full mt-1 bg-paper border border-ledger hover:border-grey-mid rounded px-3 py-2 text-sm font-medium text-grey-dark outline-none focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        <option value="Admin">Admin</option>
+                                        <option value="Finance Team">Finance Team</option>
+                                        <option value="Pastorate">Pastorate</option>
+                                        <option value="Guest">Guest</option>
+                                    </select>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left ledger-table">
                             <thead>
                                 <tr>
@@ -608,7 +696,48 @@ ${currentUser.name}`;
                             </div>
                             <p className="text-xs text-amber-700 mt-1">These users have been invited but haven't signed up yet.</p>
                         </div>
-                        <div className="overflow-x-auto">
+                        {/* Mobile Cards View */}
+                        <div className="md:hidden p-4 space-y-3">
+                            {pendingInvitations.map(invitation => (
+                                <div key={invitation._id} className="bg-white p-4 rounded-lg border border-amber-200">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">
+                                                <Mail size={16} />
+                                            </div>
+                                            <div>
+                                                <div className="font-mono text-sm text-grey-dark break-all">{invitation.email}</div>
+                                                <div className="text-xs text-grey-mid mt-0.5">{invitation.role}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-amber-700 mb-3">
+                                        Expires: {formatExpiryDate(invitation.expiresAt)}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleCopyInvite(invitation)}
+                                            className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-sage-light text-sage-dark rounded text-xs font-bold uppercase tracking-wide hover:bg-sage/20 transition-colors"
+                                        >
+                                            {copiedInviteId === invitation._id ? (
+                                                <><Check size={14} /> Copied!</>
+                                            ) : (
+                                                <><Copy size={14} /> Copy Invite</>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => onCancelInvitation(invitation._id)}
+                                            className="px-4 py-2 text-error border border-error/30 rounded text-xs font-bold uppercase tracking-wide hover:bg-error-light transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block overflow-x-auto">
                             <table className="w-full text-left ledger-table">
                                 <thead>
                                     <tr>
@@ -901,7 +1030,7 @@ ${currentUser.name}`;
                         </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Amount (£)</label>
                              <input 

@@ -79,6 +79,9 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'profile' | 'communicate'>('overview');
 
+  // Mobile view state for master-detail pattern
+  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
+
   // Message template state
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null);
   const [selectedPledgeForTemplate, setSelectedPledgeForTemplate] = useState<string | null>(null);
@@ -489,7 +492,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   return (
     <div className="flex h-[calc(100vh-8rem)] animate-enter gap-0 swiss-card overflow-hidden relative">
       {/* Sidebar - Directory */}
-      <div className="w-80 border-r border-ledger bg-white flex flex-col shrink-0">
+      <div className={`${mobileView === 'detail' ? 'hidden' : 'w-full'} md:block md:w-80 border-r border-ledger bg-white flex flex-col shrink-0`}>
         <div className="p-4 border-b border-ledger space-y-3">
           <div className="flex justify-between items-center">
               <h3 className="font-bold text-ink text-sm font-mono">Directory</h3>
@@ -574,6 +577,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                       toggleDonorForMerge(donor._id);
                     } else {
                       setSelectedDonorId(donor._id);
+                      setMobileView('detail'); // Switch to detail view on mobile
                       setGeneratedMessage('');
                       setSelectedTemplate(null);
                       setSelectedPledgeForTemplate(null);
@@ -613,11 +617,18 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-paper overflow-hidden">
+      <div className={`${mobileView === 'list' ? 'hidden' : 'flex-1'} md:flex md:flex-1 flex-col bg-paper overflow-hidden`}>
         {selectedDonor ? (
           <>
-            <div className="bg-white border-b border-ledger px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
+            <div className="bg-white border-b border-ledger px-4 md:px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
                <div className="flex items-center gap-4">
+                  {/* Back button for mobile */}
+                  <button
+                    onClick={() => setMobileView('list')}
+                    className="md:hidden p-2 -ml-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded-lg transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                  </button>
                   <div className="w-12 h-12 bg-ink rounded-lg flex items-center justify-center text-white text-xl font-bold font-mono shadow-sm">{selectedDonor.name.charAt(0)}</div>
                   <div>
                       <h1 className="text-xl font-bold text-ink font-mono leading-tight">{selectedDonor.name}</h1>
@@ -688,7 +699,51 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                     <div className="swiss-card p-0 bg-white overflow-hidden max-w-5xl">
                          <div className="p-4 border-b border-ledger bg-paper/50 flex justify-between items-center"><div className="text-sm font-bold text-grey-dark">Transaction Ledger</div><div className="text-xs font-mono text-grey-mid">{donorTransactions.length} RECORDS</div></div>
                          {donorTransactions.length === 0 ? <div className="p-12 text-center text-grey-mid"><History size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No transaction history found.</p></div> : (
-                            <table className="w-full text-left ledger-table">
+                            <>
+                              {/* Mobile List View */}
+                              <div className="md:hidden divide-y divide-grey-light">
+                                {donorTransactions.map(t => {
+                                  const linkedPledge = pledges.find(p => p._id === t.pledgeId);
+                                  return (
+                                    <div key={t._id} className="p-4">
+                                      <div className="flex justify-between items-start mb-2">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="font-medium text-ink text-sm truncate">{t.description}</div>
+                                          <div className="text-xs text-grey-mid mt-0.5 flex items-center gap-2">
+                                            <span className="font-mono">{t.date}</span>
+                                            <span className="px-1.5 py-0.5 bg-grey-light rounded text-[10px] font-bold text-grey-dark uppercase border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span>
+                                          </div>
+                                        </div>
+                                        <div className={`font-mono text-lg font-bold ${t.type === TransactionType.INCOME ? 'text-sage' : 'text-ink'}`}>
+                                          {t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}
+                                        </div>
+                                      </div>
+                                      {t.type === TransactionType.INCOME && canEdit && (
+                                        <div className="mt-2 pt-2 border-t border-grey-light">
+                                          {linkedPledge ? (
+                                            <div className="flex items-center justify-between">
+                                              <div className="px-2 py-1 bg-sage-light text-sage-dark rounded text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30">
+                                                <LinkIcon size={10} /> Linked to Pledge
+                                              </div>
+                                              <button onClick={() => handleUnlinkTransaction(t)} className="text-xs text-grey-mid hover:text-error transition-colors" title="Unlink">
+                                                Unlink
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="w-full bg-paper border border-ledger text-xs text-grey-dark rounded px-3 py-2 focus:ring-1 focus:ring-ink outline-none">
+                                              <option value="">Link to Pledge...</option>
+                                              {activePledges.map(p => <option key={p._id} value={p._id}>{funds.find(f => f._id === p.fundId)?.name} (£{p.amount})</option>)}
+                                            </select>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Desktop Table View */}
+                              <table className="hidden md:table w-full text-left ledger-table">
                                 <thead className="bg-white"><tr><th className="pl-6 py-4">Date</th><th className="px-4 py-4">Description</th><th className="px-4 py-4 text-right">Amount</th><th className="px-4 py-4">Fund</th><th className="px-4 py-4">Pledge Link</th></tr></thead>
                                 <tbody>
                                     {donorTransactions.map(t => {
@@ -715,7 +770,8 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                                         );
                                     })}
                                 </tbody>
-                            </table>
+                              </table>
+                            </>
                          )}
                     </div>
                 )}
@@ -762,7 +818,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                         </h3>
 
                         {/* Template Selection Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
                             {(Object.entries(MESSAGE_TEMPLATES) as [TemplateType, MessageTemplate][]).map(([key, template]) => (
                                 <button
                                     key={key}
@@ -895,8 +951,8 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
               <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-ledger animate-enter">
                   <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Donor Profile</h3><button onClick={() => setShowAddDonorModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                   <form onSubmit={handleAddDonorSubmit} className="p-6 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name *</label><input type="text" value={newDonorData.name || ''} onChange={e => setNewDonorData({...newDonorData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required placeholder="e.g. John Doe"/></div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name *</label><input type="text" value={newDonorData.name || ''} onChange={e => setNewDonorData({...newDonorData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required placeholder="e.g. John Doe"/></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={newDonorData.email || ''} onChange={e => setNewDonorData({...newDonorData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={newDonorData.phone || ''} onChange={e => setNewDonorData({...newDonorData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
                       </div>
@@ -904,11 +960,11 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                         <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Address</label>
                         <textarea value={newDonorData.address || ''} onChange={e => setNewDonorData({...newDonorData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors h-16 resize-none" placeholder="Street, City..."/>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={newDonorData.postcode || ''} onChange={e => setNewDonorData({...newDonorData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"/></div>
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={newDonorData.communicationPreference || 'Email'} onChange={e => setNewDonorData({...newDonorData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={newDonorData.type || 'Individual'} onChange={e => setNewDonorData({...newDonorData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
                           <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
                       </div>
@@ -924,8 +980,8 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
               <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-ledger animate-enter">
                   <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">Edit Donor Profile</h3><button onClick={() => setIsEditing(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                   <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name</label><input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required/></div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name</label><input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required/></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
                       </div>
@@ -933,11 +989,11 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                           <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Address</label>
                           <textarea value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors h-16 resize-none"/>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={formData.postcode || ''} onChange={e => setFormData({...formData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"/></div>
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={formData.communicationPreference || 'Email'} onChange={e => setFormData({...formData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={formData.type || 'Individual'} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
                           <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
                       </div>
@@ -954,11 +1010,11 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                 <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Schedule</h3><button onClick={() => setShowAddPledgeModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                 <form onSubmit={handleAddPledgeSubmit} className="p-6 space-y-4">
                     <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f._id} value={f._id}>{f.name}</option>))}</select></div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                          <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span><input type="number" value={newPledgeData.amount || ''} onChange={e => setNewPledgeData({...newPledgeData, amount: parseFloat(e.target.value)})} className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono" placeholder="0.00" required/></div></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Frequency</label><select value={newPledgeData.frequency} onChange={e => setNewPledgeData({...newPledgeData, frequency: e.target.value as any})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="One-off">One-off</option><option value="Weekly">Weekly</option><option value="Monthly">Monthly</option><option value="Annual">Annual</option></select></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Start Date</label><input type="date" value={newPledgeData.startDate} onChange={e => setNewPledgeData({...newPledgeData, startDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono" required/></div>
                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">End Date (Optional)</label><input type="date" value={newPledgeData.endDate || ''} onChange={e => setNewPledgeData({...newPledgeData, endDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"/></div>
                     </div>

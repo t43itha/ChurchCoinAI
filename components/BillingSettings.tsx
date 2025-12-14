@@ -184,7 +184,7 @@ const BillingSettings: React.FC = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Monthly Price</p>
                 <p className="text-2xl font-bold text-ink font-mono">
