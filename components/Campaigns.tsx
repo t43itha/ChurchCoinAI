@@ -444,6 +444,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     };
 
     return (
+        <>
         <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
             <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-ledger pb-6">
                 <div>
@@ -731,6 +732,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     </div>
                 </div>
             </div>
+        </div>
 
             {/* Thank You / Completion Modal */}
             {thankYouModal.isOpen && (
@@ -1104,7 +1106,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 };
 
