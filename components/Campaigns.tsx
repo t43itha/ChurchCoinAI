@@ -523,11 +523,13 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 swiss-card overflow-hidden flex flex-col">
-                    <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper/50">
-                        <div className="flex items-center gap-3">
-                            <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
-                            <span className="text-[10px] bg-ledger text-grey-dark px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
-                            <div className="relative ml-2">
+                    <div className="p-4 border-b border-ledger flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-paper/50">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
+                            <div className="flex items-center gap-3">
+                                <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
+                                <span className="text-[10px] bg-ledger text-grey-dark px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
+                            </div>
+                            <div className="relative w-full sm:w-auto">
                                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-grey-mid" />
                                 <input
                                     type="text"
@@ -539,30 +541,30 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </div>
                         </div>
                         {canEdit ? (
-                            <div className="flex gap-2">
-                                <button 
+                            <div className="flex gap-2 w-full md:w-auto justify-end">
+                                <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="p-1.5 bg-white border border-ledger rounded hover:border-grey-mid text-grey-dark transition-colors shadow-sm" 
+                                    className="p-1.5 bg-white border border-ledger rounded hover:border-grey-mid text-grey-dark transition-colors shadow-sm"
                                     title="Import CSV"
                                 >
                                     <FileSpreadsheet size={14} />
-                                    <input 
+                                    <input
                                         ref={fileInputRef}
-                                        type="file" 
-                                        accept=".csv" 
-                                        className="hidden" 
-                                        onChange={handleFileUpload} 
+                                        type="file"
+                                        accept=".csv"
+                                        className="hidden"
+                                        onChange={handleFileUpload}
                                     />
                                 </button>
-                                <button 
+                                <button
                                     onClick={handleAddPledgeClick}
-                                    className="p-1.5 bg-ink text-white border border-ink rounded hover:bg-charcoal transition-colors shadow-sm" 
+                                    className="p-1.5 bg-ink text-white border border-ink rounded hover:bg-charcoal transition-colors shadow-sm"
                                     title="Add New Pledge"
                                 >
                                     <Plus size={14} />
                                 </button>
                                 <button onClick={handleAIReconcile} disabled={isReconciling} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-ledger text-sage rounded-md hover:border-sage/30 text-xs font-bold uppercase tracking-wide transition-colors">
-                                    {isReconciling ? <Wand2 size={14} className="animate-spin"/> : <Wand2 size={14} />} AI Match
+                                    {isReconciling ? <Wand2 size={14} className="animate-spin"/> : <Wand2 size={14} />} <span className="hidden sm:inline">AI Match</span>
                                 </button>
                             </div>
                         ) : (
@@ -785,8 +787,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* Add/Edit Pledge Modal */}
             {(showAddModal || editingPledge) && canEdit && (
-                <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
+                <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter my-4 md:my-auto max-h-[calc(100vh-2rem)] overflow-y-auto">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                             <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
                                 {editingPledge ? 'Edit Pledge' : 'New Pledge'}

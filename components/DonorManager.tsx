@@ -647,14 +647,14 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                    </div>
                </div>
             </div>
-            <div className="bg-white border-b border-ledger px-6 flex items-center gap-6 sticky top-0 z-10">
+            <div className="bg-white border-b border-ledger px-4 sm:px-6 flex items-center gap-4 sm:gap-6 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
                 {[
                     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
                     { id: 'history', label: 'History', icon: History },
                     { id: 'profile', label: 'Profile', icon: UserCog },
                     { id: 'communicate', label: 'Communicate', icon: MessageSquare },
                 ].map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${activeTab === tab.id ? 'border-amber text-amber-dark' : 'border-transparent text-grey-mid hover:text-ink'}`}>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab.id ? 'border-amber text-amber-dark' : 'border-transparent text-grey-mid hover:text-ink'}`}>
                         <tab.icon size={14} /> {tab.label}
                     </button>
                 ))}
