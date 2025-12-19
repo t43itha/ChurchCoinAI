@@ -1,7 +1,6 @@
 // Footer - 5-column footer with links and compliance badges (dark theme)
 
 import { motion } from "framer-motion";
-import { Calculator } from "lucide-react";
 import { landingContent } from "../constants/content";
 
 export default function Footer() {
@@ -20,11 +19,12 @@ export default function Footer() {
         >
           {/* Brand column */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 border-2 border-white flex items-center justify-center">
-                <Calculator className="w-4 h-4 text-white" strokeWidth={2} />
-              </div>
-              <span className="font-bold text-xl text-white tracking-tight">ChurchCoin</span>
+            <div className="mb-4">
+              <img
+                src="/ChurchCoin-Variation 01-transparent-s.png"
+                alt="ChurchCoin Finance Platform"
+                className="h-14 brightness-0 invert"
+              />
             </div>
             <p className="text-sm text-[#666666] max-w-xs mb-4">
               AI-powered financial management built specifically for UK churches.
