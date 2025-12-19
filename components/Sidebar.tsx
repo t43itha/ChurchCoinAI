@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserButton } from '@clerk/clerk-react';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, Calculator, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 
 // Type for Convex user from database
 interface ConvexUser {
@@ -55,17 +55,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
         md:translate-x-0
       `}>
         {/* Brand Header */}
-        <div className="p-8 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-ink">
-              <div className="w-8 h-8 border-2 border-ink flex items-center justify-center">
-                  <Calculator size={16} strokeWidth={2} />
-              </div>
-              <div>
-                  <h1 className="text-lg font-bold tracking-tight leading-none text-ink">ChurchCoin</h1>
-                  <p className="text-[10px] text-grey-mid mt-1 uppercase tracking-wider">Finance OS</p>
-              </div>
-          </div>
-          <button onClick={onClose} className="md:hidden text-grey-mid hover:text-ink">
+        <div className="p-6 flex flex-col items-center">
+          <img
+            src="/ChurchCoin-Variation 01-transparent-s.png"
+            alt="ChurchCoin Finance Platform"
+            className="h-16"
+          />
+          <button onClick={onClose} className="md:hidden absolute right-4 top-6 text-grey-mid hover:text-ink">
             <X size={20} />
           </button>
         </div>

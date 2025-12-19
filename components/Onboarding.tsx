@@ -6,7 +6,6 @@ import {
   Building2,
   User,
   Sparkles,
-  Command,
   CheckCircle2,
   Loader2,
   Mail,
@@ -82,18 +81,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
   if (isCheckingInvitation) {
     return (
       <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-4">
-        <div className="mb-8 flex items-center gap-3 animate-enter">
-          <div className="w-10 h-10 bg-ink text-white flex items-center justify-center rounded-xl shadow-xl shadow-ledger">
-            <Command size={20} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold font-mono tracking-tight leading-none text-ink">
-              ChurchCoin
-            </h1>
-            <p className="text-[10px] font-mono text-grey-mid mt-1 uppercase tracking-wider">
-              Finance OS
-            </p>
-          </div>
+        <div className="mb-8 animate-enter">
+          <img
+            src="/ChurchCoin-Variation 01-transparent-s.png"
+            alt="ChurchCoin Finance Platform"
+            className="h-16"
+          />
         </div>
         <div className="flex items-center gap-3 text-grey-mid">
           <Loader2 size={20} className="animate-spin" />
@@ -132,18 +125,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
   return (
     <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-4">
       {/* Brand Header */}
-      <div className="mb-8 flex items-center gap-3 animate-enter">
-        <div className="w-10 h-10 bg-ink text-white flex items-center justify-center rounded-xl shadow-xl shadow-ledger">
-          <Command size={20} />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold font-mono tracking-tight leading-none text-ink">
-            ChurchCoin
-          </h1>
-          <p className="text-[10px] font-mono text-grey-mid mt-1 uppercase tracking-wider">
-            Finance OS
-          </p>
-        </div>
+      <div className="mb-8 animate-enter">
+        <img
+          src="/ChurchCoin-Variation 01-transparent-s.png"
+          alt="ChurchCoin Finance Platform"
+          className="h-12"
+        />
       </div>
 
       <div

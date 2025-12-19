@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { UserButton } from '@clerk/clerk-react';
-import { Check, Loader2, Sparkles, Crown, Calculator, ArrowRight } from 'lucide-react';
+import { Check, Loader2, Sparkles, Crown, ArrowRight } from 'lucide-react';
 
 interface PlanConfig {
   id: 'starter' | 'growing' | 'thriving';
@@ -92,13 +92,12 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({ organizatio
       <header className="border-b border-ledger bg-white/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 border-2 border-ink flex items-center justify-center">
-              <Calculator size={20} strokeWidth={2} />
-            </div>
-            <div>
-              <span className="font-bold text-ink text-lg">ChurchCoin</span>
-              <p className="text-xs text-grey-mid">{organizationName}</p>
-            </div>
+            <img
+              src="/ChurchCoin-Variation 01-transparent-s.png"
+              alt="ChurchCoin Finance Platform"
+              className="h-14"
+            />
+            <p className="text-xs text-grey-mid border-l border-ledger pl-3">{organizationName}</p>
           </div>
           <UserButton afterSignOutUrl="/" />
         </div>

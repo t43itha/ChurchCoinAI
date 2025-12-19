@@ -34,7 +34,7 @@ import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
 import SubscriptionRequired from "./components/SubscriptionRequired";
 
-import { Menu, Calculator, CheckCircle2, X } from "lucide-react";
+import { Menu, CheckCircle2, X } from "lucide-react";
 
 // Types for notification
 type Notification = {
@@ -675,14 +675,11 @@ function App() {
 
       <main className="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden">
         <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-sm sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 border-2 border-ink flex items-center justify-center">
-              <Calculator size={16} strokeWidth={2} />
-            </div>
-            <span className="font-bold text-ink">
-              ChurchCoin
-            </span>
-          </div>
+          <img
+            src="/ChurchCoin-Variation 01-transparent-s.png"
+            alt="ChurchCoin Finance Platform"
+            className="h-10"
+          />
           <div className="flex items-center gap-2">
             <UserButton afterSignOutUrl="/" />
             <button

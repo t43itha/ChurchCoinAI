@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { navItems } from "../constants/content";
 
 interface NavigationProps {
@@ -32,12 +32,11 @@ export default function Navigation({ onSignIn, onGetStarted }: NavigationProps) 
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 border-2 border-black flex items-center justify-center">
-              <Calculator className="w-4 h-4 text-black" strokeWidth={2} />
-            </div>
-            <span className="font-bold text-xl text-black tracking-tight">ChurchCoin</span>
-          </div>
+          <img
+            src="/ChurchCoin-Variation 01-transparent-s.png"
+            alt="ChurchCoin Finance Platform"
+            className="h-14 md:h-20"
+          />
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-8">
