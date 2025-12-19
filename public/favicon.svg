@@ -1,19 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- White background with black border (matching the landing page logo) -->
-  <rect x="2" y="2" width="28" height="28" fill="white" stroke="#000000" stroke-width="3"/>
+  <!-- Circle border matching the logo -->
+  <circle cx="16" cy="16" r="14" fill="white" stroke="#000000" stroke-width="2"/>
 
-  <!-- Calculator icon - simplified for favicon clarity -->
-  <g stroke="#000000" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Calculator icon -->
+  <g stroke="#000000" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
     <!-- Calculator body -->
-    <rect x="9" y="7" width="14" height="18" rx="1.5"/>
+    <rect x="10" y="8" width="12" height="16" rx="1.5"/>
     <!-- Display screen -->
-    <rect x="11" y="9" width="10" height="4" rx="0.5"/>
-    <!-- Calculator buttons (dots for clarity at small size) -->
-    <circle cx="13" cy="17" r="1" fill="#000000" stroke="none"/>
-    <circle cx="16" cy="17" r="1" fill="#000000" stroke="none"/>
-    <circle cx="19" cy="17" r="1" fill="#000000" stroke="none"/>
-    <circle cx="13" cy="21" r="1" fill="#000000" stroke="none"/>
-    <circle cx="16" cy="21" r="1" fill="#000000" stroke="none"/>
-    <circle cx="19" cy="21" r="1" fill="#000000" stroke="none"/>
+    <rect x="12" y="10" width="8" height="3" rx="0.5"/>
+    <!-- Calculator buttons grid -->
+    <rect x="12" y="15" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="15" y="15" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="18" y="15" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="12" y="18" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="15" y="18" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="18" y="18" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="12" y="21" width="2" height="2" rx="0.3" fill="#000000" stroke="none"/>
+    <rect x="15" y="21" width="5" height="2" rx="0.3" fill="#000000" stroke="none"/>
   </g>
 </svg>
