@@ -156,6 +156,11 @@
         animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       }
 
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(100%); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
       /* Button Primary - Hard Shadow Hover */
       .btn-primary {
         background-color: #000000;

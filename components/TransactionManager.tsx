@@ -872,13 +872,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         )}
       </div>
 
-      {/* Floating Bulk Actions */}
+      {/* Floating Bulk Actions - Fixed to bottom of viewport */}
       {selectedIds.size > 0 && canEdit && createPortal(
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-ink text-white px-5 py-3 rounded-lg shadow-2xl flex items-center gap-4 md:gap-6 z-40 animate-enter border border-slate-800 w-[90%] md:w-auto overflow-x-auto justify-between md:justify-start">
-              <div className="flex items-center gap-3 border-r border-slate-700 pr-5 shrink-0">
+          <div
+            className="fixed bottom-0 left-0 right-0 bg-ink text-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex items-center gap-4 md:gap-6 z-50 border-t border-slate-700 justify-between md:justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+            style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
+          >
+              <div className="flex items-center gap-3 border-r border-slate-700 pr-4 shrink-0">
                   <span className="text-xs font-bold font-mono text-sage">{selectedIds.size} SELECTED</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto">
                   <button onClick={handleBulkAutoCategorize} disabled={isBulkProcessingAI} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
                       {isBulkProcessingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-amber" />}
                       <span className="hidden sm:inline">AI Auto-Cat</span>
@@ -904,11 +907,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       <option value="">Fund...</option>
                       {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                   </select>
-                  <div className="w-px h-4 bg-slate-700 mx-2"></div>
-                  <button onClick={() => setSelectedIds(new Set())} className="text-grey-mid hover:text-white transition-colors">
-                      <X size={16} />
-                  </button>
               </div>
+              <button onClick={() => setSelectedIds(new Set())} className="text-grey-mid hover:text-white transition-colors shrink-0 ml-2">
+                  <X size={18} />
+              </button>
           </div>,
           document.body
       )}
