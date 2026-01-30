@@ -429,14 +429,13 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
                     >
                       <option value="">Select category...</option>
+                      <option value="Tithe">Tithe</option>
                       <option value="Offering">Offering</option>
-                      <option value="Donation">Donation</option>
-                      <option value="Tithe">Tithe (Anonymous)</option>
-                      {categories.map((c) => (
-                        <option key={c._id} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
+                      <option value="Merchandise">Merchandise</option>
+                      <option value="Books">Books</option>
+                      <option value="Other">Other</option>
+                      <option value="Thanksgiving">Thanksgiving</option>
+                      <option value="First Fruit">First Fruit</option>
                     </select>
                   </div>
                   <div className="flex-1 min-w-[150px]">
