@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -687,7 +687,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     />
                 </button>
                 <button
-                    onClick={() => setShowCashTakingsModal(true)}
+                    onClick={() => startTransition(() => setShowCashTakingsModal(true))}
                     className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md hover:bg-charcoal transition-all shadow-sm font-semibold text-xs uppercase tracking-wide btn-primary"
                 >
                     <Banknote size={14} />
