@@ -487,83 +487,89 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
           {/* Categories Tab */}
           {activeTab === 'categories' && (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-500 mb-3">
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500 mb-4">
                 Enter total amounts for each income category (offerings, restricted fund donations, etc.)
               </p>
-
-              {/* Table Header - hidden on mobile */}
-              <div className="hidden sm:grid sm:grid-cols-[1fr_1fr_120px_40px] gap-2 px-1 mb-1">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Category</span>
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fund</span>
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</span>
-                <span></span>
-              </div>
-
-              {/* Data Rows */}
-              {categoryTotals.map((cat) => (
+              {categoryTotals.map((cat, index) => (
                 <div
                   key={cat.id}
-                  className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_120px_40px] gap-2 items-center p-2 bg-gray-50 rounded-md border border-gray-200"
+                  className="flex flex-wrap items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
                 >
-                  <div className="relative">
-                    <label className="sm:hidden block text-xs font-medium text-gray-500 mb-1">Category</label>
-                    <select
-                      value={cat.category}
-                      onChange={(e) => updateCategory(cat.id, { category: e.target.value })}
-                      className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                    >
-                      <option value="">Select...</option>
-                      <option value="Tithe">Tithe</option>
-                      <option value="Offering">Offering</option>
-                      <option value="Merchandise">Merchandise</option>
-                      <option value="Books">Books</option>
-                      <option value="Other">Other</option>
-                      <option value="Thanksgiving">Thanksgiving</option>
-                      <option value="First Fruit">First Fruit</option>
-                    </select>
-                    <div className="absolute inset-y-0 sm:top-0 top-5 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                      <ChevronDown className="w-4 h-4" />
+                  <div className="flex-1 min-w-[150px]">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Category
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={cat.category}
+                        onChange={(e) => updateCategory(cat.id, { category: e.target.value })}
+                        className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      >
+                        <option value="">Select category...</option>
+                        <option value="Tithe">Tithe</option>
+                        <option value="Offering">Offering</option>
+                        <option value="Merchandise">Merchandise</option>
+                        <option value="Books">Books</option>
+                        <option value="Other">Other</option>
+                        <option value="Thanksgiving">Thanksgiving</option>
+                        <option value="First Fruit">First Fruit</option>
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
                     </div>
                   </div>
-                  <div className="relative">
-                    <label className="sm:hidden block text-xs font-medium text-gray-500 mb-1">Fund</label>
-                    <select
-                      value={cat.fundId}
-                      onChange={(e) => updateCategory(cat.id, { fundId: e.target.value })}
-                      className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                    >
-                      <option value="">Select...</option>
-                      {funds.map((f) => (
-                        <option key={f._id} value={f._id}>
-                          {f.name} ({f.type})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 sm:top-0 top-5 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                      <ChevronDown className="w-4 h-4" />
+                  <div className="flex-1 min-w-[150px]">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Fund
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={cat.fundId}
+                        onChange={(e) => updateCategory(cat.id, { fundId: e.target.value })}
+                        className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      >
+                        <option value="">Select fund...</option>
+                        {funds.map((f) => (
+                          <option key={f._id} value={f._id}>
+                            {f.name} ({f.type})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
                     </div>
                   </div>
-                  <div className="relative">
-                    <label className="sm:hidden block text-xs font-medium text-gray-500 mb-1">Amount</label>
-                    <span className="absolute left-3 sm:top-1/2 top-[calc(50%+10px)] -translate-y-1/2 text-gray-400 text-sm">£</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={cat.amount}
-                      onChange={(e) => updateCategory(cat.id, { amount: e.target.value })}
-                      placeholder="0.00"
-                      className="w-full h-9 pl-7 pr-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
-                    />
+                  <div className="w-32">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Amount
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        £
+                      </span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={cat.amount}
+                        onChange={(e) => updateCategory(cat.id, { amount: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full h-10 pl-7 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
+                      />
+                    </div>
                   </div>
-                  <button
-                    onClick={() => removeCategory(cat.id)}
-                    disabled={categoryTotals.length === 1}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed justify-self-center sm:justify-self-start"
-                  >
+                  <div className="flex items-end h-[62px]">
+                    <button
+                      onClick={() => removeCategory(cat.id)}
+                      disabled={categoryTotals.length === 1}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
                       <Trash2 className="h-4 w-4" />
                     </button>
+                  </div>
                 </div>
               ))}
               <button
