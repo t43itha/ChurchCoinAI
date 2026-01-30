@@ -20,6 +20,7 @@ import {
   Gift,
   AlertCircle,
   Check,
+  ChevronDown,
 } from 'lucide-react';
 
 interface Category {
@@ -356,39 +357,49 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Type
                     </label>
-                    <select
-                      value={contribution.type}
-                      onChange={(e) => updateContribution(contribution.id, {
-                        type: e.target.value as ContributionType,
-                        // Clear fundId if switching away from Pledge
-                        fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
-                      })}
-                      className="w-full h-10 pl-2 pr-9 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                    >
-                      <option value="Tithe">Tithe</option>
-                      <option value="Pledge">Pledge</option>
-                      <option value="First Fruit">First Fruit</option>
-                      <option value="Thanksgiving">Thanksgiving</option>
-                      <option value="Offering">Offering</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={contribution.type}
+                        onChange={(e) => updateContribution(contribution.id, {
+                          type: e.target.value as ContributionType,
+                          // Clear fundId if switching away from Pledge
+                          fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
+                        })}
+                        className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      >
+                        <option value="Tithe">Tithe</option>
+                        <option value="Pledge">Pledge</option>
+                        <option value="First Fruit">First Fruit</option>
+                        <option value="Thanksgiving">Thanksgiving</option>
+                        <option value="Offering">Offering</option>
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </div>
                   </div>
                   {contribution.type === 'Pledge' && (
                     <div className="w-40">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Fund
                       </label>
-                      <select
-                        value={contribution.fundId || ""}
-                        onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
-                        className="w-full h-10 pl-2 pr-9 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                      >
-                        <option value="">Select fund...</option>
-                        {restrictedFunds.map((f) => (
-                          <option key={f._id} value={f._id}>
-                            {f.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={contribution.fundId || ""}
+                          onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
+                          className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                        >
+                          <option value="">Select fund...</option>
+                          {restrictedFunds.map((f) => (
+                            <option key={f._id} value={f._id}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                          <ChevronDown className="w-4 h-4" />
+                        </div>
+                      </div>
                     </div>
                   )}
                   <div className="flex-[2] min-w-[150px]">
@@ -489,37 +500,47 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Category
                     </label>
-                    <select
-                      value={cat.category}
-                      onChange={(e) => updateCategory(cat.id, { category: e.target.value })}
-                      className="w-full h-10 pl-3 pr-10 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
-                    >
-                      <option value="">Select category...</option>
-                      <option value="Tithe">Tithe</option>
-                      <option value="Offering">Offering</option>
-                      <option value="Merchandise">Merchandise</option>
-                      <option value="Books">Books</option>
-                      <option value="Other">Other</option>
-                      <option value="Thanksgiving">Thanksgiving</option>
-                      <option value="First Fruit">First Fruit</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={cat.category}
+                        onChange={(e) => updateCategory(cat.id, { category: e.target.value })}
+                        className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      >
+                        <option value="">Select category...</option>
+                        <option value="Tithe">Tithe</option>
+                        <option value="Offering">Offering</option>
+                        <option value="Merchandise">Merchandise</option>
+                        <option value="Books">Books</option>
+                        <option value="Other">Other</option>
+                        <option value="Thanksgiving">Thanksgiving</option>
+                        <option value="First Fruit">First Fruit</option>
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </div>
                   </div>
                   <div className="flex-1 min-w-[150px]">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Fund
                     </label>
-                    <select
-                      value={cat.fundId}
-                      onChange={(e) => updateCategory(cat.id, { fundId: e.target.value })}
-                      className="w-full h-10 pl-3 pr-10 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
-                    >
-                      <option value="">Select fund...</option>
-                      {funds.map((f) => (
-                        <option key={f._id} value={f._id}>
-                          {f.name} ({f.type})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={cat.fundId}
+                        onChange={(e) => updateCategory(cat.id, { fundId: e.target.value })}
+                        className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      >
+                        <option value="">Select fund...</option>
+                        {funds.map((f) => (
+                          <option key={f._id} value={f._id}>
+                            {f.name} ({f.type})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                        <ChevronDown className="w-4 h-4" />
+                      </div>
+                    </div>
                   </div>
                   <div className="w-32">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -594,21 +615,26 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Category
                       </label>
-                      <select
-                        value={petty.category}
-                        onChange={(e) => updatePettyCash(petty.id, { category: e.target.value })}
-                        className="w-full h-10 pl-3 pr-10 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
-                      >
-                        <option value="Miscellaneous">Miscellaneous</option>
-                        <option value="Hospitality">Hospitality</option>
-                        <option value="Office">Office</option>
-                        <option value="Maintenance">Maintenance</option>
-                        {categories.map((c) => (
-                          <option key={c._id} value={c.name}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select
+                          value={petty.category}
+                          onChange={(e) => updatePettyCash(petty.id, { category: e.target.value })}
+                          className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                        >
+                          <option value="Miscellaneous">Miscellaneous</option>
+                          <option value="Hospitality">Hospitality</option>
+                          <option value="Office">Office</option>
+                          <option value="Maintenance">Maintenance</option>
+                          {categories.map((c) => (
+                            <option key={c._id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                          <ChevronDown className="w-4 h-4" />
+                        </div>
+                      </div>
                     </div>
                     <div className="w-28">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
