@@ -344,140 +344,152 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         <div className="flex-1 overflow-y-auto p-6">
           {/* Named Contributions Tab */}
           {activeTab === 'tithes' && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <p className="text-sm text-gray-500 mb-4">
-                Enter individual contributions with donor names for Gift Aid tracking. Use "Pledge" for fund-specific pledge redemptions.
+                Enter individual contributions with donor names for Gift Aid tracking.
               </p>
-              {namedContributions.map((contribution, index) => (
-                <div
-                  key={contribution.id}
-                  className="flex flex-wrap items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
-                >
-                  <div className="w-32">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Type
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={contribution.type}
-                        onChange={(e) => updateContribution(contribution.id, {
-                          type: e.target.value as ContributionType,
-                          // Clear fundId if switching away from Pledge
-                          fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
-                        })}
-                        className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                      >
-                        <option value="Tithe">Tithe</option>
-                        <option value="Pledge">Pledge</option>
-                        <option value="First Fruit">First Fruit</option>
-                        <option value="Thanksgiving">Thanksgiving</option>
-                        <option value="Offering">Offering</option>
-                      </select>
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                        <ChevronDown className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                  {contribution.type === 'Pledge' && (
-                    <div className="w-40">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Fund
-                      </label>
+
+              {/* Header Row - Hidden on Mobile */}
+              <div className="hidden sm:flex items-center gap-3 px-2 pb-2 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <div className="w-28">Type</div>
+                <div className="flex-1 min-w-[120px]">Donor Name</div>
+                <div className="w-24 text-right">Amount</div>
+                <div className="w-20 text-center">Gift Aid</div>
+                <div className="w-10"></div>
+              </div>
+
+              {/* Rows */}
+              <div className="space-y-2">
+                {namedContributions.map((contribution, index) => (
+                  <div
+                    key={contribution.id}
+                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 p-3 sm:p-0 sm:py-2 bg-gray-50 sm:bg-transparent rounded-lg sm:rounded-none border sm:border-0 border-gray-200 sm:border-b sm:border-gray-100 last:border-0"
+                  >
+                    {/* Type Select */}
+                    <div className="w-full sm:w-28">
+                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Type</label>
                       <div className="relative">
                         <select
-                          value={contribution.fundId || ""}
-                          onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
-                          className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                          value={contribution.type}
+                          onChange={(e) => updateContribution(contribution.id, {
+                            type: e.target.value as ContributionType,
+                            fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
+                          })}
+                          className="w-full h-9 pl-2 pr-7 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
                         >
-                          <option value="">Select fund...</option>
-                          {restrictedFunds.map((f) => (
-                            <option key={f._id} value={f._id}>
-                              {f.name}
-                            </option>
-                          ))}
+                          <option value="Tithe">Tithe</option>
+                          <option value="Pledge">Pledge</option>
+                          <option value="First Fruit">First Fruit</option>
+                          <option value="Thanksgiving">Thanksgiving</option>
+                          <option value="Offering">Offering</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
                           <ChevronDown className="w-4 h-4" />
                         </div>
                       </div>
                     </div>
-                  )}
-                  <div className="flex-[2] min-w-[150px]">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Donor Name
-                    </label>
-                    <DonorSearchInput
-                      value={contribution.donorName}
-                      onChange={(name) => updateContribution(contribution.id, { donorName: name })}
-                      onDonorSelect={(donor) =>
-                        updateContribution(contribution.id, {
-                          donorName: donor.donorName,
-                          donorId: donor.donorId,
-                          isGiftAidEligible: donor.isGiftAidActive,
-                        })
-                      }
-                      autoFocus={index === namedContributions.length - 1}
-                    />
-                  </div>
-                  <div className="w-28">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Amount
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        £
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={contribution.amount}
-                        onChange={(e) => updateContribution(contribution.id, { amount: e.target.value })}
-                        placeholder="0.00"
-                        className="w-full h-10 pl-7 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
+
+                    {/* Fund Select - Only shown for Pledges */}
+                    {contribution.type === 'Pledge' && (
+                      <div className="w-full sm:w-32">
+                        <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Fund</label>
+                        <div className="relative">
+                          <select
+                            value={contribution.fundId || ""}
+                            onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
+                            className="w-full h-9 pl-2 pr-7 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                          >
+                            <option value="">Select fund...</option>
+                            {restrictedFunds.map((f) => (
+                              <option key={f._id} value={f._id}>{f.name}</option>
+                            ))}
+                          </select>
+                          <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                            <ChevronDown className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Donor Name */}
+                    <div className="flex-1 min-w-[120px]">
+                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Donor Name</label>
+                      <DonorSearchInput
+                        value={contribution.donorName}
+                        onChange={(name) => updateContribution(contribution.id, { donorName: name })}
+                        onDonorSelect={(donor) =>
+                          updateContribution(contribution.id, {
+                            donorName: donor.donorName,
+                            donorId: donor.donorId,
+                            isGiftAidEligible: donor.isGiftAidActive,
+                          })
+                        }
+                        autoFocus={index === namedContributions.length - 1}
                       />
                     </div>
+
+                    {/* Amount */}
+                    <div className="w-full sm:w-24">
+                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Amount</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={contribution.amount}
+                          onChange={(e) => updateContribution(contribution.id, { amount: e.target.value })}
+                          placeholder="0.00"
+                          className="w-full h-9 pl-7 pr-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Gift Aid Toggle */}
+                    <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
+                      <span className="sm:hidden text-xs font-medium text-gray-600">Gift Aid</span>
+                      <button
+                        type="button"
+                        onClick={() => updateContribution(contribution.id, { isGiftAidEligible: !contribution.isGiftAidEligible })}
+                        aria-pressed={contribution.isGiftAidEligible}
+                        title="Gift Aid: Claim +25% tax relief"
+                        className={`relative flex items-center gap-1 px-2 h-9 rounded-md border text-xs font-medium transition-all
+                          ${contribution.isGiftAidEligible
+                            ? 'bg-sage-100 border-sage-500 text-sage-700'
+                            : 'bg-white border-gray-300 text-gray-500 hover:border-sage-400 hover:text-sage-600'
+                          }`}
+                      >
+                        {contribution.isGiftAidEligible ? (
+                          <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        ) : (
+                          <Gift className="h-3.5 w-3.5" />
+                        )}
+                        {contribution.isGiftAidEligible && (
+                          <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded-full bg-sage-600 text-[9px] text-white font-bold leading-none">
+                            +25%
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Delete Button */}
+                    <div className="flex justify-end sm:justify-center w-full sm:w-10">
+                      <button
+                        type="button"
+                        onClick={() => removeContribution(contribution.id)}
+                        disabled={namedContributions.length === 1}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-end gap-1.5 h-[62px]">
-                    <button
-                      type="button"
-                      onClick={() => updateContribution(contribution.id, { isGiftAidEligible: !contribution.isGiftAidEligible })}
-                      aria-pressed={contribution.isGiftAidEligible}
-                      aria-label={contribution.isGiftAidEligible ? 'Gift Aid enabled (+25% tax relief)' : 'Enable Gift Aid'}
-                      title="Gift Aid: Claim +25% tax relief"
-                      className={`relative flex items-center gap-1.5 px-2.5 h-10 rounded-md border text-xs font-medium transition-all
-                        focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-1
-                        ${contribution.isGiftAidEligible
-                          ? 'bg-sage-100 border-sage-500 text-sage-700'
-                          : 'bg-white border-gray-300 text-gray-500 hover:border-sage-400 hover:text-sage-600'
-                        }`}
-                    >
-                      {contribution.isGiftAidEligible ? (
-                        <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                      ) : (
-                        <Gift className="h-3.5 w-3.5" />
-                      )}
-                      <span className="hidden sm:inline whitespace-nowrap">Gift Aid</span>
-                      {contribution.isGiftAidEligible && (
-                        <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded-full bg-sage-600 text-[9px] text-white font-bold leading-none">
-                          +25%
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeContribution(contribution.id)}
-                      disabled={namedContributions.length === 1}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
               <button
                 onClick={addContribution}
-                className="w-full py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
+                className="w-full mt-4 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
               >
                 <Plus className="h-4 w-4" />
                 Add Contribution
@@ -597,91 +609,103 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
           {/* Petty Cash Tab */}
           {activeTab === 'petty' && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <p className="text-sm text-gray-500 mb-4">
                 Record petty cash withdrawals. These will be deducted from the bankable total.
               </p>
+
               {pettyCash.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <PiggyBank className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>No petty cash entries yet</p>
                 </div>
               ) : (
-                pettyCash.map((petty) => (
-                  <div
-                    key={petty.id}
-                    className="flex flex-wrap items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200"
-                  >
-                    <div className="flex-[2] min-w-[200px]">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Purpose
-                      </label>
-                      <input
-                        type="text"
-                        value={petty.purpose}
-                        onChange={(e) => updatePettyCash(petty.id, { purpose: e.target.value })}
-                        placeholder="e.g., Tea supplies, postage..."
-                        className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-[120px]">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Category
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={petty.category}
-                          onChange={(e) => updatePettyCash(petty.id, { category: e.target.value })}
-                          className="w-full h-10 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                        >
-                          <option value="Miscellaneous">Miscellaneous</option>
-                          <option value="Hospitality">Hospitality</option>
-                          <option value="Office">Office</option>
-                          <option value="Maintenance">Maintenance</option>
-                          {categories.map((c) => (
-                            <option key={c._id} value={c.name}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                          <ChevronDown className="w-4 h-4" />
+                <>
+                  {/* Header Row - Hidden on Mobile */}
+                  <div className="hidden sm:flex items-center gap-3 px-2 pb-2 border-b border-amber-200 text-xs font-semibold text-amber-700 uppercase tracking-wider">
+                    <div className="flex-1 min-w-[150px]">Purpose</div>
+                    <div className="w-36">Category</div>
+                    <div className="w-28 text-right pr-3">Amount</div>
+                    <div className="w-10"></div>
+                  </div>
+
+                  {/* Rows */}
+                  <div className="space-y-2">
+                    {pettyCash.map((petty) => (
+                      <div
+                        key={petty.id}
+                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 p-3 sm:p-0 sm:py-2 bg-amber-50 sm:bg-transparent rounded-lg sm:rounded-none border sm:border-0 border-amber-200 sm:border-b sm:border-amber-100 last:border-0"
+                      >
+                        {/* Purpose */}
+                        <div className="flex-1 min-w-[150px]">
+                          <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Purpose</label>
+                          <input
+                            type="text"
+                            value={petty.purpose}
+                            onChange={(e) => updatePettyCash(petty.id, { purpose: e.target.value })}
+                            placeholder="e.g., Tea supplies, postage..."
+                            className="w-full h-9 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                          />
+                        </div>
+
+                        {/* Category */}
+                        <div className="w-full sm:w-36">
+                          <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Category</label>
+                          <div className="relative">
+                            <select
+                              value={petty.category}
+                              onChange={(e) => updatePettyCash(petty.id, { category: e.target.value })}
+                              className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                            >
+                              <option value="Miscellaneous">Miscellaneous</option>
+                              <option value="Hospitality">Hospitality</option>
+                              <option value="Office">Office</option>
+                              <option value="Maintenance">Maintenance</option>
+                              {categories.map((c) => (
+                                <option key={c._id} value={c.name}>{c.name}</option>
+                              ))}
+                            </select>
+                            <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
+                              <ChevronDown className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Amount */}
+                        <div className="w-full sm:w-28">
+                          <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Amount</label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={petty.amount}
+                              onChange={(e) => updatePettyCash(petty.id, { amount: e.target.value })}
+                              placeholder="0.00"
+                              className="w-full h-9 pl-7 pr-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Delete Button */}
+                        <div className="flex justify-end sm:justify-center w-full sm:w-10">
+                          <button
+                            onClick={() => removePettyCash(petty.id)}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
-                    </div>
-                    <div className="w-28">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Amount
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                          £
-                        </span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={petty.amount}
-                          onChange={(e) => updatePettyCash(petty.id, { amount: e.target.value })}
-                          placeholder="0.00"
-                          className="w-full h-10 pl-7 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-end h-[62px]">
-                      <button
-                        onClick={() => removePettyCash(petty.id)}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                ))
+                </>
               )}
+
               <button
                 onClick={addPettyCash}
-                className="w-full py-2 px-4 border-2 border-dashed border-amber-300 rounded-lg text-sm font-medium text-amber-700 hover:border-amber-400 hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
+                className="w-full mt-4 py-2 px-4 border-2 border-dashed border-amber-300 rounded-lg text-sm font-medium text-amber-700 hover:border-amber-400 hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
               >
                 <Plus className="h-4 w-4" />
                 Add Petty Cash Withdrawal
