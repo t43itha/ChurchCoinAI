@@ -426,20 +426,23 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       />
                     </div>
                   </div>
-                  <div className="flex items-end gap-2 h-[62px]">
-                    <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-md cursor-pointer hover:border-sage-500">
-                      <input
-                        type="checkbox"
-                        checked={contribution.isGiftAidEligible}
-                        onChange={(e) =>
-                          updateContribution(contribution.id, { isGiftAidEligible: e.target.checked })
-                        }
-                        className="rounded border-gray-300 text-sage-600 focus:ring-sage-500"
-                      />
-                      <Gift className="h-4 w-4 text-sage-600" />
-                      <span className="text-xs font-medium hidden sm:inline">Gift Aid</span>
-                    </label>
+                  <div className="flex items-end gap-1 h-[62px]">
                     <button
+                      type="button"
+                      onClick={() => updateContribution(contribution.id, { isGiftAidEligible: !contribution.isGiftAidEligible })}
+                      className={`p-2 rounded-md transition-all ${
+                        contribution.isGiftAidEligible
+                          ? 'bg-sage-100 text-sage-700 ring-1 ring-sage-300'
+                          : 'text-gray-300 hover:text-sage-500 hover:bg-sage-50'
+                      }`}
+                      title={contribution.isGiftAidEligible ? 'Gift Aid enabled' : 'Enable Gift Aid'}
+                      aria-label={contribution.isGiftAidEligible ? 'Gift Aid enabled - click to disable' : 'Gift Aid disabled - click to enable'}
+                      aria-pressed={contribution.isGiftAidEligible}
+                    >
+                      <Gift className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => removeContribution(contribution.id)}
                       disabled={namedContributions.length === 1}
                       className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
