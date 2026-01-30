@@ -19,6 +19,7 @@ import {
   Calendar,
   Gift,
   AlertCircle,
+  Check,
 } from 'lucide-react';
 
 interface Category {
@@ -426,20 +427,31 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       />
                     </div>
                   </div>
-                  <div className="flex items-end gap-1 h-[62px]">
+                  <div className="flex items-end gap-1.5 h-[62px]">
                     <button
                       type="button"
                       onClick={() => updateContribution(contribution.id, { isGiftAidEligible: !contribution.isGiftAidEligible })}
-                      className={`p-2 rounded-md transition-all ${
-                        contribution.isGiftAidEligible
-                          ? 'bg-sage-100 text-sage-700 ring-1 ring-sage-300'
-                          : 'text-gray-300 hover:text-sage-500 hover:bg-sage-50'
-                      }`}
-                      title={contribution.isGiftAidEligible ? 'Gift Aid enabled' : 'Enable Gift Aid'}
-                      aria-label={contribution.isGiftAidEligible ? 'Gift Aid enabled - click to disable' : 'Gift Aid disabled - click to enable'}
                       aria-pressed={contribution.isGiftAidEligible}
+                      aria-label={contribution.isGiftAidEligible ? 'Gift Aid enabled (+25% tax relief)' : 'Enable Gift Aid'}
+                      title="Gift Aid: Claim +25% tax relief"
+                      className={`relative flex items-center gap-1.5 px-2.5 h-10 rounded-md border text-xs font-medium transition-all
+                        focus:outline-none focus:ring-2 focus:ring-sage-500 focus:ring-offset-1
+                        ${contribution.isGiftAidEligible
+                          ? 'bg-sage-100 border-sage-500 text-sage-700'
+                          : 'bg-white border-gray-300 text-gray-500 hover:border-sage-400 hover:text-sage-600'
+                        }`}
                     >
-                      <Gift className="h-4 w-4" />
+                      {contribution.isGiftAidEligible ? (
+                        <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                      ) : (
+                        <Gift className="h-3.5 w-3.5" />
+                      )}
+                      <span className="hidden sm:inline whitespace-nowrap">Gift Aid</span>
+                      {contribution.isGiftAidEligible && (
+                        <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded-full bg-sage-600 text-[9px] text-white font-bold leading-none">
+                          +25%
+                        </span>
+                      )}
                     </button>
                     <button
                       type="button"
