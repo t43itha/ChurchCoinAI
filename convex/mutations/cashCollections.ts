@@ -83,13 +83,21 @@ export const submitCollection = mutation({
     collectionDate: v.string(),
     notes: v.optional(v.string()),
     status: v.optional(v.union(v.literal("draft"), v.literal("submitted"))),
-    // Individual tithes with donor attribution
-    tithes: v.array(
+    // Named contributions with donor attribution (tithes, pledges, etc.)
+    namedContributions: v.array(
       v.object({
         donorName: v.string(),
         donorId: v.optional(v.id("donors")),
         amount: v.number(),
         isGiftAidEligible: v.boolean(),
+        type: v.union(
+          v.literal("Tithe"),
+          v.literal("Pledge"),
+          v.literal("First Fruit"),
+          v.literal("Thanksgiving"),
+          v.literal("Offering")
+        ),
+        fundId: v.optional(v.id("funds")), // Required for Pledge type
       })
     ),
     // Category totals (offering, restricted funds, etc.)
@@ -139,18 +147,18 @@ export const submitCollection = mutation({
     const transactionIds: Id<"transactions">[] = [];
     const newDonors: { name: string; id: Id<"donors"> }[] = [];
 
-    // Process individual tithes
-    for (const tithe of args.tithes) {
+    // Process named contributions (tithes, pledges, etc.)
+    for (const contribution of args.namedContributions) {
       // Find or create donor
-      let donorId = tithe.donorId;
-      let donorName = tithe.donorName;
+      let donorId = contribution.donorId;
+      let donorName = contribution.donorName;
 
-      if (!donorId && tithe.donorName) {
+      if (!donorId && contribution.donorName) {
         const result = await findOrCreateDonor(
           ctx,
           user.organizationId,
-          tithe.donorName,
-          tithe.isGiftAidEligible
+          contribution.donorName,
+          contribution.isGiftAidEligible
         );
         donorId = result.donorId;
         donorName = result.matchedName;
@@ -159,16 +167,27 @@ export const submitCollection = mutation({
         }
       }
 
+      // Determine the fund: pledges use their specified fund, others use unrestricted
+      let transactionFundId = unrestrictedFund._id;
+      if (contribution.type === "Pledge" && contribution.fundId) {
+        // Verify fund belongs to organization
+        const pledgeFund = await ctx.db.get(contribution.fundId);
+        if (!pledgeFund || pledgeFund.organizationId !== user.organizationId) {
+          throw new Error(`Invalid fund for pledge: ${contribution.fundId}`);
+        }
+        transactionFundId = contribution.fundId;
+      }
+
       const transactionId = await ctx.db.insert("transactions", {
         organizationId: user.organizationId,
         date: args.collectionDate,
-        description: `Tithe - ${donorName}`,
-        amount: tithe.amount,
+        description: `${contribution.type} - ${donorName}`,
+        amount: contribution.amount,
         type: "Income",
-        category: "Tithe",
-        fundId: unrestrictedFund._id,
+        category: contribution.type,
+        fundId: transactionFundId,
         isReconciled: false,
-        isGiftAidEligible: tithe.isGiftAidEligible,
+        isGiftAidEligible: contribution.isGiftAidEligible,
         donorName,
         donorId,
         paymentMethod: "Cash",

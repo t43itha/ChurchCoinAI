@@ -26,12 +26,17 @@ interface Category {
   name: string;
 }
 
-interface TitheEntry {
+// Contribution types for named contributions
+type ContributionType = 'Tithe' | 'Pledge' | 'First Fruit' | 'Thanksgiving' | 'Offering';
+
+interface NamedContributionEntry {
   id: string;
   donorName: string;
   donorId: Id<"donors"> | null;
   amount: string;
   isGiftAidEligible: boolean;
+  type: ContributionType;
+  fundId?: string; // Required when type='Pledge'
 }
 
 interface CategoryTotalEntry {
@@ -84,8 +89,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const [notes, setNotes] = useState("");
 
   // Entries
-  const [tithes, setTithes] = useState<TitheEntry[]>([
-    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false },
+  const [namedContributions, setNamedContributions] = useState<NamedContributionEntry[]>([
+    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe' },
   ]);
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotalEntry[]>([
     { id: generateId(), category: "Offering", fundId: "", amount: "" },
@@ -110,40 +115,40 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
   // Calculate totals
   const totals = useMemo(() => {
-    const titheTotal = tithes.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const namedTotal = namedContributions.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
     const categoryTotal = categoryTotals.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
     const pettyTotal = pettyCash.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-    const grossIncome = titheTotal + categoryTotal;
+    const grossIncome = namedTotal + categoryTotal;
     const bankableTotal = grossIncome - pettyTotal;
-    const giftAidEligible = tithes
+    const giftAidEligible = namedContributions
       .filter((t) => t.isGiftAidEligible)
       .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
 
     return {
-      titheTotal,
+      namedTotal,
       categoryTotal,
       pettyTotal,
       grossIncome,
       bankableTotal,
       giftAidEligible,
     };
-  }, [tithes, categoryTotals, pettyCash]);
+  }, [namedContributions, categoryTotals, pettyCash]);
 
-  // Tithe handlers
-  const addTithe = () => {
-    setTithes([
-      ...tithes,
-      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false },
+  // Named contribution handlers
+  const addContribution = () => {
+    setNamedContributions([
+      ...namedContributions,
+      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe' },
     ]);
   };
 
-  const updateTithe = (id: string, updates: Partial<TitheEntry>) => {
-    setTithes(tithes.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+  const updateContribution = (id: string, updates: Partial<NamedContributionEntry>) => {
+    setNamedContributions(namedContributions.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   };
 
-  const removeTithe = (id: string) => {
-    if (tithes.length > 1) {
-      setTithes(tithes.filter((t) => t.id !== id));
+  const removeContribution = (id: string) => {
+    if (namedContributions.length > 1) {
+      setNamedContributions(namedContributions.filter((t) => t.id !== id));
     }
   };
 
@@ -188,14 +193,19 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
     try {
       // Validate entries
-      const validTithes = tithes.filter((t) => t.donorName && parseFloat(t.amount) > 0);
+      const validContributions = namedContributions.filter((t) => {
+        const hasBasics = t.donorName && parseFloat(t.amount) > 0;
+        // Pledges require a fund selection
+        if (t.type === 'Pledge' && !t.fundId) return false;
+        return hasBasics;
+      });
       const validCategories = categoryTotals.filter(
         (c) => c.category && c.fundId && parseFloat(c.amount) > 0
       );
       const validPetty = pettyCash.filter((p) => p.purpose && parseFloat(p.amount) > 0);
 
-      if (validTithes.length === 0 && validCategories.length === 0) {
-        throw new Error("Please add at least one tithe or category total");
+      if (validContributions.length === 0 && validCategories.length === 0) {
+        throw new Error("Please add at least one named contribution or category total");
       }
 
       const result = await submitCollection({
@@ -203,11 +213,13 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         collectionDate,
         notes: notes || undefined,
         status: asDraft ? "draft" : "submitted",
-        tithes: validTithes.map((t) => ({
+        namedContributions: validContributions.map((t) => ({
           donorName: t.donorName,
           donorId: t.donorId || undefined,
           amount: parseFloat(t.amount),
           isGiftAidEligible: t.isGiftAidEligible,
+          type: t.type,
+          fundId: t.fundId as Id<"funds"> | undefined,
         })),
         categoryTotals: validCategories.map((c) => ({
           category: c.category,
@@ -242,7 +254,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   };
 
   const tabs = [
-    { id: 'tithes' as const, label: 'Individual Tithes', icon: Users, count: tithes.filter(t => t.donorName && t.amount).length },
+    { id: 'tithes' as const, label: 'Named Contributions', icon: Users, count: namedContributions.filter(t => t.donorName && t.amount).length },
     { id: 'categories' as const, label: 'Category Totals', icon: Receipt, count: categoryTotals.filter(c => c.category && c.amount).length },
     { id: 'petty' as const, label: 'Petty Cash', icon: PiggyBank, count: pettyCash.filter(p => p.purpose && p.amount).length },
   ];
@@ -328,35 +340,74 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Tithes Tab */}
+          {/* Named Contributions Tab */}
           {activeTab === 'tithes' && (
             <div className="space-y-3">
               <p className="text-sm text-gray-500 mb-4">
-                Enter individual tithe contributions with donor names for Gift Aid tracking.
+                Enter individual contributions with donor names for Gift Aid tracking. Use "Pledge" for fund-specific pledge redemptions.
               </p>
-              {tithes.map((tithe, index) => (
+              {namedContributions.map((contribution, index) => (
                 <div
-                  key={tithe.id}
+                  key={contribution.id}
                   className="flex flex-wrap items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
                 >
-                  <div className="flex-[2] min-w-[200px]">
+                  <div className="w-32">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Type
+                    </label>
+                    <select
+                      value={contribution.type}
+                      onChange={(e) => updateContribution(contribution.id, {
+                        type: e.target.value as ContributionType,
+                        // Clear fundId if switching away from Pledge
+                        fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
+                      })}
+                      className="w-full h-10 px-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                    >
+                      <option value="Tithe">Tithe</option>
+                      <option value="Pledge">Pledge</option>
+                      <option value="First Fruit">First Fruit</option>
+                      <option value="Thanksgiving">Thanksgiving</option>
+                      <option value="Offering">Offering</option>
+                    </select>
+                  </div>
+                  {contribution.type === 'Pledge' && (
+                    <div className="w-40">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Fund
+                      </label>
+                      <select
+                        value={contribution.fundId || ""}
+                        onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
+                        className="w-full h-10 px-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      >
+                        <option value="">Select fund...</option>
+                        {restrictedFunds.map((f) => (
+                          <option key={f._id} value={f._id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex-[2] min-w-[150px]">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Donor Name
                     </label>
                     <DonorSearchInput
-                      value={tithe.donorName}
-                      onChange={(name) => updateTithe(tithe.id, { donorName: name })}
+                      value={contribution.donorName}
+                      onChange={(name) => updateContribution(contribution.id, { donorName: name })}
                       onDonorSelect={(donor) =>
-                        updateTithe(tithe.id, {
+                        updateContribution(contribution.id, {
                           donorName: donor.donorName,
                           donorId: donor.donorId,
                           isGiftAidEligible: donor.isGiftAidActive,
                         })
                       }
-                      autoFocus={index === tithes.length - 1}
+                      autoFocus={index === namedContributions.length - 1}
                     />
                   </div>
-                  <div className="w-32">
+                  <div className="w-28">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
                       Amount
                     </label>
@@ -368,8 +419,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                         type="number"
                         step="0.01"
                         min="0"
-                        value={tithe.amount}
-                        onChange={(e) => updateTithe(tithe.id, { amount: e.target.value })}
+                        value={contribution.amount}
+                        onChange={(e) => updateContribution(contribution.id, { amount: e.target.value })}
                         placeholder="0.00"
                         className="w-full h-10 pl-7 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
                       />
@@ -379,18 +430,18 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                     <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-md cursor-pointer hover:border-sage-500">
                       <input
                         type="checkbox"
-                        checked={tithe.isGiftAidEligible}
+                        checked={contribution.isGiftAidEligible}
                         onChange={(e) =>
-                          updateTithe(tithe.id, { isGiftAidEligible: e.target.checked })
+                          updateContribution(contribution.id, { isGiftAidEligible: e.target.checked })
                         }
                         className="rounded border-gray-300 text-sage-600 focus:ring-sage-500"
                       />
                       <Gift className="h-4 w-4 text-sage-600" />
-                      <span className="text-xs font-medium">Gift Aid</span>
+                      <span className="text-xs font-medium hidden sm:inline">Gift Aid</span>
                     </label>
                     <button
-                      onClick={() => removeTithe(tithe.id)}
-                      disabled={tithes.length === 1}
+                      onClick={() => removeContribution(contribution.id)}
+                      disabled={namedContributions.length === 1}
                       className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -399,11 +450,11 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                 </div>
               ))}
               <button
-                onClick={addTithe}
+                onClick={addContribution}
                 className="w-full py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
               >
                 <Plus className="h-4 w-4" />
-                Add Tithe
+                Add Contribution
               </button>
             </div>
           )}
