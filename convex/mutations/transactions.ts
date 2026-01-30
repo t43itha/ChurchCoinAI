@@ -53,6 +53,13 @@ export const create = mutation({
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+    paymentMethod: v.optional(v.union(
+      v.literal("Cash"),
+      v.literal("Bank"),
+      v.literal("Card"),
+      v.literal("Online")
+    )),
+    cashCollectionId: v.optional(v.id("cashCollections")),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -96,6 +103,8 @@ export const create = mutation({
       donorName: args.donorName,
       donorId: args.donorId,
       pledgeId: args.pledgeId,
+      paymentMethod: args.paymentMethod,
+      cashCollectionId: args.cashCollectionId,
       createdAt: Date.now(),
     });
 
@@ -244,6 +253,13 @@ export const bulkCreate = mutation({
         donorName: v.optional(v.string()),
         donorId: v.optional(v.id("donors")),
         pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+        paymentMethod: v.optional(v.union(
+          v.literal("Cash"),
+          v.literal("Bank"),
+          v.literal("Card"),
+          v.literal("Online")
+        )),
+        cashCollectionId: v.optional(v.id("cashCollections")),
       })
     ),
   },
@@ -291,6 +307,8 @@ export const bulkCreate = mutation({
         donorName: t.donorName,
         donorId: t.donorId,
         pledgeId: t.pledgeId,
+        paymentMethod: t.paymentMethod,
+        cashCollectionId: t.cashCollectionId,
         createdAt: Date.now(),
       });
 

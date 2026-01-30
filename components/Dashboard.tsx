@@ -1,17 +1,28 @@
-import React, { useMemo } from 'react';
-import { Fund, Transaction, FundType } from '../types';
+import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Fund, Transaction, FundType, AppUser } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, Legend, Area } from 'recharts';
-import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info, ArrowUpRight, Sparkles, Activity, Users, Target, ArrowRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info, ArrowUpRight, Sparkles, Activity, Users, Target, ArrowRight, Banknote } from 'lucide-react';
 import SmartSuggestionsPanel from './intelligence/SmartSuggestionsPanel';
+import CashTakingsEntry from './CashTakingsEntry';
+
+interface Category {
+  _id: string;
+  name: string;
+}
 
 interface DashboardProps {
   funds: Fund[];
   transactions: Transaction[];
+  categories: Category[];
+  currentUser: AppUser;
 }
 
 const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 
-const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
+const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, currentUser }) => {
+  const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
+  const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
   // --- Calculations ---
 
   // 1. Cash Flow Health (Previous Month - has complete data)
@@ -221,6 +232,30 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions }) => {
 
       {/* Smart Suggestions Panel - Rules-based, zero AI cost */}
       <SmartSuggestionsPanel maxItems={5} />
+
+      {/* Cash Takings Entry Modal */}
+      {showCashTakingsModal && canEdit && (
+        <CashTakingsEntry
+          funds={funds}
+          categories={categories}
+          onClose={() => setShowCashTakingsModal(false)}
+          onSuccess={(result) => {
+            console.log(`Cash collection created: ${result.transactionCount} transactions`);
+          }}
+        />
+      )}
+
+      {/* Mobile Floating Action Button */}
+      {canEdit && createPortal(
+        <button
+          onClick={() => setShowCashTakingsModal(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-sage text-white rounded-full shadow-lg flex items-center justify-center z-30 md:hidden hover:bg-sage-dark transition-colors shadow-[2px_2px_0px_rgba(0,0,0,0.2)]"
+          aria-label="Record Cash Collection"
+        >
+          <Banknote size={24} />
+        </button>,
+        document.body
+      )}
     </div>
   );
 };

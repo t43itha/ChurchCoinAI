@@ -535,6 +535,8 @@ function App() {
           <Dashboard
             funds={funds ?? []}
             transactions={transactions ?? []}
+            categories={categories ?? []}
+            currentUser={currentUser}
           />
         );
       case "transactions":
@@ -634,6 +636,8 @@ function App() {
           <Dashboard
             funds={funds ?? []}
             transactions={transactions ?? []}
+            categories={categories ?? []}
+            currentUser={currentUser}
           />
         );
     }

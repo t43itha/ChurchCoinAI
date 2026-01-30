@@ -15,6 +15,23 @@ export const FundType = {
 
 export type FundType = (typeof FundType)[keyof typeof FundType];
 
+export const PaymentMethod = {
+  CASH: "Cash",
+  BANK: "Bank",
+  CARD: "Card",
+  ONLINE: "Online",
+} as const;
+
+export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
+
+export const CashCollectionStatus = {
+  DRAFT: "draft",
+  SUBMITTED: "submitted",
+  BANKED: "banked",
+} as const;
+
+export type CashCollectionStatus = (typeof CashCollectionStatus)[keyof typeof CashCollectionStatus];
+
 export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
 
 export type InvitationStatus = 'pending' | 'accepted' | 'expired';
@@ -110,9 +127,55 @@ export interface Transaction {
   donorName?: string; // For linking to pledges
   donorId?: string;
   pledgeId?: string | null;
+  paymentMethod?: PaymentMethod;
+  cashCollectionId?: string;
 }
 
 export type TransactionCreateInput = Omit<Transaction, "_id">;
+
+export interface CashCollection {
+  _id: string;
+  organizationId: string;
+  weekEndingDate: string; // ISO date (Sunday)
+  collectionDate: string; // When cash was collected
+  recordedAt: number; // Timestamp when recorded
+  recordedBy: string; // User ID for audit trail
+  notes?: string;
+  status: CashCollectionStatus;
+  bankedDate?: string;
+  createdAt: number;
+}
+
+export type CashCollectionCreateInput = Omit<CashCollection, "_id" | "createdAt" | "recordedAt">;
+
+// Input types for cash collection entry
+export interface TitheEntry {
+  donorName: string;
+  donorId?: string;
+  amount: number;
+  isGiftAidEligible: boolean;
+}
+
+export interface CategoryTotalEntry {
+  category: string;
+  fundId: string;
+  amount: number;
+}
+
+export interface PettyCashEntry {
+  purpose: string;
+  amount: number;
+  category: string;
+}
+
+export interface CashCollectionSubmitInput {
+  weekEndingDate: string;
+  collectionDate: string;
+  notes?: string;
+  tithes: TitheEntry[];
+  categoryTotals: CategoryTotalEntry[];
+  pettyCash: PettyCashEntry[];
+}
 
 export interface Insight {
   id: string;

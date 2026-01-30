@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote } from 'lucide-react';
+import CashTakingsEntry from './CashTakingsEntry';
 
 interface Category {
   _id: string;
@@ -73,6 +74,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
       type: 'Income' as TransactionType,
       date: new Date().toISOString().split('T')[0],
@@ -684,12 +686,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         onChange={handleFileUpload} 
                     />
                 </button>
-                <button 
-                    onClick={() => setShowAddModal(true)}
+                <button
+                    onClick={() => startTransition(() => setShowCashTakingsModal(true))}
                     className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md hover:bg-charcoal transition-all shadow-sm font-semibold text-xs uppercase tracking-wide btn-primary"
                 >
-                    <Plus size={14} />
-                    Entry
+                    <Banknote size={14} />
+                    Record Cash
                 </button>
                 </>
             )}
@@ -1606,6 +1608,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         </div>,
         document.body
       )}
+
+      {/* Cash Takings Entry Modal */}
+      {showCashTakingsModal && canEdit && (
+        <CashTakingsEntry
+          funds={funds}
+          categories={categories}
+          onClose={() => setShowCashTakingsModal(false)}
+          onSuccess={(result) => {
+            console.log(`Cash collection created: ${result.transactionCount} transactions`);
+          }}
+        />
+      )}
+
     </div>
   );
 };
