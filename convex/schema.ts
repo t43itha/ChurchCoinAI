@@ -143,13 +143,41 @@ export default defineSchema({
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+    paymentMethod: v.optional(v.union(
+      v.literal("Cash"),
+      v.literal("Bank"),
+      v.literal("Card"),
+      v.literal("Online")
+    )),
+    cashCollectionId: v.optional(v.id("cashCollections")),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
     .index("by_fund", ["fundId"])
     .index("by_organization_date", ["organizationId", "date"])
     .index("by_pledge", ["pledgeId"])
-    .index("by_donor", ["donorId"]),
+    .index("by_donor", ["donorId"])
+    .index("by_cashCollection", ["cashCollectionId"]),
+
+  // Cash Collections (batch entry for weekly cash takings)
+  cashCollections: defineTable({
+    organizationId: v.id("organizations"),
+    weekEndingDate: v.string(), // ISO date (Sunday)
+    collectionDate: v.string(), // When cash was collected
+    recordedAt: v.number(), // Timestamp when recorded
+    recordedBy: v.id("users"), // Audit trail - which user recorded this
+    notes: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("submitted"),
+      v.literal("banked")
+    ),
+    bankedDate: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_weekEnding", ["organizationId", "weekEndingDate"])
+    .index("by_organization_status", ["organizationId", "status"]),
 
   // Categories (per organization)
   categories: defineTable({

@@ -19,6 +19,7 @@ import type * as intelligence_rules_operationsRules from "../intelligence/rules/
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_plaid from "../lib/plaid.js";
 import type * as lib_stripe from "../lib/stripe.js";
+import type * as mutations_cashCollections from "../mutations/cashCollections.js";
 import type * as mutations_categories from "../mutations/categories.js";
 import type * as mutations_donors from "../mutations/donors.js";
 import type * as mutations_funds from "../mutations/funds.js";
@@ -31,6 +32,7 @@ import type * as mutations_subscriptions from "../mutations/subscriptions.js";
 import type * as mutations_transactions from "../mutations/transactions.js";
 import type * as mutations_users from "../mutations/users.js";
 import type * as queries_aiContext from "../queries/aiContext.js";
+import type * as queries_cashCollections from "../queries/cashCollections.js";
 import type * as queries_categories from "../queries/categories.js";
 import type * as queries_dashboard from "../queries/dashboard.js";
 import type * as queries_donors from "../queries/donors.js";
@@ -40,6 +42,7 @@ import type * as queries_invitations from "../queries/invitations.js";
 import type * as queries_organizations from "../queries/organizations.js";
 import type * as queries_plaid from "../queries/plaid.js";
 import type * as queries_pledges from "../queries/pledges.js";
+import type * as queries_reports from "../queries/reports.js";
 import type * as queries_subscriptions from "../queries/subscriptions.js";
 import type * as queries_transactions from "../queries/transactions.js";
 import type * as queries_users from "../queries/users.js";
@@ -62,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/plaid": typeof lib_plaid;
   "lib/stripe": typeof lib_stripe;
+  "mutations/cashCollections": typeof mutations_cashCollections;
   "mutations/categories": typeof mutations_categories;
   "mutations/donors": typeof mutations_donors;
   "mutations/funds": typeof mutations_funds;
@@ -74,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   "mutations/transactions": typeof mutations_transactions;
   "mutations/users": typeof mutations_users;
   "queries/aiContext": typeof queries_aiContext;
+  "queries/cashCollections": typeof queries_cashCollections;
   "queries/categories": typeof queries_categories;
   "queries/dashboard": typeof queries_dashboard;
   "queries/donors": typeof queries_donors;
@@ -83,6 +88,7 @@ declare const fullApi: ApiFromModules<{
   "queries/organizations": typeof queries_organizations;
   "queries/plaid": typeof queries_plaid;
   "queries/pledges": typeof queries_pledges;
+  "queries/reports": typeof queries_reports;
   "queries/subscriptions": typeof queries_subscriptions;
   "queries/transactions": typeof queries_transactions;
   "queries/users": typeof queries_users;
