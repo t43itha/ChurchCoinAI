@@ -363,7 +363,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                         // Clear fundId if switching away from Pledge
                         fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
                       })}
-                      className="w-full h-10 px-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                      className="w-full h-10 pl-2 pr-7 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
                     >
                       <option value="Tithe">Tithe</option>
                       <option value="Pledge">Pledge</option>
@@ -380,7 +380,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       <select
                         value={contribution.fundId || ""}
                         onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
-                        className="w-full h-10 px-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                        className="w-full h-10 pl-2 pr-7 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
                       >
                         <option value="">Select fund...</option>
                         {restrictedFunds.map((f) => (
@@ -492,7 +492,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                     <select
                       value={cat.category}
                       onChange={(e) => updateCategory(cat.id, { category: e.target.value })}
-                      className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
+                      className="w-full h-10 pl-3 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
                     >
                       <option value="">Select category...</option>
                       <option value="Tithe">Tithe</option>
@@ -511,7 +511,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                     <select
                       value={cat.fundId}
                       onChange={(e) => updateCategory(cat.id, { fundId: e.target.value })}
-                      className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
+                      className="w-full h-10 pl-3 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
                     >
                       <option value="">Select fund...</option>
                       {funds.map((f) => (
@@ -597,7 +597,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       <select
                         value={petty.category}
                         onChange={(e) => updatePettyCash(petty.id, { category: e.target.value })}
-                        className="w-full h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
+                        className="w-full h-10 pl-3 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
                       >
                         <option value="Miscellaneous">Miscellaneous</option>
                         <option value="Hospitality">Hospitality</option>
