@@ -2,6 +2,17 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 
+// Helper to check if a category is a tithe-related category
+const isTitheCategory = (category: string): boolean => {
+  const lower = category.toLowerCase();
+  return (
+    lower === "tithe" ||
+    lower === "tithes" ||
+    lower.includes("tithe") ||
+    lower === "tithes & first fruits"
+  );
+};
+
 // Helper to get the Sunday (week ending) for a given date
 function getWeekEndingDate(date: Date): string {
   const dayOfWeek = date.getDay();
@@ -111,7 +122,7 @@ export const weeklyCashSummary = query({
 
     // Tithe breakdown (individual donors)
     const tithes = incomeTransactions
-      .filter((t) => t.category === "Tithe" && t.donorName)
+      .filter((t) => isTitheCategory(t.category) && t.donorName)
       .map((t) => ({
         donorName: t.donorName,
         amount: t.amount,
@@ -305,5 +316,376 @@ export const getCurrentWeekEnding = query({
 
     const today = new Date();
     return getWeekEndingDate(today);
+  },
+});
+
+// RCI Monthly Report Data - structured for RCI Monthly Accounts template
+export const monthlyReportData = query({
+  args: {
+    year: v.number(),
+    month: v.number(), // 0-indexed (0 = January)
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+
+    // Calculate date range for the month
+    const startDate = new Date(args.year, args.month, 1);
+    const endDate = new Date(args.year, args.month + 1, 0);
+    const startDateStr = startDate.toISOString().split("T")[0];
+    const endDateStr = endDate.toISOString().split("T")[0];
+
+    // Get all transactions for this organization in the date range
+    // Use .gte() in index and filter for upper bound (Convex doesn't support both .gte and .lte in same query)
+    const allTransactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization_date", (q) =>
+        q
+          .eq("organizationId", user.organizationId)
+          .gte("date", startDateStr)
+      )
+      .filter((q) => q.lte(q.field("date"), endDateStr))
+      .collect();
+
+    // Get categories with mainCategory data
+    const categories = await ctx.db
+      .query("categories")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    // Build category to mainCategory lookup
+    const categoryToMain = new Map<string, { mainCategory: string; transactionType?: string }>();
+    for (const cat of categories) {
+      categoryToMain.set(cat.name, {
+        mainCategory: cat.mainCategory || "Other",
+        transactionType: cat.transactionType,
+      });
+    }
+
+    // Separate income and expenditure
+    const incomeTransactions = allTransactions.filter((t) => t.type === "Income");
+    const expenditureTransactions = allTransactions.filter((t) => t.type === "Expenditure");
+
+    // Group income by mainCategory
+    const receiptsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
+    for (const t of incomeTransactions) {
+      const catData = categoryToMain.get(t.category);
+      const mainCategory = catData?.mainCategory || "Other Income";
+
+      if (!receiptsMap.has(mainCategory)) {
+        receiptsMap.set(mainCategory, { subcategories: new Map(), total: 0 });
+      }
+      const group = receiptsMap.get(mainCategory)!;
+      group.subcategories.set(t.category, (group.subcategories.get(t.category) || 0) + t.amount);
+      group.total += t.amount;
+    }
+
+    // Group expenditure by mainCategory
+    const paymentsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
+    for (const t of expenditureTransactions) {
+      const catData = categoryToMain.get(t.category);
+      const mainCategory = catData?.mainCategory || "Admin & Governance";
+
+      if (!paymentsMap.has(mainCategory)) {
+        paymentsMap.set(mainCategory, { subcategories: new Map(), total: 0 });
+      }
+      const group = paymentsMap.get(mainCategory)!;
+      group.subcategories.set(t.category, (group.subcategories.get(t.category) || 0) + t.amount);
+      group.total += t.amount;
+    }
+
+    // Convert maps to arrays
+    const receipts = Array.from(receiptsMap.entries()).map(([mainCategory, data]) => ({
+      mainCategory,
+      subcategories: Array.from(data.subcategories.entries()).map(([name, total]) => ({ name, total })),
+      total: data.total,
+    }));
+
+    const payments = Array.from(paymentsMap.entries()).map(([mainCategory, data]) => ({
+      mainCategory,
+      subcategories: Array.from(data.subcategories.entries()).map(([name, total]) => ({ name, total })),
+      total: data.total,
+    }));
+
+    // Weekly breakdown
+    const sundays = getSundaysInMonth(args.year, args.month);
+    const weeklyBreakdown = sundays.map((weekEnding) => {
+      const weekStart = new Date(weekEnding);
+      weekStart.setDate(weekStart.getDate() - 6);
+      const weekStartStr = weekStart.toISOString().split("T")[0];
+
+      const weekTransactions = allTransactions.filter(
+        (t) => t.date >= weekStartStr && t.date <= weekEnding
+      );
+
+      const receiptsTotal = weekTransactions
+        .filter((t) => t.type === "Income")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const paymentsTotal = weekTransactions
+        .filter((t) => t.type === "Expenditure")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const byCategory = weekTransactions.reduce(
+        (acc, t) => {
+          acc[t.category] = (acc[t.category] || 0) + t.amount;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+
+      return {
+        weekEnding,
+        receiptsTotal,
+        paymentsTotal,
+        byCategory,
+      };
+    });
+
+    // Tithes breakdown (individual donors for tithe category)
+    const tithes = incomeTransactions
+      .filter((t) => isTitheCategory(t.category) && t.donorName)
+      .map((t) => ({
+        donorName: t.donorName!,
+        amount: t.amount,
+        isGiftAidEligible: t.isGiftAidEligible || false,
+      }));
+
+    // Gift Aid summary
+    const giftAidEligible = incomeTransactions
+      .filter((t) => t.isGiftAidEligible)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Calculate totals
+    const grossIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalExpenditure = expenditureTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      year: args.year,
+      month: args.month,
+      monthName: new Date(args.year, args.month).toLocaleDateString("en-GB", {
+        month: "long",
+        year: "numeric",
+      }),
+      receipts,
+      payments,
+      weeklyBreakdown,
+      tithes,
+      giftAidSummary: {
+        eligible: giftAidEligible,
+        claimable: giftAidEligible * 0.25,
+      },
+      totals: {
+        grossIncome,
+        totalExpenditure,
+        netBankable: grossIncome - totalExpenditure,
+      },
+    };
+  },
+});
+
+// RCI Annual Report Data - structured for RCI Annual Report template
+export const annualReportData = query({
+  args: {
+    year: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+
+    // Calculate date range for the year
+    const startDate = `${args.year}-01-01`;
+    const endDate = `${args.year}-12-31`;
+
+    // Get all transactions for this organization in the year
+    // Use .gte() in index and filter for upper bound (Convex doesn't support both .gte and .lte in same query)
+    const allTransactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization_date", (q) =>
+        q
+          .eq("organizationId", user.organizationId)
+          .gte("date", startDate)
+      )
+      .filter((q) => q.lte(q.field("date"), endDate))
+      .collect();
+
+    // Get previous year transactions for comparison
+    const prevStartDate = `${args.year - 1}-01-01`;
+    const prevEndDate = `${args.year - 1}-12-31`;
+    const prevYearTransactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization_date", (q) =>
+        q
+          .eq("organizationId", user.organizationId)
+          .gte("date", prevStartDate)
+      )
+      .filter((q) => q.lte(q.field("date"), prevEndDate))
+      .collect();
+
+    // Get categories with mainCategory data
+    const categories = await ctx.db
+      .query("categories")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    // Get funds for balance calculation
+    const funds = await ctx.db
+      .query("funds")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    // Build category to mainCategory lookup
+    const categoryToMain = new Map<string, { mainCategory: string; transactionType?: string }>();
+    for (const cat of categories) {
+      categoryToMain.set(cat.name, {
+        mainCategory: cat.mainCategory || "Other",
+        transactionType: cat.transactionType,
+      });
+    }
+
+    // Separate income and expenditure
+    const incomeTransactions = allTransactions.filter((t) => t.type === "Income");
+    const expenditureTransactions = allTransactions.filter((t) => t.type === "Expenditure");
+
+    // Group income by mainCategory
+    const incomeByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }> = {};
+    const incomeSubcategoryMap = new Map<string, Map<string, number>>();
+
+    for (const t of incomeTransactions) {
+      const catData = categoryToMain.get(t.category);
+      const mainCategory = catData?.mainCategory || "Other Income";
+
+      if (!incomeByMainCategory[mainCategory]) {
+        incomeByMainCategory[mainCategory] = { total: 0, subcategories: [] };
+        incomeSubcategoryMap.set(mainCategory, new Map());
+      }
+      incomeByMainCategory[mainCategory].total += t.amount;
+
+      const subcatMap = incomeSubcategoryMap.get(mainCategory)!;
+      subcatMap.set(t.category, (subcatMap.get(t.category) || 0) + t.amount);
+    }
+
+    // Convert subcategory maps to arrays
+    for (const [mainCategory, subcatMap] of incomeSubcategoryMap.entries()) {
+      incomeByMainCategory[mainCategory].subcategories = Array.from(subcatMap.entries()).map(
+        ([name, total]) => ({ name, total })
+      );
+    }
+
+    // Group expenditure by mainCategory
+    const expenditureByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }> = {};
+    const expenditureSubcategoryMap = new Map<string, Map<string, number>>();
+
+    for (const t of expenditureTransactions) {
+      const catData = categoryToMain.get(t.category);
+      const mainCategory = catData?.mainCategory || "Admin & Governance";
+
+      if (!expenditureByMainCategory[mainCategory]) {
+        expenditureByMainCategory[mainCategory] = { total: 0, subcategories: [] };
+        expenditureSubcategoryMap.set(mainCategory, new Map());
+      }
+      expenditureByMainCategory[mainCategory].total += t.amount;
+
+      const subcatMap = expenditureSubcategoryMap.get(mainCategory)!;
+      subcatMap.set(t.category, (subcatMap.get(t.category) || 0) + t.amount);
+    }
+
+    // Convert subcategory maps to arrays
+    for (const [mainCategory, subcatMap] of expenditureSubcategoryMap.entries()) {
+      expenditureByMainCategory[mainCategory].subcategories = Array.from(subcatMap.entries()).map(
+        ([name, total]) => ({ name, total })
+      );
+    }
+
+    // Monthly trend
+    const monthlyTrend = Array.from({ length: 12 }, (_, i) => {
+      const monthStr = `${args.year}-${String(i + 1).padStart(2, "0")}`;
+      const monthTransactions = allTransactions.filter((t) => t.date.startsWith(monthStr));
+
+      const income = monthTransactions
+        .filter((t) => t.type === "Income")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const expenditure = monthTransactions
+        .filter((t) => t.type === "Expenditure")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      return {
+        month: new Date(args.year, i).toLocaleDateString("en-GB", { month: "short" }),
+        income,
+        expenditure,
+      };
+    });
+
+    // Calculate totals
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalExpenditure = expenditureTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+    // Previous year totals for comparison
+    const prevYearIncome = prevYearTransactions
+      .filter((t) => t.type === "Income")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const prevYearExpenditure = prevYearTransactions
+      .filter((t) => t.type === "Expenditure")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Year over year comparison
+    const yearOverYear = prevYearTransactions.length > 0
+      ? {
+          current: { income: totalIncome, expenditure: totalExpenditure },
+          previous: { income: prevYearIncome, expenditure: prevYearExpenditure },
+          incomeChange: prevYearIncome > 0 ? ((totalIncome - prevYearIncome) / prevYearIncome) * 100 : 0,
+          expenditureChange: prevYearExpenditure > 0 ? ((totalExpenditure - prevYearExpenditure) / prevYearExpenditure) * 100 : 0,
+        }
+      : undefined;
+
+    // Gift Aid annual summary
+    const giftAidEligible = incomeTransactions
+      .filter((t) => t.isGiftAidEligible)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Fund balances - calculate from all transactions up to end of year
+    const allTimeTransactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization_date", (q) =>
+        q.eq("organizationId", user.organizationId).lte("date", endDate)
+      )
+      .collect();
+
+    const fundBalances = funds.map((fund) => {
+      const fundTransactions = allTimeTransactions.filter((t) => t.fundId === fund._id);
+      const income = fundTransactions
+        .filter((t) => t.type === "Income")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const expenditure = fundTransactions
+        .filter((t) => t.type === "Expenditure")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      return {
+        fund: fund.name,
+        balance: income - expenditure,
+        type: fund.type,
+      };
+    });
+
+    return {
+      year: args.year,
+      incomeByMainCategory,
+      expenditureByMainCategory,
+      monthlyTrend,
+      yearOverYear,
+      giftAidAnnual: {
+        totalEligible: giftAidEligible,
+        totalClaimable: giftAidEligible * 0.25,
+      },
+      fundBalances,
+      totals: {
+        totalIncome,
+        totalExpenditure,
+        netMovement: totalIncome - totalExpenditure,
+      },
+    };
   },
 });

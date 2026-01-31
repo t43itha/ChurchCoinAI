@@ -2,6 +2,21 @@ import { mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
+
+// Helper to build searchable text for RAG indexing
+function buildRAGSearchText(tx: {
+  description: string;
+  category: string;
+  type: "Income" | "Expenditure";
+  donorName?: string | null;
+}): string {
+  let text = `${tx.description} | Category: ${tx.category} | Type: ${tx.type}`;
+  if (tx.donorName) {
+    text += ` | Donor: ${tx.donorName}`;
+  }
+  return text;
+}
 
 // Helper to check pledge completion after transaction changes
 async function checkPledgeCompletion(
@@ -266,7 +281,7 @@ export const bulkCreate = mutation({
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
 
-    const transactionIds: string[] = [];
+    const transactionIds: Id<"transactions">[] = [];
     const pledgesToCheck = new Set<string>();
 
     for (const t of args.transactions) {
@@ -318,6 +333,35 @@ export const bulkCreate = mutation({
         pledgesToCheck.add(t.pledgeId as string);
       }
     }
+
+    // Schedule RAG indexing for all new transactions (batch for efficiency)
+    const ragIndexData = args.transactions.map((t, idx) => ({
+      transactionId: transactionIds[idx],
+      searchText: buildRAGSearchText({
+        description: t.description,
+        category: t.category,
+        type: t.type,
+        donorName: t.donorName,
+      }),
+      metadata: {
+        category: t.category,
+        fundId: t.fundId,
+        type: t.type,
+        isGiftAidEligible: t.isGiftAidEligible,
+        donorName: t.donorName,
+        amount: t.amount,
+      },
+    }));
+
+    // Schedule batch indexing (runs asynchronously, doesn't block import)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.intelligence.ragIndexer.batchIndexTransactions,
+      {
+        organizationId: user.organizationId,
+        transactions: ragIndexData,
+      }
+    );
 
     // Check all affected pledges
     const completedPledges: any[] = [];
@@ -594,5 +638,124 @@ export const remove = mutation({
     }
 
     return args.transactionId;
+  },
+});
+
+// Record categorization corrections for ML learning
+export const recordCorrections = mutation({
+  args: {
+    corrections: v.array(
+      v.object({
+        transactionId: v.id("transactions"),
+        description: v.string(),
+        aiPredictedCategory: v.string(),
+        aiConfidence: v.string(),
+        predictionSource: v.union(
+          v.literal("gemini"),
+          v.literal("rag"),
+          v.literal("none")
+        ),
+        ragScore: v.optional(v.number()),
+        finalCategory: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const recorded: string[] = [];
+    for (const correction of args.corrections) {
+      // Verify transaction belongs to organization
+      const transaction = await ctx.db.get(correction.transactionId);
+      if (!transaction || transaction.organizationId !== user.organizationId) {
+        continue; // Skip invalid transactions
+      }
+
+      const wasCorrect =
+        correction.aiPredictedCategory === correction.finalCategory;
+
+      const correctionId = await ctx.db.insert("categorizationCorrections", {
+        organizationId: user.organizationId,
+        transactionId: correction.transactionId,
+        description: correction.description,
+        aiPredictedCategory: correction.aiPredictedCategory,
+        aiConfidence: correction.aiConfidence,
+        predictionSource: correction.predictionSource,
+        ragScore: correction.ragScore,
+        finalCategory: correction.finalCategory,
+        wasCorrect,
+        createdAt: Date.now(),
+      });
+      recorded.push(correctionId);
+
+      // If there was a correction, update the RAG index with the corrected category
+      if (!wasCorrect) {
+        const searchText = buildRAGSearchText({
+          description: correction.description,
+          category: correction.finalCategory, // Use the corrected category
+          type: transaction.type,
+          donorName: transaction.donorName,
+        });
+
+        await ctx.scheduler.runAfter(
+          0,
+          internal.intelligence.ragIndexer.updateInIndex,
+          {
+            organizationId: user.organizationId,
+            transactionId: correction.transactionId,
+            newSearchText: searchText,
+          }
+        );
+      }
+    }
+
+    return {
+      recorded: recorded.length,
+      corrected: args.corrections.filter(
+        (c) => c.aiPredictedCategory !== c.finalCategory
+      ).length,
+    };
+  },
+});
+
+// Get categorization accuracy stats for an organization
+export const getCategorizationStats = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const allCorrections = await ctx.db
+      .query("categorizationCorrections")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    const total = allCorrections.length;
+    const correct = allCorrections.filter((c) => c.wasCorrect).length;
+    const bySource = {
+      gemini: allCorrections.filter((c) => c.predictionSource === "gemini"),
+      rag: allCorrections.filter((c) => c.predictionSource === "rag"),
+    };
+
+    return {
+      total,
+      correct,
+      accuracy: total > 0 ? (correct / total) * 100 : 0,
+      geminiAccuracy:
+        bySource.gemini.length > 0
+          ? (bySource.gemini.filter((c) => c.wasCorrect).length /
+              bySource.gemini.length) *
+            100
+          : 0,
+      ragAccuracy:
+        bySource.rag.length > 0
+          ? (bySource.rag.filter((c) => c.wasCorrect).length /
+              bySource.rag.length) *
+            100
+          : 0,
+      ragCount: bySource.rag.length,
+      geminiCount: bySource.gemini.length,
+    };
   },
 });

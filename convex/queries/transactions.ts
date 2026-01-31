@@ -1,7 +1,8 @@
-import { query } from "../_generated/server";
+import { query, internalQuery } from "../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
+import { ALL_INCOME_SUBCATEGORIES } from "../../constants/rciCategories";
 
 // List all transactions
 export const list = query({
@@ -310,5 +311,59 @@ export const monthlySummary = query({
         ...data,
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
+  },
+});
+
+// Find transactions with mismatched type/category (e.g., Expenditure with Income category)
+export const findMismatchedTransactions = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const organizations = await ctx.db.query("organizations").collect();
+    const results: any[] = [];
+
+    // Income category names (lowercase for comparison)
+    const incomeCategories = new Set(
+      ALL_INCOME_SUBCATEGORIES.map((c) => c.toLowerCase())
+    );
+    // Also add main category names
+    incomeCategories.add("donations");
+    incomeCategories.add("building fund");
+    incomeCategories.add("charitable activities");
+    incomeCategories.add("other income");
+
+    for (const org of organizations) {
+      const transactions = await ctx.db
+        .query("transactions")
+        .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+        .collect();
+
+      // Find expenditure transactions using income category names
+      const mismatched = transactions.filter((t) => {
+        const categoryLower = t.category.toLowerCase();
+        return (
+          t.type === "Expenditure" &&
+          (incomeCategories.has(categoryLower) ||
+            categoryLower.includes("tithe") ||
+            categoryLower.includes("offering") ||
+            categoryLower === "donations")
+        );
+      });
+
+      if (mismatched.length > 0) {
+        results.push({
+          organization: org.name,
+          mismatched: mismatched.map((t) => ({
+            _id: t._id,
+            date: t.date,
+            description: t.description,
+            category: t.category,
+            type: t.type,
+            amount: t.amount,
+          })),
+        });
+      }
+    }
+
+    return results;
   },
 });

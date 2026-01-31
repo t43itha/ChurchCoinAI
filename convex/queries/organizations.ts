@@ -1,4 +1,4 @@
-import { query } from "../_generated/server";
+import { query, internalQuery } from "../_generated/server";
 import { getCurrentUser, getIdentity } from "../lib/auth";
 
 // Get the current user's organization
@@ -26,5 +26,17 @@ export const hasOrganization = query({
       .first();
 
     return !!user;
+  },
+});
+
+// Internal query to list all organizations (for admin/seeding purposes)
+export const listAll = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const organizations = await ctx.db.query("organizations").collect();
+    return organizations.map((org) => ({
+      _id: org._id,
+      name: org.name,
+    }));
   },
 });

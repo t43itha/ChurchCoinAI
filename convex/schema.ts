@@ -179,14 +179,18 @@ export default defineSchema({
     .index("by_organization_weekEnding", ["organizationId", "weekEndingDate"])
     .index("by_organization_status", ["organizationId", "status"]),
 
-  // Categories (per organization)
+  // Categories (per organization) - RCI hierarchical structure
   categories: defineTable({
     organizationId: v.id("organizations"),
-    name: v.string(),
+    name: v.string(),                    // Subcategory (e.g., "Tithe")
+    mainCategory: v.optional(v.string()), // Parent (e.g., "Donations")
+    transactionType: v.optional(v.union(v.literal("Income"), v.literal("Expenditure"))),
+    displayOrder: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
-    .index("by_organization_name", ["organizationId", "name"]),
+    .index("by_organization_name", ["organizationId", "name"])
+    .index("by_organization_mainCategory", ["organizationId", "mainCategory"]),
 
   // AI Chat History (for context persistence)
   chatHistory: defineTable({
@@ -302,4 +306,25 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_itemId", ["itemId"])
     .index("by_organization_status", ["organizationId", "status"]),
+
+  // AI Categorization corrections tracking (for ML learning)
+  categorizationCorrections: defineTable({
+    organizationId: v.id("organizations"),
+    transactionId: v.id("transactions"),
+    description: v.string(),
+    aiPredictedCategory: v.string(),
+    aiConfidence: v.string(),
+    predictionSource: v.union(
+      v.literal("gemini"),
+      v.literal("rag"),
+      v.literal("none")
+    ),
+    ragScore: v.optional(v.number()),
+    finalCategory: v.string(),
+    wasCorrect: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_accuracy", ["organizationId", "wasCorrect"])
+    .index("by_transaction", ["transactionId"]),
 });
