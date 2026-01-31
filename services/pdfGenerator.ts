@@ -26,10 +26,23 @@ export const generateScheduleHTML = (
   funds: Fund[],
   churchDetails: ChurchDetails,
   logoOverride?: string,
-  transactions?: Transaction[]
+  transactions?: Transaction[],
+  periodStart?: string,
+  periodEnd?: string,
+  reportType?: 'all' | 'tithes' | 'campaign',
+  campaignName?: string
 ) => {
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const todayShort = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+
+  // Format period display
+  const formatPeriodDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+  };
+
+  const periodDisplay = periodStart && periodEnd
+    ? `${formatPeriodDate(periodStart)} – ${formatPeriodDate(periodEnd)}`
+    : 'All Time';
 
   // Filter transactions for this donor and sort by date (newest first)
   const donorTransactions = (transactions || [])
@@ -42,11 +55,19 @@ export const generateScheduleHTML = (
   // Calculate total pledged (from all pledges, not just active)
   const totalPledged = pledges.reduce((sum, p) => sum + p.amount, 0);
 
+  const pdfFilename = buildDonorSchedulePdfFilename({
+    donorName: donor.name,
+    reportType: reportType ?? 'all',
+    periodStart,
+    periodEnd,
+    campaignName,
+  });
+
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Giving Schedule - ${escapeHtml(donor.name)}</title>
+      <title>${pdfFilename}</title>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
       <style>
         @page {
@@ -243,7 +264,7 @@ export const generateScheduleHTML = (
         <div class="meta">
           <p>Date: ${todayFormatted}</p>
           <p>Ref: SCH-${escapeHtml((donor._id || '').slice(-6).toUpperCase())}</p>
-          <p>Period: 01-01-2025 – ${todayShort}</p>
+          <p>Period: ${periodDisplay}</p>
           <p>Charity No: ${escapeHtml(churchDetails.charityNumber || 'N/A')}</p>
         </div>
       </div>
@@ -333,6 +354,40 @@ export const generateScheduleHTML = (
   
   return html;
 };
+
+export function sanitizePdfFilenamePart(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function buildPeriodLabelForPdfFilename(start?: string, end?: string) {
+  if (!start || !end) return 'All_Time';
+  const startYear = start.slice(0, 4);
+  const isFullYear = start.endsWith('-01-01') && end.endsWith('-12-31') && end.startsWith(startYear);
+  if (isFullYear) return startYear;
+  return `${start}_to_${end}`;
+}
+
+export function buildDonorSchedulePdfFilename(args: {
+  donorName: string;
+  reportType: 'all' | 'tithes' | 'campaign';
+  periodStart?: string;
+  periodEnd?: string;
+  campaignName?: string;
+}) {
+  const donorPart = sanitizePdfFilenamePart(args.donorName);
+  const reportPart =
+    args.reportType === 'campaign' && args.campaignName
+      ? sanitizePdfFilenamePart(args.campaignName)
+      : args.reportType === 'tithes'
+        ? 'Tithes'
+        : 'All_Schedules';
+  const periodPart = sanitizePdfFilenamePart(buildPeriodLabelForPdfFilename(args.periodStart, args.periodEnd));
+  return `${donorPart}_${reportPart}_${periodPart}`;
+}
 
 // Format currency for PDF display
 const formatCurrency = (amount: number) => `£${amount.toFixed(2)}`;

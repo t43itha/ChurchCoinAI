@@ -3,8 +3,8 @@ import { useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
-import { generateScheduleHTML } from '../services/pdfGenerator';
-import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check } from 'lucide-react';
+import { buildDonorSchedulePdfFilename, generateScheduleHTML } from '../services/pdfGenerator';
+import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -95,6 +95,15 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [showExportModal, setShowExportModal] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Export period selection state
+  const [exportPeriod, setExportPeriod] = useState<'year' | 'last6months' | 'all'>('year');
+  const [exportYear, setExportYear] = useState(new Date().getFullYear());
+
+  // Report type selection state for export modal
+  const [selectedReportType, setSelectedReportType] = useState<'all' | 'tithes' | 'campaign'>('all');
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | undefined>();
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Merge state
   const [duplicateGroups, setDuplicateGroups] = useState<any[]>([]);
@@ -262,54 +271,233 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
 
   const handleEditClick = () => { if (selectedDonor && canEdit) { setFormData(selectedDonor); setIsEditing(true); } };
 
-  const handlePrintSchedule = (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
-    if (!selectedDonor) return;
+  // Get date range for export based on period selection
+  const getExportDateRange = () => {
+    if (exportPeriod === 'all') return { start: undefined, end: undefined };
+    if (exportPeriod === 'last6months') {
+      const end = new Date();
+      const start = new Date();
+      start.setMonth(start.getMonth() - 6);
+      return {
+        start: start.toISOString().split('T')[0],
+        end: end.toISOString().split('T')[0]
+      };
+    }
+    // Year selection
+    return {
+      start: `${exportYear}-01-01`,
+      end: `${exportYear}-12-31`
+    };
+  };
+
+  const buildScheduleExport = (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+    if (!selectedDonor) return null;
 
     let filteredPledges = donorPledges;
     let filteredTransactions = donorTransactions;
     let logoOverride: string | undefined;
+    let campaignName: string | undefined;
+
+    const { start: periodStart, end: periodEnd } = getExportDateRange();
+
+    if (periodStart && periodEnd) {
+      filteredTransactions = filteredTransactions.filter(t => {
+        const txDate = t.date;
+        return txDate >= periodStart && txDate <= periodEnd;
+      });
+    }
 
     if (filterType === 'tithes') {
-      // Filter to only unrestricted (tithe) funds
       const titheFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
       filteredPledges = donorPledges.filter(p => titheFundIds.includes(p.fundId));
-      // Include transactions by fundId OR by pledgeId linked to matching pledges
       const tithePledgeIds = pledges.filter(p => titheFundIds.includes(p.fundId)).map(p => p._id);
-      filteredTransactions = donorTransactions.filter(t =>
+      filteredTransactions = filteredTransactions.filter(t =>
         titheFundIds.includes(t.fundId) || (t.pledgeId && tithePledgeIds.includes(t.pledgeId))
       );
     } else if (filterType === 'campaign' && fundId) {
-      // Filter to specific campaign/fund
       filteredPledges = donorPledges.filter(p => p.fundId === fundId);
-      // Include transactions by fundId OR by pledgeId linked to matching pledges
       const campaignPledgeIds = pledges.filter(p => p.fundId === fundId).map(p => p._id);
-      filteredTransactions = donorTransactions.filter(t =>
+      filteredTransactions = filteredTransactions.filter(t =>
         t.fundId === fundId || (t.pledgeId && campaignPledgeIds.includes(t.pledgeId))
       );
-      // Use the campaign's logo if available
+
       const campaignFund = funds.find(f => f._id === fundId);
-      if (campaignFund?.logoUrl) {
-        logoOverride = campaignFund.logoUrl;
-      }
+      if (campaignFund?.logoUrl) logoOverride = campaignFund.logoUrl;
+      campaignName = campaignFund?.name;
     }
 
     const details = churchDetails || { name: 'ChurchCoin', address: '', email: '' };
-    const html = generateScheduleHTML(selectedDonor, filteredPledges, funds, details, logoOverride, filteredTransactions);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => { printWindow.print(); }, 500);
+    const html = generateScheduleHTML(
+      selectedDonor,
+      filteredPledges,
+      funds,
+      details,
+      logoOverride,
+      filteredTransactions,
+      periodStart,
+      periodEnd,
+      filterType,
+      campaignName
+    );
+
+    const filename = buildDonorSchedulePdfFilename({
+      donorName: selectedDonor.name,
+      reportType: filterType,
+      periodStart,
+      periodEnd,
+      campaignName,
+    });
+
+    return { html, filename };
+  };
+
+  const generateSchedulePdf = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+    const exportData = buildScheduleExport(filterType, fundId);
+    if (!exportData) return null;
+
+    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml } = await import('../services/pdfExport');
+    const htmlWithTitle = ensureHtmlTitleForPdf(exportData.html, exportData.filename);
+    const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
+    return { blob, filename: exportData.filename };
+  };
+
+  const handlePrintSchedule = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+    if (!selectedDonor || isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    try {
+      const pdf = await generateSchedulePdf(filterType, fundId);
+      if (!pdf) return;
+      const { savePdfBlob } = await import('../services/pdfExport');
+      const didSave = await savePdfBlob({ blob: pdf.blob, filename: pdf.filename });
+      if (didSave) setShowExportModal(false);
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      setIsGeneratingPdf(false);
     }
-    setShowExportModal(false);
+  };
+
+  // Get period description for messages
+  const getPeriodDescription = () => {
+    if (exportPeriod === 'all') return 'all giving history';
+    if (exportPeriod === 'last6months') {
+      const end = new Date();
+      const start = new Date();
+      start.setMonth(start.getMonth() - 6);
+      return `${start.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} - ${end.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
+    }
+    return String(exportYear);
+  };
+
+  // Send via WhatsApp
+  const handleSendViaWhatsApp = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+    if (!selectedDonor?.phone || isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+
+    try {
+      const pdf = await generateSchedulePdf(filterType, fundId);
+      if (!pdf) return;
+
+      const filenameWithExt = `${pdf.filename}.pdf`;
+
+      const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
+      const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
+
+      const message = `Hi ${selectedDonor.name},
+
+Please find attached your giving statement for ${getPeriodDescription()}.
+
+Thank you for your faithful support!
+
+— ${churchDetails?.name || 'Church'} Finance Team
+
+📎 Please attach: ${filenameWithExt}`;
+
+      try {
+        await navigator.clipboard.writeText(message);
+      } catch {
+        // ignore
+      }
+
+      const { downloadPdfBlob, sharePdfBlob } = await import('../services/pdfExport');
+
+      const anyNavigator = navigator as any;
+      const isMobile =
+        typeof anyNavigator.userAgentData?.mobile === 'boolean'
+          ? anyNavigator.userAgentData.mobile
+          : window.matchMedia?.('(pointer:coarse)')?.matches || /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        const didShare = await sharePdfBlob({
+          blob: pdf.blob,
+          filename: pdf.filename,
+          title: `Giving Statement - ${getPeriodDescription()}`,
+          text: message,
+        });
+        if (didShare) {
+          setShowExportModal(false);
+          return;
+        }
+      }
+
+      // Desktop (or fallback): download the PDF, then open WhatsApp with message prefilled.
+      downloadPdfBlob({ blob: pdf.blob, filename: pdf.filename });
+      window.location.href = `whatsapp://send?phone=${formatted}&text=${encodeURIComponent(message)}`;
+
+      setShowExportModal(false);
+    } catch (e) {
+      console.error('WhatsApp send failed:', e);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // Send via Email
+  const handleSendViaEmail = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+    if (!selectedDonor?.email || isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+
+    try {
+      const pdf = await generateSchedulePdf(filterType, fundId);
+      if (!pdf) return;
+
+      const filenameWithExt = `${pdf.filename}.pdf`;
+      const subject = `Your Giving Statement - ${getPeriodDescription()}`;
+      const body = `Dear ${selectedDonor.name},
+
+Please find attached your giving statement for ${getPeriodDescription()}.
+
+Thank you for your faithful support!
+
+Kind regards,
+${churchDetails?.name || 'Church'} Finance Team
+
+---
+[Please attach the downloaded PDF: ${filenameWithExt}]`;
+
+      const { sharePdfBlob, savePdfBlob } = await import('../services/pdfExport');
+      const didShare = await sharePdfBlob({ blob: pdf.blob, filename: pdf.filename, title: subject, text: body });
+
+      if (!didShare) {
+        const didSave = await savePdfBlob({ blob: pdf.blob, filename: pdf.filename });
+        if (!didSave) return;
+        const mailtoUrl = `mailto:${selectedDonor.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.location.href = mailtoUrl;
+      }
+
+      setShowExportModal(false);
+    } catch (e) {
+      console.error('Email send failed:', e);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const openWhatsApp = () => {
       if (!selectedDonor?.phone) return;
       const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
       const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
-      window.open(`https://wa.me/${formatted}`, '_blank');
+      window.location.href = `whatsapp://send?phone=${formatted}`;
   };
 
   const handleSaveEdit = (e: React.FormEvent) => {
@@ -643,7 +831,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
                    <div className="h-8 w-px bg-grey-light hidden sm:block"></div>
                    <div className="flex gap-2">
                        {canEdit && <button onClick={handleEditClick} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Edit2 size={14} /> <span className="hidden lg:inline">Edit</span></button>}
-                       <button onClick={() => setShowExportModal(true)} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
+                       <button onClick={() => { setSelectedReportType('all'); setSelectedCampaignId(undefined); setShowExportModal(true); }} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
                    </div>
                </div>
             </div>
@@ -1027,93 +1215,172 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       {showExportModal && selectedDonor && (
         <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
-                <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
+                {/* Compact Header */}
+                <div className="px-4 py-3 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                     <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
-                        <Printer size={16} /> Export Schedule
+                        <Printer size={16} /> Export for {selectedDonor.name}
                     </h3>
                     <button onClick={() => setShowExportModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                 </div>
-                <div className="p-6 space-y-3">
-                    <p className="text-xs text-grey-mid mb-4">Select which giving schedule to export for <strong>{selectedDonor.name}</strong></p>
+                <div className="p-4 space-y-3">
+                    {/* Inline Period Selection */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-bold text-grey-mid uppercase">Period:</span>
+                        <div className="flex gap-1">
+                            {(['year', 'last6months', 'all'] as const).map(period => (
+                                <button
+                                    key={period}
+                                    type="button"
+                                    onClick={() => setExportPeriod(period)}
+                                    className={`px-2 py-1 text-[11px] font-bold rounded transition-colors ${
+                                        exportPeriod === period
+                                            ? 'bg-ink text-white'
+                                            : 'bg-grey-light text-grey-dark hover:bg-ledger'
+                                    }`}
+                                >
+                                    {period === 'year' ? 'Year' : period === 'last6months' ? '6 Mo' : 'All'}
+                                </button>
+                            ))}
+                        </div>
+                        {exportPeriod === 'year' && (
+                            <select
+                                value={exportYear}
+                                onChange={(e) => setExportYear(Number(e.target.value))}
+                                className="px-2 py-1 text-xs font-mono bg-white border border-ledger rounded focus:ring-1 focus:ring-ink outline-none"
+                            >
+                                {[0, 1, 2].map(offset => {
+                                    const year = new Date().getFullYear() - offset;
+                                    return <option key={year} value={year}>{year}</option>;
+                                })}
+                            </select>
+                        )}
+                        {exportPeriod === 'last6months' && (
+                            <span className="text-[10px] text-grey-mid">
+                                {(() => {
+                                    const end = new Date();
+                                    const start = new Date();
+                                    start.setMonth(start.getMonth() - 6);
+                                    return `${start.toLocaleDateString('en-GB', {month:'short'})} – ${end.toLocaleDateString('en-GB', {month:'short', year:'numeric'})}`;
+                                })()}
+                            </span>
+                        )}
+                    </div>
 
+                    {/* Compact Report Type Selection */}
                     {(() => {
                         const incomeTransactions = donorTransactions.filter(t => t.type === 'Income');
                         const unrestrictedFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
                         const titheTransactions = incomeTransactions.filter(t => unrestrictedFundIds.includes(t.fundId));
                         const hasAllTransactions = incomeTransactions.length > 0;
                         const hasTitheTransactions = titheTransactions.length > 0;
+                        const restrictedFunds = funds.filter(f => f.type === 'Restricted');
 
                         return (
-                            <>
-                                <button
-                                    onClick={() => handlePrintSchedule('all')}
-                                    className="w-full p-4 text-left border border-ledger rounded-lg hover:border-ink hover:bg-paper transition-colors group"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="font-bold text-ink text-sm">All Schedules</div>
-                                            <div className="text-xs text-grey-mid mt-1">Export complete giving statement across all funds</div>
-                                        </div>
-                                        {hasAllTransactions && (
-                                            <div className="text-[10px] font-mono text-grey-mid bg-grey-light px-2 py-1 rounded">
-                                                Available
-                                            </div>
-                                        )}
-                                    </div>
-                                </button>
+                            <div className="space-y-2">
+                                <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Report Type</div>
 
-                                <button
-                                    onClick={() => handlePrintSchedule('tithes')}
-                                    className="w-full p-4 text-left border border-ledger rounded-lg hover:border-ink hover:bg-paper transition-colors group"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <div className="font-bold text-ink text-sm">Tithes</div>
-                                            <div className="text-xs text-grey-mid mt-1">Export tithe statement only</div>
-                                        </div>
-                                        {hasTitheTransactions && (
-                                            <div className="text-[10px] font-mono text-grey-mid bg-grey-light px-2 py-1 rounded">
-                                                Available
-                                            </div>
-                                        )}
-                                    </div>
-                                </button>
+                                {/* Grid of compact report options */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => { setSelectedReportType('all'); setSelectedCampaignId(undefined); }}
+                                        className={`p-2.5 text-left border rounded-lg transition-colors ${
+                                            selectedReportType === 'all' && !selectedCampaignId
+                                                ? 'border-ink bg-paper ring-1 ring-ink'
+                                                : 'border-ledger hover:border-grey-mid'
+                                        }`}
+                                    >
+                                        <div className="font-bold text-ink text-xs">All Schedules</div>
+                                        {hasAllTransactions && <div className="text-[9px] text-grey-mid mt-0.5">All funds</div>}
+                                    </button>
 
-                                {funds.filter(f => f.type === 'Restricted').length > 0 && (
-                                    <>
-                                        <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide pt-3 pb-1">Campaigns</div>
-                                        {funds.filter(f => f.type === 'Restricted').map(fund => {
-                                            const campaignTransactions = incomeTransactions.filter(t => t.fundId === fund._id);
-                                            const hasCampaignTransactions = campaignTransactions.length > 0;
+                                    <button
+                                        onClick={() => { setSelectedReportType('tithes'); setSelectedCampaignId(undefined); }}
+                                        className={`p-2.5 text-left border rounded-lg transition-colors ${
+                                            selectedReportType === 'tithes'
+                                                ? 'border-ink bg-paper ring-1 ring-ink'
+                                                : 'border-ledger hover:border-grey-mid'
+                                        }`}
+                                    >
+                                        <div className="font-bold text-ink text-xs">Tithes Only</div>
+                                        {hasTitheTransactions && <div className="text-[9px] text-grey-mid mt-0.5">Regular giving</div>}
+                                    </button>
 
-                                            return (
-                                                <button
-                                                    key={fund._id}
-                                                    onClick={() => handlePrintSchedule('campaign', fund._id)}
-                                                    className="w-full p-4 text-left border border-ledger rounded-lg hover:border-ink hover:bg-paper transition-colors group"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <div>
-                                                            <div className="font-bold text-ink text-sm">{fund.name}</div>
-                                                            <div className="text-xs text-grey-mid mt-1">{fund.description || 'Campaign fund'}</div>
-                                                        </div>
-                                                        {hasCampaignTransactions && (
-                                                            <div className="text-[10px] font-mono text-grey-mid bg-grey-light px-2 py-1 rounded">
-                                                                Available
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </>
-                                )}
-                            </>
+                                    {restrictedFunds.map(fund => {
+                                        const hasCampaignTransactions = incomeTransactions.some(t => t.fundId === fund._id);
+                                        return (
+                                            <button
+                                                key={fund._id}
+                                                onClick={() => { setSelectedReportType('campaign'); setSelectedCampaignId(fund._id); }}
+                                                className={`p-2.5 text-left border rounded-lg transition-colors ${
+                                                    selectedReportType === 'campaign' && selectedCampaignId === fund._id
+                                                        ? 'border-ink bg-paper ring-1 ring-ink'
+                                                        : 'border-ledger hover:border-grey-mid'
+                                                }`}
+                                            >
+                                                <div className="font-bold text-ink text-xs truncate">{fund.name}</div>
+                                                {hasCampaignTransactions && <div className="text-[9px] text-grey-mid mt-0.5">Campaign</div>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         );
                     })()}
 
-                    <div className="flex justify-end pt-4 border-t border-ledger mt-4">
-                        <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">
+                    {/* Action Buttons Row */}
+                    <div className="flex gap-2 pt-2">
+                        <button
+                            onClick={() => handlePrintSchedule(selectedReportType, selectedCampaignId)}
+                            disabled={isGeneratingPdf}
+                            className="flex-1 py-2.5 border border-ledger rounded-lg hover:bg-paper transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Printer size={16} />
+                            <span className="font-bold text-xs">{isGeneratingPdf ? 'Generating…' : 'Save PDF'}</span>
+                        </button>
+
+                        {selectedDonor.phone ? (
+                            <button
+                                onClick={() => handleSendViaWhatsApp(selectedReportType, selectedCampaignId)}
+                                disabled={isGeneratingPdf}
+                                className="flex-1 py-2.5 border border-green-300 bg-green-50 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <MessageSquare className="text-green-600" size={16} />
+                                <span className="font-bold text-xs text-green-700">WhatsApp</span>
+                            </button>
+                        ) : selectedDonor.email ? (
+                            <button
+                                onClick={() => handleSendViaEmail(selectedReportType, selectedCampaignId)}
+                                disabled={isGeneratingPdf}
+                                className="flex-1 py-2.5 border border-blue-300 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Mail className="text-blue-600" size={16} />
+                                <span className="font-bold text-xs text-blue-700">Email</span>
+                            </button>
+                        ) : null}
+
+                        {selectedDonor.phone && selectedDonor.email && (
+                            <button
+                                onClick={() => handleSendViaEmail(selectedReportType, selectedCampaignId)}
+                                disabled={isGeneratingPdf}
+                                className="py-2.5 px-3 border border-ledger rounded-lg hover:bg-paper transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Send via Email"
+                            >
+                                <Mail className="text-grey-mid" size={16} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* No contact warning if needed */}
+                    {!selectedDonor.phone && !selectedDonor.email && (
+                        <div className="flex items-center gap-2 text-[10px] text-amber-600 bg-amber-50 px-2 py-1.5 rounded">
+                            <AlertTriangle size={12} />
+                            <span>No contact info on file for sending</span>
+                        </div>
+                    )}
+
+                    {/* Cancel aligned right */}
+                    <div className="flex justify-end pt-1">
+                        <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-grey-mid font-bold uppercase text-[10px] tracking-wide hover:bg-paper rounded transition-colors">
                             Cancel
                         </button>
                     </div>
