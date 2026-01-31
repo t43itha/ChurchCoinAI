@@ -110,14 +110,15 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
 
   const handleExportPDF = async () => {
     if (!reportData) return;
-    const { generateMonthlyReportHTML } = await import('../services/pdfGenerator');
+    const { generateMonthlyReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
     const html = generateMonthlyReportHTML(reportData, churchDetails);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.print();
-    }
+
+    const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
+    const filename = `${churchPart}_Monthly_Report_${sanitizePdfFilenamePart(reportData.monthName)}`;
+    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml, savePdfBlob } = await import('../services/pdfExport');
+    const htmlWithTitle = ensureHtmlTitleForPdf(html, filename);
+    const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
+    await savePdfBlob({ blob, filename });
   };
 
   const handleExportExcel = async () => {
@@ -566,14 +567,15 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
 
   const handleExportPDF = async () => {
     if (!reportData) return;
-    const { generateAnnualReportHTML } = await import('../services/pdfGenerator');
+    const { generateAnnualReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
     const html = generateAnnualReportHTML(reportData, churchDetails);
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.print();
-    }
+
+    const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
+    const filename = `${churchPart}_Annual_Report_${sanitizePdfFilenamePart(String(year))}`;
+    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml, savePdfBlob } = await import('../services/pdfExport');
+    const htmlWithTitle = ensureHtmlTitleForPdf(html, filename);
+    const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
+    await savePdfBlob({ blob, filename });
   };
 
   const handleExportExcel = async () => {
