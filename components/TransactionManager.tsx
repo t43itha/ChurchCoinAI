@@ -4,7 +4,7 @@ import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
 
 interface Category {
@@ -38,6 +38,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const bulkCreateTransactions = useMutation(api.mutations.transactions.bulkCreate);
   const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
+  const categorizeWithRAG = useAction(api.actions.ai.categorizeWithRAG);
+  const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
 
   // Plaid bank sync
@@ -51,6 +53,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState<Partial<Transaction>[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
+
+  // Track original AI predictions for correction learning
+  const [originalPredictions, setOriginalPredictions] = useState<Map<number, {
+    category: string;
+    confidence: string;
+    predictionSource: 'gemini' | 'rag' | 'none';
+    ragScore?: number;
+  }>>(new Map());
   
   // Smart Link State
   const [isReconciling, setIsReconciling] = useState(false);
@@ -86,11 +96,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDateStart, setFilterDateStart] = useState('');
-  const [filterDateEnd, setFilterDateEnd] = useState('');
+  const today = new Date();
+  const [filterMonth, setFilterMonth] = useState<number | null>(today.getMonth());
+  const [filterYear, setFilterYear] = useState<number | null>(today.getFullYear());
   const [filterCategory, setFilterCategory] = useState('');
   const [filterFund, setFilterFund] = useState(initialFundId || '');
   const [filterStatus, setFilterStatus] = useState('all');
+
+  // Date filter options (matching Reports page)
+  const monthOptions = Array.from({ length: 12 }, (_, i) => ({
+    value: i,
+    label: new Date(2024, i).toLocaleDateString('en-GB', { month: 'long' }),
+  }));
+  const yearOptions = Array.from({ length: 5 }, (_, i) => today.getFullYear() - i);
 
   // Client-side pagination for performance
   const [displayLimit, setDisplayLimit] = useState(ITEMS_PER_PAGE); 
@@ -117,9 +135,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           if (!matchesDesc && !matchesCat && !matchesDonor && !matchesAmount) return false;
       }
 
-      // Date Range
-      if (filterDateStart && t.date < filterDateStart) return false;
-      if (filterDateEnd && t.date > filterDateEnd) return false;
+      // Month/Year Filter
+      if (filterMonth !== null || filterYear !== null) {
+        const txDate = new Date(t.date);
+        if (filterYear !== null && txDate.getFullYear() !== filterYear) return false;
+        if (filterMonth !== null && txDate.getMonth() !== filterMonth) return false;
+      }
 
       // Category (Dropdown)
       if (filterCategory && t.category !== filterCategory) return false;
@@ -135,7 +156,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, searchTerm, filterDateStart, filterDateEnd, filterCategory, filterFund, filterStatus]);
+  }, [transactions, searchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
   // Limit displayed transactions for performance
   const displayedTransactions = useMemo(() => {
@@ -193,11 +214,31 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const clearFilters = () => {
       setSearchTerm('');
-      setFilterDateStart('');
-      setFilterDateEnd('');
+      setFilterMonth(null);
+      setFilterYear(null);
       setFilterCategory('');
       setFilterFund('');
       setFilterStatus('all');
+  };
+
+  const handlePreviousMonth = () => {
+    if (filterMonth === null || filterYear === null) return;
+    if (filterMonth === 0) {
+      setFilterMonth(11);
+      setFilterYear(filterYear - 1);
+    } else {
+      setFilterMonth(filterMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (filterMonth === null || filterYear === null) return;
+    if (filterMonth === 11) {
+      setFilterMonth(0);
+      setFilterYear(filterYear + 1);
+    } else {
+      setFilterMonth(filterMonth + 1);
+    }
   };
 
   const executeBulkUpdate = async (updates: Partial<Transaction>) => {
@@ -522,31 +563,87 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handleApplyAI = async () => {
     setIsProcessingAI(true);
     try {
-        // Use simple categorization - no auto-matching donors/pledges
-        const descriptions = pendingTransactions.map(t => t.description || '');
-        const suggestions = await categorizeTransactionsAI({
-            descriptions,
+        // Use RAG-enhanced categorization - learns from existing transactions
+        const transactionsForAI = pendingTransactions.map(t => ({
+            description: t.description || '',
+            amount: t.amount || 0,
+            type: (t.type || 'Income') as 'Income' | 'Expenditure',
+        }));
+
+        const suggestions = await categorizeWithRAG({
+            transactions: transactionsForAI,
             fundNames: funds.map(f => f.name),
             categories: categoryNames
         });
+
+        // Track original AI predictions for correction learning
+        const predictions = new Map<number, {
+            category: string;
+            confidence: string;
+            predictionSource: 'gemini' | 'rag' | 'none';
+            ragScore?: number;
+        }>();
 
         const updatedPending = pendingTransactions.map((t, idx) => {
             const suggestion = suggestions[idx];
             if (!suggestion) return t;
             const suggestedFund = funds.find(f => f.name === suggestion.fundName);
 
+            // Store original prediction for later comparison
+            predictions.set(idx, {
+                category: suggestion.category || '',
+                confidence: suggestion.confidence || 'Low',
+                predictionSource: suggestion.predictionSource || 'none',
+                ragScore: suggestion.ragScore,
+            });
+
+            const sourceLabel = suggestion.predictionSource === 'rag'
+                ? `RAG Match (${Math.round((suggestion.ragScore || 0) * 100)}%)`
+                : suggestion.predictionSource === 'gemini'
+                    ? 'Gemini AI'
+                    : 'Manual';
+
             return {
                 ...t,
                 category: suggestion.category,
                 fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
                 isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.donorName || undefined,
-                notes: `AI Confidence: ${suggestion.confidence}`,
+                donorName: suggestion.extractedDonorName || undefined,
+                notes: `${sourceLabel} | Confidence: ${suggestion.confidence}`,
             };
         });
+
+        setOriginalPredictions(predictions);
         setPendingTransactions(updatedPending);
     } catch (error) {
         console.error("AI Error", error);
+        // Fallback to simple categorization if RAG fails
+        try {
+            const descriptions = pendingTransactions.map(t => t.description || '');
+            const fallbackSuggestions = await categorizeTransactionsAI({
+                descriptions,
+                fundNames: funds.map(f => f.name),
+                categories: categoryNames
+            });
+
+            const updatedPending = pendingTransactions.map((t, idx) => {
+                const suggestion = fallbackSuggestions[idx];
+                if (!suggestion) return t;
+                const suggestedFund = funds.find(f => f.name === suggestion.fundName);
+
+                return {
+                    ...t,
+                    category: suggestion.category,
+                    fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
+                    isGiftAidEligible: suggestion.isGiftAidEligible,
+                    donorName: suggestion.donorName || undefined,
+                    notes: `AI Confidence: ${suggestion.confidence}`,
+                };
+            });
+            setPendingTransactions(updatedPending);
+        } catch (fallbackError) {
+            console.error("Fallback AI Error", fallbackError);
+        }
     } finally {
         setIsProcessingAI(false);
     }
@@ -575,6 +672,35 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
         const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
 
+        // Record corrections for ML learning if we have original predictions
+        if (originalPredictions.size > 0 && result?.ids) {
+            const correctionsToRecord = pendingTransactions
+                .map((pt, idx) => {
+                    const prediction = originalPredictions.get(idx);
+                    if (!prediction || !result.ids[idx]) return null;
+
+                    return {
+                        transactionId: result.ids[idx] as Id<"transactions">,
+                        description: pt.description || '',
+                        aiPredictedCategory: prediction.category,
+                        aiConfidence: prediction.confidence,
+                        predictionSource: prediction.predictionSource,
+                        ragScore: prediction.ragScore,
+                        finalCategory: pt.category || categoryNames[0] || 'Donations',
+                    };
+                })
+                .filter((c): c is NonNullable<typeof c> => c !== null);
+
+            if (correctionsToRecord.length > 0) {
+                try {
+                    await recordCorrections({ corrections: correctionsToRecord });
+                } catch (correctionError) {
+                    console.warn('Failed to record corrections:', correctionError);
+                    // Don't block import if correction recording fails
+                }
+            }
+        }
+
         // Notify about completed pledges (if any were manually linked)
         if (result?.completedPledges && onPledgeCompleted) {
             for (const completed of result.completedPledges) {
@@ -584,6 +710,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
         setShowReviewModal(false);
         setPendingTransactions([]);
+        setOriginalPredictions(new Map()); // Clear predictions
     } catch (error) {
         console.error("Import failed:", error);
         alert("Failed to import transactions.");
@@ -713,22 +840,45 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-             {/* Simplified Date Range */}
-              <div className="flex items-center gap-2 px-3 py-2 bg-paper border border-ledger rounded-md h-[34px]">
-                  <Calendar size={14} className="text-grey-mid shrink-0" />
-                  <input 
-                    type="date" 
-                    value={filterDateStart} 
-                    onChange={(e) => setFilterDateStart(e.target.value)} 
-                    className="bg-transparent border-none text-xs text-grey-dark font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
-                  />
-                  <span className="text-ledger text-[10px] shrink-0 font-bold">—</span>
-                  <input 
-                    type="date" 
-                    value={filterDateEnd} 
-                    onChange={(e) => setFilterDateEnd(e.target.value)} 
-                    className="bg-transparent border-none text-xs text-grey-dark font-mono focus:ring-0 p-0 w-24 placeholder-slate-400" 
-                  />
+             {/* Month/Year Filter - Reports style with navigation */}
+              <div className="flex items-center bg-white border border-ledger rounded-md h-[34px]">
+                  <button
+                    onClick={handlePreviousMonth}
+                    disabled={filterMonth === null || filterYear === null}
+                    className="px-2 h-full hover:bg-grey-light transition-colors rounded-l-md disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ArrowLeft size={14} />
+                  </button>
+                  <div className="flex items-center gap-2 px-2">
+                    <Calendar size={14} className="text-grey-mid shrink-0" />
+                    <select
+                      value={filterMonth ?? ''}
+                      onChange={(e) => setFilterMonth(e.target.value === '' ? null : Number(e.target.value))}
+                      className="text-xs font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                    >
+                      <option value="">All Months</option>
+                      {monthOptions.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={filterYear ?? ''}
+                      onChange={(e) => setFilterYear(e.target.value === '' ? null : Number(e.target.value))}
+                      className="text-xs font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                    >
+                      <option value="">All Years</option>
+                      {yearOptions.map((y) => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={handleNextMonth}
+                    disabled={filterMonth === null || filterYear === null}
+                    className="px-2 h-full hover:bg-grey-light transition-colors rounded-r-md disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ArrowRight size={14} />
+                  </button>
               </div>
 
               {/* Status Filter */}
@@ -760,7 +910,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   <Tag size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
               </div>
 
-              {(searchTerm || filterDateStart || filterDateEnd || filterCategory || filterStatus !== 'all' || filterFund) && (
+              {(searchTerm || filterMonth !== null || filterYear !== null || filterCategory || filterStatus !== 'all' || filterFund) && (
                   <button onClick={clearFilters} className="h-[34px] px-3 text-xs text-error font-bold uppercase tracking-wide hover:bg-error-light rounded-md flex items-center gap-1 transition-colors">
                       <RotateCcw size={12} />
                   </button>

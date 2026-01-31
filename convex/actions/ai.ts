@@ -3,6 +3,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { GoogleGenAI, Type } from "@google/genai";
+import { transactionRAG } from "../lib/ragInstance";
 
 // Initialize Gemini AI with server-side API key
 const getAI = () => {
@@ -303,6 +304,237 @@ export const categorizeWithMatching = action({
   },
 });
 
+// RAG-enhanced categorization with semantic similarity search
+// This version learns from existing transactions and reduces Gemini API calls
+export const categorizeWithRAG = action({
+  args: {
+    transactions: v.array(
+      v.object({
+        description: v.string(),
+        amount: v.number(),
+        type: v.union(v.literal("Income"), v.literal("Expenditure")),
+      })
+    ),
+    fundNames: v.array(v.string()),
+    categories: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const ai = getAI();
+    const { api } = await import("../_generated/api");
+
+    const namespace = `org_${user.organizationId}`;
+
+    // STEP 1: Search RAG for similar transactions
+    const ragResults: Map<number, any[]> = new Map();
+    const needsAI: number[] = [];
+
+    for (let i = 0; i < args.transactions.length; i++) {
+      const tx = args.transactions[i];
+
+      try {
+        // Find similar past transactions using semantic search
+        const searchResponse = await transactionRAG.search(ctx, {
+          query: tx.description,
+          namespace,
+          limit: 3,
+        });
+
+        // Access the results array from the search response
+        const results = searchResponse.results || [];
+
+        // Filter results by score threshold
+        const highConfidenceResults = results.filter(
+          (r: any) => r.score >= 0.85
+        );
+
+        if (highConfidenceResults.length > 0 && highConfidenceResults[0].score >= 0.9) {
+          // High confidence match - use RAG result
+          ragResults.set(i, highConfidenceResults);
+        } else {
+          // Low confidence - needs Gemini
+          needsAI.push(i);
+          // Still store lower-confidence results for context
+          if (results.length > 0) {
+            ragResults.set(i, results);
+          }
+        }
+      } catch (error) {
+        console.log("RAG search failed for transaction, falling back to Gemini:", error);
+        needsAI.push(i);
+      }
+    }
+
+    // STEP 2: Build context from RAG results for Gemini
+    const buildRAGContext = () => {
+      const examples: string[] = [];
+      ragResults.forEach((results, idx) => {
+        if (results.length > 0) {
+          const best = results[0];
+          examples.push(
+            `"${args.transactions[idx].description}" -> Category: ${best.document?.category || "Unknown"}`
+          );
+        }
+      });
+      return examples.slice(0, 10).join("\n"); // Limit context size
+    };
+
+    // STEP 3: Call Gemini only for unmatched transactions
+    let aiSuggestions: any[] = [];
+    if (needsAI.length > 0) {
+      const ragContext = buildRAGContext();
+      const txsNeedingAI = needsAI.map((i) => args.transactions[i]);
+
+      const prompt = `
+        You are an expert UK Charity Treasurer assistant.
+        I have a list of bank transaction descriptions.
+        For each description:
+        1. Suggest the most appropriate Category and Fund Name.
+        2. Determine if it is likely Gift Aid Eligible (Individual donations usually are, business/cash/grants usually aren't).
+        3. Extract a Donor Name if present (e.g., "Ref: J SMITH" -> "J Smith", "FT-JOHN DOE" -> "John Doe").
+
+        ${ragContext ? `Here are examples of how this organization categorizes similar transactions:\n${ragContext}\n` : ""}
+
+        Available Categories: ${args.categories.join(", ")}
+        Available Funds: ${args.fundNames.join(", ")}
+
+        Rules:
+        - "Tithe" or "Donation" from a person is usually Gift Aid eligible.
+        - Utility bills go to General Fund / Utilities.
+        - Specific project references (e.g. 'Roof', 'Building') go to that Fund.
+        - Look for names after patterns like "Ref:", "FT-", "TFR", or at the start/end of descriptions.
+
+        Input Descriptions:
+        ${JSON.stringify(txsNeedingAI.map((t) => t.description))}
+      `;
+
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  description: { type: Type.STRING },
+                  category: { type: Type.STRING },
+                  fundName: { type: Type.STRING },
+                  confidence: {
+                    type: Type.STRING,
+                    description: "High, Medium, or Low",
+                  },
+                  isGiftAidEligible: { type: Type.BOOLEAN },
+                  donorName: { type: Type.STRING },
+                },
+              },
+            },
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        });
+
+        const text = response.text;
+        if (text) {
+          aiSuggestions = JSON.parse(text);
+        }
+      } catch (error) {
+        console.error("Gemini Categorization Error:", error);
+      }
+    }
+
+    // Fetch funds for mapping
+    const funds = await ctx.runQuery(api.queries.funds.list, {});
+    const fundNameToId = new Map<string, string>();
+    for (const fund of funds) {
+      fundNameToId.set(fund.name.toLowerCase(), fund._id);
+    }
+
+    // STEP 4: Combine results
+    let aiIndex = 0;
+    const results = args.transactions.map((tx, i) => {
+      const ragMatch = ragResults.get(i);
+      const isAINeeded = needsAI.includes(i);
+
+      if (ragMatch && ragMatch.length > 0 && ragMatch[0].score >= 0.9) {
+        // Use RAG result for high-confidence matches
+        const best = ragMatch[0];
+        const doc = best.document || {};
+
+        return {
+          description: tx.description,
+          amount: tx.amount,
+          type: tx.type,
+          category: doc.category || "",
+          fundName: "", // Will be mapped from fundId
+          confidence: best.score >= 0.95 ? "High" : "Medium",
+          isGiftAidEligible: doc.isGiftAidEligible ?? false,
+          extractedDonorName: doc.donorName || null,
+          predictionSource: "rag" as const,
+          ragScore: best.score,
+          matchedDonorId: null,
+          matchedDonorName: null,
+          isNewDonor: false,
+          matchedPledgeId: null,
+          matchedPledgeName: null,
+        };
+      } else if (isAINeeded) {
+        // Use Gemini result
+        const suggestion = aiSuggestions[aiIndex] || {};
+        aiIndex++;
+
+        const suggestedFundName = suggestion.fundName || "";
+        const fundId = fundNameToId.get(suggestedFundName.toLowerCase());
+
+        return {
+          description: tx.description,
+          amount: tx.amount,
+          type: tx.type,
+          category: suggestion.category || "",
+          fundName: suggestedFundName,
+          confidence: suggestion.confidence || "Low",
+          isGiftAidEligible: suggestion.isGiftAidEligible ?? false,
+          extractedDonorName: suggestion.donorName || null,
+          predictionSource: "gemini" as const,
+          ragScore: undefined,
+          matchedDonorId: null,
+          matchedDonorName: null,
+          isNewDonor: Boolean(suggestion.donorName),
+          matchedPledgeId: null,
+          matchedPledgeName: null,
+        };
+      } else {
+        // Should not happen, but fallback
+        return {
+          description: tx.description,
+          amount: tx.amount,
+          type: tx.type,
+          category: "",
+          fundName: "",
+          confidence: "Low",
+          isGiftAidEligible: false,
+          extractedDonorName: null,
+          predictionSource: "none" as const,
+          ragScore: undefined,
+          matchedDonorId: null,
+          matchedDonorName: null,
+          isNewDonor: false,
+          matchedPledgeId: null,
+          matchedPledgeName: null,
+        };
+      }
+    });
+
+    // Log stats
+    const ragMatches = results.filter((r) => r.predictionSource === "rag").length;
+    const geminiMatches = results.filter((r) => r.predictionSource === "gemini").length;
+    console.log(`RAG Categorization: ${ragMatches} RAG matches, ${geminiMatches} Gemini calls`);
+
+    return results;
+  },
+});
+
 // Generate strategic insights for dashboard
 export const generateInsights = action({
   args: {
@@ -589,23 +821,33 @@ export const generateCampaignReport = action({
   },
 });
 
-// Generate Annual Statement (SOFA)
+// Generate Annual Statement (SOFA) - Updated for RCI category grouping
 export const generateAnnualStatement = action({
   args: {
     period: v.string(),
-    incomeByCategory: v.string(), // JSON object
-    expenditureByCategory: v.string(), // JSON object
+    incomeByCategory: v.string(), // JSON object - can include mainCategory grouping
+    expenditureByCategory: v.string(), // JSON object - can include mainCategory grouping
     totalIncome: v.number(),
     totalExpenditure: v.number(),
+    incomeByMainCategory: v.optional(v.string()), // Optional RCI-style grouped data
+    expenditureByMainCategory: v.optional(v.string()), // Optional RCI-style grouped data
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
     const ai = getAI();
 
+    // Use mainCategory grouping if provided, otherwise fall back to standard categories
+    const incomeData = args.incomeByMainCategory
+      ? JSON.parse(args.incomeByMainCategory)
+      : JSON.parse(args.incomeByCategory);
+    const expenditureData = args.expenditureByMainCategory
+      ? JSON.parse(args.expenditureByMainCategory)
+      : JSON.parse(args.expenditureByCategory);
+
     const data = {
       period: args.period,
-      income: JSON.parse(args.incomeByCategory),
-      expenditure: JSON.parse(args.expenditureByCategory),
+      income: incomeData,
+      expenditure: expenditureData,
       totals: {
         income: args.totalIncome,
         expenditure: args.totalExpenditure,
@@ -614,18 +856,24 @@ export const generateAnnualStatement = action({
     };
 
     const prompt = `
-      Create a formal "Annual Statement of Financial Activities" (SOFA) report.
-      This is a standard financial report for a UK Charity.
+      Create a formal "Annual Statement of Financial Activities" (SOFA) report for RCI Missions.
+      This is a standard financial report for a UK Charity following the RCI reporting structure.
 
       Data:
       ${JSON.stringify(data)}
 
+      RCI Category Structure (if applicable):
+      Income: Donations (Tithe, Offering, Thanksgiving), Building Fund, Charitable Activities, Other Income
+      Expenditure: Major Programs, Ministry Costs, Staff & Volunteer Costs, Premises Costs, Mission Costs, Admin & Governance
+
       Instructions:
       1. Create a clear structure with "Incoming Resources" and "Resources Expended".
-      2. Present the breakdown by Category in a table format.
-      3. Show the "Net Movement in Funds" at the bottom.
-      4. Add a brief executive summary interpreting the numbers (e.g., did we break even? where did most money come from?).
-      5. Use professional Markdown formatting.
+      2. Group categories by their main category (e.g., all donation types under "Donations").
+      3. Present the breakdown in a hierarchical table format showing main categories and subcategories.
+      4. Show the "Net Movement in Funds" at the bottom.
+      5. Add a brief executive summary interpreting the numbers suitable for presentation to the Senior Pastor.
+      6. Highlight any notable trends (largest income sources, key expenditure areas).
+      7. Use professional Markdown formatting suitable for a formal church report.
     `;
 
     const response = await ai.models.generateContent({
@@ -637,26 +885,38 @@ export const generateAnnualStatement = action({
   },
 });
 
-// Generate Monthly Breakdown
+// Generate Monthly Breakdown - Updated for RCI context
 export const generateMonthlyBreakdown = action({
   args: {
     monthlyData: v.string(), // JSON array of { month, income, expense }
+    categoryBreakdown: v.optional(v.string()), // Optional breakdown by mainCategory
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
     const ai = getAI();
 
+    const categoryContext = args.categoryBreakdown
+      ? `\nCategory Breakdown by Month:\n${args.categoryBreakdown}`
+      : '';
+
     const prompt = `
-      Create a "Monthly Financial Performance" report.
+      Create a "Monthly Financial Performance" report for RCI Missions.
 
       Data (Time Series):
       ${args.monthlyData}
+      ${categoryContext}
+
+      RCI Category Context:
+      Income categories: Donations (Tithe, Offering, Thanksgiving), Building Fund, Charitable Activities, Other Income
+      Expenditure categories: Major Programs, Ministry Costs, Staff & Volunteer Costs, Premises Costs, Mission Costs, Admin & Governance
 
       Instructions:
       1. Present a Markdown table showing Month, Income, Expenditure, and Net Result for each month.
       2. Identify any seasonal trends or unusual months (e.g. "Highest income was in...").
-      3. Provide a brief commentary on the consistency of cash flow.
-      4. Use professional Markdown.
+      3. If category breakdown is provided, highlight which categories drove the trends.
+      4. Provide a brief commentary on the consistency of cash flow.
+      5. Note any months where expenditure exceeded income and suggest potential causes.
+      6. Use professional Markdown suitable for presentation to church leadership.
     `;
 
     const response = await ai.models.generateContent({
@@ -753,6 +1013,72 @@ export const chatWithTreasurer = action({
       config: {
         systemInstruction: systemInstruction,
       },
+    });
+
+    return response.text;
+  },
+});
+
+// Generate RCI Monthly Narrative Commentary
+// Creates narrative commentary suitable for Senior Pastor presentation
+export const generateRCIMonthlyNarrative = action({
+  args: {
+    monthlyReportData: v.string(), // JSON string of MonthlyReportData
+  },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const ai = getAI();
+
+    const reportData = JSON.parse(args.monthlyReportData);
+
+    const prompt = `
+      Create a narrative commentary for the RCI Missions Monthly Financial Report.
+      This commentary will be presented to the Senior Pastor.
+
+      Monthly Report Data:
+      ${JSON.stringify(reportData, null, 2)}
+
+      RCI Category Structure:
+      Income: Donations (Tithe, Offering, Thanksgiving), Building Fund, Charitable Activities, Other Income
+      Expenditure: Major Programs, Ministry Costs, Staff & Volunteer Costs, Premises Costs, Mission Costs, Admin & Governance
+
+      Instructions:
+      Create a concise (200-300 words) narrative that:
+
+      1. **Opening Summary**: Start with a one-sentence summary of the month's financial position.
+
+      2. **Income Highlights**:
+         - Total income for the month
+         - Notable changes in key categories (especially Tithes/Offerings)
+         - Any significant one-time donations or new giving patterns
+
+      3. **Expenditure Notes**:
+         - Key expenditure areas
+         - Any significant purchases or payments
+         - Comparison to typical monthly spending
+
+      4. **Gift Aid Update**:
+         - Total Gift Aid eligible amount
+         - Claimable amount from HMRC
+         - Any action needed on Gift Aid declarations
+
+      5. **Recommendations** (if any):
+         - Suggest any actions the church leadership should consider
+         - Flag any concerns (e.g., declining income trends, unexpected expenses)
+
+      6. **Closing Statement**: End with a faith-affirming note appropriate for a church context.
+
+      Format:
+      - Use clear headers for each section
+      - Use bullet points for key metrics
+      - Be factual but warm in tone
+      - Avoid financial jargon where possible
+      - Use British English and GBP currency format (£)
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-lite",
+      contents: prompt,
     });
 
     return response.text;

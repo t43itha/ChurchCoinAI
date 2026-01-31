@@ -189,3 +189,75 @@ export interface ChartDataPoint {
   name: string;
   value: number;
 }
+
+// RCI Category System Types
+export interface Category {
+  _id: string;
+  name: string;
+  mainCategory?: string;
+  transactionType?: TransactionType;
+  displayOrder?: number;
+}
+
+export interface CategoryGroup {
+  mainCategory: string;
+  subcategories: { name: string; total: number }[];
+  total: number;
+}
+
+// Monthly Report Types (RCI Monthly Accounts)
+export interface MonthlyReportData {
+  year: number;
+  month: number;
+  monthName: string;
+  receipts: CategoryGroup[];        // Income grouped by mainCategory
+  payments: CategoryGroup[];        // Expenditure grouped by mainCategory
+  weeklyBreakdown: WeeklyBreakdownItem[];
+  tithes: TitheBreakdownItem[];
+  giftAidSummary: {
+    eligible: number;
+    claimable: number;
+  };
+  totals: {
+    grossIncome: number;
+    totalExpenditure: number;
+    netBankable: number;
+  };
+}
+
+export interface WeeklyBreakdownItem {
+  weekEnding: string;
+  receiptsTotal: number;
+  paymentsTotal: number;
+  byCategory: Record<string, number>;
+}
+
+export interface TitheBreakdownItem {
+  donorName: string;
+  amount: number;
+  isGiftAidEligible: boolean;
+}
+
+// Annual Report Types (RCI Annual Report)
+export interface AnnualReportData {
+  year: number;
+  incomeByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }>;
+  expenditureByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }>;
+  monthlyTrend: { month: string; income: number; expenditure: number }[];
+  yearOverYear?: {
+    current: { income: number; expenditure: number };
+    previous: { income: number; expenditure: number };
+    incomeChange: number;
+    expenditureChange: number;
+  };
+  giftAidAnnual: {
+    totalEligible: number;
+    totalClaimable: number;
+  };
+  fundBalances: { fund: string; balance: number; type: string }[];
+  totals: {
+    totalIncome: number;
+    totalExpenditure: number;
+    netMovement: number;
+  };
+}
