@@ -6,6 +6,7 @@ import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
+import DonorSearchInput from './DonorSearchInput';
 
 interface Category {
   _id: string;
@@ -1538,12 +1539,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                         <div>
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Donor Name (Optional)</label>
-                            <input
-                                type="text"
-                                value={editingTransaction.donorName || ''} 
-                                onChange={(e) => setEditingTransaction({...editingTransaction, donorName: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
-                                placeholder="Ref..."
+                            <DonorSearchInput
+                                value={editingTransaction.donorName || ''}
+                                onChange={(name) => setEditingTransaction({...editingTransaction, donorName: name})}
+                                onDonorSelect={(donor) => setEditingTransaction({
+                                    ...editingTransaction,
+                                    donorName: donor.donorName,
+                                    donorId: donor.donorId ?? undefined,
+                                    isGiftAidEligible: donor.isGiftAidActive,
+                                })}
+                                placeholder="Search or add donor..."
                             />
                         </div>
                     </div>
