@@ -1451,6 +1451,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 isReconciled: editingTransaction.isReconciled,
                                 isGiftAidEligible: editingTransaction.isGiftAidEligible,
                                 donorName: editingTransaction.donorName,
+                                ...(editingTransaction.donorId
+                                  ? { donorId: editingTransaction.donorId as Id<"donors"> }
+                                  : {}),
                                 pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null
                             });
                             // Check if pledge was completed

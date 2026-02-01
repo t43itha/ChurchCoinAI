@@ -223,7 +223,12 @@ export const linkOrphanedRecords = mutation({
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
-      .filter((q) => q.eq(q.field("donorName"), args.oldName))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("donorName"), args.oldName),
+          q.eq(q.field("donorId"), undefined)
+        )
+      )
       .collect();
 
     for (const t of transactions) {
@@ -235,7 +240,12 @@ export const linkOrphanedRecords = mutation({
     const pledges = await ctx.db
       .query("pledges")
       .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
-      .filter((q) => q.eq(q.field("donorName"), args.oldName))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("donorName"), args.oldName),
+          q.eq(q.field("donorId"), undefined)
+        )
+      )
       .collect();
 
     for (const p of pledges) {
