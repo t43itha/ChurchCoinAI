@@ -145,6 +145,7 @@ export default defineSchema({
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
     paymentMethod: v.optional(v.union(
       v.literal("Cash"),
+      v.literal("Cheque"),
       v.literal("Bank"),
       v.literal("Card"),
       v.literal("Online")

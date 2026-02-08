@@ -17,6 +17,7 @@ export type FundType = (typeof FundType)[keyof typeof FundType];
 
 export const PaymentMethod = {
   CASH: "Cash",
+  CHEQUE: "Cheque",
   BANK: "Bank",
   CARD: "Card",
   ONLINE: "Online",
