@@ -675,6 +675,32 @@ export const generateMonthlyReportHTML = (
         </tbody>
       </table>
 
+      <div class="section-title">Mission Tithe</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Week Ending</th>
+            <th class="right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${reportData.missionTithe.weeklyBreakdown.map(week => `
+            <tr>
+              <td>${new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
+              <td class="amount">${formatCurrency(week.total)}</td>
+            </tr>
+          `).join('')}
+          <tr class="total-row">
+            <td>Total</td>
+            <td class="amount">${formatCurrency(reportData.missionTithe.total)}</td>
+          </tr>
+          <tr class="total-row">
+            <td><strong>Mission Tithe to Pay (10%)</strong></td>
+            <td class="amount" style="font-weight: 700;">${formatCurrency(reportData.missionTithe.titheToPay)}</td>
+          </tr>
+        </tbody>
+      </table>
+
       ${reportData.tithes.length > 0 ? `
         <div class="section-title">Tithes Breakdown</div>
         <table>
