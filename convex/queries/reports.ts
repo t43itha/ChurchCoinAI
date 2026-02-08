@@ -2,6 +2,19 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 
+// Helper to check if a category is a donation category (Offerings + Tithes + Thanksgiving)
+const isDonationCategory = (category: string): boolean => {
+  const lower = category.toLowerCase();
+  return (
+    lower === "tithe" ||
+    lower === "tithes" ||
+    lower === "tithes & first fruits" ||
+    lower === "first fruit" ||
+    lower === "offering" ||
+    lower === "thanksgiving"
+  );
+};
+
 // Helper to check if a category is a tithe-related category
 const isTitheCategory = (category: string): boolean => {
   const lower = category.toLowerCase();
@@ -442,6 +455,23 @@ export const monthlyReportData = query({
       };
     });
 
+    // Mission Tithe breakdown (10% of Offerings + Tithes + Thanksgiving)
+    const missionTitheBreakdown = sundays.map((weekEnding) => {
+      const weekStart = new Date(weekEnding);
+      weekStart.setDate(weekStart.getDate() - 6);
+      const weekStartStr = weekStart.toISOString().split("T")[0];
+
+      const weekDonations = incomeTransactions.filter(
+        (t) => t.date >= weekStartStr && t.date <= weekEnding && isDonationCategory(t.category)
+      );
+
+      const total = weekDonations.reduce((sum, t) => sum + t.amount, 0);
+
+      return { weekEnding, total };
+    });
+
+    const missionTitheTotal = missionTitheBreakdown.reduce((sum, w) => sum + w.total, 0);
+
     // Tithes breakdown (individual donors for tithe category)
     const tithes = incomeTransactions
       .filter((t) => isTitheCategory(t.category) && t.donorName)
@@ -470,6 +500,11 @@ export const monthlyReportData = query({
       receipts,
       payments,
       weeklyBreakdown,
+      missionTithe: {
+        weeklyBreakdown: missionTitheBreakdown,
+        total: missionTitheTotal,
+        titheToPay: missionTitheTotal * 0.1,
+      },
       tithes,
       giftAidSummary: {
         eligible: giftAidEligible,

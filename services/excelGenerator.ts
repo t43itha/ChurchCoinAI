@@ -94,6 +94,22 @@ export const generateMonthlyReportXLSX = async (
   const weeklySheet = XLSX.utils.aoa_to_sheet(weeklyData);
   XLSX.utils.book_append_sheet(workbook, weeklySheet, 'Weekly');
 
+  // Mission Tithe Sheet
+  const missionTitheData: any[][] = [
+    ['Mission Tithe'],
+    [''],
+    ['Week Ending', 'Total'],
+  ];
+  reportData.missionTithe.weeklyBreakdown.forEach(week => {
+    missionTitheData.push([week.weekEnding, week.total]);
+  });
+  missionTitheData.push(['', '']);
+  missionTitheData.push(['Total', reportData.missionTithe.total]);
+  missionTitheData.push(['Mission Tithe to Pay (10%)', reportData.missionTithe.titheToPay]);
+
+  const missionTitheSheet = XLSX.utils.aoa_to_sheet(missionTitheData);
+  XLSX.utils.book_append_sheet(workbook, missionTitheSheet, 'Mission Tithe');
+
   // Tithes Sheet
   if (reportData.tithes.length > 0) {
     const tithesData = [

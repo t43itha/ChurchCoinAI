@@ -213,6 +213,11 @@ export interface MonthlyReportData {
   receipts: CategoryGroup[];        // Income grouped by mainCategory
   payments: CategoryGroup[];        // Expenditure grouped by mainCategory
   weeklyBreakdown: WeeklyBreakdownItem[];
+  missionTithe: {
+    weeklyBreakdown: MissionTitheItem[];
+    total: number;
+    titheToPay: number;  // 10% of total
+  };
   tithes: TitheBreakdownItem[];
   giftAidSummary: {
     eligible: number;
@@ -230,6 +235,11 @@ export interface WeeklyBreakdownItem {
   receiptsTotal: number;
   paymentsTotal: number;
   byCategory: Record<string, number>;
+}
+
+export interface MissionTitheItem {
+  weekEnding: string;
+  total: number;  // Combined Offerings + Tithes + Thanksgiving
 }
 
 export interface TitheBreakdownItem {

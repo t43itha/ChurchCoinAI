@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
-import { Transaction, Fund, Pledge, ChurchDetails, CategoryGroup, WeeklyBreakdownItem, TitheBreakdownItem } from '../types';
+import { Transaction, Fund, Pledge, ChurchDetails, CategoryGroup, WeeklyBreakdownItem, TitheBreakdownItem, MissionTitheItem } from '../types';
 import {
   Calendar,
   FileText,
@@ -419,6 +419,59 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
                   </td>
                   <td className={`px-4 py-3 text-right font-mono text-sm ${reportData.totals.netBankable >= 0 ? 'text-ink' : 'text-error'}`}>
                     {formatCurrency(reportData.totals.netBankable)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Mission Tithe */}
+      <div className="swiss-card">
+        <button
+          onClick={() => toggleSection('missionTithe')}
+          className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            {expandedSections.has('missionTithe') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+            <h3 className="font-bold text-ink">Mission Tithe</h3>
+          </div>
+          <span className="font-mono font-bold text-amber">
+            {formatCurrency(reportData.missionTithe.titheToPay)}
+          </span>
+        </button>
+
+        {expandedSections.has('missionTithe') && (
+          <div className="border-t border-ledger overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-ledger bg-paper">
+                  <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Week Ending</th>
+                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportData.missionTithe.weeklyBreakdown.map((week: MissionTitheItem, idx: number) => (
+                  <tr key={week.weekEnding} className={`border-b border-ledger ${idx % 2 === 0 ? '' : 'bg-grey-light/20'}`}>
+                    <td className="px-4 py-3 text-sm font-medium text-ink">
+                      {new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm text-ink">
+                      {formatCurrency(week.total)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-grey-light/50 font-bold">
+                  <td className="px-4 py-3 text-sm text-ink">Total</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm text-ink">
+                    {formatCurrency(reportData.missionTithe.total)}
+                  </td>
+                </tr>
+                <tr className="bg-grey-light/50 font-bold">
+                  <td className="px-4 py-3 text-sm text-amber">Mission Tithe to Pay (10%)</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm text-amber">
+                    {formatCurrency(reportData.missionTithe.titheToPay)}
                   </td>
                 </tr>
               </tbody>
