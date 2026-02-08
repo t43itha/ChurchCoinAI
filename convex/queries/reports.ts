@@ -455,6 +455,42 @@ export const monthlyReportData = query({
       };
     });
 
+    // Add partial-week row for days after the last Sunday of the month
+    const lastSunday = sundays[sundays.length - 1];
+    if (lastSunday && lastSunday < endDateStr) {
+      const dayAfterLastSunday = new Date(lastSunday);
+      dayAfterLastSunday.setDate(dayAfterLastSunday.getDate() + 1);
+      const partialStartStr = dayAfterLastSunday.toISOString().split("T")[0];
+
+      const partialWeekTransactions = allTransactions.filter(
+        (t) => t.date >= partialStartStr && t.date <= endDateStr
+      );
+
+      const partialReceipts = partialWeekTransactions
+        .filter((t) => t.type === "Income")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const partialPayments = partialWeekTransactions
+        .filter((t) => t.type === "Expenditure")
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const partialByCategory = partialWeekTransactions.reduce(
+        (acc, t) => {
+          acc[t.category] = (acc[t.category] || 0) + t.amount;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+
+      if (partialReceipts > 0 || partialPayments > 0) {
+        weeklyBreakdown.push({
+          weekEnding: endDateStr,
+          receiptsTotal: partialReceipts,
+          paymentsTotal: partialPayments,
+          byCategory: partialByCategory,
+        });
+      }
+    }
+
     // Mission Tithe breakdown (10% of Offerings + Tithes + Thanksgiving)
     const missionTitheBreakdown = sundays.map((weekEnding) => {
       const weekStart = new Date(weekEnding);
@@ -470,7 +506,26 @@ export const monthlyReportData = query({
       return { weekEnding, total };
     });
 
-    const missionTitheTotal = missionTitheBreakdown.reduce((sum, w) => sum + w.total, 0);
+    // Add partial-week row for donation days after the last Sunday
+    if (lastSunday && lastSunday < endDateStr) {
+      const dayAfterLastSunday = new Date(lastSunday);
+      dayAfterLastSunday.setDate(dayAfterLastSunday.getDate() + 1);
+      const partialStartStr = dayAfterLastSunday.toISOString().split("T")[0];
+
+      const partialWeekDonations = incomeTransactions.filter(
+        (t) => t.date >= partialStartStr && t.date <= endDateStr && isDonationCategory(t.category)
+      );
+      const partialTotal = partialWeekDonations.reduce((sum, t) => sum + t.amount, 0);
+
+      if (partialTotal > 0) {
+        missionTitheBreakdown.push({ weekEnding: endDateStr, total: partialTotal });
+      }
+    }
+
+    // Compute total from ALL month's donations (not just weekly breakdown sum)
+    const missionTitheTotal = incomeTransactions
+      .filter((t) => isDonationCategory(t.category))
+      .reduce((sum, t) => sum + t.amount, 0);
 
     // Tithes breakdown (individual donors for tithe category)
     const tithes = incomeTransactions
