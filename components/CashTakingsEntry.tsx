@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
+  FileCheck,
 } from 'lucide-react';
 
 interface Category {
@@ -39,6 +40,7 @@ interface NamedContributionEntry {
   isGiftAidEligible: boolean;
   type: ContributionType;
   fundId?: string; // Required when type='Pledge'
+  paymentMethod: "Cash" | "Cheque";
 }
 
 interface CategoryTotalEntry {
@@ -46,6 +48,7 @@ interface CategoryTotalEntry {
   category: string;
   fundId: string;
   amount: string;
+  paymentMethod: "Cash" | "Cheque";
 }
 
 interface PettyCashEntry {
@@ -92,10 +95,10 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
   // Entries
   const [namedContributions, setNamedContributions] = useState<NamedContributionEntry[]>([
-    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe' },
+    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe', paymentMethod: "Cash" },
   ]);
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotalEntry[]>([
-    { id: generateId(), category: "Offering", fundId: "", amount: "" },
+    { id: generateId(), category: "Offering", fundId: "", amount: "", paymentMethod: "Cash" },
   ]);
   const [pettyCash, setPettyCash] = useState<PettyCashEntry[]>([]);
 
@@ -140,7 +143,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const addContribution = () => {
     setNamedContributions([
       ...namedContributions,
-      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe' },
+      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe', paymentMethod: "Cash" },
     ]);
   };
 
@@ -158,7 +161,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const addCategory = () => {
     setCategoryTotals([
       ...categoryTotals,
-      { id: generateId(), category: "", fundId: unrestrictedFund?._id || "", amount: "" },
+      { id: generateId(), category: "", fundId: unrestrictedFund?._id || "", amount: "", paymentMethod: "Cash" },
     ]);
   };
 
@@ -222,11 +225,13 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
           isGiftAidEligible: t.isGiftAidEligible,
           type: t.type,
           fundId: t.fundId as Id<"funds"> | undefined,
+          paymentMethod: t.paymentMethod,
         })),
         categoryTotals: validCategories.map((c) => ({
           category: c.category,
           fundId: c.fundId as Id<"funds">,
           amount: parseFloat(c.amount),
+          paymentMethod: c.paymentMethod,
         })),
         pettyCash: validPetty.map((p) => ({
           purpose: p.purpose,
@@ -271,8 +276,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               <Banknote className="h-5 w-5 text-sage-700" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Record Cash Collection</h2>
-              <p className="text-sm text-gray-500">Enter weekly cash takings</p>
+              <h2 className="text-lg font-bold">Record Cash & Cheques</h2>
+              <p className="text-sm text-gray-500">Enter weekly cash and cheque takings</p>
             </div>
           </div>
           <button
@@ -354,6 +359,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                 <div className="w-28">Type</div>
                 <div className="flex-1 min-w-[120px]">Donor Name</div>
                 <div className="w-24 text-right">Amount</div>
+                <div className="w-20 text-center">Method</div>
                 <div className="w-20 text-center">Gift Aid</div>
                 <div className="w-10"></div>
               </div>
@@ -445,6 +451,30 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       </div>
                     </div>
 
+                    {/* Cash/Cheque Toggle */}
+                    <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
+                      <span className="sm:hidden text-xs font-medium text-gray-600">Method</span>
+                      <button
+                        type="button"
+                        onClick={() => updateContribution(contribution.id, {
+                          paymentMethod: contribution.paymentMethod === "Cash" ? "Cheque" : "Cash"
+                        })}
+                        title={contribution.paymentMethod === "Cash" ? "Cash — click to switch to Cheque" : "Cheque — click to switch to Cash"}
+                        className={`relative flex items-center gap-1 px-2 h-9 rounded-md border text-xs font-medium transition-all
+                          ${contribution.paymentMethod === "Cheque"
+                            ? 'bg-blue-50 border-blue-400 text-blue-700'
+                            : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+                          }`}
+                      >
+                        {contribution.paymentMethod === "Cheque" ? (
+                          <FileCheck className="h-3.5 w-3.5" />
+                        ) : (
+                          <Banknote className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">{contribution.paymentMethod === "Cheque" ? "Chq" : "Cash"}</span>
+                      </button>
+                    </div>
+
                     {/* Gift Aid Toggle */}
                     <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
                       <span className="sm:hidden text-xs font-medium text-gray-600">Gift Aid</span>
@@ -509,6 +539,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                 <div className="flex-1 min-w-[150px]">Category</div>
                 <div className="flex-1 min-w-[150px]">Fund</div>
                 <div className="w-32 text-right pr-3">Amount</div>
+                <div className="w-20 text-center">Method</div>
                 <div className="w-10"></div>
               </div>
 
@@ -580,6 +611,30 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                           className="w-full h-9 pl-7 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
                         />
                       </div>
+                    </div>
+
+                    {/* Cash/Cheque Toggle */}
+                    <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
+                      <span className="sm:hidden text-xs font-medium text-gray-600">Method</span>
+                      <button
+                        type="button"
+                        onClick={() => updateCategory(cat.id, {
+                          paymentMethod: cat.paymentMethod === "Cash" ? "Cheque" : "Cash"
+                        })}
+                        title={cat.paymentMethod === "Cash" ? "Cash — click to switch to Cheque" : "Cheque — click to switch to Cash"}
+                        className={`relative flex items-center gap-1 px-2 h-9 rounded-md border text-xs font-medium transition-all
+                          ${cat.paymentMethod === "Cheque"
+                            ? 'bg-blue-50 border-blue-400 text-blue-700'
+                            : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
+                          }`}
+                      >
+                        {cat.paymentMethod === "Cheque" ? (
+                          <FileCheck className="h-3.5 w-3.5" />
+                        ) : (
+                          <Banknote className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">{cat.paymentMethod === "Cheque" ? "Chq" : "Cash"}</span>
+                      </button>
                     </div>
 
                     {/* Delete Button */}

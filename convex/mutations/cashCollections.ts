@@ -98,6 +98,7 @@ export const submitCollection = mutation({
           v.literal("Offering")
         ),
         fundId: v.optional(v.id("funds")), // Required for Pledge type
+        paymentMethod: v.optional(v.union(v.literal("Cash"), v.literal("Cheque"))),
       })
     ),
     // Category totals (offering, restricted funds, etc.)
@@ -106,6 +107,7 @@ export const submitCollection = mutation({
         category: v.string(),
         fundId: v.id("funds"),
         amount: v.number(),
+        paymentMethod: v.optional(v.union(v.literal("Cash"), v.literal("Cheque"))),
       })
     ),
     // Petty cash withdrawals
@@ -190,7 +192,7 @@ export const submitCollection = mutation({
         isGiftAidEligible: contribution.isGiftAidEligible,
         donorName,
         donorId,
-        paymentMethod: "Cash",
+        paymentMethod: contribution.paymentMethod ?? "Cash",
         cashCollectionId,
         createdAt: Date.now(),
       });
@@ -215,7 +217,7 @@ export const submitCollection = mutation({
         category: categoryTotal.category,
         fundId: categoryTotal.fundId,
         isReconciled: false,
-        paymentMethod: "Cash",
+        paymentMethod: categoryTotal.paymentMethod ?? "Cash",
         cashCollectionId,
         createdAt: Date.now(),
       });
