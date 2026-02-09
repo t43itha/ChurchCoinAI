@@ -46,7 +46,10 @@ export const create = mutation({
       .withIndex("by_email_organization", (q) =>
         q.eq("email", email).eq("organizationId", currentUser.organizationId)
       )
-      .filter((q) => q.eq(q.field("status"), "pending"))
+      .filter((q) => q.and(
+        q.eq(q.field("status"), "pending"),
+        q.gt(q.field("expiresAt"), Date.now())
+      ))
       .first();
 
     if (existingInvitation) {
