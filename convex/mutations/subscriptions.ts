@@ -1,4 +1,4 @@
-import { mutation, internalMutation } from "../_generated/server";
+import { query, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, isAdmin } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
@@ -113,7 +113,7 @@ export const markCanceled = internalMutation({
 });
 
 // Get subscription to return cancel info (user-facing)
-export const getForCancel = mutation({
+export const getForCancel = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);

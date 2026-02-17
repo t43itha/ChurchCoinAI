@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
@@ -49,6 +49,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -72,6 +73,10 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
     (d) => d.name.toLowerCase() === value.toLowerCase()
   );
   const showCreateOption = value.length >= 2 && !hasExactMatch;
+  const totalOptions = filteredResults.length + (showCreateOption ? 1 : 0);
+  const getOptionId = (index: number) => `${listboxId}-option-${index}`;
+  const activeDescendant =
+    isOpen && totalOptions > 0 ? getOptionId(selectedIndex) : undefined;
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
@@ -83,7 +88,9 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
         return;
       }
 
-      const totalOptions = filteredResults.length + (showCreateOption ? 1 : 0);
+      if (totalOptions === 0) {
+        return;
+      }
 
       switch (e.key) {
         case "ArrowDown":
@@ -110,7 +117,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           break;
       }
     },
-    [isOpen, filteredResults, selectedIndex, showCreateOption, value]
+    [isOpen, filteredResults, selectedIndex, showCreateOption, totalOptions, value]
   );
 
   // Handle selecting an existing donor
@@ -178,10 +185,16 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
   return (
     <div className="relative">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-grey-mid" />
         <input
           ref={inputRef}
           type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          aria-controls={listboxId}
+          aria-activedescendant={activeDescendant}
           value={value}
           onChange={(e) => {
             onChange(e.target.value);
@@ -192,9 +205,9 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           placeholder={placeholder}
           disabled={disabled}
           autoFocus={autoFocus}
-          className="w-full h-10 pl-9 pr-8 text-sm border border-gray-300 rounded-md
-                     focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black
-                     disabled:bg-gray-100 disabled:cursor-not-allowed
+          className="w-full h-10 pl-9 pr-8 text-sm border border-ledger rounded-md bg-white
+                     focus:outline-none focus:ring-1 focus:ring-ink focus:border-ink
+                     disabled:bg-grey-light disabled:cursor-not-allowed
                      font-mono"
         />
         {value && !disabled && (
@@ -210,9 +223,9 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
               });
               inputRef.current?.focus();
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-grey-light rounded"
           >
-            <X className="h-3 w-3 text-gray-400" />
+            <X className="h-3 w-3 text-grey-mid" />
           </button>
         )}
       </div>
@@ -220,12 +233,14 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
       {/* Dropdown */}
       {isOpen && (value.length >= 2 || filteredResults.length > 0) && (
         <div
+          id={listboxId}
           ref={dropdownRef}
+          role="listbox"
           className="absolute z-50 w-full mt-1 bg-white border border-black rounded-md shadow-[2px_2px_0px_rgba(0,0,0,0.1)] max-h-64 overflow-y-auto"
         >
           {/* Loading state */}
           {debouncedSearch !== value && value.length >= 2 && (
-            <div className="px-3 py-2 text-sm text-gray-500 flex items-center gap-2">
+            <div className="px-3 py-2 text-sm text-grey-mid flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
               Searching...
             </div>
@@ -235,6 +250,9 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           {filteredResults.map((donor, index) => (
             <button
               key={donor._id}
+              id={getOptionId(index)}
+              role="option"
+              aria-selected={selectedIndex === index}
               type="button"
               onClick={() => handleSelectDonor(donor)}
               onMouseEnter={() => setSelectedIndex(index)}
@@ -245,7 +263,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
               <div className="flex items-center gap-2">
                 <span className="font-mono">{donor.name}</span>
                 {donor.email && (
-                  <span className="text-gray-400 text-xs truncate max-w-[120px]">
+                  <span className="text-grey-mid text-xs truncate max-w-[120px]">
                     {donor.email}
                   </span>
                 )}
@@ -257,7 +275,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
                   </span>
                 )}
                 {selectedIndex === index && (
-                  <Check className="h-4 w-4 text-sage-600" />
+                  <Check className="h-4 w-4 text-sage" />
                 )}
               </div>
             </button>
@@ -267,7 +285,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           {filteredResults.length === 0 &&
             debouncedSearch === value &&
             value.length >= 2 && (
-              <div className="px-3 py-2 text-sm text-gray-500">
+              <div className="px-3 py-2 text-sm text-grey-mid">
                 No donors found
               </div>
             )}
@@ -275,11 +293,14 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           {/* Create new option */}
           {showCreateOption && (
             <button
+              id={getOptionId(filteredResults.length)}
+              role="option"
+              aria-selected={selectedIndex === filteredResults.length}
               type="button"
               onClick={handleCreateNew}
               onMouseEnter={() => setSelectedIndex(filteredResults.length)}
               disabled={isCreating}
-              className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-t border-gray-200
+              className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-t border-ledger
                          hover:bg-sage-50 transition-colors
                          ${selectedIndex === filteredResults.length ? "bg-sage-50" : ""}
                          ${isCreating ? "opacity-50 cursor-wait" : ""}`}

@@ -1,0 +1,204 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Swiss Ledger Design System - Base Styles */
+body {
+  font-family: "DM Sans", system-ui, sans-serif;
+  background-color: #fafaf9;
+  color: #000000;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* Swiss Card - Hard Shadow System */
+.swiss-card {
+  background: white;
+  border: 1px solid #000000;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.swiss-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 1);
+}
+
+/* Non-interactive card variant */
+.swiss-card-static {
+  background: white;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+}
+
+/* Ledger Table - 2px Border System */
+.ledger-table {
+  border: 2px solid #000000;
+  border-radius: 4px;
+  background: white;
+}
+.ledger-table th {
+  font-family: "DM Sans", system-ui, sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #000000;
+  background-color: #fafaf9;
+  border-bottom: 2px solid #000000;
+  padding: 16px;
+  white-space: nowrap;
+}
+.ledger-table td {
+  border-bottom: 1px solid #e5e5e5;
+  padding: 16px;
+  white-space: nowrap;
+}
+.ledger-table tr:nth-child(even) {
+  background-color: #fafaf9;
+}
+.ledger-table tr:hover {
+  background-color: #faefe6;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e5e5e5;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d4;
+}
+
+/* Animations */
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-enter {
+  animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Button Primary - Hard Shadow Hover */
+.btn-primary {
+  background-color: #000000;
+  color: white;
+  border: 1px solid #000000;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.btn-primary:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px 0px #d4a574;
+}
+.btn-primary:active {
+  transform: translate(0, 0);
+  box-shadow: none;
+}
+
+/* Button Secondary */
+.btn-secondary {
+  background-color: #e8f0e8;
+  color: #557555;
+  border: 1px solid #6b8e6b;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.btn-secondary:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+}
+
+/* Button Outline */
+.btn-outline {
+  background-color: white;
+  color: #000000;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.btn-outline:hover {
+  border-color: #000000;
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+}
+
+/* Highlight Pop - Amber Accent */
+.highlight-pop {
+  position: relative;
+}
+.highlight-pop::after {
+  content: "";
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: #d4a574;
+  opacity: 0.4;
+  z-index: -1;
+}
+
+/* Badge Styles */
+.badge-success {
+  background-color: #e8f0e8;
+  color: #557555;
+  border: 1px solid #6b8e6b;
+}
+.badge-warning {
+  background-color: #faefe6;
+  color: #b5895b;
+  border: 1px solid #d4a574;
+}
+.badge-error {
+  background-color: #fce8e8;
+  color: #c64545;
+  border: 1px solid #c64545;
+}
+
+/* Amount Display */
+.amount-positive {
+  color: #6b8e6b;
+}
+.amount-negative {
+  color: #c64545;
+}
+.amount-zero {
+  color: #666666;
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .swiss-card,
+  .btn-primary,
+  .btn-secondary,
+  .btn-outline {
+    transition: none;
+  }
+  .animate-enter {
+    animation: none;
+  }
+}

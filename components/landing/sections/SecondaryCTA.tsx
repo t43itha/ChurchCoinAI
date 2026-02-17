@@ -58,6 +58,7 @@ export default function SecondaryCTA({ onGetStarted }: SecondaryCTAProps) {
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </motion.button>
           <motion.button
+            onClick={onGetStarted}
             className="border-2 border-white text-white px-8 py-4 font-medium text-lg"
             whileHover={{ backgroundColor: "rgba(255,255,255,0.1)" }}
             transition={{ duration: 0.2 }}

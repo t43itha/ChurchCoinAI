@@ -1,4 +1,4 @@
-import { mutation, internalMutation } from "../_generated/server";
+import { mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
@@ -137,7 +137,7 @@ export const deleteItem = internalMutation({
 });
 
 // Get item for action (internal)
-export const getItemForAction = internalMutation({
+export const getItemForAction = internalQuery({
   args: {
     plaidItemId: v.id("plaidItems"),
   },
@@ -184,7 +184,7 @@ export const updateAccountFundMapping = mutation({
 });
 
 // User-facing: Remove bank connection
-export const removeConnection = mutation({
+export const removeConnection = internalMutation({
   args: {
     plaidItemId: v.id("plaidItems"),
   },

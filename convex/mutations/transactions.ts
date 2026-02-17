@@ -1,8 +1,22 @@
-import { mutation } from "../_generated/server";
+import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const assertValidTransactionAmount = (amount: number) => {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Transaction amount must be greater than 0");
+  }
+};
+
+const assertValidTransactionDate = (date: string) => {
+  if (!DATE_REGEX.test(date)) {
+    throw new Error("Transaction date must use YYYY-MM-DD format");
+  }
+};
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {
@@ -79,6 +93,8 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    assertValidTransactionAmount(args.amount);
+    assertValidTransactionDate(args.date);
 
     // Verify fund belongs to organization
     const fund = await ctx.db.get(args.fundId);
@@ -161,6 +177,13 @@ export const update = mutation({
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
+    }
+
+    if (args.amount !== undefined) {
+      assertValidTransactionAmount(args.amount);
+    }
+    if (args.date !== undefined) {
+      assertValidTransactionDate(args.date);
     }
 
     // Verify new fund if provided
@@ -282,11 +305,16 @@ export const bulkCreate = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    if (args.transactions.length > 500) {
+      throw new Error("Cannot import more than 500 transactions at once");
+    }
 
     const transactionIds: Id<"transactions">[] = [];
     const pledgesToCheck = new Set<string>();
 
     for (const t of args.transactions) {
+      assertValidTransactionAmount(t.amount);
+      assertValidTransactionDate(t.date);
       // Verify fund belongs to organization
       const fund = await ctx.db.get(t.fundId);
       if (!fund || fund.organizationId !== user.organizationId) {
@@ -721,7 +749,7 @@ export const recordCorrections = mutation({
 });
 
 // Get categorization accuracy stats for an organization
-export const getCategorizationStats = mutation({
+export const getCategorizationStats = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);

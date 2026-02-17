@@ -11,6 +11,13 @@ node_modules
 dist
 dist-ssr
 *.local
+.env.local
+.env.*.local
+.convex/
+.claude/settings.local.json
+coverage/
+*.pem
+*.key
 nul
 
 # Editor directories and files

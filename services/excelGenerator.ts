@@ -1,6 +1,9 @@
 import * as XLSX from 'xlsx';
 import { MonthlyReportData, AnnualReportData, ChurchDetails, CategoryGroup } from '../types';
 
+type SheetCell = string | number;
+type SheetRows = SheetCell[][];
+
 // Generate Monthly Report Excel workbook
 export const generateMonthlyReportXLSX = async (
   reportData: MonthlyReportData,
@@ -9,7 +12,7 @@ export const generateMonthlyReportXLSX = async (
   const workbook = XLSX.utils.book_new();
 
   // Summary Sheet
-  const summaryData = [
+  const summaryData: SheetRows = [
     ['RCI Missions Monthly Report'],
     [churchDetails.name],
     [reportData.monthName],
@@ -34,7 +37,7 @@ export const generateMonthlyReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
   // Receipts Sheet
-  const receiptsData = [
+  const receiptsData: SheetRows = [
     ['Receipts (Income)'],
     [''],
     ['Main Category', 'Subcategory', 'Amount'],
@@ -52,7 +55,7 @@ export const generateMonthlyReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, receiptsSheet, 'Receipts');
 
   // Payments Sheet
-  const paymentsData = [
+  const paymentsData: SheetRows = [
     ['Payments (Expenditure)'],
     [''],
     ['Main Category', 'Subcategory', 'Amount'],
@@ -70,7 +73,7 @@ export const generateMonthlyReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, paymentsSheet, 'Payments');
 
   // Weekly Breakdown Sheet
-  const weeklyData = [
+  const weeklyData: SheetRows = [
     ['Weekly Summary'],
     [''],
     ['Week Ending', 'Receipts', 'Payments', 'Net'],
@@ -95,7 +98,7 @@ export const generateMonthlyReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, weeklySheet, 'Weekly');
 
   // Mission Tithe Sheet
-  const missionTitheData: any[][] = [
+  const missionTitheData: SheetRows = [
     ['Mission Tithe'],
     [''],
     ['Week Ending', 'Total'],
@@ -112,7 +115,7 @@ export const generateMonthlyReportXLSX = async (
 
   // Tithes Sheet
   if (reportData.tithes.length > 0) {
-    const tithesData = [
+    const tithesData: SheetRows = [
       ['Tithes Breakdown'],
       [''],
       ['Donor Name', 'Gift Aid Eligible', 'Amount'],
@@ -148,7 +151,7 @@ export const generateAnnualReportXLSX = async (
   const workbook = XLSX.utils.book_new();
 
   // Summary Sheet
-  const summaryData = [
+  const summaryData: SheetRows = [
     ['RCI Missions Annual Report'],
     [churchDetails.name],
     [`Financial Year ${reportData.year}`],
@@ -183,7 +186,7 @@ export const generateAnnualReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
   // Income Breakdown Sheet
-  const incomeData = [
+  const incomeData: SheetRows = [
     ['Income Breakdown'],
     [''],
     ['Main Category', 'Subcategory', 'Amount'],
@@ -201,7 +204,7 @@ export const generateAnnualReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, incomeSheet, 'Income');
 
   // Expenditure Breakdown Sheet
-  const expenditureData = [
+  const expenditureData: SheetRows = [
     ['Expenditure Breakdown'],
     [''],
     ['Main Category', 'Subcategory', 'Amount'],
@@ -219,7 +222,7 @@ export const generateAnnualReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, expenditureSheet, 'Expenditure');
 
   // Monthly Trend Sheet
-  const monthlyData = [
+  const monthlyData: SheetRows = [
     ['Monthly Trend'],
     [''],
     ['Month', 'Income', 'Expenditure', 'Net'],
@@ -244,7 +247,7 @@ export const generateAnnualReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, monthlySheet, 'Monthly Trend');
 
   // Fund Balances Sheet
-  const fundsData = [
+  const fundsData: SheetRows = [
     ['Fund Balances (End of Year)'],
     [''],
     ['Fund', 'Type', 'Balance'],

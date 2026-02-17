@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { useMutation } from 'convex/react';
+import { useConvex, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
-import { buildDonorSchedulePdfFilename, generateScheduleHTML } from '../services/pdfGenerator';
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
 
 // WhatsApp message template types
@@ -22,7 +21,7 @@ const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
     description: 'Thank you for signing up',
     template: `Hi {donorName}, thank you for committing to support our church with your pledge of £{pledgeAmount} ({frequency}) towards {fundName}. Your generosity makes a real difference. We look forward to partnering with you on this journey. God bless!
 
-— NCC Finance Team`,
+— {financeTeamName}`,
     requiresPledge: true
   },
   pledgeChaser: {
@@ -30,7 +29,7 @@ const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
     description: 'Gentle reminder to start giving',
     template: `Hi {donorName}, we hope you're doing well! This is a gentle reminder about your pledge of £{pledgeAmount} ({frequency}) towards {fundName}. When you're ready, your contribution will help us continue our mission. Every gift matters. Thank you for your commitment!
 
-— NCC Finance Team`,
+— {financeTeamName}`,
     requiresPledge: true
   },
   pledgeFulfillment: {
@@ -38,7 +37,7 @@ const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
     description: 'Thank you for fulfilling pledge',
     template: `Hi {donorName}, amazing news! You've completed your pledge of £{pledgeAmount} towards {fundName}. Thank you for your faithful giving - it's made a real impact. If you'd like to continue supporting this cause or explore other giving opportunities, we'd love to hear from you.
 
-— NCC Finance Team`,
+— {financeTeamName}`,
     requiresPledge: true
   },
   generalUpdate: {
@@ -46,7 +45,7 @@ const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
     description: 'General appreciation message',
     template: `Hi {donorName}, thank you for being part of our church community. Your faithful giving towards {fundName} has helped us serve and grow. We're grateful for your ongoing support and partnership in our mission.
 
-— NCC Finance Team`,
+— {financeTeamName}`,
     requiresPledge: false
   },
   endOfYear: {
@@ -54,7 +53,7 @@ const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
     description: 'Annual giving summary',
     template: `Hi {donorName}, as we reflect on the past year, we want to thank you for your generosity. Your total giving of £{yearTotal} towards {fundName} has made a meaningful difference in our community. Wishing you a blessed year ahead!
 
-— NCC Finance Team`,
+— {financeTeamName}`,
     requiresPledge: false
   }
 };
@@ -75,6 +74,7 @@ interface DonorManagerProps {
 }
 
 const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
+  const convex = useConvex();
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'profile' | 'communicate'>('overview');
@@ -118,7 +118,6 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [manualPrimaryId, setManualPrimaryId] = useState<string | null>(null);
 
   // Convex mutations for merge
-  const findDuplicates = useMutation(api.mutations.donors.findDuplicates);
   const mergeDonors = useMutation(api.mutations.donors.merge);
 
   // Forms state
@@ -127,7 +126,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
 
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
-  const canView = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
 
   if (!canView) {
       return (
@@ -174,6 +173,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
 
     // Replace year total for end of year template
     message = message.replace(/{yearTotal}/g, yearTotal.toLocaleString());
+    message = message.replace(
+      /{financeTeamName}/g,
+      `${churchDetails?.name || 'Church'} Finance Team`
+    );
 
     // Replace pledge-specific variables if a pledge is selected
     if (pledgeId) {
@@ -290,7 +293,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     };
   };
 
-  const buildScheduleExport = (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+  const buildScheduleExport = async (
+    filterType: 'all' | 'tithes' | 'campaign',
+    fundId?: string
+  ) => {
     if (!selectedDonor) return null;
 
     let filteredPledges = donorPledges;
@@ -327,6 +333,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     }
 
     const details = churchDetails || { name: 'ChurchCoin', address: '', email: '' };
+    const { generateScheduleHTML, buildDonorSchedulePdfFilename } = await import('../services/pdfGenerator');
     const html = generateScheduleHTML(
       selectedDonor,
       filteredPledges,
@@ -352,7 +359,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   };
 
   const generateSchedulePdf = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
-    const exportData = buildScheduleExport(filterType, fundId);
+    const exportData = await buildScheduleExport(filterType, fundId);
     if (!exportData) return null;
 
     const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml } = await import('../services/pdfExport');
@@ -575,7 +582,7 @@ ${churchDetails?.name || 'Church'} Finance Team
   const handleFindDuplicates = async () => {
     setIsFindingDuplicates(true);
     try {
-      const groups = await findDuplicates({});
+      const groups = await convex.query(api.mutations.donors.findDuplicates, {});
       setDuplicateGroups(groups);
       if (groups.length === 0) {
         alert('No duplicate donors found!');
@@ -1499,3 +1506,4 @@ ${churchDetails?.name || 'Church'} Finance Team
 };
 
 export default DonorManager;
+

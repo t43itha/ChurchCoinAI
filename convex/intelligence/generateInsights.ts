@@ -32,11 +32,23 @@ export const gatherInsightContext = internalQuery({
       )
       .collect();
 
+    // Pre-group transactions by donor once to avoid repeated full scans.
+    const donorTransactionsById: Record<string, typeof transactions> = {};
+    for (const tx of transactions) {
+      if (!tx.donorId) continue;
+      const key = tx.donorId as string;
+      if (!donorTransactionsById[key]) {
+        donorTransactionsById[key] = [];
+      }
+      donorTransactionsById[key].push(tx);
+    }
+
     // Calculate church-wide 90th percentile for major donor detection
     const donorTotals = donors
       .map((d) => {
-        const total = transactions
-          .filter((t) => t.donorId === d._id && t.type === "Income")
+        const donorTransactions = donorTransactionsById[d._id as string] ?? [];
+        const total = donorTransactions
+          .filter((t) => t.type === "Income")
           .reduce((sum, t) => sum + t.amount, 0);
         return total;
       })
@@ -87,6 +99,7 @@ export const gatherInsightContext = internalQuery({
 
     return {
       transactions,
+      donorTransactionsById,
       donors,
       pledges,
       church90thPercentile,
@@ -138,9 +151,8 @@ export const generateForOrganization = internalMutation({
 
     // Evaluate donor rules
     for (const donor of context.donors) {
-      const donorTransactions = context.transactions.filter(
-        (t: any) => t.donorId === donor._id
-      );
+      const donorTransactions =
+        context.donorTransactionsById[donor._id as string] ?? [];
       const donorPledges = context.pledges.filter(
         (p: any) => p.donorId === donor._id
       );

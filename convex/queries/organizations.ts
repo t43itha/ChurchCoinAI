@@ -1,4 +1,5 @@
 import { query, internalQuery } from "../_generated/server";
+import { v } from "convex/values";
 import { getCurrentUser, getIdentity } from "../lib/auth";
 
 // Get the current user's organization
@@ -38,5 +39,12 @@ export const listAll = internalQuery({
       _id: org._id,
       name: org.name,
     }));
+  },
+});
+
+export const getByIdInternal = internalQuery({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.organizationId);
   },
 });

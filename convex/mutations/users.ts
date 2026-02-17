@@ -1,6 +1,6 @@
-import { mutation } from "../_generated/server";
+import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { getIdentity, requireAuth, requireRole, isAdmin } from "../lib/auth";
+import { getIdentity, requireAuth, requireRole } from "../lib/auth";
 
 // Join an organization via pending invitation (for new users)
 export const joinByInvitation = mutation({
@@ -64,45 +64,12 @@ export const joinByInvitation = mutation({
 });
 
 // Invite a new user to the organization (DEPRECATED - use invitations.create)
-export const invite = mutation({
-  args: {
-    clerkId: v.string(),
-    name: v.string(),
-    email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
-  },
-  handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
-
-    // Check if user already exists
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_clerkId_organization", (q) =>
-        q
-          .eq("clerkId", args.clerkId)
-          .eq("organizationId", currentUser.organizationId)
-      )
-      .first();
-
-    if (existingUser) {
-      throw new Error("User already exists in this organization");
-    }
-
-    const userId = await ctx.db.insert("users", {
-      clerkId: args.clerkId,
-      organizationId: currentUser.organizationId,
-      name: args.name,
-      email: args.email,
-      role: args.role,
-      createdAt: Date.now(),
-    });
-
-    return userId;
+export const invite = internalMutation({
+  args: {},
+  handler: async () => {
+    throw new Error(
+      "This endpoint is deprecated. Use mutations.invitations.create instead."
+    );
   },
 });
 
