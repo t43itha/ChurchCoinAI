@@ -1,9 +1,10 @@
 "use node";
 
-import { action } from "../_generated/server";
+import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getPlaid, PLAID_CONFIG, getPlaidWebhookUrl } from "../lib/plaid";
 import { Products } from "plaid";
+import { Id } from "../_generated/dataModel";
 
 // Account fund mapping schema
 const accountMappingSchema = v.object({
@@ -12,7 +13,7 @@ const accountMappingSchema = v.object({
 });
 
 // Require an authenticated Convex user
-const requireUser = async (ctx: any) => {
+const requireUser = async (ctx: ActionCtx) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
@@ -25,11 +26,21 @@ const requireUser = async (ctx: any) => {
   return currentUser;
 };
 
+const requireRole = (
+  user: { role: "Admin" | "Finance Team" | "Pastorate" | "Guest" },
+  allowed: string[]
+) => {
+  if (!allowed.includes(user.role)) {
+    throw new Error("Forbidden: this action requires Admin or Finance Team role");
+  }
+};
+
 // Create a Link token for Plaid Link initialization
 export const createLinkToken = action({
   args: {},
   handler: async (ctx): Promise<{ linkToken: string }> => {
     const user = await requireUser(ctx);
+    requireRole(user, ["Admin", "Finance Team"]);
 
     const plaid = getPlaid();
 
@@ -55,6 +66,7 @@ export const createUpdateLinkToken = action({
   },
   handler: async (ctx, args): Promise<{ linkToken: string }> => {
     const user = await requireUser(ctx);
+    requireRole(user, ["Admin", "Finance Team"]);
     const { api } = await import("../_generated/api");
 
     // Get the item to re-authenticate
@@ -84,9 +96,12 @@ export const createUpdateLinkToken = action({
 });
 
 // Helper to get access token (internal use only)
-async function getAccessToken(ctx: any, plaidItemId: any): Promise<string> {
+async function getAccessToken(
+  ctx: ActionCtx,
+  plaidItemId: Id<"plaidItems">
+): Promise<string> {
   const { internal } = await import("../_generated/api");
-  const item = await ctx.runMutation(internal.mutations.plaid.getItemForAction, {
+  const item = await ctx.runQuery(internal.mutations.plaid.getItemForAction, {
     plaidItemId,
   });
   if (!item) {
@@ -105,6 +120,7 @@ export const exchangePublicToken = action({
   },
   handler: async (ctx, args): Promise<{ success: boolean; itemId: string }> => {
     const user = await requireUser(ctx);
+    requireRole(user, ["Admin", "Finance Team"]);
     const { internal } = await import("../_generated/api");
 
     const plaid = getPlaid();
@@ -179,7 +195,7 @@ export const syncTransactions = action({
     const { internal, api } = await import("../_generated/api");
 
     // Get item with access token
-    const item = await ctx.runMutation(internal.mutations.plaid.getItemForAction, {
+    const item = await ctx.runQuery(internal.mutations.plaid.getItemForAction, {
       plaidItemId: args.plaidItemId,
     });
 
@@ -256,11 +272,11 @@ export const removeItem = action({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
-    const user = await requireUser(ctx);
-    const { api, internal } = await import("../_generated/api");
+    await requireUser(ctx);
+    const { internal } = await import("../_generated/api");
 
     // Get credentials for removal
-    const credentials = await ctx.runMutation(api.mutations.plaid.removeConnection, {
+    const credentials = await ctx.runMutation(internal.mutations.plaid.removeConnection, {
       plaidItemId: args.plaidItemId,
     });
 

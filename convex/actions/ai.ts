@@ -1,9 +1,12 @@
 "use node";
 
-import { action } from "../_generated/server";
+import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { GoogleGenAI, Type } from "@google/genai";
 import { transactionRAG } from "../lib/ragInstance";
+
+const AI_RATE_LIMIT_WINDOW_MS = 60_000;
+const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
 
 // Initialize Gemini AI with server-side API key
 const getAI = () => {
@@ -15,7 +18,7 @@ const getAI = () => {
 };
 
 // Require an authenticated Convex user (protects all AI actions)
-const requireUser = async (ctx: any) => {
+const requireUser = async (ctx: ActionCtx) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
@@ -25,7 +28,71 @@ const requireUser = async (ctx: any) => {
   if (!currentUser) {
     throw new Error("Forbidden: complete onboarding first");
   }
+
+  const { internal } = await import("../_generated/api");
+  const configuredLimit = Number(process.env.AI_RATE_LIMIT_PER_MINUTE);
+  const perMinuteLimit =
+    Number.isFinite(configuredLimit) && configuredLimit > 0
+      ? Math.floor(configuredLimit)
+      : DEFAULT_AI_RATE_LIMIT_PER_MINUTE;
+
+  await ctx.runMutation(internal.mutations.aiRateLimit.checkAndConsume, {
+    organizationId: currentUser.organizationId,
+    limit: perMinuteLimit,
+    windowMs: AI_RATE_LIMIT_WINDOW_MS,
+  });
+
   return currentUser;
+};
+
+const safeJsonParse = <T>(raw: string, fieldName: string): T => {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`${fieldName} must be valid JSON`);
+  }
+};
+
+type GiftAidEligibleTransaction = {
+  donorName?: string | null;
+  amount: number;
+};
+
+const validateGiftAidEligibleTransactions = (
+  value: unknown
+): GiftAidEligibleTransaction[] => {
+  if (!Array.isArray(value)) {
+    throw new Error("eligibleTransactions must be a JSON array");
+  }
+
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`eligibleTransactions[${index}] must be an object`);
+    }
+    const row = item as Record<string, unknown>;
+    if (typeof row.amount !== "number" || !Number.isFinite(row.amount)) {
+      throw new Error(
+        `eligibleTransactions[${index}].amount must be a finite number`
+      );
+    }
+    if (row.amount <= 0) {
+      throw new Error(`eligibleTransactions[${index}].amount must be > 0`);
+    }
+    if (
+      row.donorName !== undefined &&
+      row.donorName !== null &&
+      typeof row.donorName !== "string"
+    ) {
+      throw new Error(
+        `eligibleTransactions[${index}].donorName must be a string when provided`
+      );
+    }
+    return {
+      amount: row.amount,
+      donorName:
+        typeof row.donorName === "string" ? row.donorName : "Unknown Donor",
+    };
+  });
 };
 
 // Check if API key is configured
@@ -94,7 +161,7 @@ export const categorizeTransactions = action({
 
       const text = response.text;
       if (!text) return [];
-      return JSON.parse(text);
+      return safeJsonParse<any[]>(text, "categorizeTransactions response");
     } catch (error) {
       console.error("Gemini Categorization Error:", error);
       return [];
@@ -183,7 +250,10 @@ export const categorizeWithMatching = action({
 
       const text = response.text;
       if (text) {
-        aiSuggestions = JSON.parse(text);
+        aiSuggestions = safeJsonParse<any[]>(
+          text,
+          "categorizeWithMatching response"
+        );
       }
     } catch (error) {
       console.error("Gemini Categorization Error:", error);
@@ -437,7 +507,10 @@ export const categorizeWithRAG = action({
 
         const text = response.text;
         if (text) {
-          aiSuggestions = JSON.parse(text);
+          aiSuggestions = safeJsonParse<any[]>(
+            text,
+            "categorizeWithRAG response"
+          );
         }
       } catch (error) {
         console.error("Gemini Categorization Error:", error);
@@ -579,7 +652,9 @@ export const generateInsights = action({
       });
 
       const text = response.text;
-      return text ? JSON.parse(text) : [];
+      return text
+        ? safeJsonParse<any[]>(text, "generateInsightRecommendations response")
+        : [];
     } catch (e) {
       console.error("Insight generation failed", e);
       return [];
@@ -637,7 +712,9 @@ export const reconcilePledges = action({
       });
 
       const text = response.text;
-      return text ? JSON.parse(text) : [];
+      return text
+        ? safeJsonParse<any[]>(text, "reconcilePledges response")
+        : [];
     } catch (e) {
       console.error("Reconciliation failed", e);
       return [];
@@ -656,7 +733,11 @@ export const generateGiftAidSchedule = action({
     await requireUser(ctx);
     const ai = getAI();
 
-    const eligible = JSON.parse(args.eligibleTransactions);
+    const parsedEligible = safeJsonParse<unknown>(
+      args.eligibleTransactions,
+      "eligibleTransactions"
+    );
+    const eligible = validateGiftAidEligibleTransactions(parsedEligible);
 
     if (eligible.length === 0) {
       return "No Gift Aid eligible transactions found for this period.";
@@ -666,7 +747,7 @@ export const generateGiftAidSchedule = action({
     const donorTotals: Record<string, number> = {};
     let totalClaimable = 0;
 
-    eligible.forEach((t: any) => {
+    eligible.forEach((t) => {
       const name = t.donorName || "Unknown Donor";
       donorTotals[name] = (donorTotals[name] || 0) + t.amount;
     });
@@ -740,7 +821,7 @@ export const generateTreasurerReport = action({
     await requireUser(ctx);
     const ai = getAI();
 
-    const data = JSON.parse(args.summaryData);
+    const data = safeJsonParse<Record<string, any>>(args.summaryData, "summaryData");
     const netPosition = data.totalIncome - data.totalExpenditure;
     const isHealthy = netPosition >= 0;
 
@@ -946,11 +1027,23 @@ export const generateAnnualStatement = action({
 
     // Use mainCategory grouping if provided, otherwise fall back to standard categories
     const incomeData = args.incomeByMainCategory
-      ? JSON.parse(args.incomeByMainCategory)
-      : JSON.parse(args.incomeByCategory);
+      ? safeJsonParse<Record<string, any>>(
+          args.incomeByMainCategory,
+          "incomeByMainCategory"
+        )
+      : safeJsonParse<Record<string, any>>(
+          args.incomeByCategory,
+          "incomeByCategory"
+        );
     const expenditureData = args.expenditureByMainCategory
-      ? JSON.parse(args.expenditureByMainCategory)
-      : JSON.parse(args.expenditureByCategory);
+      ? safeJsonParse<Record<string, any>>(
+          args.expenditureByMainCategory,
+          "expenditureByMainCategory"
+        )
+      : safeJsonParse<Record<string, any>>(
+          args.expenditureByCategory,
+          "expenditureByCategory"
+        );
 
     const netMovement = args.totalIncome - args.totalExpenditure;
     const isPositive = netMovement >= 0;
@@ -1028,7 +1121,10 @@ export const generateMonthlyBreakdown = action({
     await requireUser(ctx);
     const ai = getAI();
 
-    const data = JSON.parse(args.monthlyData);
+    const data = safeJsonParse<Array<{ income: number; expense: number }>>(
+      args.monthlyData,
+      "monthlyData"
+    );
     const totalIncome = data.reduce((sum: number, m: { income: number }) => sum + m.income, 0);
     const totalExpense = data.reduce((sum: number, m: { expense: number }) => sum + m.expense, 0);
     const avgMonthlyIncome = totalIncome / data.length;
@@ -1169,6 +1265,22 @@ export const chatWithTreasurer = action({
   handler: async (ctx, args) => {
     await requireUser(ctx);
     const ai = getAI();
+    const message = args.message.trim();
+
+    if (!message) {
+      throw new Error("Message cannot be empty");
+    }
+    if (message.length > 2000) {
+      throw new Error("Message is too long");
+    }
+    if (args.contextData.length > 100_000) {
+      throw new Error("Context data is too large");
+    }
+
+    const parsedContext = safeJsonParse<Record<string, unknown>>(
+      args.contextData,
+      "contextData"
+    );
 
     const systemInstruction = `
       You are "Steward", an AI assistant for a Church Treasurer.
@@ -1180,7 +1292,30 @@ export const chatWithTreasurer = action({
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-lite",
-      contents: `Context Data: ${args.contextData}\n\nUser Question: ${args.message}`,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Financial context data (JSON):",
+            },
+            {
+              text: JSON.stringify(parsedContext),
+            },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              text: "Treasurer question:",
+            },
+            {
+              text: message,
+            },
+          ],
+        },
+      ],
       config: {
         systemInstruction: systemInstruction,
       },
@@ -1200,7 +1335,10 @@ export const generateRCIMonthlyNarrative = action({
     await requireUser(ctx);
     const ai = getAI();
 
-    const reportData = JSON.parse(args.monthlyReportData);
+    const reportData = safeJsonParse<Record<string, any>>(
+      args.monthlyReportData,
+      "monthlyReportData"
+    );
     const netPosition = reportData.totals?.grossIncome - reportData.totals?.totalExpenditure;
 
     const prompt = `

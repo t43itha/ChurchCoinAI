@@ -4,6 +4,14 @@ import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
 import { ALL_INCOME_SUBCATEGORIES } from "../../constants/rciCategories";
 
+const MIN_DATE = "0000-01-01";
+const MAX_DATE = "9999-12-31";
+
+const getDateBounds = (startDate?: string, endDate?: string) => ({
+  startDate: startDate ?? MIN_DATE,
+  endDate: endDate ?? MAX_DATE,
+});
+
 // List all transactions
 export const list = query({
   args: {},
@@ -174,7 +182,23 @@ export const listGiftAidEligible = query({
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
 
-    let transactionsQuery = ctx.db
+    if (args.startDate || args.endDate) {
+      const { startDate, endDate } = getDateBounds(args.startDate, args.endDate);
+      const boundedTransactions = await ctx.db
+        .query("transactions")
+        .withIndex("by_organization_date", (q) =>
+          q
+            .eq("organizationId", user.organizationId)
+            .gte("date", startDate)
+            .lte("date", endDate)
+        )
+        .collect();
+      return boundedTransactions.filter(
+        (t) => t.isGiftAidEligible === true && t.type === "Income"
+      );
+    }
+
+    return await ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
@@ -184,20 +208,8 @@ export const listGiftAidEligible = query({
           q.eq(q.field("isGiftAidEligible"), true),
           q.eq(q.field("type"), "Income")
         )
-      );
-
-    const transactions = await transactionsQuery.collect();
-
-    // Filter by date range if provided
-    if (args.startDate || args.endDate) {
-      return transactions.filter((t) => {
-        if (args.startDate && t.date < args.startDate) return false;
-        if (args.endDate && t.date > args.endDate) return false;
-        return true;
-      });
-    }
-
-    return transactions;
+      )
+      .collect();
   },
 });
 
@@ -212,21 +224,28 @@ export const aggregateByCategory = query({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const dateBounds = getDateBounds(args.startDate, args.endDate);
 
-    const transactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
+    const transactions = args.startDate || args.endDate
+      ? await ctx.db
+          .query("transactions")
+          .withIndex("by_organization_date", (q) =>
+            q
+              .eq("organizationId", user.organizationId)
+              .gte("date", dateBounds.startDate)
+              .lte("date", dateBounds.endDate)
+          )
+          .collect()
+      : await ctx.db
+          .query("transactions")
+          .withIndex("by_organization", (q) =>
+            q.eq("organizationId", user.organizationId)
+          )
+          .collect();
 
-    // Filter by date and type
-    const filtered = transactions.filter((t) => {
-      if (args.startDate && t.date < args.startDate) return false;
-      if (args.endDate && t.date > args.endDate) return false;
-      if (args.transactionType && t.type !== args.transactionType) return false;
-      return true;
-    });
+    const filtered = args.transactionType
+      ? transactions.filter((t) => t.type === args.transactionType)
+      : transactions;
 
     // Aggregate by category
     const aggregated = filtered.reduce(

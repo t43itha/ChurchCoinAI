@@ -1,11 +1,11 @@
 "use node";
 
-import { action } from "../_generated/server";
+import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getStripe, STRIPE_PRICES } from "../lib/stripe";
 
 // Require an authenticated Convex user
-const requireUser = async (ctx: any) => {
+const requireUser = async (ctx: ActionCtx) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
@@ -16,6 +16,27 @@ const requireUser = async (ctx: any) => {
     throw new Error("Forbidden: complete onboarding first");
   }
   return currentUser;
+};
+
+const validateRedirectUrl = (url: string, fieldName: string) => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`${fieldName} is not a valid URL`);
+  }
+
+  if (!["https:", "http:"].includes(parsed.protocol)) {
+    throw new Error(`${fieldName} must use HTTP or HTTPS`);
+  }
+
+  const appBaseUrl = process.env.APP_BASE_URL;
+  if (appBaseUrl) {
+    const allowedHost = new URL(appBaseUrl).host;
+    if (parsed.host !== allowedHost) {
+      throw new Error(`${fieldName} host is not allowed`);
+    }
+  }
 };
 
 // Create checkout session for subscription
@@ -32,6 +53,9 @@ export const createCheckoutSession = action({
   handler: async (ctx, args): Promise<{ sessionId: string; url: string | null }> => {
     const user = await requireUser(ctx);
     const { api, internal } = await import("../_generated/api");
+
+    validateRedirectUrl(args.successUrl, "successUrl");
+    validateRedirectUrl(args.cancelUrl, "cancelUrl");
 
     // Get organization
     const org: any = await ctx.runQuery(api.queries.organizations.current, {});

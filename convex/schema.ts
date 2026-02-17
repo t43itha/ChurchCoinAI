@@ -208,6 +208,14 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_organization_user", ["organizationId", "clerkId"]),
 
+  // Per-organization AI rate limiting window state
+  aiRateLimits: defineTable({
+    organizationId: v.id("organizations"),
+    windowStart: v.number(),
+    requestCount: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organization", ["organizationId"]),
+
   // Intelligence suggestions (rules-based insights with feedback tracking)
   intelligenceSuggestions: defineTable({
     organizationId: v.id("organizations"),

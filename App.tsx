@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { useUser, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "./convex/_generated/api";
@@ -144,6 +144,10 @@ function App() {
     string | undefined
   >(undefined);
   const [showAuth, setShowAuth] = useState(false);
+  const isPaymentSuccess = useMemo(
+    () => new URLSearchParams(window.location.search).get("subscription") === "success",
+    []
+  );
 
   // Show loading while Clerk initializes
   if (!isLoaded) {
@@ -163,6 +167,11 @@ function App() {
     return <LoadingSpinner message="Loading your data..." />;
   }
 
+  // Organization query can still be pending while user query has resolved
+  if (organization === undefined) {
+    return <LoadingSpinner message="Loading your organization..." />;
+  }
+
   // Show onboarding if user has no organization
   if (currentUser === null || organization === null) {
     return (
@@ -180,9 +189,7 @@ function App() {
     return <LoadingSpinner message="Checking subscription..." />;
   }
 
-  // Check if returning from successful Stripe checkout
-  const urlParams = new URLSearchParams(window.location.search);
-  const isPaymentSuccess = urlParams.get('subscription') === 'success';
+  const currentOrganization = organization;
 
   // Show subscription required page if no active subscription
   if (!subscription || subscription.status !== "active") {
@@ -190,7 +197,7 @@ function App() {
     if (isPaymentSuccess) {
       return <LoadingSpinner message="Processing your payment... This may take a few seconds." />;
     }
-    return <SubscriptionRequired organizationName={organization.name} />;
+    return <SubscriptionRequired organizationName={currentOrganization.name} />;
   }
 
   // Clear the URL params after successful subscription activation
@@ -224,13 +231,13 @@ function App() {
 
   // Map organization details for backwards compatibility
   const churchDetails: ChurchDetails = {
-    name: organization.name,
-    charityNumber: organization.charityNumber,
-    address: organization.address,
-    email: organization.email,
-    website: organization.website,
-    reportingPeriod: organization.reportingPeriod,
-    logoUrl: organization.logoUrl,
+    name: currentOrganization.name,
+    charityNumber: currentOrganization.charityNumber,
+    address: currentOrganization.address,
+    email: currentOrganization.email,
+    website: currentOrganization.website,
+    reportingPeriod: currentOrganization.reportingPeriod,
+    logoUrl: currentOrganization.logoUrl,
   };
 
   // ============ HANDLER FUNCTIONS ============

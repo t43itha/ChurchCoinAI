@@ -8,25 +8,29 @@ export const getAIContext = query({
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
 
-    // Get all transactions
+    // Bound context to recent history to prevent very large payloads.
+    const now = new Date();
+    const twentyFourMonthsAgo = new Date(
+      now.getFullYear(),
+      now.getMonth() - 24,
+      1
+    )
+      .toISOString()
+      .split("T")[0];
+
+    // Get recent transactions
     const transactions = await ctx.db
       .query("transactions")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
+      .withIndex("by_organization_date", (q) =>
+        q
+          .eq("organizationId", user.organizationId)
+          .gte("date", twentyFourMonthsAgo)
       )
       .collect();
 
     // Get all funds
     const funds = await ctx.db
       .query("funds")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
-
-    // Get all donors
-    const donors = await ctx.db
-      .query("donors")
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
       )
@@ -64,12 +68,30 @@ export const getAIContext = query({
       .sort((a, b) => a.month.localeCompare(b.month));
 
     // === TOP DONORS BY TOTAL GIVING ===
-    const donorGiving = donors.map((d) => {
-      const total = transactions
-        .filter((t) => t.donorId === d._id && t.type === "Income")
-        .reduce((sum, t) => sum + t.amount, 0);
-      return { name: d.name, total, id: d._id };
-    }).sort((a, b) => b.total - a.total);
+    const donorGivingMap = new Map<
+      string,
+      { id: string; name: string; total: number }
+    >();
+    for (const transaction of transactions) {
+      if (transaction.type !== "Income") continue;
+      const donorKey = transaction.donorId ?? transaction.donorName;
+      if (!donorKey) continue;
+
+      const existing = donorGivingMap.get(donorKey);
+      if (existing) {
+        existing.total += transaction.amount;
+      } else {
+        donorGivingMap.set(donorKey, {
+          id: donorKey,
+          name: transaction.donorName || "Unknown Donor",
+          total: transaction.amount,
+        });
+      }
+    }
+
+    const donorGiving = Array.from(donorGivingMap.values()).sort(
+      (a, b) => b.total - a.total
+    );
 
     const topDonors = donorGiving.slice(0, 10);
 
@@ -195,7 +217,7 @@ export const getAIContext = query({
       uncategorizedCount,
       unreconciledCount,
       transactionCount: transactions.length,
-      donorCount: donors.length,
+      donorCount: donorGiving.length,
 
       // Key metrics
       totalIncome,
@@ -236,6 +258,7 @@ export const getAIContext = query({
               ),
             }
           : null,
+      analysisPeriodStart: twentyFourMonthsAgo,
     };
   },
 });

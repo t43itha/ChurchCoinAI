@@ -1,4 +1,4 @@
-import { internalMutation, internalAction } from "../_generated/server";
+import { internalMutation, internalAction, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -65,16 +65,17 @@ export const indexAllTransactions = internalMutation({
   },
   handler: async (ctx, args) => {
     const batchSize = args.batchSize ?? 100;
-    const namespace = `org_${args.organizationId}`;
-
-    // Query transactions with pagination
-    let query = ctx.db
+    const query = ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", args.organizationId)
       );
 
-    const transactions = await query.take(batchSize);
+    const page = await query.paginate({
+      cursor: args.cursor ?? null,
+      numItems: batchSize,
+    });
+    const transactions = page.page;
 
     if (transactions.length === 0) {
       return {
@@ -116,18 +117,16 @@ export const indexAllTransactions = internalMutation({
       scheduled++;
     }
 
-    // If we got a full batch, there might be more
-    const hasMore = transactions.length === batchSize;
+    const hasMore = !page.isDone;
 
     if (hasMore) {
-      // Schedule the next batch with the last transaction's ID as cursor
-      const lastId = transactions[transactions.length - 1]._id;
+      // Continue from the pagination cursor to avoid re-indexing the same page.
       await ctx.scheduler.runAfter(
         100, // Small delay to avoid overwhelming the scheduler
         internal.intelligence.bootstrapRAG.indexAllTransactions,
         {
           organizationId: args.organizationId,
-          cursor: lastId,
+          cursor: page.continueCursor,
           batchSize,
         }
       );
@@ -144,7 +143,7 @@ export const indexAllTransactions = internalMutation({
 });
 
 // Get indexing status for an organization
-export const getIndexingStatus = internalMutation({
+export const getIndexingStatus = internalQuery({
   args: {
     organizationId: v.id("organizations"),
   },

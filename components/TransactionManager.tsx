@@ -25,6 +25,17 @@ interface TransactionManagerProps {
 // Pagination for large datasets
 const ITEMS_PER_PAGE = 100;
 
+const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+};
+
 const TransactionManager: React.FC<TransactionManagerProps> = ({
   funds, pledges, categories, currentUser, initialFundId, onPledgeCompleted
 }) => {
@@ -38,6 +49,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const updateTransaction = useMutation(api.mutations.transactions.update);
   const bulkCreateTransactions = useMutation(api.mutations.transactions.bulkCreate);
   const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
+  const batchUpdateTransactions = useMutation(api.mutations.transactions.batchUpdate);
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
   const categorizeWithRAG = useAction(api.actions.ai.categorizeWithRAG);
   const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
@@ -97,6 +109,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 200);
   const today = new Date();
   const [filterMonth, setFilterMonth] = useState<number | null>(today.getMonth());
   const [filterYear, setFilterYear] = useState<number | null>(today.getFullYear());
@@ -126,8 +139,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       // Global Search
-      if (searchTerm) {
-          const lowerTerm = searchTerm.toLowerCase();
+      if (debouncedSearchTerm) {
+          const lowerTerm = debouncedSearchTerm.toLowerCase();
           const matchesDesc = t.description.toLowerCase().includes(lowerTerm);
           const matchesCat = t.category.toLowerCase().includes(lowerTerm);
           const matchesDonor = t.donorName?.toLowerCase().includes(lowerTerm);
@@ -157,7 +170,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, searchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
+  }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
   // Limit displayed transactions for performance
   const displayedTransactions = useMemo(() => {
@@ -270,19 +283,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               fundNames: funds.map(f => f.name),
               categories: categoryNames
           });
-          // Update each transaction with its suggestion
+          const updates = [];
           for (let i = 0; i < targetTransactions.length; i++) {
-              const t = targetTransactions[i];
-              const suggestion = suggestions[i];
-              if (!suggestion) continue;
-              const suggestedFund = funds.find(f => f.name === suggestion.fundName);
-              await updateTransaction({
-                  transactionId: t._id as Id<"transactions">,
-                  category: suggestion.category,
-                  isGiftAidEligible: suggestion.isGiftAidEligible,
-                  fundId: suggestedFund?._id ? (suggestedFund._id as Id<"funds">) : undefined,
-                  donorName: suggestion.donorName || undefined,
-              });
+            const t = targetTransactions[i];
+            const suggestion = suggestions[i];
+            if (!suggestion) continue;
+            const suggestedFund = funds.find(f => f.name === suggestion.fundName);
+            updates.push({
+              transactionId: t._id as Id<"transactions">,
+              changes: {
+                category: suggestion.category,
+                isGiftAidEligible: suggestion.isGiftAidEligible,
+                fundId: suggestedFund?._id ? (suggestedFund._id as Id<"funds">) : undefined,
+                donorName: suggestion.donorName || undefined,
+              }
+            });
+          }
+          if (updates.length > 0) {
+            await batchUpdateTransactions({ updates });
           }
           setSelectedIds(new Set());
       } catch (error) {

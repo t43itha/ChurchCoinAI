@@ -77,6 +77,8 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['receipts', 'payments']));
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   const reportData = useQuery(api.queries.reports.monthlyReportData, { year, month });
 
@@ -110,19 +112,25 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
 
   const handleExportPDF = async () => {
     if (!reportData) return;
-    const { generateMonthlyReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
-    const html = generateMonthlyReportHTML(reportData, churchDetails);
+    setIsExportingPdf(true);
+    try {
+      const { generateMonthlyReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
+      const html = generateMonthlyReportHTML(reportData, churchDetails);
 
-    const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
-    const filename = `${churchPart}_Monthly_Report_${sanitizePdfFilenamePart(reportData.monthName)}`;
-    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml, savePdfBlob } = await import('../services/pdfExport');
-    const htmlWithTitle = ensureHtmlTitleForPdf(html, filename);
-    const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
-    await savePdfBlob({ blob, filename });
+      const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
+      const filename = `${churchPart}_Monthly_Report_${sanitizePdfFilenamePart(reportData.monthName)}`;
+      const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml, savePdfBlob } = await import('../services/pdfExport');
+      const htmlWithTitle = ensureHtmlTitleForPdf(html, filename);
+      const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
+      await savePdfBlob({ blob, filename });
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const handleExportExcel = async () => {
     if (!reportData) return;
+    setIsExportingExcel(true);
     try {
       const { generateMonthlyReportXLSX } = await import('../services/excelGenerator');
       const blob = await generateMonthlyReportXLSX(reportData, churchDetails);
@@ -136,6 +144,8 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Excel export failed:', error);
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -203,17 +213,19 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
           {/* Export Buttons */}
           <button
             onClick={handleExportPDF}
+            disabled={isExportingPdf || isExportingExcel}
             className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-charcoal transition-colors"
           >
             <FileText size={16} />
-            PDF
+            {isExportingPdf ? 'Exporting...' : 'PDF'}
           </button>
           <button
             onClick={handleExportExcel}
+            disabled={isExportingPdf || isExportingExcel}
             className="flex items-center gap-2 px-4 py-2 bg-sage text-white rounded-md text-sm font-medium hover:bg-sage/90 transition-colors"
           >
             <FileSpreadsheet size={16} />
-            Excel
+            {isExportingExcel ? 'Exporting...' : 'Excel'}
           </button>
         </div>
       </div>
@@ -428,57 +440,59 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
       </div>
 
       {/* Mission Tithe */}
-      <div className="swiss-card">
-        <button
-          onClick={() => toggleSection('missionTithe')}
-          className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            {expandedSections.has('missionTithe') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-            <h3 className="font-bold text-ink">Mission Tithe</h3>
-          </div>
-          <span className="font-mono font-bold text-amber">
-            {formatCurrency(reportData.missionTithe.titheToPay)}
-          </span>
-        </button>
+      {reportData.missionTithe && (
+        <div className="swiss-card">
+          <button
+            onClick={() => toggleSection('missionTithe')}
+            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              {expandedSections.has('missionTithe') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+              <h3 className="font-bold text-ink">Mission Tithe</h3>
+            </div>
+            <span className="font-mono font-bold text-amber">
+              {formatCurrency(reportData.missionTithe.titheToPay)}
+            </span>
+          </button>
 
-        {expandedSections.has('missionTithe') && (
-          <div className="border-t border-ledger overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-ledger bg-paper">
-                  <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Week Ending</th>
-                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportData.missionTithe.weeklyBreakdown.map((week: MissionTitheItem, idx: number) => (
-                  <tr key={week.weekEnding} className={`border-b border-ledger ${idx % 2 === 0 ? '' : 'bg-grey-light/20'}`}>
-                    <td className="px-4 py-3 text-sm font-medium text-ink">
-                      {new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    </td>
+          {expandedSections.has('missionTithe') && (
+            <div className="border-t border-ledger overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-ledger bg-paper">
+                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Week Ending</th>
+                    <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.missionTithe.weeklyBreakdown.map((week: MissionTitheItem, idx: number) => (
+                    <tr key={week.weekEnding} className={`border-b border-ledger ${idx % 2 === 0 ? '' : 'bg-grey-light/20'}`}>
+                      <td className="px-4 py-3 text-sm font-medium text-ink">
+                        {new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-sm text-ink">
+                        {formatCurrency(week.total)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-grey-light/50 font-bold">
+                    <td className="px-4 py-3 text-sm text-ink">Total</td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-ink">
-                      {formatCurrency(week.total)}
+                      {formatCurrency(reportData.missionTithe.total)}
                     </td>
                   </tr>
-                ))}
-                <tr className="bg-grey-light/50 font-bold">
-                  <td className="px-4 py-3 text-sm text-ink">Total</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-ink">
-                    {formatCurrency(reportData.missionTithe.total)}
-                  </td>
-                </tr>
-                <tr className="bg-grey-light/50 font-bold">
-                  <td className="px-4 py-3 text-sm text-amber">Mission Tithe to Pay (10%)</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-amber">
-                    {formatCurrency(reportData.missionTithe.titheToPay)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                  <tr className="bg-grey-light/50 font-bold">
+                    <td className="px-4 py-3 text-sm text-amber">Mission Tithe to Pay (10%)</td>
+                    <td className="px-4 py-3 text-right font-mono text-sm text-amber">
+                      {formatCurrency(reportData.missionTithe.titheToPay)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tithes Breakdown & Gift Aid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -605,6 +619,8 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['income', 'expenditure', 'trend']));
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   const reportData = useQuery(api.queries.reports.annualReportData, { year });
 
@@ -620,19 +636,25 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
 
   const handleExportPDF = async () => {
     if (!reportData) return;
-    const { generateAnnualReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
-    const html = generateAnnualReportHTML(reportData, churchDetails);
+    setIsExportingPdf(true);
+    try {
+      const { generateAnnualReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
+      const html = generateAnnualReportHTML(reportData, churchDetails);
 
-    const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
-    const filename = `${churchPart}_Annual_Report_${sanitizePdfFilenamePart(String(year))}`;
-    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml, savePdfBlob } = await import('../services/pdfExport');
-    const htmlWithTitle = ensureHtmlTitleForPdf(html, filename);
-    const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
-    await savePdfBlob({ blob, filename });
+      const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
+      const filename = `${churchPart}_Annual_Report_${sanitizePdfFilenamePart(String(year))}`;
+      const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml, savePdfBlob } = await import('../services/pdfExport');
+      const htmlWithTitle = ensureHtmlTitleForPdf(html, filename);
+      const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
+      await savePdfBlob({ blob, filename });
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const handleExportExcel = async () => {
     if (!reportData) return;
+    setIsExportingExcel(true);
     try {
       const { generateAnnualReportXLSX } = await import('../services/excelGenerator');
       const blob = await generateAnnualReportXLSX(reportData, churchDetails);
@@ -646,6 +668,8 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Excel export failed:', error);
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -700,17 +724,19 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
           {/* Export Buttons */}
           <button
             onClick={handleExportPDF}
+            disabled={isExportingPdf || isExportingExcel}
             className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-charcoal transition-colors"
           >
             <FileText size={16} />
-            PDF
+            {isExportingPdf ? 'Exporting...' : 'PDF'}
           </button>
           <button
             onClick={handleExportExcel}
+            disabled={isExportingPdf || isExportingExcel}
             className="flex items-center gap-2 px-4 py-2 bg-sage text-white rounded-md text-sm font-medium hover:bg-sage/90 transition-colors"
           >
             <FileSpreadsheet size={16} />
-            Excel
+            {isExportingExcel ? 'Exporting...' : 'Excel'}
           </button>
         </div>
       </div>
@@ -790,7 +816,9 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
                   tickFormatter={(value) => `£${(value / 1000).toFixed(0)}k`}
                 />
                 <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
+                  formatter={(value: number | string | undefined) =>
+                    formatCurrency(typeof value === 'number' ? value : Number(value) || 0)
+                  }
                   contentStyle={{
                     backgroundColor: '#fff',
                     border: '1px solid #e7e5e4',
@@ -1480,6 +1508,58 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
   );
 };
 
+// ============ ERROR BOUNDARY ============
+
+type ReportsErrorBoundaryProps = {
+  children: React.ReactNode;
+};
+
+type ReportsErrorBoundaryState = {
+  hasError: boolean;
+  error: Error | null;
+};
+
+class ReportsErrorBoundary extends React.Component<
+  ReportsErrorBoundaryProps,
+  ReportsErrorBoundaryState
+> {
+  constructor(props: ReportsErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('Reports error:', error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="swiss-card p-12 flex flex-col items-center justify-center min-h-[400px] text-center">
+          <div className="w-12 h-12 bg-error-light rounded-full flex items-center justify-center mb-4">
+            <span className="text-error text-xl font-bold">!</span>
+          </div>
+          <h3 className="text-lg font-bold text-ink mb-2">Something went wrong</h3>
+          <p className="text-sm text-grey-mid mb-6 max-w-md">
+            An error occurred while loading the report. This may be due to a data sync issue.
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-6 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-charcoal transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ============ MAIN UNIFIED REPORTS COMPONENT ============
 
 const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchDetails }) => {
@@ -1519,20 +1599,22 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
 
       {/* Tab Content */}
       <div className="mt-6">
-        {activeTab === 'monthly' && (
-          <MonthlyReportContent churchDetails={churchDetails} />
-        )}
-        {activeTab === 'annual' && (
-          <AnnualReportContent churchDetails={churchDetails} />
-        )}
-        {activeTab === 'ai' && (
-          <AIReportsContent
-            transactions={transactions}
-            funds={funds}
-            pledges={pledges}
-            churchDetails={churchDetails}
-          />
-        )}
+        <ReportsErrorBoundary>
+          {activeTab === 'monthly' && (
+            <MonthlyReportContent churchDetails={churchDetails} />
+          )}
+          {activeTab === 'annual' && (
+            <AnnualReportContent churchDetails={churchDetails} />
+          )}
+          {activeTab === 'ai' && (
+            <AIReportsContent
+              transactions={transactions}
+              funds={funds}
+              pledges={pledges}
+              churchDetails={churchDetails}
+            />
+          )}
+        </ReportsErrorBoundary>
       </div>
     </div>
   );

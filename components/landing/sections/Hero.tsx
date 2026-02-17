@@ -2,7 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   AnimatedBalance,
   AnimatedStatValue,
@@ -46,38 +46,7 @@ function LiveProgressBar({
   delay: number;
 }) {
   const shouldReduceMotion = useReducedMotion();
-  const [currentPercent, setCurrentPercent] = useState(baseWidth);
-
-  useEffect(() => {
-    if (shouldReduceMotion) {
-      setCurrentPercent(baseWidth);
-      return;
-    }
-
-    const startDelay = delay * 1000;
-    let startTime: number;
-    let animationId: number;
-
-    const timeout = setTimeout(() => {
-      startTime = Date.now();
-
-      const tick = () => {
-        const elapsed = Date.now() - startTime;
-        const progress = (elapsed % (duration * 1000)) / (duration * 1000);
-        const oscillation = Math.sin(progress * Math.PI * 2);
-        const newPercent = baseWidth + oscillation * variance;
-        setCurrentPercent(Math.round(newPercent));
-        animationId = requestAnimationFrame(tick);
-      };
-
-      animationId = requestAnimationFrame(tick);
-    }, startDelay);
-
-    return () => {
-      clearTimeout(timeout);
-      if (animationId) cancelAnimationFrame(animationId);
-    };
-  }, [baseWidth, variance, duration, delay, shouldReduceMotion]);
+  const displayPercent = Math.round(baseWidth);
 
   const widthKeyframes = [
     `${baseWidth}%`,
@@ -137,14 +106,14 @@ function LiveProgressBar({
         transition={{ delay: delay + 0.3, duration: 0.3 }}
         className="text-sm font-mono tabular-nums w-12 text-right"
       >
-        {currentPercent}%
+        {displayPercent}%
       </motion.span>
     </motion.div>
   );
 }
 
 // Floating Card Wrapper
-function FloatingCard({ children }: { children: React.ReactNode }) {
+function FloatingCard({ children }: { children: ReactNode }) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -324,7 +293,10 @@ export default function Hero({ onGetStarted }: HeroProps) {
                   whileHover={{ backgroundColor: "#f0f0ed" }}
                   transition={{ duration: 0.2 }}
                 >
-                  <button className="border-2 border-black text-black px-8 py-4 font-medium text-lg block">
+                  <button
+                    onClick={onGetStarted}
+                    className="border-2 border-black text-black px-8 py-4 font-medium text-lg block"
+                  >
                     {landingContent.hero.secondaryCta}
                   </button>
                 </motion.div>

@@ -7,14 +7,6 @@ export const summary = query({
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
 
-    // Get all transactions for the organization
-    const transactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
-
     // Get all funds
     const funds = await ctx.db
       .query("funds")
@@ -28,6 +20,15 @@ export const summary = query({
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
+
+    // Fetch only YTD transactions (covers current month + last month).
+    const yearStart = `${now.getFullYear()}-01-01`;
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization_date", (q) =>
+        q.eq("organizationId", user.organizationId).gte("date", yearStart)
+      )
+      .collect();
 
     const currentMonthTxns = transactions.filter((t) =>
       t.date.startsWith(currentMonth)
@@ -97,7 +98,6 @@ export const summary = query({
     const totalBalance = fundsWithBalance.reduce((sum, f) => sum + f.balance, 0);
 
     // Year to date totals
-    const yearStart = `${now.getFullYear()}-01-01`;
     const ytdTxns = transactions.filter((t) => t.date >= yearStart);
     const ytdIncome = ytdTxns
       .filter((t) => t.type === "Income")

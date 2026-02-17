@@ -1,4 +1,4 @@
-import { mutation } from "../_generated/server";
+import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 
@@ -578,7 +578,7 @@ export const merge = mutation({
 });
 
 // Find potential duplicate donors
-export const findDuplicates = mutation({
+export const findDuplicates = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);

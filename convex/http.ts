@@ -2,9 +2,75 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getStripe } from "./lib/stripe";
+import { getPlaid } from "./lib/plaid";
 import type Stripe from "stripe";
+import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 
 const http = httpRouter();
+
+const bytesToHex = (bytes: Uint8Array) =>
+  Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+const timingSafeEqualString = (a: string, b: string) => {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+};
+
+const verifyPlaidWebhook = async (
+  plaidVerificationHeader: string,
+  rawBody: string
+) => {
+  const protectedHeader = decodeProtectedHeader(plaidVerificationHeader);
+  if (!protectedHeader.kid || !protectedHeader.alg) {
+    throw new Error("Plaid verification token is missing required header values");
+  }
+
+  if (protectedHeader.alg !== "ES256") {
+    throw new Error(`Unexpected Plaid webhook algorithm: ${protectedHeader.alg}`);
+  }
+
+  const plaid = getPlaid();
+  const verificationKeyResponse = await plaid.webhookVerificationKeyGet({
+    key_id: protectedHeader.kid,
+  });
+
+  const jwk = verificationKeyResponse.data.key;
+  const publicKey = await importJWK({
+    kty: jwk.kty,
+    crv: jwk.crv,
+    x: jwk.x,
+    y: jwk.y,
+    kid: jwk.kid,
+    use: jwk.use,
+    alg: jwk.alg,
+  }, "ES256");
+
+  const verified = await jwtVerify(plaidVerificationHeader, publicKey, {
+    algorithms: ["ES256"],
+    maxTokenAge: "5m",
+    clockTolerance: 5,
+  });
+
+  const requestBodyHash = verified.payload.request_body_sha256;
+  if (typeof requestBodyHash !== "string") {
+    throw new Error("Plaid webhook token is missing request body hash");
+  }
+
+  const hashed = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(rawBody)
+  );
+  const expectedHash = bytesToHex(new Uint8Array(hashed));
+  if (!timingSafeEqualString(expectedHash, requestBodyHash.toLowerCase())) {
+    throw new Error("Plaid webhook request body hash mismatch");
+  }
+};
 
 // Price ID to plan tier mapping (reverse lookup)
 const getPlanFromPriceId = (priceId: string): "starter" | "growing" | "thriving" => {
@@ -67,12 +133,25 @@ http.route({
       switch (event.type) {
         case "customer.subscription.created":
         case "customer.subscription.updated": {
-          const subscription = event.data.object as any; // Stripe.Subscription
+          const subscription = event.data.object as Stripe.Subscription;
           const organizationId = subscription.metadata?.organizationId;
           const planFromMetadata = subscription.metadata?.plan as "starter" | "growing" | "thriving" | undefined;
 
-          if (!organizationId) {
+          if (!organizationId || typeof organizationId !== "string") {
             console.error("No organizationId in subscription metadata");
+            break;
+          }
+
+          const organization = await ctx.runQuery(
+            internal.queries.organizations.getByIdInternal,
+            {
+              organizationId: organizationId as any,
+            }
+          );
+          if (!organization) {
+            console.error(
+              `Ignoring Stripe webhook for unknown organizationId: ${organizationId}`
+            );
             break;
           }
 
@@ -80,10 +159,13 @@ http.route({
           const plan = planFromMetadata || getPlanFromPriceId(priceId);
 
           // Get period end from subscription object
-          const periodEnd = subscription.current_period_end || subscription.currentPeriodEnd || 0;
+          const periodEnd =
+            (subscription as any).current_period_end ??
+            (subscription as any).currentPeriodEnd ??
+            0;
 
           await ctx.runMutation(internal.mutations.subscriptions.upsert, {
-            organizationId: organizationId as any,
+            organizationId: organization._id,
             stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id || '',
             stripeSubscriptionId: subscription.id,
             stripePriceId: priceId,
@@ -96,7 +178,7 @@ http.route({
         }
 
         case "customer.subscription.deleted": {
-          const subscription = event.data.object as any; // Stripe.Subscription
+          const subscription = event.data.object as Stripe.Subscription;
           await ctx.runMutation(internal.mutations.subscriptions.markCanceled, {
             stripeSubscriptionId: subscription.id,
           });
@@ -104,10 +186,11 @@ http.route({
         }
 
         case "invoice.payment_failed": {
-          const invoice = event.data.object as any; // Stripe.Invoice
-          const subscriptionId = typeof invoice.subscription === 'string'
-            ? invoice.subscription
-            : invoice.subscription?.id;
+          const invoice = event.data.object as Stripe.Invoice;
+          const subscriptionRef = (invoice as any).subscription;
+          const subscriptionId = typeof subscriptionRef === "string"
+            ? subscriptionRef
+            : subscriptionRef?.id;
           if (subscriptionId) {
             await ctx.runMutation(internal.mutations.subscriptions.updateStatus, {
               stripeSubscriptionId: subscriptionId,
@@ -118,10 +201,11 @@ http.route({
         }
 
         case "invoice.payment_succeeded": {
-          const invoice = event.data.object as any; // Stripe.Invoice
-          const subscriptionId = typeof invoice.subscription === 'string'
-            ? invoice.subscription
-            : invoice.subscription?.id;
+          const invoice = event.data.object as Stripe.Invoice;
+          const subscriptionRef = (invoice as any).subscription;
+          const subscriptionId = typeof subscriptionRef === "string"
+            ? subscriptionRef
+            : subscriptionRef?.id;
           if (subscriptionId) {
             await ctx.runMutation(internal.mutations.subscriptions.updateStatus, {
               stripeSubscriptionId: subscriptionId,
@@ -162,13 +246,22 @@ http.route({
   path: "/plaid/webhook",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    // Plaid webhooks don't have signature verification like Stripe
-    // Instead, verify using the webhook_type and item_id
-    // For production, consider using Plaid's webhook verification
+    const rawBody = await request.text();
+    const plaidVerification = request.headers.get("plaid-verification");
+    if (!plaidVerification) {
+      return new Response("Missing Plaid verification header", { status: 401 });
+    }
+
+    try {
+      await verifyPlaidWebhook(plaidVerification, rawBody);
+    } catch (err: any) {
+      console.error("Plaid webhook verification failed:", err.message);
+      return new Response("Invalid webhook signature", { status: 401 });
+    }
 
     let body: any;
     try {
-      body = await request.json();
+      body = JSON.parse(rawBody);
     } catch (err: any) {
       console.error("Failed to parse Plaid webhook body:", err.message);
       return new Response("Invalid JSON", { status: 400 });

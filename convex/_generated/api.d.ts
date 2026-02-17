@@ -22,6 +22,7 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_plaid from "../lib/plaid.js";
 import type * as lib_ragInstance from "../lib/ragInstance.js";
 import type * as lib_stripe from "../lib/stripe.js";
+import type * as mutations_aiRateLimit from "../mutations/aiRateLimit.js";
 import type * as mutations_cashCollections from "../mutations/cashCollections.js";
 import type * as mutations_categories from "../mutations/categories.js";
 import type * as mutations_donors from "../mutations/donors.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "lib/plaid": typeof lib_plaid;
   "lib/ragInstance": typeof lib_ragInstance;
   "lib/stripe": typeof lib_stripe;
+  "mutations/aiRateLimit": typeof mutations_aiRateLimit;
   "mutations/cashCollections": typeof mutations_cashCollections;
   "mutations/categories": typeof mutations_categories;
   "mutations/donors": typeof mutations_donors;
