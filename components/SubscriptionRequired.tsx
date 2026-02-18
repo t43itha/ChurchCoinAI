@@ -3,6 +3,7 @@ import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { UserButton } from '@clerk/clerk-react';
 import { Check, Loader2, Sparkles, Crown, ArrowRight } from 'lucide-react';
+import { notify } from '../lib/notifications';
 
 interface PlanConfig {
   id: 'starter' | 'growing' | 'thriving';
@@ -80,7 +81,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({ organizatio
       }
     } catch (error) {
       console.error('Failed to create checkout:', error);
-      alert('Failed to start checkout. Please try again.');
+      notify('Error', 'Failed to start checkout. Please try again.');
     } finally {
       setLoading(null);
     }

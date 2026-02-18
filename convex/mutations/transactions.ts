@@ -3,20 +3,10 @@ import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-const assertValidTransactionAmount = (amount: number) => {
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("Transaction amount must be greater than 0");
-  }
-};
-
-const assertValidTransactionDate = (date: string) => {
-  if (!DATE_REGEX.test(date)) {
-    throw new Error("Transaction date must use YYYY-MM-DD format");
-  }
-};
+import {
+  assertValidTransactionAmount,
+  assertValidTransactionDate,
+} from "../lib/transactionValidation";
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {

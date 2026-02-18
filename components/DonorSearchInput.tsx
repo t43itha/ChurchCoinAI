@@ -189,6 +189,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
         <input
           ref={inputRef}
           type="text"
+          aria-label="Search donor"
           role="combobox"
           aria-autocomplete="list"
           aria-haspopup="listbox"
@@ -224,6 +225,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
               inputRef.current?.focus();
             }}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-grey-light rounded"
+            aria-label="Clear donor search"
           >
             <X className="h-3 w-3 text-grey-mid" />
           </button>
