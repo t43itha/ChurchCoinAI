@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { usePlaidLinkFlow, usePlaidUpdateLink } from '../hooks/usePlaidLink';
+import { notify } from '../lib/notifications';
 
 interface BankConnectionsSettingsProps {
   funds: Fund[];
@@ -102,7 +103,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       await removeItem({ plaidItemId: itemId });
     } catch (error) {
       console.error('Failed to remove connection:', error);
-      alert('Failed to remove bank connection. Please try again.');
+      notify('Error', 'Failed to remove bank connection. Please try again.');
     } finally {
       setIsRemoving(null);
     }
@@ -121,7 +122,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       });
     } catch (error) {
       console.error('Failed to update fund mapping:', error);
-      alert('Failed to update account mapping. Please try again.');
+      notify('Error', 'Failed to update account mapping. Please try again.');
     }
   };
 

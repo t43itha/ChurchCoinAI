@@ -1,6 +1,3 @@
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
-
 type RenderPdfFromHtmlOptions = {
   html: string;
   pageFormat?: 'a4';
@@ -22,6 +19,43 @@ type SharePdfBlobOptions = {
   filename: string;
   title?: string;
   text?: string;
+};
+
+type PdfRuntimeDeps = {
+  html2canvas: (element: HTMLElement, options?: Record<string, unknown>) => Promise<HTMLCanvasElement>;
+  jsPDF: new (options?: Record<string, unknown>) => {
+    internal: {
+      pageSize: {
+        getWidth: () => number;
+        getHeight: () => number;
+      };
+    };
+    addImage: (
+      imageData: string,
+      format: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number
+    ) => void;
+    addPage: () => void;
+    output: (type: 'blob') => Blob;
+  };
+};
+
+let pdfRuntimeDeps: Promise<PdfRuntimeDeps> | null = null;
+
+const loadPdfRuntimeDeps = (): Promise<PdfRuntimeDeps> => {
+  if (!pdfRuntimeDeps) {
+    pdfRuntimeDeps = Promise.all([import('html2canvas'), import('jspdf')]).then(
+      ([html2canvasModule, jspdfModule]) => ({
+        html2canvas: html2canvasModule.default,
+        jsPDF: jspdfModule.jsPDF,
+      })
+    );
+  }
+
+  return pdfRuntimeDeps;
 };
 
 const ensurePdfExtension = (filename: string) => (filename.toLowerCase().endsWith('.pdf') ? filename : `${filename}.pdf`);
@@ -81,6 +115,8 @@ const waitForImages = async (doc: Document) => {
 };
 
 export const renderPdfBlobFromHtml = async ({ html, pageFormat = 'a4', scale = 2 }: RenderPdfFromHtmlOptions) => {
+  const { html2canvas, jsPDF } = await loadPdfRuntimeDeps();
+
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-10000px';

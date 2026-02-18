@@ -4,6 +4,7 @@ import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search } from 'lucide-react';
+import { notify } from '../lib/notifications';
 
 interface CampaignsProps {
     funds: Fund[];
@@ -162,13 +163,13 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             const url = `https://wa.me/${formatted}?text=${encodeURIComponent(thankYouModal.text)}`;
             window.open(url, '_blank');
         } else {
-            alert("No phone number found for this donor.");
+            notify("Notice", "No phone number found for this donor.");
         }
     };
 
     const copyToClipboard = () => {
         navigator.clipboard.writeText(thankYouModal.text);
-        alert("Message copied to clipboard.");
+        notify("Copied", "Message copied to clipboard.");
     };
 
     const handleAddPledgeClick = () => {
@@ -219,7 +220,10 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         reader.onload = (evt) => {
             const text = evt.target?.result as string;
             const lines = text.split(/\r?\n/).filter(l => l.trim());
-            if (lines.length < 2) { alert("Invalid CSV"); return; }
+            if (lines.length < 2) {
+                notify("Error", "Invalid CSV.");
+                return;
+            }
 
             const parseLine = (line: string) => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.trim().replace(/^"|"$/g, ''));
             const headers = parseLine(lines[0]);
@@ -266,7 +270,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
         // Only donor name is required - amount is optional for outreach-only imports
         if (donorIdx === -1) {
-            alert("Donor Name column is required.");
+            notify("Error", "Donor Name column is required.");
             return;
         }
 

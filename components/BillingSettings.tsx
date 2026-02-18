@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { CreditCard, ExternalLink, AlertTriangle, Check, Loader2, Sparkles, Crown } from 'lucide-react';
+import { notify } from '../lib/notifications';
 
 // Plan configurations
 interface PlanConfig {
@@ -86,7 +87,7 @@ const BillingSettings: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to create checkout:', error);
-      alert('Failed to start checkout. Please try again.');
+      notify('Error', 'Failed to start checkout. Please try again.');
     } finally {
       setLoading(null);
     }
@@ -104,7 +105,7 @@ const BillingSettings: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to open billing portal:', error);
-      alert('Failed to open billing portal. Please try again.');
+      notify('Error', 'Failed to open billing portal. Please try again.');
     } finally {
       setLoading(null);
     }
