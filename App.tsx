@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { useUser, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import React, { useState } from "react";
+import { useUser, UserButton } from "@clerk/clerk-react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "./convex/_generated/api";
 import { Id } from "./convex/_generated/dataModel";
 import {
@@ -32,7 +32,6 @@ import Onboarding from "./components/Onboarding";
 import AuthPage from "./components/AuthPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
-import SubscriptionRequired from "./components/SubscriptionRequired";
 
 import { Menu, CheckCircle2, X } from "lucide-react";
 
@@ -54,10 +53,6 @@ function App() {
   );
   const organization = useQuery(
     api.queries.organizations.current,
-    isSignedIn ? {} : "skip"
-  );
-  const subscription = useQuery(
-    api.queries.subscriptions.current,
     isSignedIn ? {} : "skip"
   );
 
@@ -144,10 +139,6 @@ function App() {
     string | undefined
   >(undefined);
   const [showAuth, setShowAuth] = useState(false);
-  const isPaymentSuccess = useMemo(
-    () => new URLSearchParams(window.location.search).get("subscription") === "success",
-    []
-  );
 
   // Show loading while Clerk initializes
   if (!isLoaded) {
@@ -184,26 +175,7 @@ function App() {
     );
   }
 
-  // Show loading while checking subscription
-  if (subscription === undefined) {
-    return <LoadingSpinner message="Checking subscription..." />;
-  }
-
   const currentOrganization = organization;
-
-  // Show subscription required page if no active subscription
-  if (!subscription || subscription.status !== "active") {
-    // If payment was just completed, show waiting state while webhook processes
-    if (isPaymentSuccess) {
-      return <LoadingSpinner message="Processing your payment... This may take a few seconds." />;
-    }
-    return <SubscriptionRequired organizationName={currentOrganization.name} />;
-  }
-
-  // Clear the URL params after successful subscription activation
-  if (isPaymentSuccess && subscription?.status === "active") {
-    window.history.replaceState({}, '', window.location.pathname);
-  }
 
   // Show loading while remaining data loads
   if (
