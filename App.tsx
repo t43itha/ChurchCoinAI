@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useUser, UserButton } from "@clerk/clerk-react";
 import { useQuery } from "convex/react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -14,7 +14,6 @@ import Onboarding from "./components/Onboarding";
 import AuthPage from "./components/AuthPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
-import SubscriptionRequired from "./components/SubscriptionRequired";
 import AppContentRoutes from "./components/app/AppContentRoutes";
 import AppNotificationToast, {
   AppNotification,
@@ -37,10 +36,6 @@ function App() {
   );
   const organization = useQuery(
     api.queries.organizations.current,
-    isSignedIn ? {} : "skip"
-  );
-  const subscription = useQuery(
-    api.queries.subscriptions.current,
     isSignedIn ? {} : "skip"
   );
 
@@ -85,15 +80,6 @@ function App() {
     message: "",
   });
   const [showAuth, setShowAuth] = useState(false);
-  const isPaymentSuccess = useMemo(
-    () => new URLSearchParams(location.search).get("subscription") === "success",
-    [location.search]
-  );
-  useEffect(() => {
-    if (isPaymentSuccess && subscription?.status === "active" && location.search) {
-      navigate(location.pathname, { replace: true });
-    }
-  }, [isPaymentSuccess, location.pathname, location.search, navigate, subscription?.status]);
   const showNotification = useCallback((title: string, message: string) => {
     setNotification({ visible: true, title, message });
     setTimeout(
@@ -166,21 +152,7 @@ function App() {
     );
   }
 
-  // Show loading while checking subscription
-  if (subscription === undefined) {
-    return <LoadingSpinner message="Checking subscription..." />;
-  }
-
   const currentOrganization = organization;
-
-  // Show subscription required page if no active subscription
-  if (!subscription || subscription.status !== "active") {
-    // If payment was just completed, show waiting state while webhook processes
-    if (isPaymentSuccess) {
-      return <LoadingSpinner message="Processing your payment... This may take a few seconds." />;
-    }
-    return <SubscriptionRequired organizationName={currentOrganization.name} />;
-  }
 
   // Show loading while remaining data loads
   if (
@@ -281,5 +253,3 @@ function App() {
 }
 
 export default App;
-
-

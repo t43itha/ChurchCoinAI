@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput } from '../types';
-import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, CreditCard, Landmark, Clock, Copy, Check } from 'lucide-react';
-import BillingSettings from './BillingSettings';
+import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check } from 'lucide-react';
+
 import BankConnectionsSettings from './BankConnectionsSettings';
 import { notify } from '../lib/notifications';
 
@@ -41,7 +41,7 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users' | 'bank' | 'billing'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users' | 'bank'>('general');
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [localChurchDetails, setLocalChurchDetails] = useState<ChurchDetails>(churchDetails);
   
@@ -231,7 +231,6 @@ ${currentUser.name}`;
             { id: 'categories', label: 'Categories', icon: Tag },
             { id: 'users', label: 'Users', icon: Users },
             { id: 'bank', label: 'Bank Connections', icon: Landmark },
-            { id: 'billing', label: 'Billing', icon: CreditCard },
         ].map(tab => (
             <button
                 key={tab.id}
@@ -857,10 +856,6 @@ ${currentUser.name}`;
             <BankConnectionsSettings funds={funds} />
         )}
 
-        {/* BILLING TAB */}
-        {activeTab === 'billing' && (
-            <BillingSettings />
-        )}
       </div>
 
       {/* Invite User Modal */}
