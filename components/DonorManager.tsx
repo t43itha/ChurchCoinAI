@@ -4,6 +4,7 @@ import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
+import { notify } from '../lib/notifications';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -583,18 +584,18 @@ ${churchDetails?.name || 'Church'} Finance Team
     setIsFindingDuplicates(true);
     try {
       const groups = await convex.query(api.mutations.donors.findDuplicates, {});
-      setDuplicateGroups(groups);
-      if (groups.length === 0) {
-        alert('No duplicate donors found!');
-      } else {
-        setShowMergeModal(true);
+        setDuplicateGroups(groups);
+        if (groups.length === 0) {
+        notify('Notice', 'No duplicate donors found.');
+        } else {
+          setShowMergeModal(true);
+        }
+      } catch (error) {
+        console.error('Error finding duplicates:', error);
+      notify('Error', 'Failed to find duplicates.');
+      } finally {
+        setIsFindingDuplicates(false);
       }
-    } catch (error) {
-      console.error('Error finding duplicates:', error);
-      alert('Failed to find duplicates');
-    } finally {
-      setIsFindingDuplicates(false);
-    }
   };
 
   // Handle merging donors (auto-detected)
@@ -613,7 +614,10 @@ ${churchDetails?.name || 'Church'} Finance Team
         duplicateDonorIds: duplicateIds as Id<"donors">[],
       });
 
-      alert(`Merged successfully!\n• ${result.mergedTransactions} transactions moved\n• ${result.mergedPledges} pledges moved\n• ${result.deletedDonors} duplicate(s) removed`);
+      notify(
+        'Merge Completed',
+        `Moved ${result.mergedTransactions} transactions, ${result.mergedPledges} pledges, and removed ${result.deletedDonors} duplicate donors.`
+      );
 
       // Remove this group from the list
       setDuplicateGroups(prev => prev.filter((_, i) => i !== groupIndex));
@@ -626,7 +630,7 @@ ${churchDetails?.name || 'Church'} Finance Team
       }
     } catch (error) {
       console.error('Error merging donors:', error);
-      alert('Failed to merge donors');
+      notify('Error', 'Failed to merge donors.');
     } finally {
       setIsMerging(false);
     }
@@ -663,7 +667,10 @@ ${churchDetails?.name || 'Church'} Finance Team
         duplicateDonorIds: duplicateIds as Id<"donors">[],
       });
 
-      alert(`Merged successfully!\n• ${result.mergedTransactions} transactions moved\n• ${result.mergedPledges} pledges moved\n• ${result.deletedDonors} duplicate(s) removed`);
+      notify(
+        'Merge Completed',
+        `Moved ${result.mergedTransactions} transactions, ${result.mergedPledges} pledges, and removed ${result.deletedDonors} duplicate donors.`
+      );
 
       // Reset manual merge state
       setManualMergeMode(false);
@@ -671,7 +678,7 @@ ${churchDetails?.name || 'Church'} Finance Team
       setManualPrimaryId(null);
     } catch (error) {
       console.error('Error merging donors:', error);
-      alert('Failed to merge donors');
+      notify('Error', 'Failed to merge donors.');
     } finally {
       setIsMerging(false);
     }
@@ -1506,4 +1513,3 @@ ${churchDetails?.name || 'Church'} Finance Team
 };
 
 export default DonorManager;
-

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { ClerkProvider, useAuth } from "@clerk/clerk-react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
+import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./styles.css";
@@ -36,9 +37,11 @@ root.render(
       publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string}
     >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-        <ErrorBoundary>
-          <App />
-        </ErrorBoundary>
+        <BrowserRouter>
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
+        </BrowserRouter>
       </ConvexProviderWithClerk>
     </ClerkProvider>
   </React.StrictMode>

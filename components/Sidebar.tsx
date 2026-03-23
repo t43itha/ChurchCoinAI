@@ -1,5 +1,6 @@
 import React from 'react';
 import { UserButton } from '@clerk/clerk-react';
+import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 
 // Type for Convex user from database
@@ -12,29 +13,26 @@ interface ConvexUser {
 }
 
 interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
   currentUser: ConvexUser;
-  users: ConvexUser[];
   isOpen: boolean;
   onClose: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, users, isOpen, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
 
   // Permission Logic
-  const canViewDonors = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canViewDonors = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
   const canViewSettings = ['Admin', 'Finance Team'].includes(currentUser.role);
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'transactions', label: 'Transactions', icon: Upload },
-    { id: 'funds', label: 'Funds & Balances', icon: Wallet },
-    { id: 'donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
-    { id: 'campaigns', label: 'Campaigns', icon: HeartHandshake },
-    { id: 'reports', label: 'Reports', icon: PieChart },
-    { id: 'settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
-    { id: 'copilot', label: 'Ask Ward', icon: Sparkles },
+    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/transactions', label: 'Transactions', icon: Upload },
+    { path: '/funds', label: 'Funds & Balances', icon: Wallet },
+    { path: '/donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
+    { path: '/campaigns', label: 'Campaigns', icon: HeartHandshake },
+    { path: '/reports', label: 'Reports', icon: PieChart },
+    { path: '/settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
+    { path: '/copilot', label: 'Ask Ward', icon: Sparkles },
   ];
 
   return (
@@ -61,7 +59,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
             alt="ChurchCoin Finance Platform"
             className="h-16"
           />
-          <button onClick={onClose} className="md:hidden absolute right-4 top-6 text-grey-mid hover:text-ink">
+          <button
+            onClick={onClose}
+            className="md:hidden absolute right-4 top-6 text-grey-mid hover:text-ink"
+            aria-label="Close navigation menu"
+          >
             <X size={20} />
           </button>
         </div>
@@ -70,37 +72,40 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser,
         <nav className="flex-1 px-4 space-y-1 mt-2 overflow-y-auto">
           {menuItems.filter(item => !item.hidden).map((item) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            const isWard = item.id === 'copilot';
+            const isWard = item.path === '/copilot';
 
             return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  onClose();
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative ${
-                  isActive
-                    ? 'bg-amber-light text-ink border border-amber'
-                    : 'text-grey-mid hover:text-ink hover:bg-white'
-                }`}
+              <NavLink
+                key={item.path}
+                to={item.path}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative ${
+                    isActive
+                      ? 'bg-amber-light text-ink border border-amber'
+                      : 'text-grey-mid hover:text-ink hover:bg-white'
+                  }`
+                }
               >
-                <div className="relative">
-                    <Icon
+                {({ isActive }) => (
+                  <>
+                    <div className="relative">
+                      <Icon
                         size={18}
                         className={`transition-colors ${isActive ? 'text-amber' : isWard ? 'text-sage' : 'text-grey-mid group-hover:text-ink'}`}
                         strokeWidth={isActive ? 2.5 : 2}
-                    />
-                    {isWard && !isActive && (
+                      />
+                      {isWard && !isActive && (
                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sage opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sage border-2 border-white"></span>
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sage opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sage border-2 border-white"></span>
                         </span>
-                    )}
-                </div>
-                <span className={isActive ? 'font-bold' : 'font-medium'}>{item.label}</span>
-              </button>
+                      )}
+                    </div>
+                    <span className={isActive ? 'font-bold' : 'font-medium'}>{item.label}</span>
+                  </>
+                )}
+              </NavLink>
             );
           })}
         </nav>

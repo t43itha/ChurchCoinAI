@@ -4,6 +4,7 @@ import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invi
 import { ShieldAlert, Plus, X, UserCog, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Globe, Mail, MapPin, Hash, CalendarClock, Target, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
+import { notify } from '../lib/notifications';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -91,7 +92,7 @@ const Settings: React.FC<SettingsProps> = ({
       setInviteSuccess({ email: newInvitation.email, role: newInvitation.role });
       setCopiedNewInvite(false);
     } else {
-      alert("Please provide an email address.");
+      notify("Error", "Please provide an email address.");
     }
   };
 
@@ -159,11 +160,11 @@ ${currentUser.name}`;
     if (file) {
         const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
         if (!allowedTypes.includes(file.type)) {
-            alert("Unsupported image type. Please upload PNG/JPEG/WEBP/GIF (SVG is not allowed).");
+            notify("Error", "Unsupported image type. Please upload PNG/JPEG/WEBP/GIF (SVG is not allowed).");
             return;
         }
         if (file.size > 5 * 1024 * 1024) {
-            alert("File size too large. Please upload an image under 5MB.");
+            notify("Error", "File size too large. Please upload an image under 5MB.");
             return;
         }
 
@@ -202,7 +203,7 @@ ${currentUser.name}`;
 
   const handleDeleteFund = (fund: Fund) => {
       if (fund.balance !== 0) {
-          alert("Cannot delete a fund with a non-zero balance. Please transfer funds out before deleting.");
+          notify("Error", "Cannot delete a fund with a non-zero balance. Please transfer funds out before deleting.");
           return;
       }
       if (window.confirm(`Are you sure you want to delete '${fund.name}'? This action cannot be undone.`)) {

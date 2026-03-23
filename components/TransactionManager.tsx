@@ -7,6 +7,7 @@ import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
 import DonorSearchInput from './DonorSearchInput';
+import { notify } from '../lib/notifications';
 
 interface Category {
   _id: string;
@@ -268,7 +269,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           setSelectedIds(new Set());
       } catch (error) {
           console.error("Bulk update failed:", error);
-          alert("Failed to update transactions.");
+          notify("Error", "Failed to update transactions.");
       }
   };
 
@@ -305,7 +306,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           setSelectedIds(new Set());
       } catch (error) {
           console.error(error);
-          alert("Failed to auto-categorize. Please check API connection.");
+          notify("Error", "Failed to auto-categorize. Please check API connection.");
       } finally {
           setIsBulkProcessingAI(false);
       }
@@ -320,11 +321,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               setPledgeMatches(matches);
               setShowMatchModal(true);
           } else {
-              alert("No obvious pledge matches found for unlinked income.");
+              notify("Notice", "No obvious pledge matches found for unlinked income.");
           }
       } catch (e) {
           console.error(e);
-          alert("Smart Link failed. Please check API connection.");
+          notify("Error", "Smart Link failed. Please check API connection.");
       } finally {
           setIsReconciling(false);
       }
@@ -368,7 +369,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           // Simple CSV Parser handling quotes
           const lines = text.split(/\r?\n/).filter(l => l.trim());
           if (lines.length < 2) {
-              alert("Invalid CSV: Not enough lines.");
+              notify("Error", "Invalid CSV: Not enough lines.");
               return;
           }
 
@@ -378,7 +379,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           const headers = parseLine(lines[0]);
           // Check for empty headers
           if (headers.some(h => !h)) {
-             alert("CSV contains empty headers. Please check the file.");
+             notify("Error", "CSV contains empty headers. Please check the file.");
              return;
           }
           
@@ -447,13 +448,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
          amountInIdx = csvHeaders.indexOf(columnMapping.amountIn);
          amountOutIdx = csvHeaders.indexOf(columnMapping.amountOut);
          if (dateIdx === -1 || descIdx === -1 || (amountInIdx === -1 && amountOutIdx === -1)) {
-            alert("Please map Date, Description, and the In/Out columns.");
+            notify("Error", "Please map Date, Description, and the In/Out columns.");
             return;
          }
       } else {
          amountIdx = csvHeaders.indexOf(columnMapping.amount);
          if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
-            alert("Please map Date, Description, and Amount columns.");
+            notify("Error", "Please map Date, Description, and Amount columns.");
             return;
          }
       }
@@ -518,7 +519,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Bank sync: show selector if multiple banks, otherwise sync directly
   const handleSyncBank = () => {
     if (plaidItems.length === 0) {
-      alert('No bank accounts connected. Please connect a bank account in Settings > Bank Connections first.');
+      notify("Error", "No bank accounts connected. Please connect a bank account in Settings > Bank Connections first.");
       return;
     }
     if (plaidItems.length === 1) {
@@ -573,7 +574,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
     } catch (error: any) {
       console.error('Bank sync error:', error);
-      alert(error.message || 'Failed to sync transactions from bank. Please try again.');
+      notify("Error", error.message || "Failed to sync transactions from bank. Please try again.");
     } finally {
       setIsUploading(false);
     }
@@ -732,7 +733,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         setOriginalPredictions(new Map()); // Clear predictions
     } catch (error) {
         console.error("Import failed:", error);
-        alert("Failed to import transactions.");
+        notify("Error", "Failed to import transactions.");
     }
   };
 
@@ -768,7 +769,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             });
         } catch (error) {
             console.error("Failed to create transaction:", error);
-            alert("Failed to create transaction.");
+            notify("Error", "Failed to create transaction.");
         }
     }
   };
@@ -1481,7 +1482,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             setEditingTransaction(null);
                         } catch (error) {
                             console.error("Failed to update transaction:", error);
-                            alert("Failed to update transaction.");
+                            notify("Error", "Failed to update transaction.");
                         }
                     }
                 }} className="p-4 sm:p-6 space-y-4">
@@ -1804,3 +1805,4 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 };
 
 export default TransactionManager;
+

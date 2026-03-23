@@ -1,34 +1,86 @@
 import { query } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
 
+const AI_CONTEXT_MONTH_WINDOW = 24;
+const AI_CONTEXT_PAGE_SIZE = 500;
+const AI_CONTEXT_MAX_TRANSACTIONS = 5000;
+
 // Pre-computed context for AI chat - comprehensive summaries
-// This replaces the 20-transaction limit in AICoPilot
 export const getAIContext = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
 
-    // Bound context to recent history to prevent very large payloads.
     const now = new Date();
-    const twentyFourMonthsAgo = new Date(
+    const analysisPeriodStart = new Date(
       now.getFullYear(),
-      now.getMonth() - 24,
+      now.getMonth() - AI_CONTEXT_MONTH_WINDOW,
       1
     )
       .toISOString()
       .split("T")[0];
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+      .toISOString()
+      .split("T")[0];
 
-    // Get recent transactions
-    const transactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_organization_date", (q) =>
-        q
-          .eq("organizationId", user.organizationId)
-          .gte("date", twentyFourMonthsAgo)
-      )
-      .collect();
+    const transactions: Array<{
+      date: string;
+      amount: number;
+      type: "Income" | "Expenditure";
+      category?: string;
+      fundId: string;
+      donorId?: string;
+      donorName?: string;
+      isReconciled?: boolean;
+      description: string;
+    }> = [];
 
-    // Get all funds
+    let cursor: string | null = null;
+    let isTruncated = false;
+
+    while (true) {
+      const page = await ctx.db
+        .query("transactions")
+        .withIndex("by_organization_date", (q) =>
+          q.eq("organizationId", user.organizationId).gte("date", analysisPeriodStart)
+        )
+        .paginate({
+          cursor,
+          numItems: AI_CONTEXT_PAGE_SIZE,
+        });
+
+      const remaining = AI_CONTEXT_MAX_TRANSACTIONS - transactions.length;
+      if (remaining <= 0) {
+        isTruncated = true;
+        break;
+      }
+
+      const pageItems = page.page.slice(0, remaining).map((transaction) => ({
+        date: transaction.date,
+        amount: transaction.amount,
+        type: transaction.type,
+        category: transaction.category,
+        fundId: transaction.fundId as string,
+        donorId: transaction.donorId ? (transaction.donorId as string) : undefined,
+        donorName: transaction.donorName ?? undefined,
+        isReconciled: transaction.isReconciled,
+        description: transaction.description,
+      }));
+
+      transactions.push(...pageItems);
+
+      if (page.page.length > remaining) {
+        isTruncated = true;
+        break;
+      }
+
+      if (page.isDone) {
+        break;
+      }
+
+      cursor = page.continueCursor;
+    }
+
     const funds = await ctx.db
       .query("funds")
       .withIndex("by_organization", (q) =>
@@ -36,24 +88,90 @@ export const getAIContext = query({
       )
       .collect();
 
-    // === MONTHLY SUMMARIES (ALL MONTHS) ===
     const monthlyMap: Record<
       string,
       { income: number; expenditure: number; transactionCount: number }
     > = {};
+    const donorGivingMap = new Map<string, { id: string; name: string; total: number }>();
+    const incomeByCategory: Record<string, number> = {};
+    const expenditureByCategory: Record<string, number> = {};
+    const fundMetrics = new Map<
+      string,
+      { balance: number; recentIncome: number; recentExpense: number }
+    >();
 
-    transactions.forEach((t) => {
-      const month = t.date.substring(0, 7); // YYYY-MM
+    let uncategorizedCount = 0;
+    let unreconciledCount = 0;
+    let totalIncome = 0;
+    let totalExpenditure = 0;
+    let earliestDate: string | null = null;
+    let latestDate: string | null = null;
+
+    for (const transaction of transactions) {
+      const month = transaction.date.substring(0, 7);
       if (!monthlyMap[month]) {
         monthlyMap[month] = { income: 0, expenditure: 0, transactionCount: 0 };
       }
       monthlyMap[month].transactionCount++;
-      if (t.type === "Income") {
-        monthlyMap[month].income += t.amount;
-      } else {
-        monthlyMap[month].expenditure += t.amount;
+
+      if (!transaction.category || transaction.category === "Uncategorized") {
+        uncategorizedCount++;
       }
-    });
+      if (!transaction.isReconciled) {
+        unreconciledCount++;
+      }
+
+      const category = transaction.category || "Uncategorized";
+      const fundId = transaction.fundId;
+      const existingFundMetrics = fundMetrics.get(fundId) ?? {
+        balance: 0,
+        recentIncome: 0,
+        recentExpense: 0,
+      };
+
+      if (transaction.type === "Income") {
+        monthlyMap[month].income += transaction.amount;
+        totalIncome += transaction.amount;
+        incomeByCategory[category] = (incomeByCategory[category] || 0) + transaction.amount;
+        existingFundMetrics.balance += transaction.amount;
+
+        if (transaction.date >= threeMonthsAgo) {
+          existingFundMetrics.recentIncome += transaction.amount;
+        }
+
+        const donorKey = transaction.donorId ?? transaction.donorName;
+        if (donorKey) {
+          const existingDonor = donorGivingMap.get(donorKey);
+          if (existingDonor) {
+            existingDonor.total += transaction.amount;
+          } else {
+            donorGivingMap.set(donorKey, {
+              id: donorKey,
+              name: transaction.donorName || "Unknown Donor",
+              total: transaction.amount,
+            });
+          }
+        }
+      } else {
+        monthlyMap[month].expenditure += transaction.amount;
+        totalExpenditure += transaction.amount;
+        expenditureByCategory[category] =
+          (expenditureByCategory[category] || 0) + transaction.amount;
+        existingFundMetrics.balance -= transaction.amount;
+        if (transaction.date >= threeMonthsAgo) {
+          existingFundMetrics.recentExpense += transaction.amount;
+        }
+      }
+
+      fundMetrics.set(fundId, existingFundMetrics);
+
+      if (!earliestDate || transaction.date < earliestDate) {
+        earliestDate = transaction.date;
+      }
+      if (!latestDate || transaction.date > latestDate) {
+        latestDate = transaction.date;
+      }
+    }
 
     const monthlySummaries = Object.entries(monthlyMap)
       .map(([month, data]) => ({
@@ -67,142 +185,67 @@ export const getAIContext = query({
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
 
-    // === TOP DONORS BY TOTAL GIVING ===
-    const donorGivingMap = new Map<
-      string,
-      { id: string; name: string; total: number }
-    >();
-    for (const transaction of transactions) {
-      if (transaction.type !== "Income") continue;
-      const donorKey = transaction.donorId ?? transaction.donorName;
-      if (!donorKey) continue;
-
-      const existing = donorGivingMap.get(donorKey);
-      if (existing) {
-        existing.total += transaction.amount;
-      } else {
-        donorGivingMap.set(donorKey, {
-          id: donorKey,
-          name: transaction.donorName || "Unknown Donor",
-          total: transaction.amount,
-        });
-      }
-    }
-
     const donorGiving = Array.from(donorGivingMap.values()).sort(
       (a, b) => b.total - a.total
     );
-
     const topDonors = donorGiving.slice(0, 10);
 
-    // === CATEGORY BREAKDOWNS ===
-    const incomeByCategory: Record<string, number> = {};
-    const expenditureByCategory: Record<string, number> = {};
-
-    transactions.forEach((t) => {
-      const category = t.category || "Uncategorized";
-      if (t.type === "Income") {
-        incomeByCategory[category] =
-          (incomeByCategory[category] || 0) + t.amount;
-      } else {
-        expenditureByCategory[category] =
-          (expenditureByCategory[category] || 0) + t.amount;
-      }
-    });
-
-    // === FUND BALANCES WITH TRENDS ===
-    const fundBalances = funds.map((f) => {
-      const fundTxns = transactions.filter((t) => t.fundId === f._id);
-      const balance = fundTxns.reduce((sum, t) => {
-        return t.type === "Income" ? sum + t.amount : sum - t.amount;
-      }, 0);
-
-      // Last 3 months trend
-      const now = new Date();
-      const threeMonthsAgo = new Date(
-        now.getFullYear(),
-        now.getMonth() - 3,
-        1
-      )
-        .toISOString()
-        .split("T")[0];
-      const recentTxns = fundTxns.filter((t) => t.date >= threeMonthsAgo);
-      const recentIncome = recentTxns
-        .filter((t) => t.type === "Income")
-        .reduce((s, t) => s + t.amount, 0);
-      const recentExpense = recentTxns
-        .filter((t) => t.type === "Expenditure")
-        .reduce((s, t) => s + t.amount, 0);
-
+    const fundBalances = funds.map((fund) => {
+      const metrics = fundMetrics.get(fund._id as string) ?? {
+        balance: 0,
+        recentIncome: 0,
+        recentExpense: 0,
+      };
       return {
-        name: f.name,
-        type: f.type,
-        balance,
-        targetAmount: f.targetAmount,
-        recentIncome,
-        recentExpense,
-        progressPercent: f.targetAmount
-          ? Math.round((balance / f.targetAmount) * 100)
+        name: fund.name,
+        type: fund.type,
+        balance: metrics.balance,
+        targetAmount: fund.targetAmount,
+        recentIncome: metrics.recentIncome,
+        recentExpense: metrics.recentExpense,
+        progressPercent: fund.targetAmount
+          ? Math.round((metrics.balance / fund.targetAmount) * 100)
           : null,
       };
     });
 
-    // === UNCATEGORIZED COUNTS ===
-    const uncategorizedCount = transactions.filter(
-      (t) => !t.category || t.category === "Uncategorized"
-    ).length;
-    const unreconciledCount = transactions.filter(
-      (t) => !t.isReconciled
-    ).length;
-
-    // === BEST/WORST MONTHS FOR DONATIONS ===
-    const donationsByMonth = monthlySummaries.filter((m) => m.income > 0);
+    const donationsByMonth = monthlySummaries.filter((month) => month.income > 0);
     const bestMonth =
       donationsByMonth.length > 0
-        ? donationsByMonth.reduce((best, m) =>
-            m.income > best.income ? m : best
+        ? donationsByMonth.reduce((best, month) =>
+            month.income > best.income ? month : best
           )
         : null;
     const worstMonth =
       donationsByMonth.length > 0
-        ? donationsByMonth.reduce((worst, m) =>
-            m.income < worst.income ? m : worst
+        ? donationsByMonth.reduce((worst, month) =>
+            month.income < worst.income ? month : worst
           )
         : null;
 
-    // === OVERALL TOTALS ===
-    const totalIncome = transactions
-      .filter((t) => t.type === "Income")
-      .reduce((s, t) => s + t.amount, 0);
-    const totalExpenditure = transactions
-      .filter((t) => t.type === "Expenditure")
-      .reduce((s, t) => s + t.amount, 0);
-
-    // YTD calculations
     const currentYear = new Date().getFullYear().toString();
     const ytdIncome = transactions
-      .filter((t) => t.type === "Income" && t.date.startsWith(currentYear))
-      .reduce((s, t) => s + t.amount, 0);
+      .filter((transaction) => transaction.type === "Income" && transaction.date.startsWith(currentYear))
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
     const ytdExpenditure = transactions
       .filter(
-        (t) => t.type === "Expenditure" && t.date.startsWith(currentYear)
+        (transaction) =>
+          transaction.type === "Expenditure" && transaction.date.startsWith(currentYear)
       )
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
-    // === RECENT TRANSACTIONS (for context) ===
-    const recentTransactions = transactions
+    const recentTransactions = [...transactions]
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 10)
-      .map((t) => ({
-        date: t.date,
-        description: t.description,
-        amount: t.amount,
-        type: t.type,
-        category: t.category,
+      .map((transaction) => ({
+        date: transaction.date,
+        description: transaction.description,
+        amount: transaction.amount,
+        type: transaction.type,
+        category: transaction.category,
       }));
 
     return {
-      // Summaries for AI to reference
       monthlySummaries,
       topDonors,
       incomeByCategory: Object.entries(incomeByCategory)
@@ -212,22 +255,16 @@ export const getAIContext = query({
         .map(([category, total]) => ({ category, total }))
         .sort((a, b) => b.total - a.total),
       fundBalances,
-
-      // Operational status
       uncategorizedCount,
       unreconciledCount,
       transactionCount: transactions.length,
       donorCount: donorGiving.length,
-
-      // Key metrics
       totalIncome,
       totalExpenditure,
       netBalance: totalIncome - totalExpenditure,
       ytdIncome,
       ytdExpenditure,
       ytdNet: ytdIncome - ytdExpenditure,
-
-      // Insights
       bestMonth: bestMonth
         ? {
             month: bestMonth.monthName,
@@ -240,25 +277,17 @@ export const getAIContext = query({
             income: worstMonth.income,
           }
         : null,
-
-      // Recent activity
       recentTransactions,
-
-      // Date range
       dateRange:
-        transactions.length > 0
+        earliestDate && latestDate
           ? {
-              earliest: transactions.reduce(
-                (min, t) => (t.date < min ? t.date : min),
-                transactions[0].date
-              ),
-              latest: transactions.reduce(
-                (max, t) => (t.date > max ? t.date : max),
-                transactions[0].date
-              ),
+              earliest: earliestDate,
+              latest: latestDate,
             }
           : null,
-      analysisPeriodStart: twentyFourMonthsAgo,
+      analysisPeriodStart,
+      isTruncated,
+      maxTransactions: AI_CONTEXT_MAX_TRANSACTIONS,
     };
   },
 });
