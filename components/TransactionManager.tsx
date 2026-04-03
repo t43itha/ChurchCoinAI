@@ -1623,17 +1623,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                     )}
 
-                    <div className="flex gap-6 pt-2">
+                    <div className="flex flex-wrap gap-x-6 gap-y-3 pt-2">
                         <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                                type="checkbox" 
+                             <input
+                                type="checkbox"
                                 checked={editingTransaction.isReconciled}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isReconciled: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4"
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Reconciled</span>
                         </label>
-                        
+
                          <label className="flex items-center gap-2 cursor-pointer group">
                              <input
                                 type="checkbox"
@@ -1649,9 +1649,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox"
                                 checked={editingTransaction.isVoided || false}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isVoided: e.target.checked})}
-                                className="rounded border-slate-300 text-red-500 focus:ring-0 w-4 h-4"
+                                className="rounded border-red-300 text-red-500 focus:ring-0 w-4 h-4"
                             />
-                            <span className="text-sm text-grey-dark group-hover:text-ink">Void</span>
+                            <span className="text-sm text-red-400 group-hover:text-red-600">Void</span>
                         </label>
                     </div>
 
