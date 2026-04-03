@@ -685,3 +685,183 @@ export const seedRCICategoriesInternal = internalMutation({
     return { created, updated: skipped };
   },
 });
+
+// One-time migration: rename orphaned transaction categories to canonical RCI names
+// and ensure all RCI categories exist with correct mainCategory mappings.
+// Idempotent — safe to run multiple times.
+export const migrateTransactionCategories = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireRole(ctx, ["Admin"]);
+
+    const ALIASES: Record<string, string> = {
+      "Tithe": "Tithes & First Fruits",
+      "Tithes": "Tithes & First Fruits",
+      "First Fruit": "Tithes & First Fruits",
+      "Offering": "Offerings",
+      "Books": "Merchandise",
+      "Other": "Uncategorised",
+    };
+
+    const summary = {
+      transactionsRenamed: 0,
+      categoriesRenamed: 0,
+      categoriesCreated: [] as string[],
+      details: {} as Record<string, { from: string; count: number }>,
+    };
+
+    // Step 1: Rename category records that use old names
+    for (const [oldName, newName] of Object.entries(ALIASES)) {
+      const oldCategory = await ctx.db
+        .query("categories")
+        .withIndex("by_organization_name", (q) =>
+          q.eq("organizationId", user.organizationId).eq("name", oldName)
+        )
+        .first();
+
+      if (oldCategory) {
+        // Check if canonical name already exists
+        const existingCanonical = await ctx.db
+          .query("categories")
+          .withIndex("by_organization_name", (q) =>
+            q.eq("organizationId", user.organizationId).eq("name", newName)
+          )
+          .first();
+
+        if (existingCanonical) {
+          // Canonical exists — just delete the old one (transactions will be updated below)
+          await ctx.db.delete(oldCategory._id);
+        } else {
+          // Rename the old category to the canonical name
+          await ctx.db.patch(oldCategory._id, { name: newName });
+        }
+        summary.categoriesRenamed++;
+      }
+    }
+
+    // Step 2: Update all transactions with old category names
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    for (const t of transactions) {
+      const canonical = ALIASES[t.category];
+      if (canonical) {
+        await ctx.db.patch(t._id, { category: canonical });
+        summary.transactionsRenamed++;
+        if (!summary.details[t.category]) {
+          summary.details[t.category] = { from: t.category, count: 0 };
+        }
+        summary.details[t.category].count++;
+      }
+    }
+
+    // Step 3: Ensure "Donation" category exists under "Donations" main category
+    const donationCategory = await ctx.db
+      .query("categories")
+      .withIndex("by_organization_name", (q) =>
+        q.eq("organizationId", user.organizationId).eq("name", "Donation")
+      )
+      .first();
+
+    if (!donationCategory) {
+      await ctx.db.insert("categories", {
+        organizationId: user.organizationId,
+        name: "Donation",
+        mainCategory: "Donations",
+        transactionType: "Income",
+        displayOrder: 3,
+        createdAt: Date.now(),
+      });
+      summary.categoriesCreated.push("Donation");
+    } else if (donationCategory.mainCategory !== "Donations") {
+      await ctx.db.patch(donationCategory._id, {
+        mainCategory: "Donations",
+        transactionType: "Income",
+      });
+    }
+
+    // Step 4: Re-run seedRCICategories logic to ensure all canonical categories exist
+    const RCI_INCOME: Record<string, string[]> = {
+      "Donations": ["Tithes & First Fruits", "Offerings", "Thanksgiving"],
+      "Building Fund": [],
+      "Charitable Activities": ["Charity Fund", "Gender Ministries"],
+      "Other Income": ["Merchandise", "Uncategorised"],
+    };
+
+    const RCI_EXPENDITURE: Record<string, string[]> = {
+      "Major Programs": ["MP Honorarium", "MP Accommodation", "MP Refreshments"],
+      "Ministry Costs": ["Church Provisions", "Travel & Transport"],
+      "Staff & Volunteer Costs": ["Gross Salary", "Allowances"],
+      "Premises Costs": ["Rent", "Utilities"],
+      "Mission Costs": ["Missions-Tithe", "Mission Support"],
+      "Admin & Governance": ["Bank Charges", "IT Costs", "Love Gifts"],
+    };
+
+    let displayOrder = 0;
+    for (const [mainCat, subcats] of Object.entries(RCI_INCOME)) {
+      const names = subcats.length === 0 ? [mainCat] : subcats;
+      for (const name of names) {
+        const existing = await ctx.db
+          .query("categories")
+          .withIndex("by_organization_name", (q) =>
+            q.eq("organizationId", user.organizationId).eq("name", name)
+          )
+          .first();
+
+        if (!existing) {
+          await ctx.db.insert("categories", {
+            organizationId: user.organizationId,
+            name,
+            mainCategory: mainCat,
+            transactionType: "Income",
+            displayOrder: displayOrder++,
+            createdAt: Date.now(),
+          });
+          summary.categoriesCreated.push(name);
+        } else {
+          await ctx.db.patch(existing._id, {
+            mainCategory: mainCat,
+            transactionType: "Income",
+            displayOrder: displayOrder++,
+          });
+        }
+      }
+    }
+
+    for (const [mainCat, subcats] of Object.entries(RCI_EXPENDITURE)) {
+      const names = subcats.length === 0 ? [mainCat] : subcats;
+      for (const name of names) {
+        const existing = await ctx.db
+          .query("categories")
+          .withIndex("by_organization_name", (q) =>
+            q.eq("organizationId", user.organizationId).eq("name", name)
+          )
+          .first();
+
+        if (!existing) {
+          await ctx.db.insert("categories", {
+            organizationId: user.organizationId,
+            name,
+            mainCategory: mainCat,
+            transactionType: "Expenditure",
+            displayOrder: displayOrder++,
+            createdAt: Date.now(),
+          });
+          summary.categoriesCreated.push(name);
+        } else {
+          await ctx.db.patch(existing._id, {
+            mainCategory: mainCat,
+            transactionType: "Expenditure",
+            displayOrder: displayOrder++,
+          });
+        }
+      }
+    }
+
+    return summary;
+  },
+});
