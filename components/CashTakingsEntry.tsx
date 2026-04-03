@@ -30,7 +30,7 @@ interface Category {
 }
 
 // Contribution types for named contributions
-type ContributionType = 'Tithe' | 'Pledge' | 'First Fruit' | 'Thanksgiving' | 'Offering';
+type ContributionType = 'Tithes & First Fruits' | 'Donation' | 'Offerings' | 'Thanksgiving';
 
 interface NamedContributionEntry {
   id: string;
@@ -39,7 +39,7 @@ interface NamedContributionEntry {
   amount: string;
   isGiftAidEligible: boolean;
   type: ContributionType;
-  fundId?: string; // Required when type='Pledge'
+  fundId?: string; // Required when type='Donation'
   paymentMethod: "Cash" | "Cheque";
 }
 
@@ -95,10 +95,10 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
   // Entries
   const [namedContributions, setNamedContributions] = useState<NamedContributionEntry[]>([
-    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe', paymentMethod: "Cash" },
+    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithes & First Fruits', paymentMethod: "Cash" },
   ]);
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotalEntry[]>([
-    { id: generateId(), category: "Offering", fundId: "", amount: "", paymentMethod: "Cash" },
+    { id: generateId(), category: "Offerings", fundId: "", amount: "", paymentMethod: "Cash" },
   ]);
   const [pettyCash, setPettyCash] = useState<PettyCashEntry[]>([]);
 
@@ -143,7 +143,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const addContribution = () => {
     setNamedContributions([
       ...namedContributions,
-      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithe', paymentMethod: "Cash" },
+      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithes & First Fruits', paymentMethod: "Cash" },
     ]);
   };
 
@@ -200,8 +200,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
       // Validate entries
       const validContributions = namedContributions.filter((t) => {
         const hasBasics = t.donorName && parseFloat(t.amount) > 0;
-        // Pledges require a fund selection
-        if (t.type === 'Pledge' && !t.fundId) return false;
+        // Donations require a fund selection
+        if (t.type === 'Donation' && !t.fundId) return false;
         return hasBasics;
       });
       const validCategories = categoryTotals.filter(
@@ -379,15 +379,14 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                           value={contribution.type}
                           onChange={(e) => updateContribution(contribution.id, {
                             type: e.target.value as ContributionType,
-                            fundId: e.target.value === 'Pledge' ? contribution.fundId : undefined
+                            fundId: e.target.value === 'Donation' ? contribution.fundId : undefined
                           })}
                           className="w-full h-9 pl-2 pr-7 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
                         >
-                          <option value="Tithe">Tithe</option>
-                          <option value="Pledge">Pledge</option>
-                          <option value="First Fruit">First Fruit</option>
+                          <option value="Tithes & First Fruits">Tithes & First Fruits</option>
+                          <option value="Donation">Donation</option>
+                          <option value="Offerings">Offerings</option>
                           <option value="Thanksgiving">Thanksgiving</option>
-                          <option value="Offering">Offering</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
                           <ChevronDown className="w-4 h-4" />
@@ -395,8 +394,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       </div>
                     </div>
 
-                    {/* Fund Select - Only shown for Pledges */}
-                    {contribution.type === 'Pledge' && (
+                    {/* Fund Select - Only shown for Donations */}
+                    {contribution.type === 'Donation' && (
                       <div className="w-full sm:w-32">
                         <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Fund</label>
                         <div className="relative">
@@ -560,13 +559,10 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                           className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
                         >
                           <option value="">Select category...</option>
-                          <option value="Tithe">Tithe</option>
-                          <option value="Offering">Offering</option>
-                          <option value="Merchandise">Merchandise</option>
-                          <option value="Books">Books</option>
-                          <option value="Other">Other</option>
+                          <option value="Offerings">Offerings</option>
                           <option value="Thanksgiving">Thanksgiving</option>
-                          <option value="First Fruit">First Fruit</option>
+                          <option value="Merchandise">Merchandise</option>
+                          <option value="Uncategorised">Uncategorised</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
                           <ChevronDown className="w-4 h-4" />
