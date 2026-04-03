@@ -2,10 +2,22 @@
 // Hierarchical categories for Monthly Accounts and Annual Reports
 
 export const RCI_INCOME_CATEGORIES: Record<string, string[]> = {
-  "Donations": ["Tithes & First Fruits", "Offering", "Thanksgiving"],
+  "Donations": ["Tithes & First Fruits", "Offerings", "Thanksgiving"],
   "Building Fund": [],
   "Charitable Activities": ["Charity Fund", "Gender Ministries"],
   "Other Income": ["Merchandise", "Uncategorised"],
+};
+
+// Alias map: maps legacy/variant category names to canonical RCI names.
+// Used by data migration and as a fallback in report grouping.
+export const CATEGORY_ALIASES: Record<string, string> = {
+  "Tithe": "Tithes & First Fruits",
+  "Tithes": "Tithes & First Fruits",
+  "First Fruit": "Tithes & First Fruits",
+  "Offering": "Offerings",
+  "Donations": "Donation",
+  "Books": "Merchandise",
+  "Other": "Uncategorised",
 };
 
 export const RCI_EXPENDITURE_CATEGORIES: Record<string, string[]> = {

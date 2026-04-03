@@ -54,6 +54,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
   const categorizeWithRAG = useAction(api.actions.ai.categorizeWithRAG);
   const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
+  const toggleVoided = useMutation(api.mutations.transactions.toggleVoided);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
 
   // Plaid bank sync
@@ -104,7 +105,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       date: new Date().toISOString().split('T')[0],
       isReconciled: false,
       isGiftAidEligible: false,
-      category: categoryNames[0] || 'Donations',
+      category: categoryNames[0] || 'Donation',
       fundId: funds[0]?._id
   });
 
@@ -561,7 +562,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         amount: tx.amount,
         type: tx.type,
         fundId: tx.fundId || funds[0]?._id,
-        category: tx.type === 'Income' ? 'Donations' : 'Operating Expenses',
+        category: tx.type === 'Income' ? 'Donation' : 'Operating Expenses',
         isReconciled: false,
         isGiftAidEligible: false,
       }));
@@ -679,7 +680,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 description: pt.description || '',
                 amount: pt.amount || 0,
                 type: (pt.type || 'Income') as 'Income' | 'Expenditure',
-                category: pt.category || categoryNames[0] || 'Donations',
+                category: pt.category || categoryNames[0] || 'Donation',
                 fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
                 isReconciled: false,
                 isGiftAidEligible: pt.isGiftAidEligible || false,
@@ -706,7 +707,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         aiConfidence: prediction.confidence,
                         predictionSource: prediction.predictionSource,
                         ragScore: prediction.ragScore,
-                        finalCategory: pt.category || categoryNames[0] || 'Donations',
+                        finalCategory: pt.category || categoryNames[0] || 'Donation',
                     };
                 })
                 .filter((c): c is NonNullable<typeof c> => c !== null);
@@ -764,7 +765,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 date: new Date().toISOString().split('T')[0],
                 isReconciled: false,
                 isGiftAidEligible: false,
-                category: categoryNames[0] || 'Donations',
+                category: categoryNames[0] || 'Donation',
                 fundId: funds[0]?._id
             });
         } catch (error) {
@@ -955,13 +956,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <th className="px-6 py-3 text-xs">Fund</th>
                 <th className="px-6 py-3 text-xs text-right">Credit/Debit</th>
                 <th className="px-6 py-3 text-xs text-center">Status</th>
+                <th className="px-6 py-3 text-xs text-center">Void</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-grey-mid">
+                  <td colSpan={9} className="py-12 text-center text-grey-mid">
                     <Loader2 size={32} className="mx-auto mb-2 animate-spin opacity-40" />
                     <p className="text-sm">Loading transactions...</p>
                   </td>
@@ -973,7 +975,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
 
                   return (
-                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''}`}>
+                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''} ${t.isVoided ? 'opacity-50 line-through' : ''}`}>
                       <td className="px-4 py-3 border-b border-slate-100">
                           {canEdit && (
                                <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
@@ -1000,6 +1002,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       <td className="px-6 py-3 border-b border-slate-100 text-center">
                           {t.isReconciled ? <Check size={14} className="mx-auto text-sage" /> : <div className="w-2 h-2 rounded-full bg-ledger mx-auto"></div>}
                       </td>
+                      <td className="px-6 py-3 border-b border-slate-100 text-center">
+                          {canEdit ? (
+                            <input
+                              type="checkbox"
+                              checked={t.isVoided || false}
+                              onChange={() => toggleVoided({ transactionId: t._id })}
+                              className="w-4 h-4 text-red-500 rounded border-slate-300 focus:ring-0 cursor-pointer"
+                              title={t.isVoided ? "Unvoid transaction" : "Void transaction (exclude from reports)"}
+                            />
+                          ) : (
+                            t.isVoided && <X size={14} className="mx-auto text-red-400" />
+                          )}
+                      </td>
                       <td className="px-6 py-3 border-b border-slate-100 text-right opacity-0 group-hover:opacity-100 transition-opacity">
                           {canEdit && (
                               <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-sage transition-colors">
@@ -1012,7 +1027,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-grey-mid">
+                  <td colSpan={9} className="py-12 text-center text-grey-mid">
                     <Filter size={32} className="mx-auto mb-2 opacity-20" />
                     <p className="text-sm">No transactions match your query.</p>
                   </td>
@@ -1473,7 +1488,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 ...(editingTransaction.donorId
                                   ? { donorId: editingTransaction.donorId as Id<"donors"> }
                                   : {}),
-                                pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null
+                                pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null,
+                                isVoided: editingTransaction.isVoided || false,
                             });
                             // Check if pledge was completed
                             if (result?.pledgeCompleted && onPledgeCompleted) {
@@ -1607,25 +1623,35 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                     )}
 
-                    <div className="flex gap-6 pt-2">
+                    <div className="flex flex-wrap gap-x-6 gap-y-3 pt-2">
                         <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                                type="checkbox" 
+                             <input
+                                type="checkbox"
                                 checked={editingTransaction.isReconciled}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isReconciled: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4"
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Reconciled</span>
                         </label>
-                        
+
                          <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                                type="checkbox" 
+                             <input
+                                type="checkbox"
                                 checked={editingTransaction.isGiftAidEligible || false}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isGiftAidEligible: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4"
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
+                        </label>
+
+                         <label className="flex items-center gap-2 cursor-pointer group">
+                             <input
+                                type="checkbox"
+                                checked={editingTransaction.isVoided || false}
+                                onChange={(e) => setEditingTransaction({...editingTransaction, isVoided: e.target.checked})}
+                                className="rounded border-red-300 text-red-500 focus:ring-0 w-4 h-4"
+                            />
+                            <span className="text-sm text-red-400 group-hover:text-red-600">Void</span>
                         </label>
                     </div>
 
@@ -1656,7 +1682,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 if (e.target.value) {
                                     setPendingTransactions(prev => prev.map(t => ({
                                         ...t,
-                                        category: 'Donations',
+                                        category: 'Donation',
                                         fundId: e.target.value
                                     })));
                                 }

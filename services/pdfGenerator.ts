@@ -675,7 +675,7 @@ export const generateMonthlyReportHTML = (
         </tbody>
       </table>
 
-      <div class="section-title">Mission Tithe</div>
+      <div class="section-title">Mission Tithe (10% of General Fund Donations)</div>
       <table>
         <thead>
           <tr>
@@ -695,7 +695,7 @@ export const generateMonthlyReportHTML = (
             <td class="amount">${formatCurrency(reportData.missionTithe.total)}</td>
           </tr>
           <tr class="total-row">
-            <td><strong>Mission Tithe to Pay (10%)</strong></td>
+            <td><strong>Mission Tithe to Pay</strong></td>
             <td class="amount" style="font-weight: 700;">${formatCurrency(reportData.missionTithe.titheToPay)}</td>
           </tr>
         </tbody>

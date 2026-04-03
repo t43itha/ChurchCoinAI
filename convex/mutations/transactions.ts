@@ -160,6 +160,7 @@ export const update = mutation({
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+    isVoided: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -220,6 +221,7 @@ export const update = mutation({
     if (args.donorName !== undefined) updates.donorName = args.donorName;
     if (args.donorId !== undefined) updates.donorId = args.donorId;
     if (args.pledgeId !== undefined) updates.pledgeId = args.pledgeId;
+    if (args.isVoided !== undefined) updates.isVoided = args.isVoided;
 
     await ctx.db.patch(args.transactionId, updates);
 
@@ -658,6 +660,27 @@ export const remove = mutation({
     }
 
     return args.transactionId;
+  },
+});
+
+// Toggle voided status on a transaction (excludes from report calculations)
+export const toggleVoided = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction || transaction.organizationId !== user.organizationId) {
+      throw new Error("Transaction not found");
+    }
+
+    await ctx.db.patch(args.transactionId, {
+      isVoided: !transaction.isVoided,
+    });
+
+    return { transactionId: args.transactionId, isVoided: !transaction.isVoided };
   },
 });
 

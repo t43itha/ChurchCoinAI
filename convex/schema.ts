@@ -151,6 +151,7 @@ export default defineSchema({
       v.literal("Online")
     )),
     cashCollectionId: v.optional(v.id("cashCollections")),
+    isVoided: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])

@@ -99,7 +99,7 @@ export const generateMonthlyReportXLSX = async (
 
   // Mission Tithe Sheet
   const missionTitheData: SheetRows = [
-    ['Mission Tithe'],
+    ['Mission Tithe (10% of General Fund Donations)'],
     [''],
     ['Week Ending', 'Total'],
   ];
@@ -108,7 +108,7 @@ export const generateMonthlyReportXLSX = async (
   });
   missionTitheData.push(['', '']);
   missionTitheData.push(['Total', reportData.missionTithe.total]);
-  missionTitheData.push(['Mission Tithe to Pay (10%)', reportData.missionTithe.titheToPay]);
+  missionTitheData.push(['Mission Tithe to Pay', reportData.missionTithe.titheToPay]);
 
   const missionTitheSheet = XLSX.utils.aoa_to_sheet(missionTitheData);
   XLSX.utils.book_append_sheet(workbook, missionTitheSheet, 'Mission Tithe');

@@ -1,29 +1,19 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
+import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
 
-// Helper to check if a category is a donation category (Offerings + Tithes + Thanksgiving)
-const isDonationCategory = (category: string): boolean => {
-  const lower = category.toLowerCase();
-  return (
-    lower === "tithe" ||
-    lower === "tithes" ||
-    lower === "tithes & first fruits" ||
-    lower === "first fruit" ||
-    lower === "offering" ||
-    lower === "thanksgiving"
-  );
-};
+// Mission Tithe eligible categories (canonical names only)
+const MISSION_TITHE_CATEGORIES = new Set([
+  "Offerings",
+  "Tithes & First Fruits",
+  "Thanksgiving",
+]);
 
-// Helper to check if a category is a tithe-related category
-const isTitheCategory = (category: string): boolean => {
-  const lower = category.toLowerCase();
-  return (
-    lower === "tithe" ||
-    lower === "tithes" ||
-    lower.includes("tithe") ||
-    lower === "tithes & first fruits"
-  );
+// Resolve a category name to its canonical RCI name using the alias map
+const resolveCategory = (category: string): string => {
+  return CATEGORY_ALIASES[category] ?? category;
 };
 
 // Helper to get the Sunday (week ending) for a given date
@@ -82,6 +72,7 @@ export const weeklyCashSummary = query({
         .withIndex("by_cashCollection", (q) =>
           q.eq("cashCollectionId", collection._id)
         )
+        .filter((q) => q.neq(q.field("isVoided"), true))
         .collect();
       allTransactions.push(...transactions);
     }
@@ -133,14 +124,26 @@ export const weeklyCashSummary = query({
       {} as Record<string, number>
     );
 
-    // Tithe breakdown (individual donors)
-    const tithes = incomeTransactions
-      .filter((t) => isTitheCategory(t.category) && t.donorName)
+    // Tithe breakdown (individual donors + anonymous aggregate)
+    const titheTransactions = incomeTransactions.filter(
+      (t) => resolveCategory(t.category) === "Tithes & First Fruits"
+    );
+    const namedTithes = titheTransactions
+      .filter((t) => t.donorName)
       .map((t) => ({
         donorName: t.donorName,
         amount: t.amount,
         isGiftAidEligible: t.isGiftAidEligible,
       }));
+    const anonymousTitheTotal = titheTransactions
+      .filter((t) => !t.donorName)
+      .reduce((sum, t) => sum + t.amount, 0);
+    const tithes = [
+      ...namedTithes,
+      ...(anonymousTitheTotal > 0
+        ? [{ donorName: "Anonymous", amount: anonymousTitheTotal, isGiftAidEligible: false }]
+        : []),
+    ];
 
     // Petty cash breakdown
     const pettyCashItems = expenditureTransactions.map((t) => ({
@@ -243,6 +246,7 @@ export const monthlyCashBreakdown = query({
           .withIndex("by_cashCollection", (q) =>
             q.eq("cashCollectionId", collection._id)
           )
+          .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
         allTransactions.push(...transactions);
       }
@@ -356,7 +360,12 @@ export const monthlyReportData = query({
           .eq("organizationId", user.organizationId)
           .gte("date", startDateStr)
       )
-      .filter((q) => q.lte(q.field("date"), endDateStr))
+      .filter((q) =>
+        q.and(
+          q.lte(q.field("date"), endDateStr),
+          q.neq(q.field("isVoided"), true)
+        )
+      )
       .collect();
 
     // Get categories with mainCategory data
@@ -367,14 +376,58 @@ export const monthlyReportData = query({
       )
       .collect();
 
+    // Get funds for Mission Tithe fund-type filtering and Donation grouping
+    const funds = await ctx.db
+      .query("funds")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    const fundMap = new Map(funds.map((f) => [f._id, f]));
+
     // Build category to mainCategory lookup
-    const categoryToMain = new Map<string, { mainCategory: string; transactionType?: string }>();
+    const categoryToMain = new Map<string, string>();
     for (const cat of categories) {
-      categoryToMain.set(cat.name, {
-        mainCategory: cat.mainCategory || "Other",
-        transactionType: cat.transactionType,
-      });
+      categoryToMain.set(cat.name, cat.mainCategory || "Other");
     }
+
+    // Resolve mainCategory for a transaction, with alias fallback and fund-based grouping
+    const getMainCategory = (
+      category: string,
+      fundId: Id<"funds">,
+      transactionType: "Income" | "Expenditure"
+    ): string => {
+      // 1. Direct DB lookup
+      let mainCategory = categoryToMain.get(category);
+
+      // 2. Alias fallback: resolve variant name, then look up again
+      if (!mainCategory) {
+        const canonical = resolveCategory(category);
+        mainCategory = categoryToMain.get(canonical);
+      }
+
+      // 3. Special case for "Donation"/"Donations": group by fund (primarily for Building Fund)
+      if (category === "Donation" || category === "Donations") {
+        if (fundId) {
+          const fund = fundMap.get(fundId);
+          if (fund) {
+            if (INCOME_MAIN_CATEGORY_ORDER.includes(fund.name)) {
+              return fund.name;
+            }
+            if (fund.type === "Unrestricted") {
+              return "Donations";
+            }
+            return fund.name;
+          }
+        }
+        return mainCategory || "Donations";
+      }
+
+      // 4. Return found mainCategory or fallback
+      if (mainCategory) return mainCategory;
+      return transactionType === "Income" ? "Other Income" : "Admin & Governance";
+    };
 
     // Separate income and expenditure
     const incomeTransactions = allTransactions.filter((t) => t.type === "Income");
@@ -383,8 +436,7 @@ export const monthlyReportData = query({
     // Group income by mainCategory
     const receiptsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
     for (const t of incomeTransactions) {
-      const catData = categoryToMain.get(t.category);
-      const mainCategory = catData?.mainCategory || "Other Income";
+      const mainCategory = getMainCategory(t.category, t.fundId, "Income");
 
       if (!receiptsMap.has(mainCategory)) {
         receiptsMap.set(mainCategory, { subcategories: new Map(), total: 0 });
@@ -397,8 +449,7 @@ export const monthlyReportData = query({
     // Group expenditure by mainCategory
     const paymentsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
     for (const t of expenditureTransactions) {
-      const catData = categoryToMain.get(t.category);
-      const mainCategory = catData?.mainCategory || "Admin & Governance";
+      const mainCategory = getMainCategory(t.category, t.fundId, "Expenditure");
 
       if (!paymentsMap.has(mainCategory)) {
         paymentsMap.set(mainCategory, { subcategories: new Map(), total: 0 });
@@ -491,15 +542,19 @@ export const monthlyReportData = query({
       }
     }
 
-    // Mission Tithe breakdown (10% of Offerings + Tithes + Thanksgiving)
+    // Mission Tithe breakdown (10% of Offerings + Tithes & First Fruits + Thanksgiving in General Fund only)
     const missionTitheBreakdown = sundays.map((weekEnding) => {
       const weekStart = new Date(weekEnding);
       weekStart.setDate(weekStart.getDate() - 6);
       const weekStartStr = weekStart.toISOString().split("T")[0];
 
-      const weekDonations = incomeTransactions.filter(
-        (t) => t.date >= weekStartStr && t.date <= weekEnding && isDonationCategory(t.category)
-      );
+      const weekDonations = incomeTransactions.filter((t) => {
+        if (t.date < weekStartStr || t.date > weekEnding) return false;
+        const resolved = resolveCategory(t.category);
+        if (!MISSION_TITHE_CATEGORIES.has(resolved)) return false;
+        const fund = fundMap.get(t.fundId);
+        return fund?.type === "Unrestricted";
+      });
 
       const total = weekDonations.reduce((sum, t) => sum + t.amount, 0);
 
@@ -512,9 +567,13 @@ export const monthlyReportData = query({
       dayAfterLastSunday.setDate(dayAfterLastSunday.getDate() + 1);
       const partialStartStr = dayAfterLastSunday.toISOString().split("T")[0];
 
-      const partialWeekDonations = incomeTransactions.filter(
-        (t) => t.date >= partialStartStr && t.date <= endDateStr && isDonationCategory(t.category)
-      );
+      const partialWeekDonations = incomeTransactions.filter((t) => {
+        if (t.date < partialStartStr || t.date > endDateStr) return false;
+        const resolved = resolveCategory(t.category);
+        if (!MISSION_TITHE_CATEGORIES.has(resolved)) return false;
+        const fund = fundMap.get(t.fundId);
+        return fund?.type === "Unrestricted";
+      });
       const partialTotal = partialWeekDonations.reduce((sum, t) => sum + t.amount, 0);
 
       if (partialTotal > 0) {
@@ -522,19 +581,39 @@ export const monthlyReportData = query({
       }
     }
 
-    // Compute total from ALL month's donations (not just weekly breakdown sum)
+    // Compute total from ALL month's Mission Tithe eligible donations
     const missionTitheTotal = incomeTransactions
-      .filter((t) => isDonationCategory(t.category))
+      .filter((t) => {
+        const resolved = resolveCategory(t.category);
+        if (!MISSION_TITHE_CATEGORIES.has(resolved)) return false;
+        const fund = fundMap.get(t.fundId);
+        return fund?.type === "Unrestricted";
+      })
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // Tithes breakdown (individual donors for tithe category)
-    const tithes = incomeTransactions
-      .filter((t) => isTitheCategory(t.category) && t.donorName)
+    // Tithes breakdown (individual donors + anonymous aggregate)
+    const titheTransactions = incomeTransactions.filter(
+      (t) => resolveCategory(t.category) === "Tithes & First Fruits"
+    );
+
+    const namedTithes = titheTransactions
+      .filter((t) => t.donorName)
       .map((t) => ({
         donorName: t.donorName!,
         amount: t.amount,
         isGiftAidEligible: t.isGiftAidEligible || false,
       }));
+
+    const anonymousTitheTotal = titheTransactions
+      .filter((t) => !t.donorName)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const tithes = [
+      ...namedTithes,
+      ...(anonymousTitheTotal > 0
+        ? [{ donorName: "Anonymous", amount: anonymousTitheTotal, isGiftAidEligible: false }]
+        : []),
+    ];
 
     // Gift Aid summary
     const giftAidEligible = incomeTransactions
@@ -595,7 +674,12 @@ export const annualReportData = query({
           .eq("organizationId", user.organizationId)
           .gte("date", startDate)
       )
-      .filter((q) => q.lte(q.field("date"), endDate))
+      .filter((q) =>
+        q.and(
+          q.lte(q.field("date"), endDate),
+          q.neq(q.field("isVoided"), true)
+        )
+      )
       .collect();
 
     // Get previous year transactions for comparison
@@ -608,7 +692,12 @@ export const annualReportData = query({
           .eq("organizationId", user.organizationId)
           .gte("date", prevStartDate)
       )
-      .filter((q) => q.lte(q.field("date"), prevEndDate))
+      .filter((q) =>
+        q.and(
+          q.lte(q.field("date"), prevEndDate),
+          q.neq(q.field("isVoided"), true)
+        )
+      )
       .collect();
 
     // Get categories with mainCategory data
@@ -742,6 +831,7 @@ export const annualReportData = query({
       .withIndex("by_organization_date", (q) =>
         q.eq("organizationId", user.organizationId).lte("date", endDate)
       )
+      .filter((q) => q.neq(q.field("isVoided"), true))
       .collect();
 
     const fundBalances = funds.map((fund) => {

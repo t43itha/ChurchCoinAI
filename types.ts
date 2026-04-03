@@ -130,6 +130,7 @@ export interface Transaction {
   pledgeId?: string | null;
   paymentMethod?: PaymentMethod;
   cashCollectionId?: string;
+  isVoided?: boolean;
 }
 
 export type TransactionCreateInput = Omit<Transaction, "_id">;
