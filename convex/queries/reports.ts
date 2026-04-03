@@ -1,5 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
 
@@ -387,7 +388,7 @@ export const monthlyReportData = query({
     // Resolve mainCategory for a transaction, with alias fallback and fund-based grouping
     const getMainCategory = (
       category: string,
-      fundId: any,
+      fundId: Id<"funds">,
       transactionType: "Income" | "Expenditure"
     ): string => {
       // 1. Direct DB lookup
@@ -399,18 +400,21 @@ export const monthlyReportData = query({
         mainCategory = categoryToMain.get(canonical);
       }
 
-      // 3. Special case for "Donation": group by fund
-      if (category === "Donation" && fundId) {
-        const fund = fundMap.get(fundId);
-        if (fund) {
-          if (INCOME_MAIN_CATEGORY_ORDER.includes(fund.name)) {
+      // 3. Special case for "Donation": group by fund (primarily for Building Fund)
+      if (category === "Donation") {
+        if (fundId) {
+          const fund = fundMap.get(fundId);
+          if (fund) {
+            if (INCOME_MAIN_CATEGORY_ORDER.includes(fund.name)) {
+              return fund.name;
+            }
+            if (fund.type === "Unrestricted") {
+              return "Donations";
+            }
             return fund.name;
           }
-          if (fund.type === "Unrestricted") {
-            return "Donations";
-          }
-          return fund.name;
         }
+        return mainCategory || "Donations";
       }
 
       // 4. Return found mainCategory or fallback

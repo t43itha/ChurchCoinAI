@@ -6,6 +6,7 @@ import {
   RCI_EXPENDITURE_CATEGORIES,
   INCOME_MAIN_CATEGORY_ORDER,
   EXPENDITURE_MAIN_CATEGORY_ORDER,
+  CATEGORY_ALIASES,
 } from "../../constants/rciCategories";
 
 // Create a new category
@@ -694,14 +695,7 @@ export const migrateTransactionCategories = mutation({
   handler: async (ctx) => {
     const user = await requireRole(ctx, ["Admin"]);
 
-    const ALIASES: Record<string, string> = {
-      "Tithe": "Tithes & First Fruits",
-      "Tithes": "Tithes & First Fruits",
-      "First Fruit": "Tithes & First Fruits",
-      "Offering": "Offerings",
-      "Books": "Merchandise",
-      "Other": "Uncategorised",
-    };
+    const ALIASES = CATEGORY_ALIASES;
 
     const summary = {
       transactionsRenamed: 0,
@@ -785,24 +779,8 @@ export const migrateTransactionCategories = mutation({
     }
 
     // Step 4: Re-run seedRCICategories logic to ensure all canonical categories exist
-    const RCI_INCOME: Record<string, string[]> = {
-      "Donations": ["Tithes & First Fruits", "Offerings", "Thanksgiving"],
-      "Building Fund": [],
-      "Charitable Activities": ["Charity Fund", "Gender Ministries"],
-      "Other Income": ["Merchandise", "Uncategorised"],
-    };
-
-    const RCI_EXPENDITURE: Record<string, string[]> = {
-      "Major Programs": ["MP Honorarium", "MP Accommodation", "MP Refreshments"],
-      "Ministry Costs": ["Church Provisions", "Travel & Transport"],
-      "Staff & Volunteer Costs": ["Gross Salary", "Allowances"],
-      "Premises Costs": ["Rent", "Utilities"],
-      "Mission Costs": ["Missions-Tithe", "Mission Support"],
-      "Admin & Governance": ["Bank Charges", "IT Costs", "Love Gifts"],
-    };
-
     let displayOrder = 0;
-    for (const [mainCat, subcats] of Object.entries(RCI_INCOME)) {
+    for (const [mainCat, subcats] of Object.entries(RCI_INCOME_CATEGORIES)) {
       const names = subcats.length === 0 ? [mainCat] : subcats;
       for (const name of names) {
         const existing = await ctx.db
@@ -832,7 +810,7 @@ export const migrateTransactionCategories = mutation({
       }
     }
 
-    for (const [mainCat, subcats] of Object.entries(RCI_EXPENDITURE)) {
+    for (const [mainCat, subcats] of Object.entries(RCI_EXPENDITURE_CATEGORIES)) {
       const names = subcats.length === 0 ? [mainCat] : subcats;
       for (const name of names) {
         const existing = await ctx.db
