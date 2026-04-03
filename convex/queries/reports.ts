@@ -72,6 +72,7 @@ export const weeklyCashSummary = query({
         .withIndex("by_cashCollection", (q) =>
           q.eq("cashCollectionId", collection._id)
         )
+        .filter((q) => q.neq(q.field("isVoided"), true))
         .collect();
       allTransactions.push(...transactions);
     }
@@ -245,6 +246,7 @@ export const monthlyCashBreakdown = query({
           .withIndex("by_cashCollection", (q) =>
             q.eq("cashCollectionId", collection._id)
           )
+          .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
         allTransactions.push(...transactions);
       }
@@ -358,7 +360,12 @@ export const monthlyReportData = query({
           .eq("organizationId", user.organizationId)
           .gte("date", startDateStr)
       )
-      .filter((q) => q.lte(q.field("date"), endDateStr))
+      .filter((q) =>
+        q.and(
+          q.lte(q.field("date"), endDateStr),
+          q.neq(q.field("isVoided"), true)
+        )
+      )
       .collect();
 
     // Get categories with mainCategory data
@@ -400,8 +407,8 @@ export const monthlyReportData = query({
         mainCategory = categoryToMain.get(canonical);
       }
 
-      // 3. Special case for "Donation": group by fund (primarily for Building Fund)
-      if (category === "Donation") {
+      // 3. Special case for "Donation"/"Donations": group by fund (primarily for Building Fund)
+      if (category === "Donation" || category === "Donations") {
         if (fundId) {
           const fund = fundMap.get(fundId);
           if (fund) {
@@ -667,7 +674,12 @@ export const annualReportData = query({
           .eq("organizationId", user.organizationId)
           .gte("date", startDate)
       )
-      .filter((q) => q.lte(q.field("date"), endDate))
+      .filter((q) =>
+        q.and(
+          q.lte(q.field("date"), endDate),
+          q.neq(q.field("isVoided"), true)
+        )
+      )
       .collect();
 
     // Get previous year transactions for comparison
@@ -680,7 +692,12 @@ export const annualReportData = query({
           .eq("organizationId", user.organizationId)
           .gte("date", prevStartDate)
       )
-      .filter((q) => q.lte(q.field("date"), prevEndDate))
+      .filter((q) =>
+        q.and(
+          q.lte(q.field("date"), prevEndDate),
+          q.neq(q.field("isVoided"), true)
+        )
+      )
       .collect();
 
     // Get categories with mainCategory data
@@ -814,6 +831,7 @@ export const annualReportData = query({
       .withIndex("by_organization_date", (q) =>
         q.eq("organizationId", user.organizationId).lte("date", endDate)
       )
+      .filter((q) => q.neq(q.field("isVoided"), true))
       .collect();
 
     const fundBalances = funds.map((fund) => {

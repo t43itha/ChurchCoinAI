@@ -15,6 +15,7 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   "Tithes": "Tithes & First Fruits",
   "First Fruit": "Tithes & First Fruits",
   "Offering": "Offerings",
+  "Donations": "Donation",
   "Books": "Merchandise",
   "Other": "Uncategorised",
 };

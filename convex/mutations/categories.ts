@@ -690,10 +690,13 @@ export const seedRCICategoriesInternal = internalMutation({
 // One-time migration: rename orphaned transaction categories to canonical RCI names
 // and ensure all RCI categories exist with correct mainCategory mappings.
 // Idempotent — safe to run multiple times.
-export const migrateTransactionCategories = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin"]);
+// NOTE: Temporarily set to internalMutation for dashboard execution. Revert to mutation + requireRole after running.
+export const migrateTransactionCategories = internalMutation({
+  args: {
+    organizationId: v.id("organizations"),
+  },
+  handler: async (ctx, args) => {
+    const organizationId = args.organizationId;
 
     const ALIASES = CATEGORY_ALIASES;
 
@@ -709,7 +712,7 @@ export const migrateTransactionCategories = mutation({
       const oldCategory = await ctx.db
         .query("categories")
         .withIndex("by_organization_name", (q) =>
-          q.eq("organizationId", user.organizationId).eq("name", oldName)
+          q.eq("organizationId", organizationId).eq("name", oldName)
         )
         .first();
 
@@ -718,7 +721,7 @@ export const migrateTransactionCategories = mutation({
         const existingCanonical = await ctx.db
           .query("categories")
           .withIndex("by_organization_name", (q) =>
-            q.eq("organizationId", user.organizationId).eq("name", newName)
+            q.eq("organizationId", organizationId).eq("name", newName)
           )
           .first();
 
@@ -737,7 +740,7 @@ export const migrateTransactionCategories = mutation({
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
+        q.eq("organizationId", organizationId)
       )
       .collect();
 
@@ -757,13 +760,13 @@ export const migrateTransactionCategories = mutation({
     const donationCategory = await ctx.db
       .query("categories")
       .withIndex("by_organization_name", (q) =>
-        q.eq("organizationId", user.organizationId).eq("name", "Donation")
+        q.eq("organizationId", organizationId).eq("name", "Donation")
       )
       .first();
 
     if (!donationCategory) {
       await ctx.db.insert("categories", {
-        organizationId: user.organizationId,
+        organizationId,
         name: "Donation",
         mainCategory: "Donations",
         transactionType: "Income",
@@ -786,13 +789,13 @@ export const migrateTransactionCategories = mutation({
         const existing = await ctx.db
           .query("categories")
           .withIndex("by_organization_name", (q) =>
-            q.eq("organizationId", user.organizationId).eq("name", name)
+            q.eq("organizationId", organizationId).eq("name", name)
           )
           .first();
 
         if (!existing) {
           await ctx.db.insert("categories", {
-            organizationId: user.organizationId,
+            organizationId,
             name,
             mainCategory: mainCat,
             transactionType: "Income",
@@ -816,13 +819,13 @@ export const migrateTransactionCategories = mutation({
         const existing = await ctx.db
           .query("categories")
           .withIndex("by_organization_name", (q) =>
-            q.eq("organizationId", user.organizationId).eq("name", name)
+            q.eq("organizationId", organizationId).eq("name", name)
           )
           .first();
 
         if (!existing) {
           await ctx.db.insert("categories", {
-            organizationId: user.organizationId,
+            organizationId,
             name,
             mainCategory: mainCat,
             transactionType: "Expenditure",

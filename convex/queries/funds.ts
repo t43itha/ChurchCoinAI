@@ -21,6 +21,7 @@ export const list = query({
         const transactions = await ctx.db
           .query("transactions")
           .withIndex("by_fund", (q) => q.eq("fundId", fund._id))
+          .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
 
         const balance = transactions.reduce((sum, t) => {
@@ -79,6 +80,7 @@ export const listPriority = query({
         const transactions = await ctx.db
           .query("transactions")
           .withIndex("by_fund", (q) => q.eq("fundId", fund._id))
+          .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
 
         const balance = transactions.reduce((sum, t) => {
@@ -129,6 +131,7 @@ export const listByType = query({
         const transactions = await ctx.db
           .query("transactions")
           .withIndex("by_fund", (q) => q.eq("fundId", fund._id))
+          .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
 
         const balance = transactions.reduce((sum, t) => {

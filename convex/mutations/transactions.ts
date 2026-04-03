@@ -661,6 +661,27 @@ export const remove = mutation({
   },
 });
 
+// Toggle voided status on a transaction (excludes from report calculations)
+export const toggleVoided = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction || transaction.organizationId !== user.organizationId) {
+      throw new Error("Transaction not found");
+    }
+
+    await ctx.db.patch(args.transactionId, {
+      isVoided: !transaction.isVoided,
+    });
+
+    return { transactionId: args.transactionId, isVoided: !transaction.isVoided };
+  },
+});
+
 // Record categorization corrections for ML learning
 export const recordCorrections = mutation({
   args: {
