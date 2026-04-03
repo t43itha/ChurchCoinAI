@@ -448,7 +448,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
           >
             <div className="flex items-center gap-2">
               {expandedSections.has('missionTithe') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Mission Tithe</h3>
+              <h3 className="font-bold text-ink">Mission Tithe (10% of General Fund Donations)</h3>
             </div>
             <span className="font-mono font-bold text-amber">
               {formatCurrency(reportData.missionTithe.titheToPay)}
@@ -482,7 +482,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
                     </td>
                   </tr>
                   <tr className="bg-grey-light/50 font-bold">
-                    <td className="px-4 py-3 text-sm text-amber">Mission Tithe to Pay (10%)</td>
+                    <td className="px-4 py-3 text-sm text-amber">Mission Tithe to Pay</td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-amber">
                       {formatCurrency(reportData.missionTithe.titheToPay)}
                     </td>
