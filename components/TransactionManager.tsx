@@ -956,7 +956,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <th className="px-6 py-3 text-xs">Fund</th>
                 <th className="px-6 py-3 text-xs text-right">Credit/Debit</th>
                 <th className="px-6 py-3 text-xs text-center">Status</th>
-                <th className="px-6 py-3 text-xs text-center">Voided</th>
+                <th className="px-6 py-3 text-xs text-center">Void</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
@@ -1488,7 +1488,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 ...(editingTransaction.donorId
                                   ? { donorId: editingTransaction.donorId as Id<"donors"> }
                                   : {}),
-                                pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null
+                                pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null,
+                                isVoided: editingTransaction.isVoided || false,
                             });
                             // Check if pledge was completed
                             if (result?.pledgeCompleted && onPledgeCompleted) {
@@ -1634,13 +1635,23 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </label>
                         
                          <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                                type="checkbox" 
+                             <input
+                                type="checkbox"
                                 checked={editingTransaction.isGiftAidEligible || false}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isGiftAidEligible: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
+                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4"
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
+                        </label>
+
+                         <label className="flex items-center gap-2 cursor-pointer group">
+                             <input
+                                type="checkbox"
+                                checked={editingTransaction.isVoided || false}
+                                onChange={(e) => setEditingTransaction({...editingTransaction, isVoided: e.target.checked})}
+                                className="rounded border-slate-300 text-red-500 focus:ring-0 w-4 h-4"
+                            />
+                            <span className="text-sm text-grey-dark group-hover:text-ink">Void</span>
                         </label>
                     </div>
 

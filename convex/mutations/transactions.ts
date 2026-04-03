@@ -160,6 +160,7 @@ export const update = mutation({
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+    isVoided: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -220,6 +221,7 @@ export const update = mutation({
     if (args.donorName !== undefined) updates.donorName = args.donorName;
     if (args.donorId !== undefined) updates.donorId = args.donorId;
     if (args.pledgeId !== undefined) updates.pledgeId = args.pledgeId;
+    if (args.isVoided !== undefined) updates.isVoided = args.isVoided;
 
     await ctx.db.patch(args.transactionId, updates);
 
