@@ -91,13 +91,12 @@ export const submitCollection = mutation({
         amount: v.number(),
         isGiftAidEligible: v.boolean(),
         type: v.union(
-          v.literal("Tithe"),
-          v.literal("Pledge"),
-          v.literal("First Fruit"),
-          v.literal("Thanksgiving"),
-          v.literal("Offering")
+          v.literal("Tithes & First Fruits"),
+          v.literal("Donation"),
+          v.literal("Offerings"),
+          v.literal("Thanksgiving")
         ),
-        fundId: v.optional(v.id("funds")), // Required for Pledge type
+        fundId: v.optional(v.id("funds")), // Required for Donation type
         paymentMethod: v.optional(v.union(v.literal("Cash"), v.literal("Cheque"))),
       })
     ),
@@ -169,13 +168,12 @@ export const submitCollection = mutation({
         }
       }
 
-      // Determine the fund: pledges use their specified fund, others use unrestricted
+      // Determine the fund: Donations use their specified fund, others use unrestricted
       let transactionFundId = unrestrictedFund._id;
-      if (contribution.type === "Pledge" && contribution.fundId) {
-        // Verify fund belongs to organization
-        const pledgeFund = await ctx.db.get(contribution.fundId);
-        if (!pledgeFund || pledgeFund.organizationId !== user.organizationId) {
-          throw new Error(`Invalid fund for pledge: ${contribution.fundId}`);
+      if (contribution.type === "Donation" && contribution.fundId) {
+        const donationFund = await ctx.db.get(contribution.fundId);
+        if (!donationFund || donationFund.organizationId !== user.organizationId) {
+          throw new Error(`Invalid fund for donation: ${contribution.fundId}`);
         }
         transactionFundId = contribution.fundId;
       }
