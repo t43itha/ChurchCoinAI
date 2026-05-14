@@ -2112,7 +2112,7 @@ git commit -m "feat: migrate bank settings to provider-neutral connections"
 **Files:**
 - Modify: `components/TransactionManager.tsx`
 
-- [ ] **Step 1: Replace Plaid query and action declarations**
+- [x] **Step 1: Replace Plaid query and action declarations**
 
 In `components/TransactionManager.tsx`, replace:
 
@@ -2130,7 +2130,7 @@ with:
   const syncTransactions = useAction(api.actions.bankConnections.syncTransactions);
 ```
 
-- [ ] **Step 2: Replace sync handler identifiers**
+- [x] **Step 2: Replace sync handler identifiers**
 
 Replace `handleSyncBank` with:
 
@@ -2157,16 +2157,25 @@ Replace `handleSyncFromBank` function signature and action call:
 and:
 
 ```typescript
-      const result = await syncTransactions({ bankConnectionId });
+      const result = await syncTransactions({ bankConnectionId, ...(cursor ? { cursor } : {}) });
 ```
 
-- [ ] **Step 3: Replace remaining `plaidItems` UI references**
+- [x] **Step 3: Replace remaining `plaidItems` UI references**
 
 Replace every remaining `plaidItems` reference in `components/TransactionManager.tsx` with `bankConnections`.
 
 Replace any variable or label that says "Plaid" with provider-neutral wording. Keep user-facing "bank" wording where it already exists.
 
-- [ ] **Step 4: Run TypeScript**
+Add state for Task 6 sync continuation:
+
+```typescript
+const [nextBankSyncCursor, setNextBankSyncCursor] = useState<BankSyncCursor | null>(null);
+const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"bankConnections"> | null>(null);
+```
+
+When `syncTransactions` returns `hasMore` with `nextCursor`, show a user-facing notice and keep the current review batch open. Add a compact review modal footer button that calls `syncTransactions({ bankConnectionId, cursor: nextCursor })` and appends the returned transactions to `pendingTransactions`, preserving existing review edits and duplicate warnings. Starting a new bank sync while a review batch exists should reopen the review modal instead of silently overwriting the pending transactions.
+
+- [x] **Step 4: Run TypeScript**
 
 Run:
 
