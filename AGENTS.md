@@ -40,12 +40,12 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - Navigation tabs: dashboard, transactions, funds, donors, campaigns, reports, copilot, settings
 
 ### Backend Structure (convex/)
-- `schema.ts` — 16 tables, all scoped to `organizationId` for multi-tenancy
+- `schema.ts` — 17 tables, all scoped to `organizationId` for multi-tenancy
 - `queries/` — Read-only data fetching with auth checks
 - `mutations/` — Data modifications with role validation
 - `actions/` — Server-side async operations (AI calls, Stripe, bank connection flows)
 - `intelligence/` — AI insight generation and RAG indexing
-- `http.ts` — HTTP routes for Stripe webhooks and Enable Banking callbacks
+- `http.ts` — HTTP routes for Stripe webhooks, active Enable Banking callbacks, and preserved Plaid webhook compatibility
 - `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireRole()`, `canEdit()`
 
 ### Data Patterns
@@ -91,7 +91,7 @@ Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the
 
 - Path alias: `@/*` maps to project root (configured in `tsconfig.json` and `vite.config.ts`)
 - Convex auto-generates types in `convex/_generated/` — never edit these files
-- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Enable Banking callback at `/enable-banking/callback`)
+- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, active Enable Banking callback at `/enable-banking/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
 - Reuse existing Convex queries and mutations rather than creating duplicates

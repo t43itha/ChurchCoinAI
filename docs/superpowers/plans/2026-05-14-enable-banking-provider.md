@@ -2299,7 +2299,7 @@ Replace:
 with:
 
 ```markdown
-- `http.ts` — HTTP routes for Stripe webhooks and Enable Banking callbacks
+- `http.ts` — HTTP routes for Stripe webhooks, active Enable Banking callbacks, and preserved Plaid webhook compatibility
 ```
 
 Replace backend Plaid env vars:
@@ -2324,7 +2324,7 @@ Replace:
 with:
 
 ```markdown
-- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Enable Banking callback at `/enable-banking/callback`)
+- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, active Enable Banking callback at `/enable-banking/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
 ```
 
 - [x] **Step 2: Add Enable Banking setup notes to `convex/README.md`**
