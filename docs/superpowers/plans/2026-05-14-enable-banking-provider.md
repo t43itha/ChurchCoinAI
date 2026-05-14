@@ -1420,7 +1420,7 @@ export const syncTransactions = action({
             );
           }
 
-          const hasContinuation = Boolean(response.continuation_key);
+          const hasContinuation = response.continuation_key != null;
 
           if (response.transactions.length > remainingCapacity) {
             hasMore = true;
