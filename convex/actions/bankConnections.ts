@@ -78,6 +78,21 @@ export const startConnection = action({
     const defaults = getEnableBankingDefaults();
     const state = randomState();
     const expiresAt = Date.now() + 15 * 60 * 1000;
+    let existingConnectionId = args.existingConnectionId;
+
+    if (existingConnectionId) {
+      const existingConnection = await ctx.runQuery(
+        internal.queries.bankConnections.getForAction,
+        { bankConnectionId: existingConnectionId }
+      );
+
+      if (
+        !existingConnection ||
+        existingConnection.organizationId !== user.organizationId
+      ) {
+        throw new Error("Bank connection not found");
+      }
+    }
 
     await ctx.runMutation(internal.mutations.bankConnections.createPending, {
       organizationId: user.organizationId,
@@ -86,7 +101,7 @@ export const startConnection = action({
       state,
       aspspCountry: defaults.aspspCountry,
       aspspName: defaults.aspspName,
-      existingConnectionId: args.existingConnectionId,
+      existingConnectionId,
       expiresAt,
     });
 
