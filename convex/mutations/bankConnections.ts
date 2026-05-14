@@ -1,6 +1,7 @@
 import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
+import { isPendingStateExpired } from "../lib/bankConnectionUtils";
 
 const providerSchema = v.literal("enable_banking");
 
@@ -77,6 +78,8 @@ export const markPendingError = internalMutation({
 
     if (!pending) return null;
 
+    if (pending.status !== "pending") return pending._id;
+
     await ctx.db.patch(pending._id, {
       status: "error",
       errorCode: args.errorCode,
@@ -106,6 +109,17 @@ export const completePending = internalMutation({
     }
 
     const now = Date.now();
+
+    if (isPendingStateExpired({ expiresAt: pending.expiresAt, now })) {
+      await ctx.db.patch(pending._id, {
+        status: "error",
+        errorCode: "STATE_EXPIRED",
+        errorMessage: "Bank authorization session expired",
+        updatedAt: now,
+      });
+      throw new Error("Pending bank connection expired");
+    }
+
     let connectionId = pending.existingConnectionId;
 
     if (!connectionId) {
@@ -119,12 +133,17 @@ export const completePending = internalMutation({
           )
           .collect();
 
-        const match = existingConnections.find((connection) =>
+        const matches = existingConnections.filter((connection) =>
           connection.accounts.some((account) =>
             getAccountHashes(account).some((hash) => incomingHashes.has(hash))
           )
         );
-        connectionId = match?._id;
+
+        if (matches.length > 1) {
+          throw new Error("Multiple matching bank connections found");
+        }
+
+        connectionId = matches[0]?._id;
       }
     }
 
