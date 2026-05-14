@@ -23,6 +23,24 @@ const accountSchema = v.object({
   fundId: v.optional(v.id("funds")),
 });
 
+type AccountHashFields = {
+  providerAccountHash?: string;
+  providerAccountHashes?: string[];
+};
+
+const getAccountHashes = (account: AccountHashFields) =>
+  [account.providerAccountHash, ...(account.providerAccountHashes || [])].filter(
+    (hash): hash is string => Boolean(hash)
+  );
+
+const accountsShareHash = (
+  firstAccount: AccountHashFields,
+  secondAccount: AccountHashFields
+) => {
+  const firstHashes = new Set(getAccountHashes(firstAccount));
+  return getAccountHashes(secondAccount).some((hash) => firstHashes.has(hash));
+};
+
 export const createPending = internalMutation({
   args: {
     organizationId: v.id("organizations"),
@@ -91,12 +109,9 @@ export const completePending = internalMutation({
     let connectionId = pending.existingConnectionId;
 
     if (!connectionId) {
-      const firstHash = args.accounts
-        .flatMap((account) => account.providerAccountHashes || [])
-        .concat(args.accounts.map((account) => account.providerAccountHash || ""))
-        .filter(Boolean)[0];
+      const incomingHashes = new Set(args.accounts.flatMap(getAccountHashes));
 
-      if (firstHash) {
+      if (incomingHashes.size > 0) {
         const existingConnections = await ctx.db
           .query("bankConnections")
           .withIndex("by_organization", (q) =>
@@ -106,9 +121,7 @@ export const completePending = internalMutation({
 
         const match = existingConnections.find((connection) =>
           connection.accounts.some((account) =>
-            [account.providerAccountHash, ...(account.providerAccountHashes || [])]
-              .filter(Boolean)
-              .includes(firstHash)
+            getAccountHashes(account).some((hash) => incomingHashes.has(hash))
           )
         );
         connectionId = match?._id;
@@ -129,13 +142,7 @@ export const completePending = internalMutation({
           const previous = existing.accounts.find(
             (existingAccount) =>
               existingAccount.accountId === account.accountId ||
-              (account.providerAccountHash &&
-                [
-                  existingAccount.providerAccountHash,
-                  ...(existingAccount.providerAccountHashes || []),
-                ]
-                  .filter(Boolean)
-                  .includes(account.providerAccountHash))
+              accountsShareHash(existingAccount, account)
           );
           return {
             ...account,
