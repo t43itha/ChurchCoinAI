@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
@@ -32,6 +32,34 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const callbackResult = searchParams.get('bankConnection');
+
+    if (callbackResult !== 'success' && callbackResult !== 'error') {
+      return;
+    }
+
+    searchParams.delete('bankConnection');
+    const nextSearch = searchParams.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
+
+    if (callbackResult === 'success') {
+      setConnectionError(null);
+      notify('Success', 'Bank connection completed successfully.');
+      return;
+    }
+
+    const message = 'Bank connection was not completed. Please try connecting again.';
+    setConnectionError(message);
+    notify('Error', message);
+  }, []);
 
   const handleConnectBank = async () => {
     setIsConnecting(true);

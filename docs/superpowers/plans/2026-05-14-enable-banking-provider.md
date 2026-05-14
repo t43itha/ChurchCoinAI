@@ -1935,6 +1935,8 @@ Remove these state variables and Plaid flow values from the file:
 
 Remove the `usePlaidLinkFlow` block, both `useEffect` blocks that initialize/open Plaid Link, and the Plaid fund mapping modal. Fund mapping now happens from the provider-neutral account list after the callback creates or refreshes the bank connection.
 
+Add a mount-only browser-guarded `useEffect` that reads the `/settings?tab=bank&bankConnection=success|error` callback result. On `success`, clear any connection error and notify success. On `error`, set `connectionError` to a helpful retry message and notify error. In both cases, remove only the `bankConnection` query parameter with `window.history.replaceState`, preserving any other query parameters and the hash.
+
 - [x] **Step 3: Replace connect handler**
 
 Replace `handleConnectBank` with:
