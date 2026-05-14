@@ -563,6 +563,22 @@ export type EnableBankingTransactionsResponse = {
   continuation_key?: string | null;
 };
 
+export class EnableBankingApiError extends Error {
+  status: number;
+  statusText?: string;
+
+  constructor(status: number, statusText?: string) {
+    super(
+      `Enable Banking API request failed with status ${status}${
+        statusText ? ` ${statusText}` : ""
+      }`
+    );
+    this.name = "EnableBankingApiError";
+    this.status = status;
+    this.statusText = statusText;
+  }
+}
+
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
   if (!value) {
@@ -614,10 +630,9 @@ const enableBankingRequest = async <T>(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Enable Banking API ${response.status}${
-        response.statusText ? ` ${response.statusText}` : ""
-      }`
+    throw new EnableBankingApiError(
+      response.status,
+      response.statusText || undefined
     );
   }
 
@@ -1188,11 +1203,13 @@ Corrected sync behavior: `syncTransactions` returns normalized pending transacti
 Create `convex/actions/bankConnections.ts` with:
 
 ```typescript
+"use node";
+
 import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { Id } from "../_generated/dataModel";
 import {
   closeSession,
+  EnableBankingApiError,
   getAccountTransactions,
   getConsentValidUntil,
   getEnableBankingDefaults,
@@ -1232,28 +1249,31 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
 
-const mapSessionAccount = (account: any) => {
-  const details = account.details || {};
-  const accountName =
-    account.name ||
-    details.name ||
-    details.product ||
-    details.iban ||
-    details.bban ||
-    "Bank account";
+type SyncedBankTransaction = {
+  date: string;
+  description: string;
+  amount: number;
+  type: "Income" | "Expenditure";
+  accountId: string;
+  accountName: string;
+  fundId: string | null;
+  providerTransactionId: string;
+};
 
-  const identifier = details.iban || details.bban || "";
-  const mask = identifier ? identifier.slice(-4) : undefined;
+const assertValidAuthorizationUrl = (url: unknown) => {
+  if (typeof url !== "string") {
+    throw new Error("Enable Banking returned an invalid authorization URL");
+  }
 
-  return {
-    accountId: account.uid,
-    providerAccountHash: account.identification_hash,
-    providerAccountHashes: account.identification_hashes,
-    name: accountName,
-    mask,
-    type: details.cash_account_type || details.product,
-    currency: details.currency,
-  };
+  const trimmedUrl = url.trim();
+
+  try {
+    const parsed = new URL(trimmedUrl);
+    if (parsed.protocol !== "https:") throw new Error();
+    return trimmedUrl;
+  } catch {
+    throw new Error("Enable Banking returned an invalid authorization URL");
+  }
 };
 
 export const startConnection = action({
@@ -1268,6 +1288,21 @@ export const startConnection = action({
     const defaults = getEnableBankingDefaults();
     const state = randomState();
     const expiresAt = Date.now() + 15 * 60 * 1000;
+    const existingConnectionId = args.existingConnectionId;
+
+    if (existingConnectionId) {
+      const existingConnection = await ctx.runQuery(
+        internal.queries.bankConnections.getForAction,
+        { bankConnectionId: existingConnectionId }
+      );
+
+      if (
+        !existingConnection ||
+        existingConnection.organizationId !== user.organizationId
+      ) {
+        throw new Error("Bank connection not found");
+      }
+    }
 
     await ctx.runMutation(internal.mutations.bankConnections.createPending, {
       organizationId: user.organizationId,
@@ -1276,19 +1311,34 @@ export const startConnection = action({
       state,
       aspspCountry: defaults.aspspCountry,
       aspspName: defaults.aspspName,
-      existingConnectionId: args.existingConnectionId,
+      existingConnectionId,
       expiresAt,
     });
 
-    const response = await startAuthorization({
-      state,
-      aspspCountry: defaults.aspspCountry,
-      aspspName: defaults.aspspName,
-      redirectUrl: defaults.redirectUrl,
-      validUntil: getConsentValidUntil(),
-    });
+    try {
+      const response = await startAuthorization({
+        state,
+        aspspCountry: defaults.aspspCountry,
+        aspspName: defaults.aspspName,
+        redirectUrl: defaults.redirectUrl,
+        validUntil: getConsentValidUntil(),
+      });
 
-    return { authorizationUrl: response.url };
+      return { authorizationUrl: assertValidAuthorizationUrl(response.url) };
+    } catch (error: any) {
+      try {
+        await ctx.runMutation(internal.mutations.bankConnections.markPendingError, {
+          state,
+          errorCode: "AUTHORIZATION_START_FAILED",
+          errorMessage:
+            error?.message || "Failed to start bank authorization session",
+        });
+      } catch {
+        // Preserve the original provider or validation error for the caller.
+      }
+
+      throw error;
+    }
   },
 });
 
@@ -1300,16 +1350,7 @@ export const syncTransactions = action({
     ctx,
     args
   ): Promise<{
-    transactions: Array<{
-      date: string;
-      description: string;
-      amount: number;
-      type: "Income" | "Expenditure";
-      accountId: string;
-      accountName: string;
-      fundId: string | null;
-      providerTransactionId: string;
-    }>;
+    transactions: SyncedBankTransaction[];
     hasMore: boolean;
   }> => {
     const user = await requireUser(ctx);
@@ -1335,7 +1376,11 @@ export const syncTransactions = action({
     });
 
     const mappedAccounts = connection.accounts.filter((account) => account.fundId);
-    const transactions = [];
+    if (mappedAccounts.length === 0) {
+      return { transactions: [], hasMore: false };
+    }
+
+    const transactions: SyncedBankTransaction[] = [];
 
     try {
       for (const account of mappedAccounts) {
@@ -1378,9 +1423,8 @@ export const syncTransactions = action({
     } catch (error: any) {
       const message = error?.message || "Failed to sync bank transactions";
       const isAuthorizationError =
-        message.includes("401") ||
-        message.includes("403") ||
-        message.toLowerCase().includes("expired");
+        error instanceof EnableBankingApiError &&
+        (error.status === 401 || error.status === 403);
 
       if (isAuthorizationError) {
         await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
@@ -1424,8 +1468,12 @@ export const removeConnection = action({
     try {
       await closeSession(connection.providerConnectionId);
     } catch (error: any) {
-      const message = error?.message || "";
-      if (!message.includes("404")) {
+      if (
+        !(
+          error instanceof EnableBankingApiError &&
+          [401, 403, 404].includes(error.status)
+        )
+      ) {
         throw error;
       }
     }
