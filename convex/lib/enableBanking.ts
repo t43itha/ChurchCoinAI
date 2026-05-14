@@ -41,11 +41,17 @@ export type EnableBankingTransactionsResponse = {
 
 export class EnableBankingApiError extends Error {
   status: number;
+  statusText?: string;
 
-  constructor(status: number) {
-    super(`Enable Banking API request failed with status ${status}`);
+  constructor(status: number, statusText?: string) {
+    super(
+      `Enable Banking API request failed with status ${status}${
+        statusText ? ` ${statusText}` : ""
+      }`
+    );
     this.name = "EnableBankingApiError";
     this.status = status;
+    this.statusText = statusText;
   }
 }
 
@@ -105,7 +111,10 @@ const enableBankingRequest = async <T>(
   });
 
   if (!response.ok) {
-    throw new EnableBankingApiError(response.status);
+    throw new EnableBankingApiError(
+      response.status,
+      response.statusText || undefined
+    );
   }
 
   const body = await response.text();

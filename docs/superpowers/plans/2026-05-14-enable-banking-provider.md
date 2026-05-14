@@ -613,9 +613,10 @@ const enableBankingRequest = async <T>(
   });
 
   if (!response.ok) {
-    const body = await response.text();
     throw new Error(
-      `Enable Banking API ${response.status}: ${body || response.statusText}`
+      `Enable Banking API ${response.status}${
+        response.statusText ? ` ${response.statusText}` : ""
+      }`
     );
   }
 
@@ -1173,6 +1174,8 @@ git commit -m "feat: add bank connection queries"
 **Files:**
 - Create: `convex/actions/bankConnections.ts`
 
+Corrected sync behavior: `syncTransactions` returns normalized pending transactions and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints.
+
 - [ ] **Step 1: Create start, sync, and remove actions**
 
 Create `convex/actions/bankConnections.ts` with:
@@ -1333,6 +1336,10 @@ export const syncTransactions = action({
           dateTo,
         });
 
+        if (!Array.isArray(response.transactions)) {
+          throw new Error("Enable Banking transactions response is invalid");
+        }
+
         for (const transaction of response.transactions) {
           transactions.push(
             normalizeEnableBankingTransaction({
@@ -1344,11 +1351,6 @@ export const syncTransactions = action({
           );
         }
       }
-
-      await ctx.runMutation(internal.mutations.bankConnections.updateSyncState, {
-        bankConnectionId: args.bankConnectionId,
-        lastSyncedThrough: dateTo,
-      });
     } catch (error: any) {
       const message = error?.message || "Failed to sync bank transactions";
       const isAuthorizationError =

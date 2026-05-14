@@ -81,7 +81,7 @@ export const startConnection = action({
     const defaults = getEnableBankingDefaults();
     const state = randomState();
     const expiresAt = Date.now() + 15 * 60 * 1000;
-    let existingConnectionId = args.existingConnectionId;
+    const existingConnectionId = args.existingConnectionId;
 
     if (existingConnectionId) {
       const existingConnection = await ctx.runQuery(
@@ -108,15 +108,30 @@ export const startConnection = action({
       expiresAt,
     });
 
-    const response = await startAuthorization({
-      state,
-      aspspCountry: defaults.aspspCountry,
-      aspspName: defaults.aspspName,
-      redirectUrl: defaults.redirectUrl,
-      validUntil: getConsentValidUntil(),
-    });
+    try {
+      const response = await startAuthorization({
+        state,
+        aspspCountry: defaults.aspspCountry,
+        aspspName: defaults.aspspName,
+        redirectUrl: defaults.redirectUrl,
+        validUntil: getConsentValidUntil(),
+      });
 
-    return { authorizationUrl: assertValidAuthorizationUrl(response.url) };
+      return { authorizationUrl: assertValidAuthorizationUrl(response.url) };
+    } catch (error: any) {
+      try {
+        await ctx.runMutation(internal.mutations.bankConnections.markPendingError, {
+          state,
+          errorCode: "AUTHORIZATION_START_FAILED",
+          errorMessage:
+            error?.message || "Failed to start bank authorization session",
+        });
+      } catch {
+        // Preserve the original provider or validation error for the caller.
+      }
+
+      throw error;
+    }
   },
 });
 
@@ -168,6 +183,10 @@ export const syncTransactions = action({
           dateTo,
         });
 
+        if (!Array.isArray(response.transactions)) {
+          throw new Error("Enable Banking transactions response is invalid");
+        }
+
         for (const transaction of response.transactions) {
           transactions.push(
             normalizeEnableBankingTransaction({
@@ -179,11 +198,6 @@ export const syncTransactions = action({
           );
         }
       }
-
-      await ctx.runMutation(internal.mutations.bankConnections.updateSyncState, {
-        bankConnectionId: args.bankConnectionId,
-        lastSyncedThrough: dateTo,
-      });
     } catch (error: any) {
       const message = error?.message || "Failed to sync bank transactions";
       const isAuthorizationError =
