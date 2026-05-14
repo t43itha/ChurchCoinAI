@@ -20,6 +20,7 @@ import type * as intelligence_rules_donorRules from "../intelligence/rules/donor
 import type * as intelligence_rules_operationsRules from "../intelligence/rules/operationsRules.js";
 import type * as lib_aiValidation from "../lib/aiValidation.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_bankConnectionUtils from "../lib/bankConnectionUtils.js";
 import type * as lib_plaid from "../lib/plaid.js";
 import type * as lib_ragInstance from "../lib/ragInstance.js";
 import type * as lib_stripe from "../lib/stripe.js";
@@ -74,6 +75,7 @@ declare const fullApi: ApiFromModules<{
   "intelligence/rules/operationsRules": typeof intelligence_rules_operationsRules;
   "lib/aiValidation": typeof lib_aiValidation;
   "lib/auth": typeof lib_auth;
+  "lib/bankConnectionUtils": typeof lib_bankConnectionUtils;
   "lib/plaid": typeof lib_plaid;
   "lib/ragInstance": typeof lib_ragInstance;
   "lib/stripe": typeof lib_stripe;
