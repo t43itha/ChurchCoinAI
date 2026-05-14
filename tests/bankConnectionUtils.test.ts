@@ -30,8 +30,8 @@ describe("bank connection utils", () => {
   });
 
   it("detects expired pending connection state", () => {
-    expect(isPendingStateExpired(1000, 1000)).toBe(true);
-    expect(isPendingStateExpired(999, 1000)).toBe(false);
+    expect(isPendingStateExpired({ now: 1000, expiresAt: 1000 })).toBe(true);
+    expect(isPendingStateExpired({ now: 999, expiresAt: 1000 })).toBe(false);
   });
 
   it("normalizes a credit transaction as income", () => {
@@ -86,6 +86,52 @@ describe("bank connection utils", () => {
     });
   });
 
+  it("falls back to transaction sign when the credit debit indicator is missing", () => {
+    const income = normalizeEnableBankingTransaction({
+      transaction: {
+        transaction_id: "signed-income-1",
+        booking_date: "2026-05-12",
+        amount: { amount: "-25.00", currency: "GBP" },
+      },
+      accountId: "account-1",
+      accountName: "Metro Current",
+      fundId: null,
+    });
+
+    const expenditure = normalizeEnableBankingTransaction({
+      transaction: {
+        transaction_id: "signed-expenditure-1",
+        booking_date: "2026-05-12",
+        amount: { amount: "25.00", currency: "GBP" },
+      },
+      accountId: "account-1",
+      accountName: "Metro Current",
+      fundId: null,
+    });
+
+    expect(income.type).toBe("Income");
+    expect(income.amount).toBe(25);
+    expect(expenditure.type).toBe("Expenditure");
+    expect(expenditure.amount).toBe(25);
+  });
+
+  it("falls back to a default description for whitespace-only descriptions", () => {
+    const normalized = normalizeEnableBankingTransaction({
+      transaction: {
+        transaction_id: "blank-description-1",
+        booking_date: "2026-05-12",
+        credit_debit_indicator: "CRDT",
+        amount: { amount: "10.00", currency: "GBP" },
+        remittance_information: "   ",
+      },
+      accountId: "account-1",
+      accountName: "Metro Current",
+      fundId: null,
+    });
+
+    expect(normalized.description).toBe("Bank transaction");
+  });
+
   it("rejects transactions without a usable date", () => {
     expect(() =>
       normalizeEnableBankingTransaction({
@@ -99,5 +145,37 @@ describe("bank connection utils", () => {
         fundId: null,
       })
     ).toThrow("Enable Banking transaction is missing a date");
+  });
+
+  it("rejects transactions with a malformed date", () => {
+    expect(() =>
+      normalizeEnableBankingTransaction({
+        transaction: {
+          entry_reference: "invalid-date",
+          booking_date: "13/05/2026",
+          credit_debit_indicator: "CRDT",
+          amount: { amount: "10.00", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Current",
+        fundId: null,
+      })
+    ).toThrow("Enable Banking transaction has an invalid date");
+  });
+
+  it("rejects transactions with malformed amount strings", () => {
+    expect(() =>
+      normalizeEnableBankingTransaction({
+        transaction: {
+          entry_reference: "malformed-amount",
+          booking_date: "2026-05-13",
+          credit_debit_indicator: "CRDT",
+          amount: { amount: "12.34GBP", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Current",
+        fundId: null,
+      })
+    ).toThrow("Enable Banking transaction has an invalid amount");
   });
 });

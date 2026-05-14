@@ -69,8 +69,8 @@ describe("bank connection utils", () => {
   });
 
   it("detects expired pending connection state", () => {
-    expect(isPendingStateExpired(1000, 1000)).toBe(true);
-    expect(isPendingStateExpired(999, 1000)).toBe(false);
+    expect(isPendingStateExpired({ now: 1000, expiresAt: 1000 })).toBe(true);
+    expect(isPendingStateExpired({ now: 999, expiresAt: 1000 })).toBe(false);
   });
 
   it("normalizes a credit transaction as income", () => {
@@ -125,6 +125,52 @@ describe("bank connection utils", () => {
     });
   });
 
+  it("falls back to transaction sign when the credit debit indicator is missing", () => {
+    const income = normalizeEnableBankingTransaction({
+      transaction: {
+        transaction_id: "signed-income-1",
+        booking_date: "2026-05-12",
+        amount: { amount: "-25.00", currency: "GBP" },
+      },
+      accountId: "account-1",
+      accountName: "Metro Current",
+      fundId: null,
+    });
+
+    const expenditure = normalizeEnableBankingTransaction({
+      transaction: {
+        transaction_id: "signed-expenditure-1",
+        booking_date: "2026-05-12",
+        amount: { amount: "25.00", currency: "GBP" },
+      },
+      accountId: "account-1",
+      accountName: "Metro Current",
+      fundId: null,
+    });
+
+    expect(income.type).toBe("Income");
+    expect(income.amount).toBe(25);
+    expect(expenditure.type).toBe("Expenditure");
+    expect(expenditure.amount).toBe(25);
+  });
+
+  it("falls back to a default description for whitespace-only descriptions", () => {
+    const normalized = normalizeEnableBankingTransaction({
+      transaction: {
+        transaction_id: "blank-description-1",
+        booking_date: "2026-05-12",
+        credit_debit_indicator: "CRDT",
+        amount: { amount: "10.00", currency: "GBP" },
+        remittance_information: "   ",
+      },
+      accountId: "account-1",
+      accountName: "Metro Current",
+      fundId: null,
+    });
+
+    expect(normalized.description).toBe("Bank transaction");
+  });
+
   it("rejects transactions without a usable date", () => {
     expect(() =>
       normalizeEnableBankingTransaction({
@@ -138,6 +184,38 @@ describe("bank connection utils", () => {
         fundId: null,
       })
     ).toThrow("Enable Banking transaction is missing a date");
+  });
+
+  it("rejects transactions with a malformed date", () => {
+    expect(() =>
+      normalizeEnableBankingTransaction({
+        transaction: {
+          entry_reference: "invalid-date",
+          booking_date: "13/05/2026",
+          credit_debit_indicator: "CRDT",
+          amount: { amount: "10.00", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Current",
+        fundId: null,
+      })
+    ).toThrow("Enable Banking transaction has an invalid date");
+  });
+
+  it("rejects transactions with malformed amount strings", () => {
+    expect(() =>
+      normalizeEnableBankingTransaction({
+        transaction: {
+          entry_reference: "malformed-amount",
+          booking_date: "2026-05-13",
+          credit_debit_indicator: "CRDT",
+          amount: { amount: "12.34GBP", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Current",
+        fundId: null,
+      })
+    ).toThrow("Enable Banking transaction has an invalid amount");
   });
 });
 ```
@@ -203,14 +281,23 @@ export const calculateDefaultSyncRange = ({
   dateTo: today,
 });
 
-export const isPendingStateExpired = (expiresAt: number, now: number) =>
-  expiresAt <= now;
+export const isPendingStateExpired = ({
+  expiresAt,
+  now = Date.now(),
+}: {
+  expiresAt: number;
+  now?: number;
+}) => now >= expiresAt;
 
 const getTransactionAmount = (transaction: EnableBankingTransactionLike) => {
   const rawAmount =
     transaction.amount?.amount ?? transaction.transaction_amount?.amount;
   const numericAmount =
-    typeof rawAmount === "number" ? rawAmount : Number.parseFloat(rawAmount ?? "");
+    typeof rawAmount === "number"
+      ? rawAmount
+      : typeof rawAmount === "string" && rawAmount.trim() !== ""
+        ? Number(rawAmount.trim())
+        : Number.NaN;
 
   if (!Number.isFinite(numericAmount) || numericAmount === 0) {
     throw new Error("Enable Banking transaction has an invalid amount");
@@ -220,18 +307,37 @@ const getTransactionAmount = (transaction: EnableBankingTransactionLike) => {
 };
 
 const getTransactionDescription = (transaction: EnableBankingTransactionLike) => {
+  const normalizeDescription = (description?: string) => {
+    const normalized = description?.trim();
+    return normalized || undefined;
+  };
+
   const remittance = transaction.remittance_information;
   if (Array.isArray(remittance)) {
-    return remittance.filter(Boolean).join(" ").trim() || "Bank transaction";
+    return (
+      remittance.map((part) => part.trim()).filter(Boolean).join(" ") ||
+      "Bank transaction"
+    );
   }
 
   return (
-    remittance ||
-    transaction.additional_information ||
-    transaction.creditor_name ||
-    transaction.debtor_name ||
+    normalizeDescription(remittance) ||
+    normalizeDescription(transaction.additional_information) ||
+    normalizeDescription(transaction.creditor_name) ||
+    normalizeDescription(transaction.debtor_name) ||
     "Bank transaction"
-  ).trim();
+  );
+};
+
+const assertValidTransactionDate = (date: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Enable Banking transaction has an invalid date");
+  }
+
+  const parsedDate = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsedDate.getTime()) || toIsoDate(parsedDate) !== date) {
+    throw new Error("Enable Banking transaction has an invalid date");
+  }
 };
 
 const getTransactionType = (
@@ -262,6 +368,7 @@ export const normalizeEnableBankingTransaction = ({
   if (!date) {
     throw new Error("Enable Banking transaction is missing a date");
   }
+  assertValidTransactionDate(date);
 
   const amount = getTransactionAmount(transaction);
   const providerTransactionId =
@@ -1400,7 +1507,7 @@ http.route({
       return redirectToBankSettings(request, "error");
     }
 
-    if (isPendingStateExpired(pending.expiresAt, Date.now())) {
+    if (isPendingStateExpired({ expiresAt: pending.expiresAt })) {
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {

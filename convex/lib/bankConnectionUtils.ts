@@ -54,14 +54,23 @@ export const calculateDefaultSyncRange = ({
   dateTo: today,
 });
 
-export const isPendingStateExpired = (now: number, expiresAt: number) =>
-  now >= expiresAt;
+export const isPendingStateExpired = ({
+  expiresAt,
+  now = Date.now(),
+}: {
+  expiresAt: number;
+  now?: number;
+}) => now >= expiresAt;
 
 const getTransactionAmount = (transaction: EnableBankingTransactionLike) => {
   const rawAmount =
     transaction.amount?.amount ?? transaction.transaction_amount?.amount;
   const numericAmount =
-    typeof rawAmount === "number" ? rawAmount : Number.parseFloat(rawAmount ?? "");
+    typeof rawAmount === "number"
+      ? rawAmount
+      : typeof rawAmount === "string" && rawAmount.trim() !== ""
+        ? Number(rawAmount.trim())
+        : Number.NaN;
 
   if (!Number.isFinite(numericAmount) || numericAmount === 0) {
     throw new Error("Enable Banking transaction has an invalid amount");
@@ -71,18 +80,37 @@ const getTransactionAmount = (transaction: EnableBankingTransactionLike) => {
 };
 
 const getTransactionDescription = (transaction: EnableBankingTransactionLike) => {
+  const normalizeDescription = (description?: string) => {
+    const normalized = description?.trim();
+    return normalized || undefined;
+  };
+
   const remittance = transaction.remittance_information;
   if (Array.isArray(remittance)) {
-    return remittance.filter(Boolean).join(" ").trim() || "Bank transaction";
+    return (
+      remittance.map((part) => part.trim()).filter(Boolean).join(" ") ||
+      "Bank transaction"
+    );
   }
 
   return (
-    remittance ||
-    transaction.additional_information ||
-    transaction.creditor_name ||
-    transaction.debtor_name ||
+    normalizeDescription(remittance) ||
+    normalizeDescription(transaction.additional_information) ||
+    normalizeDescription(transaction.creditor_name) ||
+    normalizeDescription(transaction.debtor_name) ||
     "Bank transaction"
-  ).trim();
+  );
+};
+
+const assertValidTransactionDate = (date: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Enable Banking transaction has an invalid date");
+  }
+
+  const parsedDate = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(parsedDate.getTime()) || toIsoDate(parsedDate) !== date) {
+    throw new Error("Enable Banking transaction has an invalid date");
+  }
 };
 
 const getTransactionType = (
@@ -113,6 +141,7 @@ export const normalizeEnableBankingTransaction = ({
   if (!date) {
     throw new Error("Enable Banking transaction is missing a date");
   }
+  assertValidTransactionDate(date);
 
   const amount = getTransactionAmount(transaction);
   const providerTransactionId =
