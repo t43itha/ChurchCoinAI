@@ -1196,7 +1196,7 @@ git commit -m "feat: add bank connection queries"
 **Files:**
 - Create: `convex/actions/bankConnections.ts`
 
-Corrected sync behavior: `syncTransactions` returns normalized pending transactions from all Enable Banking transaction pages and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry.
+Corrected sync behavior: `syncTransactions` returns up to 500 normalized pending transactions from Enable Banking transaction pages and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints. `hasMore` can be true when the 500-transaction cap or page limit stops the review batch, and page-limit overflow returns bounded data instead of throwing. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry.
 
 - [ ] **Step 1: Create start, sync, and remove actions**
 
@@ -1248,6 +1248,7 @@ const randomState = () => crypto.randomUUID();
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
+const MAX_SYNC_TRANSACTIONS = 500;
 
 type SyncedBankTransaction = {
   date: string;
@@ -1381,12 +1382,19 @@ export const syncTransactions = action({
     }
 
     const transactions: SyncedBankTransaction[] = [];
+    let hasMore = false;
 
     try {
-      for (const account of mappedAccounts) {
+      syncLoop: for (const account of mappedAccounts) {
         let continuationKey: string | undefined;
 
         for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
+          const remainingCapacity = MAX_SYNC_TRANSACTIONS - transactions.length;
+          if (remainingCapacity <= 0) {
+            hasMore = true;
+            break syncLoop;
+          }
+
           const response = await getAccountTransactions({
             accountId: account.accountId,
             dateFrom,
@@ -1398,7 +1406,9 @@ export const syncTransactions = action({
             throw new Error("Enable Banking transactions response is invalid");
           }
 
-          for (const transaction of response.transactions) {
+          const transactionsToAppend = response.transactions.slice(0, remainingCapacity);
+
+          for (const transaction of transactionsToAppend) {
             transactions.push(
               normalizeEnableBankingTransaction({
                 transaction: transaction as any,
@@ -1409,12 +1419,23 @@ export const syncTransactions = action({
             );
           }
 
+          if (response.transactions.length > remainingCapacity) {
+            hasMore = true;
+            break syncLoop;
+          }
+
+          if (transactions.length >= MAX_SYNC_TRANSACTIONS) {
+            hasMore = true;
+            break syncLoop;
+          }
+
           if (!response.continuation_key) {
             break;
           }
 
           if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
-            throw new Error("Enable Banking returned too many transaction pages");
+            hasMore = true;
+            break syncLoop;
           }
 
           continuationKey = response.continuation_key;
@@ -1440,7 +1461,7 @@ export const syncTransactions = action({
 
     return {
       transactions,
-      hasMore: false,
+      hasMore,
     };
   },
 });
