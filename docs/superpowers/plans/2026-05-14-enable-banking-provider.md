@@ -696,7 +696,7 @@ export const getAccountTransactions = async ({
     date_from: dateFrom,
     date_to: dateTo,
   });
-  if (continuationKey) {
+  if (continuationKey != null) {
     params.set("continuation_key", continuationKey);
   }
 
