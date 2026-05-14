@@ -1196,7 +1196,7 @@ git commit -m "feat: add bank connection queries"
 **Files:**
 - Create: `convex/actions/bankConnections.ts`
 
-Corrected sync behavior: `syncTransactions` returns up to 500 normalized pending transactions from Enable Banking transaction pages and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints. `hasMore` can be true when the 500-transaction cap or page limit stops the review batch, and page-limit overflow returns bounded data instead of throwing. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry.
+Corrected sync behavior: `syncTransactions` returns up to 500 normalized pending transactions from Enable Banking transaction pages and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints. `hasMore` is true only when data remains because a provider page was truncated, a non-null continuation key or page cap stopped the account, or later mapped accounts were not processed because the 500-transaction cap was reached. Exactly 500 transactions from the final mapped account with no provider continuation returns `hasMore: false`, and page-limit overflow returns bounded data instead of throwing. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry. Local removal ignores only structured provider 404 responses as already removed; 401/403 and other remote close failures are rethrown so the local record remains retryable.
 
 - [ ] **Step 1: Create start, sync, and remove actions**
 
@@ -1385,7 +1385,8 @@ export const syncTransactions = action({
     let hasMore = false;
 
     try {
-      syncLoop: for (const account of mappedAccounts) {
+      syncLoop: for (let accountIndex = 0; accountIndex < mappedAccounts.length; accountIndex += 1) {
+        const account = mappedAccounts[accountIndex];
         let continuationKey: string | undefined;
 
         for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
@@ -1419,7 +1420,26 @@ export const syncTransactions = action({
             );
           }
 
+          const hasContinuation = Boolean(response.continuation_key);
+
           if (response.transactions.length > remainingCapacity) {
+            hasMore = true;
+            break syncLoop;
+          }
+
+          if (!hasContinuation) {
+            if (
+              transactions.length >= MAX_SYNC_TRANSACTIONS &&
+              accountIndex < mappedAccounts.length - 1
+            ) {
+              hasMore = true;
+              break syncLoop;
+            }
+
+            break;
+          }
+
+          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
             hasMore = true;
             break syncLoop;
           }
@@ -1429,16 +1449,7 @@ export const syncTransactions = action({
             break syncLoop;
           }
 
-          if (!response.continuation_key) {
-            break;
-          }
-
-          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
-            hasMore = true;
-            break syncLoop;
-          }
-
-          continuationKey = response.continuation_key;
+          continuationKey = response.continuation_key ?? undefined;
         }
       }
     } catch (error: any) {
@@ -1492,7 +1503,7 @@ export const removeConnection = action({
       if (
         !(
           error instanceof EnableBankingApiError &&
-          [401, 403, 404].includes(error.status)
+          error.status === 404
         )
       ) {
         throw error;

@@ -180,7 +180,8 @@ export const syncTransactions = action({
     let hasMore = false;
 
     try {
-      syncLoop: for (const account of mappedAccounts) {
+      syncLoop: for (let accountIndex = 0; accountIndex < mappedAccounts.length; accountIndex += 1) {
+        const account = mappedAccounts[accountIndex];
         let continuationKey: string | undefined;
 
         for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
@@ -214,7 +215,26 @@ export const syncTransactions = action({
             );
           }
 
+          const hasContinuation = Boolean(response.continuation_key);
+
           if (response.transactions.length > remainingCapacity) {
+            hasMore = true;
+            break syncLoop;
+          }
+
+          if (!hasContinuation) {
+            if (
+              transactions.length >= MAX_SYNC_TRANSACTIONS &&
+              accountIndex < mappedAccounts.length - 1
+            ) {
+              hasMore = true;
+              break syncLoop;
+            }
+
+            break;
+          }
+
+          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
             hasMore = true;
             break syncLoop;
           }
@@ -224,16 +244,7 @@ export const syncTransactions = action({
             break syncLoop;
           }
 
-          if (!response.continuation_key) {
-            break;
-          }
-
-          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
-            hasMore = true;
-            break syncLoop;
-          }
-
-          continuationKey = response.continuation_key;
+          continuationKey = response.continuation_key ?? undefined;
         }
       }
     } catch (error: any) {
@@ -287,7 +298,7 @@ export const removeConnection = action({
       if (
         !(
           error instanceof EnableBankingApiError &&
-          [401, 403, 404].includes(error.status)
+          error.status === 404
         )
       ) {
         throw error;
