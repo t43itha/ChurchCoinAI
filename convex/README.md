@@ -88,3 +88,25 @@ function handleButtonPress() {
 Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
+
+## Enable Banking
+
+Bank connection secrets are backend-only Convex environment variables:
+
+- `ENABLE_BANKING_APPLICATION_ID`
+- `ENABLE_BANKING_PRIVATE_KEY`
+- `ENABLE_BANKING_REDIRECT_URL`
+- `ENABLE_BANKING_DEFAULT_COUNTRY`
+- `ENABLE_BANKING_DEFAULT_ASPSP`
+- Optional `ENABLE_BANKING_API_BASE_URL`
+
+Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables.
+
+The active v1 flow is manual sync:
+
+1. Admin or Finance Team starts a connection from Settings > Bank Connections.
+2. Enable Banking redirects back to `/enable-banking/callback`.
+3. The returned account is mapped to a fund.
+4. Transactions are fetched on demand from the Transactions screen and reviewed before import.
+
+The first rollout is for internal validation with the linked Metro Bank account. Tenant-wide availability requires a separate commercial/compliance decision.

@@ -2252,7 +2252,7 @@ git commit -m "chore: remove unused Plaid Link frontend hook"
 - Modify: `CLAUDE.md`
 - Modify: `convex/README.md`
 
-- [ ] **Step 1: Update architecture references**
+- [x] **Step 1: Update architecture references**
 
 In `AGENTS.md` and `CLAUDE.md`, replace the stack banking line:
 
@@ -2327,7 +2327,7 @@ with:
 - HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Enable Banking callback at `/enable-banking/callback`)
 ```
 
-- [ ] **Step 2: Add Enable Banking setup notes to `convex/README.md`**
+- [x] **Step 2: Add Enable Banking setup notes to `convex/README.md`**
 
 Append this section to `convex/README.md`:
 
@@ -2355,7 +2355,7 @@ The active v1 flow is manual sync:
 The first rollout is for internal validation with the linked Metro Bank account. Tenant-wide availability requires a separate commercial/compliance decision.
 ```
 
-- [ ] **Step 3: Run documentation search**
+- [x] **Step 3: Run documentation search**
 
 Run:
 
@@ -2365,7 +2365,7 @@ rg -n "Plaid|plaid|usePlaidLink|PLAID_|/plaid/webhook" AGENTS.md CLAUDE.md conve
 
 Expected: remaining matches are only in preserved Plaid backend files, `package.json` backend Plaid dependency, or intentionally historical wording. No active UI docs should describe Plaid as the current provider.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add AGENTS.md CLAUDE.md convex/README.md
