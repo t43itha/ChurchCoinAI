@@ -29,9 +29,9 @@ type AccountHashFields = {
 };
 
 const getAccountHashes = (account: AccountHashFields) =>
-  [account.providerAccountHash, ...(account.providerAccountHashes || [])].filter(
-    (hash): hash is string => Boolean(hash)
-  );
+  [account.providerAccountHash, ...(account.providerAccountHashes || [])]
+    .map((hash) => hash?.trim())
+    .filter((hash): hash is string => Boolean(hash));
 
 const accountsShareHash = (
   firstAccount: AccountHashFields,
@@ -134,21 +134,46 @@ export const completePending = internalMutation({
         throw new Error("Existing bank connection not found");
       }
 
-      await ctx.db.patch(connectionId, {
-        providerConnectionId: args.providerConnectionId,
-        institutionName: pending.aspspName,
-        institutionCountry: pending.aspspCountry,
-        accounts: args.accounts.map((account) => {
+      const fundValidityCache = new Map<string, boolean>();
+      const getValidFundId = async (
+        fundId: (typeof existing.accounts)[number]["fundId"]
+      ) => {
+        if (!fundId) return undefined;
+
+        const cachedValidity = fundValidityCache.get(fundId);
+        if (cachedValidity !== undefined) {
+          return cachedValidity ? fundId : undefined;
+        }
+
+        const fund = await ctx.db.get(fundId);
+        const isValid = Boolean(
+          fund && fund.organizationId === pending.organizationId
+        );
+        fundValidityCache.set(fundId, isValid);
+
+        return isValid ? fundId : undefined;
+      };
+
+      const updatedAccounts = await Promise.all(
+        args.accounts.map(async (account) => {
           const previous = existing.accounts.find(
             (existingAccount) =>
               existingAccount.accountId === account.accountId ||
               accountsShareHash(existingAccount, account)
           );
+
           return {
             ...account,
-            fundId: previous?.fundId,
+            fundId: await getValidFundId(previous?.fundId),
           };
-        }),
+        })
+      );
+
+      await ctx.db.patch(connectionId, {
+        providerConnectionId: args.providerConnectionId,
+        institutionName: pending.aspspName,
+        institutionCountry: pending.aspspCountry,
+        accounts: updatedAccounts,
         status: "active",
         errorCode: undefined,
         errorMessage: undefined,
@@ -232,6 +257,12 @@ export const updateAccountFundMapping = mutation({
 
     if (!connection || connection.organizationId !== user.organizationId) {
       throw new Error("Bank connection not found");
+    }
+
+    if (
+      !connection.accounts.some((account) => account.accountId === args.accountId)
+    ) {
+      throw new Error("Bank account not found");
     }
 
     if (args.fundId) {
