@@ -42,12 +42,27 @@ const randomState = () => crypto.randomUUID();
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-const assertValidAuthorizationUrl = (url: string) => {
+type SyncedBankTransaction = {
+  date: string;
+  description: string;
+  amount: number;
+  type: "Income" | "Expenditure";
+  accountId: string;
+  accountName: string;
+  fundId: string | null;
+  providerTransactionId: string;
+};
+
+const assertValidAuthorizationUrl = (url: unknown) => {
+  if (typeof url !== "string") {
+    throw new Error("Enable Banking returned an invalid authorization URL");
+  }
+
   const trimmedUrl = url.trim();
 
   try {
     const parsed = new URL(trimmedUrl);
-    if (!trimmedUrl || parsed.protocol !== "https:") throw new Error();
+    if (parsed.protocol !== "https:") throw new Error();
     return trimmedUrl;
   } catch {
     throw new Error("Enable Banking returned an invalid authorization URL");
@@ -113,16 +128,7 @@ export const syncTransactions = action({
     ctx,
     args
   ): Promise<{
-    transactions: Array<{
-      date: string;
-      description: string;
-      amount: number;
-      type: "Income" | "Expenditure";
-      accountId: string;
-      accountName: string;
-      fundId: string | null;
-      providerTransactionId: string;
-    }>;
+    transactions: SyncedBankTransaction[];
     hasMore: boolean;
   }> => {
     const user = await requireUser(ctx);
@@ -152,7 +158,7 @@ export const syncTransactions = action({
       return { transactions: [], hasMore: false };
     }
 
-    const transactions = [];
+    const transactions: SyncedBankTransaction[] = [];
 
     try {
       for (const account of mappedAccounts) {
@@ -224,7 +230,12 @@ export const removeConnection = action({
     try {
       await closeSession(connection.providerConnectionId);
     } catch (error: any) {
-      if (!(error instanceof EnableBankingApiError && error.status === 404)) {
+      if (
+        !(
+          error instanceof EnableBankingApiError &&
+          [401, 403, 404].includes(error.status)
+        )
+      ) {
         throw error;
       }
     }
