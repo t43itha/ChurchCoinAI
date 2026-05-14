@@ -1902,7 +1902,7 @@ git commit -m "feat: add Enable Banking callback route"
 **Files:**
 - Modify: `components/BankConnectionsSettings.tsx`
 
-- [ ] **Step 1: Remove Plaid hook imports**
+- [x] **Step 1: Remove Plaid hook imports**
 
 In `components/BankConnectionsSettings.tsx`, remove:
 
@@ -1910,7 +1910,7 @@ In `components/BankConnectionsSettings.tsx`, remove:
 import { usePlaidLinkFlow, usePlaidUpdateLink } from '../hooks/usePlaidLink';
 ```
 
-- [ ] **Step 2: Rename queries/actions and local state**
+- [x] **Step 2: Rename queries/actions and local state**
 
 Replace the Plaid-specific declarations near the top of the component with:
 
@@ -1921,7 +1921,6 @@ Replace the Plaid-specific declarations near the top of the component with:
   const startConnection = useAction(api.actions.bankConnections.startConnection);
   const removeConnection = useAction(api.actions.bankConnections.removeConnection);
 
-  const [showFundMappingModal, setShowFundMappingModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
@@ -1934,9 +1933,9 @@ Remove these state variables and Plaid flow values from the file:
   const [pendingMappings, setPendingMappings] = useState<AccountMapping[]>([]);
 ```
 
-Remove the `usePlaidLinkFlow` block and both `useEffect` blocks that initialize/open Plaid Link.
+Remove the `usePlaidLinkFlow` block, both `useEffect` blocks that initialize/open Plaid Link, and the Plaid fund mapping modal. Fund mapping now happens from the provider-neutral account list after the callback creates or refreshes the bank connection.
 
-- [ ] **Step 3: Replace connect handler**
+- [x] **Step 3: Replace connect handler**
 
 Replace `handleConnectBank` with:
 
@@ -1959,7 +1958,7 @@ Replace `handleConnectBank` with:
 
 Delete `handleCompleteFundMapping` and all uses of `pendingMappings`.
 
-- [ ] **Step 4: Replace remove and mapping handlers**
+- [x] **Step 4: Replace remove and mapping handlers**
 
 Replace `handleRemoveConnection` with:
 
@@ -2002,7 +2001,7 @@ Replace `handleUpdateFundMapping` with:
   };
 ```
 
-- [ ] **Step 5: Replace JSX identifiers**
+- [x] **Step 5: Replace JSX identifiers**
 
 In the returned JSX, replace:
 
@@ -2042,7 +2041,7 @@ connectionError
 
 Replace user-facing text containing "Plaid" with "bank connection".
 
-- [ ] **Step 6: Replace re-auth button component**
+- [x] **Step 6: Replace re-auth button component**
 
 Replace the existing `ReauthButton` component at the bottom of the file with:
 
@@ -2087,7 +2086,7 @@ to:
 <ReauthButton bankConnectionId={item._id} />
 ```
 
-- [ ] **Step 7: Run TypeScript**
+- [x] **Step 7: Run TypeScript**
 
 Run:
 
@@ -2097,7 +2096,7 @@ npm run typecheck
 
 Expected: no errors in `BankConnectionsSettings.tsx`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add components/BankConnectionsSettings.tsx
