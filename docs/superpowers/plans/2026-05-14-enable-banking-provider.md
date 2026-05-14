@@ -1699,20 +1699,28 @@ const trimCallbackValue = (value: string | null) => {
 const safeErrorMessage = (message: string, fallback: string) =>
   (message.trim() || fallback).slice(0, 500);
 
+const isLocalCallbackOrigin = (origin: URL) =>
+  origin.hostname === "localhost" ||
+  origin.hostname === "127.0.0.1" ||
+  origin.hostname === "::1";
+
 const getBankSettingsOrigin = (request: Request) => {
-  const fallbackOrigin = new URL(request.url).origin;
+  const requestOrigin = new URL(request.url);
   const configuredBaseUrl = process.env.APP_BASE_URL?.trim();
 
-  if (!configuredBaseUrl) return fallbackOrigin;
+  if (!configuredBaseUrl) {
+    if (isLocalCallbackOrigin(requestOrigin)) return requestOrigin.origin;
+    throw new Error("APP_BASE_URL not configured");
+  }
 
   try {
     const parsed = new URL(configuredBaseUrl);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return fallbackOrigin;
+      throw new Error("APP_BASE_URL must be an HTTP(S) URL");
     }
     return parsed.origin;
   } catch {
-    return fallbackOrigin;
+    throw new Error("APP_BASE_URL not configured");
   }
 };
 
@@ -1726,13 +1734,22 @@ const settingsBankUrl = (request: Request, result: "success" | "error") => {
 const redirectToBankSettings = (
   request: Request,
   result: "success" | "error"
-) =>
-  new Response(null, {
+) => {
+  let location: string;
+  try {
+    location = settingsBankUrl(request, result);
+  } catch (error: any) {
+    console.error("Enable Banking callback redirect is not configured:", error?.message);
+    return new Response("APP_BASE_URL not configured", { status: 500 });
+  }
+
+  return new Response(null, {
     status: 302,
     headers: {
-      Location: settingsBankUrl(request, result),
+      Location: location,
     },
   });
+};
 
 const getAccountMask = (account: EnableBankingCallbackAccount) => {
   const identifier =
