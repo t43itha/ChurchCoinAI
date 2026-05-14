@@ -1,15 +1,27 @@
 import { query, internalQuery } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { getCurrentUser } from "../lib/auth";
 
-const publicConnection = (connection: any) => ({
+const publicAccount = (
+  account: Doc<"bankConnections">["accounts"][number]
+) => ({
+  accountId: account.accountId,
+  name: account.name,
+  mask: account.mask,
+  type: account.type,
+  currency: account.currency,
+  fundId: account.fundId,
+});
+
+const publicConnection = (connection: Doc<"bankConnections">) => ({
   _id: connection._id,
   _creationTime: connection._creationTime,
   organizationId: connection.organizationId,
   provider: connection.provider,
   institutionName: connection.institutionName,
   institutionCountry: connection.institutionCountry,
-  accounts: connection.accounts,
+  accounts: connection.accounts.map(publicAccount),
   status: connection.status,
   errorCode: connection.errorCode,
   errorMessage: connection.errorMessage,
@@ -58,7 +70,9 @@ export const getActiveWithMappedAccounts = query({
         _id: connection._id,
         provider: connection.provider,
         institutionName: connection.institutionName,
-        accounts: connection.accounts.filter((account) => account.fundId),
+        accounts: connection.accounts
+          .filter((account) => account.fundId)
+          .map(publicAccount),
         lastSyncAt: connection.lastSyncAt,
         lastSyncedThrough: connection.lastSyncedThrough,
       }));
