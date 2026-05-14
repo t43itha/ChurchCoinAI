@@ -2201,7 +2201,7 @@ git commit -m "feat: migrate transaction sync to bank connections"
 - Modify: `package.json`
 - Modify: `package-lock.json`
 
-- [ ] **Step 1: Verify the Plaid hook is unused**
+- [x] **Step 1: Verify the Plaid hook is unused**
 
 Run:
 
@@ -2211,11 +2211,11 @@ rg -n "usePlaidLink|react-plaid-link|api\\.actions\\.plaid|api\\.queries\\.plaid
 
 Expected: matches only in Plaid backend files, docs, `package.json`, `package-lock.json`, or `hooks/usePlaidLink.ts`. No active React component should import `hooks/usePlaidLink.ts`.
 
-- [ ] **Step 2: Delete the unused hook**
+- [x] **Step 2: Delete the unused hook**
 
 Delete `hooks/usePlaidLink.ts`.
 
-- [ ] **Step 3: Remove the React Plaid dependency**
+- [x] **Step 3: Remove the React Plaid dependency**
 
 Run:
 
@@ -2225,17 +2225,18 @@ npm uninstall react-plaid-link
 
 Expected: `package.json` and `package-lock.json` no longer list `react-plaid-link`. Keep the backend `plaid` package for now because existing Plaid backend files still import it.
 
-- [ ] **Step 4: Run TypeScript**
+- [x] **Step 4: Run TypeScript and tests**
 
 Run:
 
 ```bash
 npm run typecheck
+npm test -- --runInBand
 ```
 
-Expected: no errors.
+Expected: no errors. Vitest should pass all current tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json package-lock.json hooks/usePlaidLink.ts
