@@ -37,6 +37,7 @@ export type EnableBankingStartAuthorizationResponse = {
 
 export type EnableBankingTransactionsResponse = {
   transactions: unknown[];
+  continuation_key?: string | null;
 };
 
 export class EnableBankingApiError extends Error {
@@ -175,15 +176,21 @@ export const getAccountTransactions = async ({
   accountId,
   dateFrom,
   dateTo,
+  continuationKey,
 }: {
   accountId: string;
   dateFrom: string;
   dateTo: string;
+  continuationKey?: string;
 }) => {
   const params = new URLSearchParams({
     date_from: dateFrom,
     date_to: dateTo,
   });
+  if (continuationKey) {
+    params.set("continuation_key", continuationKey);
+  }
+
   return await enableBankingRequest<EnableBankingTransactionsResponse>(
     `/accounts/${encodeURIComponent(accountId)}/transactions?${params}`
   );

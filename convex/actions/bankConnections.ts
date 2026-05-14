@@ -42,6 +42,8 @@ const randomState = () => crypto.randomUUID();
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
+
 type SyncedBankTransaction = {
   date: string;
   description: string;
@@ -177,25 +179,40 @@ export const syncTransactions = action({
 
     try {
       for (const account of mappedAccounts) {
-        const response = await getAccountTransactions({
-          accountId: account.accountId,
-          dateFrom,
-          dateTo,
-        });
+        let continuationKey: string | undefined;
 
-        if (!Array.isArray(response.transactions)) {
-          throw new Error("Enable Banking transactions response is invalid");
-        }
+        for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
+          const response = await getAccountTransactions({
+            accountId: account.accountId,
+            dateFrom,
+            dateTo,
+            continuationKey,
+          });
 
-        for (const transaction of response.transactions) {
-          transactions.push(
-            normalizeEnableBankingTransaction({
-              transaction: transaction as any,
-              accountId: account.accountId,
-              accountName: account.name,
-              fundId: account.fundId as string,
-            })
-          );
+          if (!Array.isArray(response.transactions)) {
+            throw new Error("Enable Banking transactions response is invalid");
+          }
+
+          for (const transaction of response.transactions) {
+            transactions.push(
+              normalizeEnableBankingTransaction({
+                transaction: transaction as any,
+                accountId: account.accountId,
+                accountName: account.name,
+                fundId: account.fundId as string,
+              })
+            );
+          }
+
+          if (!response.continuation_key) {
+            break;
+          }
+
+          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
+            throw new Error("Enable Banking returned too many transaction pages");
+          }
+
+          continuationKey = response.continuation_key;
         }
       }
     } catch (error: any) {
@@ -204,12 +221,14 @@ export const syncTransactions = action({
         error instanceof EnableBankingApiError &&
         (error.status === 401 || error.status === 403);
 
-      await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
-        bankConnectionId: args.bankConnectionId,
-        status: isAuthorizationError ? "pending_reauth" : "error",
-        errorCode: isAuthorizationError ? "AUTHORIZATION_REQUIRED" : "SYNC_ERROR",
-        errorMessage: message,
-      });
+      if (isAuthorizationError) {
+        await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
+          bankConnectionId: args.bankConnectionId,
+          status: "pending_reauth",
+          errorCode: "AUTHORIZATION_REQUIRED",
+          errorMessage: message,
+        });
+      }
 
       throw error;
     }

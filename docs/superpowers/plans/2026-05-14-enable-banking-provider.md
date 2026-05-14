@@ -560,6 +560,7 @@ export type EnableBankingStartAuthorizationResponse = {
 
 export type EnableBankingTransactionsResponse = {
   transactions: unknown[];
+  continuation_key?: string | null;
 };
 
 const getRequiredEnv = (name: string) => {
@@ -669,15 +670,21 @@ export const getAccountTransactions = async ({
   accountId,
   dateFrom,
   dateTo,
+  continuationKey,
 }: {
   accountId: string;
   dateFrom: string;
   dateTo: string;
+  continuationKey?: string;
 }) => {
   const params = new URLSearchParams({
     date_from: dateFrom,
     date_to: dateTo,
   });
+  if (continuationKey) {
+    params.set("continuation_key", continuationKey);
+  }
+
   return await enableBankingRequest<EnableBankingTransactionsResponse>(
     `/accounts/${encodeURIComponent(accountId)}/transactions?${params}`
   );
@@ -1174,7 +1181,7 @@ git commit -m "feat: add bank connection queries"
 **Files:**
 - Create: `convex/actions/bankConnections.ts`
 
-Corrected sync behavior: `syncTransactions` returns normalized pending transactions and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints.
+Corrected sync behavior: `syncTransactions` returns normalized pending transactions from all Enable Banking transaction pages and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry.
 
 - [ ] **Step 1: Create start, sync, and remove actions**
 
@@ -1222,6 +1229,8 @@ const requireFinanceRole = (
 const randomState = () => crypto.randomUUID();
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+
+const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
 
 const mapSessionAccount = (account: any) => {
   const details = account.details || {};
@@ -1330,25 +1339,40 @@ export const syncTransactions = action({
 
     try {
       for (const account of mappedAccounts) {
-        const response = await getAccountTransactions({
-          accountId: account.accountId,
-          dateFrom,
-          dateTo,
-        });
+        let continuationKey: string | undefined;
 
-        if (!Array.isArray(response.transactions)) {
-          throw new Error("Enable Banking transactions response is invalid");
-        }
+        for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
+          const response = await getAccountTransactions({
+            accountId: account.accountId,
+            dateFrom,
+            dateTo,
+            continuationKey,
+          });
 
-        for (const transaction of response.transactions) {
-          transactions.push(
-            normalizeEnableBankingTransaction({
-              transaction: transaction as any,
-              accountId: account.accountId,
-              accountName: account.name,
-              fundId: account.fundId as string,
-            })
-          );
+          if (!Array.isArray(response.transactions)) {
+            throw new Error("Enable Banking transactions response is invalid");
+          }
+
+          for (const transaction of response.transactions) {
+            transactions.push(
+              normalizeEnableBankingTransaction({
+                transaction: transaction as any,
+                accountId: account.accountId,
+                accountName: account.name,
+                fundId: account.fundId as string,
+              })
+            );
+          }
+
+          if (!response.continuation_key) {
+            break;
+          }
+
+          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
+            throw new Error("Enable Banking returned too many transaction pages");
+          }
+
+          continuationKey = response.continuation_key;
         }
       }
     } catch (error: any) {
@@ -1358,12 +1382,14 @@ export const syncTransactions = action({
         message.includes("403") ||
         message.toLowerCase().includes("expired");
 
-      await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
-        bankConnectionId: args.bankConnectionId,
-        status: isAuthorizationError ? "pending_reauth" : "error",
-        errorCode: isAuthorizationError ? "AUTHORIZATION_REQUIRED" : "SYNC_ERROR",
-        errorMessage: message,
-      });
+      if (isAuthorizationError) {
+        await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
+          bankConnectionId: args.bankConnectionId,
+          status: "pending_reauth",
+          errorCode: "AUTHORIZATION_REQUIRED",
+          errorMessage: message,
+        });
+      }
 
       throw error;
     }
