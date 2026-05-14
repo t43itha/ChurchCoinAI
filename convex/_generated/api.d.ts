@@ -43,6 +43,7 @@ import type * as mutations_subscriptions from "../mutations/subscriptions.js";
 import type * as mutations_transactions from "../mutations/transactions.js";
 import type * as mutations_users from "../mutations/users.js";
 import type * as queries_aiContext from "../queries/aiContext.js";
+import type * as queries_bankConnections from "../queries/bankConnections.js";
 import type * as queries_cashCollections from "../queries/cashCollections.js";
 import type * as queries_categories from "../queries/categories.js";
 import type * as queries_dashboard from "../queries/dashboard.js";
@@ -100,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "mutations/transactions": typeof mutations_transactions;
   "mutations/users": typeof mutations_users;
   "queries/aiContext": typeof queries_aiContext;
+  "queries/bankConnections": typeof queries_bankConnections;
   "queries/cashCollections": typeof queries_cashCollections;
   "queries/categories": typeof queries_categories;
   "queries/dashboard": typeof queries_dashboard;
