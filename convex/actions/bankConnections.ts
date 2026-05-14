@@ -45,6 +45,13 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
 const MAX_SYNC_TRANSACTIONS = 500;
 
+type SyncTransactionsCursor = {
+  dateFrom: string;
+  dateTo: string;
+  accountIndex: number;
+  continuationKey?: string;
+};
+
 type SyncedBankTransaction = {
   date: string;
   description: string;
@@ -70,6 +77,50 @@ const assertValidAuthorizationUrl = (url: unknown) => {
   } catch {
     throw new Error("Enable Banking returned an invalid authorization URL");
   }
+};
+
+const isValidIsoDate = (date: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === date
+  );
+};
+
+const createSyncCursor = ({
+  dateFrom,
+  dateTo,
+  accountIndex,
+  continuationKey,
+}: SyncTransactionsCursor): SyncTransactionsCursor =>
+  continuationKey == null
+    ? { dateFrom, dateTo, accountIndex }
+    : { dateFrom, dateTo, accountIndex, continuationKey };
+
+const validateSyncCursor = (
+  cursor: SyncTransactionsCursor | undefined,
+  mappedAccountCount: number
+) => {
+  if (!cursor) return undefined;
+
+  if (!isValidIsoDate(cursor.dateFrom) || !isValidIsoDate(cursor.dateTo)) {
+    throw new Error("Invalid sync cursor: expected YYYY-MM-DD date strings");
+  }
+
+  if (cursor.dateFrom > cursor.dateTo) {
+    throw new Error("Invalid sync cursor: dateFrom must be on or before dateTo");
+  }
+
+  if (
+    !Number.isInteger(cursor.accountIndex) ||
+    cursor.accountIndex < 0 ||
+    cursor.accountIndex >= mappedAccountCount
+  ) {
+    throw new Error("Invalid sync cursor: accountIndex is out of range");
+  }
+
+  return cursor;
 };
 
 export const startConnection = action({
@@ -141,6 +192,14 @@ export const startConnection = action({
 export const syncTransactions = action({
   args: {
     bankConnectionId: v.id("bankConnections"),
+    cursor: v.optional(
+      v.object({
+        dateFrom: v.string(),
+        dateTo: v.string(),
+        accountIndex: v.number(),
+        continuationKey: v.optional(v.string()),
+      })
+    ),
   },
   handler: async (
     ctx,
@@ -148,6 +207,7 @@ export const syncTransactions = action({
   ): Promise<{
     transactions: SyncedBankTransaction[];
     hasMore: boolean;
+    nextCursor?: SyncTransactionsCursor;
   }> => {
     const user = await requireUser(ctx);
     requireFinanceRole(user);
@@ -166,28 +226,41 @@ export const syncTransactions = action({
       throw new Error(`Bank connection is ${connection.status}. Please re-authenticate.`);
     }
 
-    const { dateFrom, dateTo } = calculateDefaultSyncRange({
-      today: todayIso(),
-      lastSyncedThrough: connection.lastSyncedThrough,
-    });
-
     const mappedAccounts = connection.accounts.filter((account) => account.fundId);
     if (mappedAccounts.length === 0) {
       return { transactions: [], hasMore: false };
     }
 
+    const cursor = validateSyncCursor(args.cursor, mappedAccounts.length);
+    const syncRange = cursor ?? calculateDefaultSyncRange({
+      today: todayIso(),
+      lastSyncedThrough: connection.lastSyncedThrough,
+    });
+    const { dateFrom, dateTo } = syncRange;
     const transactions: SyncedBankTransaction[] = [];
     let hasMore = false;
+    let nextCursor: SyncTransactionsCursor | undefined;
 
     try {
-      syncLoop: for (let accountIndex = 0; accountIndex < mappedAccounts.length; accountIndex += 1) {
+      syncLoop: for (
+        let accountIndex = cursor?.accountIndex ?? 0;
+        accountIndex < mappedAccounts.length;
+        accountIndex += 1
+      ) {
         const account = mappedAccounts[accountIndex];
-        let continuationKey: string | undefined;
+        let continuationKey =
+          accountIndex === cursor?.accountIndex ? cursor.continuationKey : undefined;
 
         for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
           const remainingCapacity = MAX_SYNC_TRANSACTIONS - transactions.length;
           if (remainingCapacity <= 0) {
             hasMore = true;
+            nextCursor = createSyncCursor({
+              dateFrom,
+              dateTo,
+              accountIndex,
+              continuationKey,
+            });
             break syncLoop;
           }
 
@@ -202,9 +275,27 @@ export const syncTransactions = action({
             throw new Error("Enable Banking transactions response is invalid");
           }
 
-          const transactionsToAppend = response.transactions.slice(0, remainingCapacity);
+          const responseContinuationKey = response.continuation_key;
+          const hasContinuation = responseContinuationKey != null;
+          if (hasContinuation && typeof responseContinuationKey !== "string") {
+            throw new Error("Enable Banking transactions response is invalid");
+          }
 
-          for (const transaction of transactionsToAppend) {
+          if (
+            response.transactions.length > remainingCapacity &&
+            transactions.length > 0
+          ) {
+            hasMore = true;
+            nextCursor = createSyncCursor({
+              dateFrom,
+              dateTo,
+              accountIndex,
+              continuationKey,
+            });
+            break syncLoop;
+          }
+
+          for (const transaction of response.transactions) {
             transactions.push(
               normalizeEnableBankingTransaction({
                 transaction: transaction as any,
@@ -215,19 +306,17 @@ export const syncTransactions = action({
             );
           }
 
-          const hasContinuation = response.continuation_key != null;
-
-          if (response.transactions.length > remainingCapacity) {
-            hasMore = true;
-            break syncLoop;
-          }
-
           if (!hasContinuation) {
             if (
               transactions.length >= MAX_SYNC_TRANSACTIONS &&
               accountIndex < mappedAccounts.length - 1
             ) {
               hasMore = true;
+              nextCursor = createSyncCursor({
+                dateFrom,
+                dateTo,
+                accountIndex: accountIndex + 1,
+              });
               break syncLoop;
             }
 
@@ -236,15 +325,27 @@ export const syncTransactions = action({
 
           if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
             hasMore = true;
+            nextCursor = createSyncCursor({
+              dateFrom,
+              dateTo,
+              accountIndex,
+              continuationKey: responseContinuationKey,
+            });
             break syncLoop;
           }
 
           if (transactions.length >= MAX_SYNC_TRANSACTIONS) {
             hasMore = true;
+            nextCursor = createSyncCursor({
+              dateFrom,
+              dateTo,
+              accountIndex,
+              continuationKey: responseContinuationKey,
+            });
             break syncLoop;
           }
 
-          continuationKey = response.continuation_key ?? undefined;
+          continuationKey = responseContinuationKey;
         }
       }
     } catch (error: any) {
@@ -268,6 +369,7 @@ export const syncTransactions = action({
     return {
       transactions,
       hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
     };
   },
 });
