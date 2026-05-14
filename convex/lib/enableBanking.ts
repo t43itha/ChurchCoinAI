@@ -50,6 +50,8 @@ const getRequiredEnv = (name: string) => {
 const getApiBaseUrl = () =>
   process.env.ENABLE_BANKING_API_BASE_URL || "https://api.enablebanking.com";
 
+const getNormalizedApiBaseUrl = () => `${getApiBaseUrl().replace(/\/+$/, "")}/`;
+
 const normalizePrivateKey = (key: string) =>
   key.includes("\\n") ? key.replace(/\\n/g, "\n") : key;
 
@@ -79,24 +81,35 @@ const enableBankingRequest = async <T>(
   init: RequestInit = {}
 ): Promise<T> => {
   const jwt = await createEnableBankingJwt();
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+  const url = new URL(path.replace(/^\/+/, ""), getNormalizedApiBaseUrl());
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Bearer ${jwt}`);
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(url, {
     ...init,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${jwt}`,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...init.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
-    const body = await response.text();
     throw new Error(
-      `Enable Banking API ${response.status}: ${body || response.statusText}`
+      `Enable Banking API request failed with status ${response.status}`
     );
   }
 
-  return (await response.json()) as T;
+  const body = await response.text();
+  if (!body) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error("Enable Banking API returned invalid JSON");
+  }
 };
 
 export const getEnableBankingDefaults = () => ({
