@@ -1656,7 +1656,7 @@ git commit -m "feat: add bank connection actions"
 **Files:**
 - Modify: `convex/http.ts`
 
-- [ ] **Step 1: Add imports**
+- [x] **Step 1: Add imports**
 
 At the top of `convex/http.ts`, add:
 
@@ -1665,15 +1665,62 @@ import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
 import { isPendingStateExpired } from "./lib/bankConnectionUtils";
 ```
 
-- [ ] **Step 2: Add callback helper functions**
+- [x] **Step 2: Add callback helper functions**
 
 After `const http = httpRouter();`, add:
 
 ```typescript
-const settingsBankUrl = (request: Request, result: "success" | "error") => {
+type EnableBankingCallbackAccount = {
+  uid?: unknown;
+  identification_hash?: unknown;
+  identification_hashes?: unknown;
+  name?: unknown;
+  details?: {
+    name?: unknown;
+    currency?: unknown;
+    product?: unknown;
+    cash_account_type?: unknown;
+    iban?: unknown;
+    bban?: unknown;
+  };
+};
+
+const nonEmptyString = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const trimCallbackValue = (value: string | null) => {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+};
+
+const safeErrorMessage = (message: string, fallback: string) =>
+  (message.trim() || fallback).slice(0, 500);
+
+const getBankSettingsOrigin = (request: Request) => {
   const fallbackOrigin = new URL(request.url).origin;
-  const appOrigin = process.env.APP_BASE_URL || fallbackOrigin;
-  return `${appOrigin}/settings?tab=bank&bankConnection=${result}`;
+  const configuredBaseUrl = process.env.APP_BASE_URL?.trim();
+
+  if (!configuredBaseUrl) return fallbackOrigin;
+
+  try {
+    const parsed = new URL(configuredBaseUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return fallbackOrigin;
+    }
+    return parsed.origin;
+  } catch {
+    return fallbackOrigin;
+  }
+};
+
+const settingsBankUrl = (request: Request, result: "success" | "error") => {
+  const url = new URL("/settings", getBankSettingsOrigin(request));
+  url.searchParams.set("tab", "bank");
+  url.searchParams.set("bankConnection", result);
+  return url.toString();
 };
 
 const redirectToBankSettings = (
@@ -1686,9 +1733,52 @@ const redirectToBankSettings = (
       Location: settingsBankUrl(request, result),
     },
   });
+
+const getAccountMask = (account: EnableBankingCallbackAccount) => {
+  const identifier =
+    nonEmptyString(account.details?.iban) || nonEmptyString(account.details?.bban);
+  if (!identifier) return undefined;
+  const compactIdentifier = identifier.replace(/\s+/g, "");
+  return compactIdentifier.slice(-4) || undefined;
+};
+
+const mapEnableBankingAccount = (account: EnableBankingCallbackAccount) => {
+  const accountId = nonEmptyString(account.uid);
+  if (!accountId) {
+    throw new Error("Enable Banking account is missing uid");
+  }
+
+  const identificationHashes = Array.isArray(account.identification_hashes)
+    ? account.identification_hashes
+        .map(nonEmptyString)
+        .filter((hash): hash is string => Boolean(hash))
+    : undefined;
+
+  const name =
+    nonEmptyString(account.name) ||
+    nonEmptyString(account.details?.name) ||
+    nonEmptyString(account.details?.product) ||
+    nonEmptyString(account.details?.iban) ||
+    nonEmptyString(account.details?.bban) ||
+    "Bank account";
+
+  return {
+    accountId,
+    providerAccountHash: nonEmptyString(account.identification_hash),
+    providerAccountHashes: identificationHashes?.length
+      ? identificationHashes
+      : undefined,
+    name,
+    mask: getAccountMask(account),
+    type:
+      nonEmptyString(account.details?.cash_account_type) ||
+      nonEmptyString(account.details?.product),
+    currency: nonEmptyString(account.details?.currency),
+  };
+};
 ```
 
-- [ ] **Step 3: Add the callback route before `export default http`**
+- [x] **Step 3: Add the callback route before `export default http`**
 
 Add this route before the final `export default http;`:
 
@@ -1699,10 +1789,12 @@ http.route({
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const error = url.searchParams.get("error");
-    const errorDescription = url.searchParams.get("error_description");
+    const code = trimCallbackValue(url.searchParams.get("code"));
+    const state = trimCallbackValue(url.searchParams.get("state"));
+    const providerError = trimCallbackValue(url.searchParams.get("error"));
+    const providerErrorDescription = trimCallbackValue(
+      url.searchParams.get("error_description")
+    );
 
     if (!state) {
       return redirectToBankSettings(request, "error");
@@ -1729,13 +1821,16 @@ http.route({
       return redirectToBankSettings(request, "error");
     }
 
-    if (error) {
+    if (providerError) {
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
           state,
-          errorCode: error,
-          errorMessage: errorDescription || "Bank authorization was not completed",
+          errorCode: providerError.slice(0, 100),
+          errorMessage: safeErrorMessage(
+            providerErrorDescription || "",
+            "Bank authorization was not completed"
+          ),
         }
       );
       return redirectToBankSettings(request, "error");
@@ -1763,36 +1858,18 @@ http.route({
           state,
           providerConnectionId: session.session_id,
           consentExpiresAt,
-          accounts: session.accounts.map((account: any) => {
-            const details = account.details || {};
-            const identifier = details.iban || details.bban || "";
-            return {
-              accountId: account.uid,
-              providerAccountHash: account.identification_hash,
-              providerAccountHashes: account.identification_hashes,
-              name:
-                account.name ||
-                details.name ||
-                details.product ||
-                details.iban ||
-                details.bban ||
-                "Bank account",
-              mask: identifier ? identifier.slice(-4) : undefined,
-              type: details.cash_account_type || details.product,
-              currency: details.currency,
-            };
-          }),
+          accounts: session.accounts.map(mapEnableBankingAccount),
         }
       );
 
       return redirectToBankSettings(request, "success");
-    } catch (err: any) {
+    } catch {
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
           state,
           errorCode: "SESSION_EXCHANGE_FAILED",
-          errorMessage: err?.message || "Failed to authorize bank session",
+          errorMessage: "Failed to authorize bank session",
         }
       );
       return redirectToBankSettings(request, "error");
@@ -1801,7 +1878,7 @@ http.route({
 });
 ```
 
-- [ ] **Step 4: Run TypeScript**
+- [x] **Step 4: Run TypeScript**
 
 Run:
 
@@ -1811,7 +1888,7 @@ npm run typecheck
 
 Expected: no errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add convex/http.ts

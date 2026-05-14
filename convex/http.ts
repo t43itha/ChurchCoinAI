@@ -3,10 +3,119 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
+import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
+import { isPendingStateExpired } from "./lib/bankConnectionUtils";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 
 const http = httpRouter();
+
+type EnableBankingCallbackAccount = {
+  uid?: unknown;
+  identification_hash?: unknown;
+  identification_hashes?: unknown;
+  name?: unknown;
+  details?: {
+    name?: unknown;
+    currency?: unknown;
+    product?: unknown;
+    cash_account_type?: unknown;
+    iban?: unknown;
+    bban?: unknown;
+  };
+};
+
+const nonEmptyString = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const trimCallbackValue = (value: string | null) => {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+};
+
+const safeErrorMessage = (message: string, fallback: string) =>
+  (message.trim() || fallback).slice(0, 500);
+
+const getBankSettingsOrigin = (request: Request) => {
+  const fallbackOrigin = new URL(request.url).origin;
+  const configuredBaseUrl = process.env.APP_BASE_URL?.trim();
+
+  if (!configuredBaseUrl) return fallbackOrigin;
+
+  try {
+    const parsed = new URL(configuredBaseUrl);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return fallbackOrigin;
+    }
+    return parsed.origin;
+  } catch {
+    return fallbackOrigin;
+  }
+};
+
+const settingsBankUrl = (request: Request, result: "success" | "error") => {
+  const url = new URL("/settings", getBankSettingsOrigin(request));
+  url.searchParams.set("tab", "bank");
+  url.searchParams.set("bankConnection", result);
+  return url.toString();
+};
+
+const redirectToBankSettings = (
+  request: Request,
+  result: "success" | "error"
+) =>
+  new Response(null, {
+    status: 302,
+    headers: {
+      Location: settingsBankUrl(request, result),
+    },
+  });
+
+const getAccountMask = (account: EnableBankingCallbackAccount) => {
+  const identifier =
+    nonEmptyString(account.details?.iban) || nonEmptyString(account.details?.bban);
+  if (!identifier) return undefined;
+  const compactIdentifier = identifier.replace(/\s+/g, "");
+  return compactIdentifier.slice(-4) || undefined;
+};
+
+const mapEnableBankingAccount = (account: EnableBankingCallbackAccount) => {
+  const accountId = nonEmptyString(account.uid);
+  if (!accountId) {
+    throw new Error("Enable Banking account is missing uid");
+  }
+
+  const identificationHashes = Array.isArray(account.identification_hashes)
+    ? account.identification_hashes
+        .map(nonEmptyString)
+        .filter((hash): hash is string => Boolean(hash))
+    : undefined;
+
+  const name =
+    nonEmptyString(account.name) ||
+    nonEmptyString(account.details?.name) ||
+    nonEmptyString(account.details?.product) ||
+    nonEmptyString(account.details?.iban) ||
+    nonEmptyString(account.details?.bban) ||
+    "Bank account";
+
+  return {
+    accountId,
+    providerAccountHash: nonEmptyString(account.identification_hash),
+    providerAccountHashes: identificationHashes?.length
+      ? identificationHashes
+      : undefined,
+    name,
+    mask: getAccountMask(account),
+    type:
+      nonEmptyString(account.details?.cash_account_type) ||
+      nonEmptyString(account.details?.product),
+    currency: nonEmptyString(account.details?.currency),
+  };
+};
 
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes)
@@ -341,6 +450,100 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// Enable Banking callback endpoint
+http.route({
+  path: "/enable-banking/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = trimCallbackValue(url.searchParams.get("code"));
+    const state = trimCallbackValue(url.searchParams.get("state"));
+    const providerError = trimCallbackValue(url.searchParams.get("error"));
+    const providerErrorDescription = trimCallbackValue(
+      url.searchParams.get("error_description")
+    );
+
+    if (!state) {
+      return redirectToBankSettings(request, "error");
+    }
+
+    const pending = await ctx.runQuery(
+      internal.queries.bankConnections.getPendingByState,
+      { state }
+    );
+
+    if (!pending || pending.status !== "pending") {
+      return redirectToBankSettings(request, "error");
+    }
+
+    if (isPendingStateExpired({ expiresAt: pending.expiresAt })) {
+      await ctx.runMutation(
+        internal.mutations.bankConnections.markPendingError,
+        {
+          state,
+          errorCode: "STATE_EXPIRED",
+          errorMessage: "Bank authorization session expired",
+        }
+      );
+      return redirectToBankSettings(request, "error");
+    }
+
+    if (providerError) {
+      await ctx.runMutation(
+        internal.mutations.bankConnections.markPendingError,
+        {
+          state,
+          errorCode: providerError.slice(0, 100),
+          errorMessage: safeErrorMessage(
+            providerErrorDescription || "",
+            "Bank authorization was not completed"
+          ),
+        }
+      );
+      return redirectToBankSettings(request, "error");
+    }
+
+    if (!code) {
+      await ctx.runMutation(
+        internal.mutations.bankConnections.markPendingError,
+        {
+          state,
+          errorCode: "MISSING_CODE",
+          errorMessage: "Bank authorization callback did not include a code",
+        }
+      );
+      return redirectToBankSettings(request, "error");
+    }
+
+    try {
+      const session = await authorizeSession(code);
+      const consentExpiresAt = new Date(getConsentValidUntil()).getTime();
+
+      await ctx.runMutation(
+        internal.mutations.bankConnections.completePending,
+        {
+          state,
+          providerConnectionId: session.session_id,
+          accounts: session.accounts.map(mapEnableBankingAccount),
+          consentExpiresAt,
+        }
+      );
+
+      return redirectToBankSettings(request, "success");
+    } catch {
+      await ctx.runMutation(
+        internal.mutations.bankConnections.markPendingError,
+        {
+          state,
+          errorCode: "SESSION_EXCHANGE_FAILED",
+          errorMessage: "Failed to authorize bank session",
+        }
+      );
+      return redirectToBankSettings(request, "error");
+    }
   }),
 });
 
