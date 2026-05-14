@@ -39,6 +39,16 @@ export type EnableBankingTransactionsResponse = {
   transactions: unknown[];
 };
 
+export class EnableBankingApiError extends Error {
+  status: number;
+
+  constructor(status: number) {
+    super(`Enable Banking API request failed with status ${status}`);
+    this.name = "EnableBankingApiError";
+    this.status = status;
+  }
+}
+
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
   if (!value) {
@@ -95,9 +105,7 @@ const enableBankingRequest = async <T>(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Enable Banking API request failed with status ${response.status}`
-    );
+    throw new EnableBankingApiError(response.status);
   }
 
   const body = await response.text();
