@@ -2,6 +2,7 @@ import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 import { isPendingStateExpired } from "../lib/bankConnectionUtils";
+import { assertValidTransactionDate } from "../lib/transactionValidation";
 
 const providerSchema = v.literal("enable_banking");
 
@@ -297,6 +298,40 @@ export const updateAccountFundMapping = mutation({
           ? { ...account, fundId: args.fundId }
           : account
       ),
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+export const acknowledgeSyncThrough = mutation({
+  args: {
+    bankConnectionId: v.id("bankConnections"),
+    lastSyncedThrough: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    assertValidTransactionDate(args.lastSyncedThrough);
+
+    const connection = await ctx.db.get(args.bankConnectionId);
+    if (!connection || connection.organizationId !== user.organizationId) {
+      throw new Error("Bank connection not found");
+    }
+
+    if (connection.status !== "active") {
+      throw new Error(`Bank connection is ${connection.status}. Please re-authenticate.`);
+    }
+
+    const lastSyncedThrough =
+      connection.lastSyncedThrough &&
+      connection.lastSyncedThrough > args.lastSyncedThrough
+        ? connection.lastSyncedThrough
+        : args.lastSyncedThrough;
+
+    await ctx.db.patch(args.bankConnectionId, {
+      lastSyncAt: Date.now(),
+      lastSyncedThrough,
       updatedAt: Date.now(),
     });
 

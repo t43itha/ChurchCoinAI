@@ -96,11 +96,13 @@ Bank connection secrets are backend-only Convex environment variables:
 - `ENABLE_BANKING_APPLICATION_ID`
 - `ENABLE_BANKING_PRIVATE_KEY`
 - `ENABLE_BANKING_REDIRECT_URL`
+- `APP_BASE_URL`
 - `ENABLE_BANKING_DEFAULT_COUNTRY`
 - `ENABLE_BANKING_DEFAULT_ASPSP`
 - Optional `ENABLE_BANKING_API_BASE_URL`
 
 Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables.
+`APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to the Convex callback. It is required outside local development.
 
 The active v1 flow is manual sync:
 

@@ -1196,7 +1196,7 @@ git commit -m "feat: add bank connection queries"
 **Files:**
 - Create: `convex/actions/bankConnections.ts`
 
-Corrected sync behavior: `syncTransactions` returns normalized pending transactions from complete Enable Banking transaction pages and does not advance `lastSyncedThrough`; a later post-import acknowledgement/deduplication path should handle durable checkpoints. When a manual sync cannot finish because the 500-transaction soft cap, provider continuation, per-account page cap, or unprocessed mapped accounts leave data behind, it returns `hasMore: true` with an explicit `nextCursor` containing `dateFrom`, `dateTo`, `accountIndex`, and optional `continuationKey`. The next manual sync must pass that cursor back so the action resumes from the exact account and provider page. Cursor dates are validated as `YYYY-MM-DD`, `accountIndex` is validated against the current mapped accounts, empty-string continuation keys are preserved, and provider pages are never sliced or partially imported. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry. Local removal ignores only structured provider 404 responses as already removed; 401/403 and other remote close failures are rethrown so the local record remains retryable.
+Corrected sync behavior: `syncTransactions` returns normalized pending transactions from complete Enable Banking transaction pages and does not advance `lastSyncedThrough` before review/import. The transaction review UI acknowledges `lastSyncedThrough` only after a successful bank import and only when no provider `nextCursor` remains, so incomplete paginated batches cannot silently skip rows. When a manual sync cannot finish because the 500-transaction soft cap, provider continuation, per-account page cap, or unprocessed mapped accounts leave data behind, it returns `hasMore: true` with an explicit `nextCursor` containing `dateFrom`, `dateTo`, `accountIndex`, and optional `continuationKey`. The next manual sync must pass that cursor back so the action resumes from the exact account and provider page. Cursor dates are validated as `YYYY-MM-DD`, `accountIndex` is validated against the current mapped accounts, empty-string continuation keys are preserved, and provider pages are never sliced or partially imported. Authorization failures mark the connection `pending_reauth`; non-auth sync failures do not mark the connection inactive/error so users can retry. Local removal ignores only structured provider 404 responses as already removed; 401/403 and other remote close failures are rethrown so the local record remains retryable.
 
 - [ ] **Step 1: Create start, sync, and remove actions**
 
@@ -2175,6 +2175,8 @@ const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"ban
 
 When `syncTransactions` returns `hasMore` with `nextCursor`, show a user-facing notice and keep the current review batch open. Add a compact review modal footer button that calls `syncTransactions({ bankConnectionId, cursor: nextCursor })` and appends the returned transactions to `pendingTransactions`, preserving existing review edits and duplicate warnings. Starting a new bank sync while a review batch exists should reopen the review modal instead of silently overwriting the pending transactions.
 
+Confirm Import should be blocked while a bank `nextCursor` remains. After a successful bank import with no remaining cursor, call `api.mutations.bankConnections.acknowledgeSyncThrough` with the source `bankConnectionId` and latest imported bank transaction date so the next manual sync does not replay the same reviewed transactions.
+
 - [x] **Step 4: Run TypeScript**
 
 Run:
@@ -2311,7 +2313,7 @@ Replace backend Plaid env vars:
 with:
 
 ```markdown
-- `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`
+- `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`, `APP_BASE_URL`
 - `ENABLE_BANKING_DEFAULT_COUNTRY`, `ENABLE_BANKING_DEFAULT_ASPSP`, optional `ENABLE_BANKING_API_BASE_URL`
 ```
 
@@ -2339,11 +2341,12 @@ Bank connection secrets are backend-only Convex environment variables:
 - `ENABLE_BANKING_APPLICATION_ID`
 - `ENABLE_BANKING_PRIVATE_KEY`
 - `ENABLE_BANKING_REDIRECT_URL`
+- `APP_BASE_URL`
 - `ENABLE_BANKING_DEFAULT_COUNTRY`
 - `ENABLE_BANKING_DEFAULT_ASPSP`
 - Optional `ENABLE_BANKING_API_BASE_URL`
 
-Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables.
+Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables. `APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to Convex and is required outside local development.
 
 The active v1 flow is manual sync:
 

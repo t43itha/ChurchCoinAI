@@ -33,6 +33,12 @@ type BankSyncCursor = {
   continuationKey?: string;
 };
 
+type PendingReviewTransaction = Partial<Transaction> & {
+  source?: 'bank';
+  providerTransactionId?: string;
+  bankConnectionId?: Id<"bankConnections">;
+};
+
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -67,13 +73,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Bank sync
   const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
   const syncTransactions = useAction(api.actions.bankConnections.syncTransactions);
+  const acknowledgeBankSync = useMutation(api.mutations.bankConnections.acknowledgeSyncThrough);
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
-  const [pendingTransactions, setPendingTransactions] = useState<Partial<Transaction>[]>([]);
+  const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Track original AI predictions for correction learning
@@ -102,6 +109,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
   const [nextBankSyncCursor, setNextBankSyncCursor] = useState<BankSyncCursor | null>(null);
   const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"bankConnections"> | null>(null);
+  const [bankSyncReviewConnectionId, setBankSyncReviewConnectionId] = useState<Id<"bankConnections"> | null>(null);
   const [isFetchingMoreBankTransactions, setIsFetchingMoreBankTransactions] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -470,7 +478,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
          }
       }
 
-      const parsed: Partial<Transaction>[] = csvRows.map(row => {
+      const parsed: PendingReviewTransaction[] = csvRows.map(row => {
           // Parse Date (Attempt standard ISO or UK DD/MM/YYYY)
           let dateStr = row[dateIdx] || '';
           if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
@@ -521,6 +529,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           };
       }).filter(t => t.description && t.amount !== 0); // Filter out empty rows
 
+      setDuplicateWarnings(new Set());
+      setNextBankSyncCursor(null);
+      setNextBankSyncConnectionId(null);
+      setBankSyncReviewConnectionId(null);
       setPendingTransactions(parsed);
       setShowColumnMapper(false);
       setShowReviewModal(true);
@@ -532,6 +544,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setDuplicateWarnings(new Set());
     setNextBankSyncCursor(null);
     setNextBankSyncConnectionId(null);
+    setBankSyncReviewConnectionId(null);
     setOriginalPredictions(new Map());
   };
 
@@ -542,10 +555,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       amount: number;
       type: TransactionType;
       fundId?: string | null;
+      providerTransactionId: string;
     }>,
-    append: boolean
+    append: boolean,
+    bankConnectionId: Id<"bankConnections">
   ) => {
-    const pending: Partial<Transaction>[] = syncedTransactions.map((tx) => ({
+    const pending: PendingReviewTransaction[] = syncedTransactions.map((tx) => ({
       date: tx.date,
       description: tx.description,
       amount: tx.amount,
@@ -554,6 +569,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       category: tx.type === 'Income' ? 'Donation' : 'Operating Expenses',
       isReconciled: false,
       isGiftAidEligible: false,
+      source: 'bank',
+      providerTransactionId: tx.providerTransactionId,
+      bankConnectionId,
     }));
 
     setPendingTransactions((current) => {
@@ -621,7 +639,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         ...(cursor ? { cursor } : {}),
       });
 
-      handleSyncedBankTransactions(result.transactions, append);
+      handleSyncedBankTransactions(result.transactions, append, bankConnectionId);
+      setBankSyncReviewConnectionId(bankConnectionId);
       setShowReviewModal(true);
 
       if (result.hasMore && result.nextCursor) {
@@ -742,6 +761,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleConfirmImport = async () => {
+    if (bankSyncReviewConnectionId && nextBankSyncCursor) {
+      notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
+      return;
+    }
+
     try {
         // Build transactions - NO auto-donor creation or pledge linking
         // Just store the extracted donor name as text for manual linking later
@@ -763,6 +787,27 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         });
 
         const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
+
+        const bankTransactionDates = bankSyncReviewConnectionId
+            ? pendingTransactions
+                .filter((pt) => pt.source === 'bank' && pt.bankConnectionId === bankSyncReviewConnectionId && pt.date)
+                .map((pt) => pt.date as string)
+            : [];
+
+        if (bankSyncReviewConnectionId && bankTransactionDates.length > 0) {
+            const lastSyncedThrough = bankTransactionDates.reduce((latest, date) =>
+                date > latest ? date : latest
+            );
+            try {
+                await acknowledgeBankSync({
+                    bankConnectionId: bankSyncReviewConnectionId,
+                    lastSyncedThrough,
+                });
+            } catch (syncStateError) {
+                console.warn('Failed to update bank sync checkpoint:', syncStateError);
+                notify("Warning", "Transactions were imported, but the bank sync checkpoint was not updated. The next sync may show duplicate warnings.");
+            }
+        }
 
         // Record corrections for ML learning if we have original predictions
         if (originalPredictions.size > 0 && result?.ids) {
