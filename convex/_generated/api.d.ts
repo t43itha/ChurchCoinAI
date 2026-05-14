@@ -9,6 +9,7 @@
  */
 
 import type * as actions_ai from "../actions/ai.js";
+import type * as actions_bankConnections from "../actions/bankConnections.js";
 import type * as actions_plaid from "../actions/plaid.js";
 import type * as actions_stripe from "../actions/stripe.js";
 import type * as http from "../http.js";
@@ -67,6 +68,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "actions/ai": typeof actions_ai;
+  "actions/bankConnections": typeof actions_bankConnections;
   "actions/plaid": typeof actions_plaid;
   "actions/stripe": typeof actions_stripe;
   http: typeof http;
