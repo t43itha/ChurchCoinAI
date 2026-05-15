@@ -484,7 +484,12 @@ http.route({
     );
 
     if (!state) {
-      return redirectToBankSettings(request, "error");
+      return new Response("Enable Banking callback endpoint is ready.", {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
     }
 
     const pending = await ctx.runQuery(
