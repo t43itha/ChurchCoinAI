@@ -41,7 +41,16 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'funds' | 'categories' | 'users' | 'bank'>('general');
+  type SettingsTab = 'general' | 'funds' | 'categories' | 'users' | 'bank';
+  const getInitialTab = (): SettingsTab => {
+    if (typeof window === 'undefined') return 'general';
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    return ['general', 'funds', 'categories', 'users', 'bank'].includes(tab || '')
+      ? tab as SettingsTab
+      : 'general';
+  };
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [localChurchDetails, setLocalChurchDetails] = useState<ChurchDetails>(churchDetails);
   

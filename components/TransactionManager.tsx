@@ -26,6 +26,19 @@ interface TransactionManagerProps {
 // Pagination for large datasets
 const ITEMS_PER_PAGE = 100;
 
+type BankSyncCursor = {
+  dateFrom: string;
+  dateTo: string;
+  accountIndex: number;
+  continuationKey?: string;
+};
+
+type PendingReviewTransaction = Partial<Transaction> & {
+  source?: 'bank';
+  providerTransactionId?: string;
+  bankConnectionId?: Id<"bankConnections">;
+};
+
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -57,16 +70,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const toggleVoided = useMutation(api.mutations.transactions.toggleVoided);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
 
-  // Plaid bank sync
-  const plaidItems = useQuery(api.queries.plaid.getActiveItemsWithMappedAccounts) || [];
-  const syncTransactions = useAction(api.actions.plaid.syncTransactions);
+  // Bank sync
+  const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
+  const syncTransactions = useAction(api.actions.bankConnections.syncTransactions);
+  const acknowledgeBankSync = useMutation(api.mutations.bankConnections.acknowledgeSyncThrough);
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
-  const [pendingTransactions, setPendingTransactions] = useState<Partial<Transaction>[]>([]);
+  const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Track original AI predictions for correction learning
@@ -93,6 +107,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Bank Sync State
   const [showBankSelector, setShowBankSelector] = useState(false);
   const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
+  const [nextBankSyncCursor, setNextBankSyncCursor] = useState<BankSyncCursor | null>(null);
+  const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"bankConnections"> | null>(null);
+  const [bankSyncReviewConnectionId, setBankSyncReviewConnectionId] = useState<Id<"bankConnections"> | null>(null);
+  const [isFetchingMoreBankTransactions, setIsFetchingMoreBankTransactions] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -460,7 +478,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
          }
       }
 
-      const parsed: Partial<Transaction>[] = csvRows.map(row => {
+      const parsed: PendingReviewTransaction[] = csvRows.map(row => {
           // Parse Date (Attempt standard ISO or UK DD/MM/YYYY)
           let dateStr = row[dateIdx] || '';
           if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
@@ -511,21 +529,86 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           };
       }).filter(t => t.description && t.amount !== 0); // Filter out empty rows
 
+      setDuplicateWarnings(new Set());
+      setNextBankSyncCursor(null);
+      setNextBankSyncConnectionId(null);
+      setBankSyncReviewConnectionId(null);
       setPendingTransactions(parsed);
       setShowColumnMapper(false);
       setShowReviewModal(true);
   };
   // --------------------
 
+  const clearBankSyncReviewState = () => {
+    setPendingTransactions([]);
+    setDuplicateWarnings(new Set());
+    setNextBankSyncCursor(null);
+    setNextBankSyncConnectionId(null);
+    setBankSyncReviewConnectionId(null);
+    setOriginalPredictions(new Map());
+  };
+
+  const handleSyncedBankTransactions = (
+    syncedTransactions: Array<{
+      date: string;
+      description: string;
+      amount: number;
+      type: TransactionType;
+      fundId?: string | null;
+      providerTransactionId: string;
+    }>,
+    append: boolean,
+    bankConnectionId: Id<"bankConnections">
+  ) => {
+    const pending: PendingReviewTransaction[] = syncedTransactions.map((tx) => ({
+      date: tx.date,
+      description: tx.description,
+      amount: tx.amount,
+      type: tx.type,
+      fundId: tx.fundId || funds[0]?._id,
+      category: tx.type === 'Income' ? 'Donation' : 'Operating Expenses',
+      isReconciled: false,
+      isGiftAidEligible: false,
+      source: 'bank',
+      providerTransactionId: tx.providerTransactionId,
+      bankConnectionId,
+    }));
+
+    setPendingTransactions((current) => {
+      const startIndex = append ? current.length : 0;
+      setDuplicateWarnings((currentWarnings) => {
+        const duplicates = new Set<number>(append ? currentWarnings : []);
+        syncedTransactions.forEach((syncedTx, idx) => {
+          const isDuplicate = transactions.some(
+            (existingTx) =>
+              existingTx.date === syncedTx.date &&
+              Math.abs(existingTx.amount - syncedTx.amount) < 0.01
+          );
+          if (isDuplicate) {
+            duplicates.add(startIndex + idx);
+          }
+        });
+        return duplicates;
+      });
+
+      return append ? [...current, ...pending] : pending;
+    });
+  };
+
   // Bank sync: show selector if multiple banks, otherwise sync directly
   const handleSyncBank = () => {
-    if (plaidItems.length === 0) {
+    if (bankConnections.length === 0) {
       notify("Error", "No bank accounts connected. Please connect a bank account in Settings > Bank Connections first.");
       return;
     }
-    if (plaidItems.length === 1) {
+    if (pendingTransactions.length > 0) {
+      setShowReviewModal(true);
+      notify("Review Import", "Finish or discard the current review batch before starting a new bank sync.");
+      return;
+    }
+    if (bankConnections.length === 1) {
       // Single bank - sync directly
-      handleSyncFromBank(plaidItems[0]._id);
+      handleSyncFromBank(bankConnections[0]._id);
     } else {
       // Multiple banks - show selector
       setShowBankSelector(true);
@@ -533,52 +616,59 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   // Sync transactions from a specific bank connection
-  const handleSyncFromBank = async (plaidItemId: Id<"plaidItems">) => {
+  const handleSyncFromBank = async (
+    bankConnectionId: Id<"bankConnections">,
+    cursor?: BankSyncCursor,
+    options: { append?: boolean } = {}
+  ) => {
+    const append = options.append === true;
     setShowBankSelector(false);
-    setIsUploading(true);
-    setDuplicateWarnings(new Set());
+    if (append) {
+      setIsFetchingMoreBankTransactions(true);
+    } else {
+      setIsUploading(true);
+      setDuplicateWarnings(new Set());
+      setNextBankSyncCursor(null);
+      setNextBankSyncConnectionId(null);
+      setOriginalPredictions(new Map());
+    }
 
     try {
-      const result = await syncTransactions({ plaidItemId });
-
-      // Check for potential duplicates (same date + amount)
-      const duplicates = new Set<number>();
-      result.transactions.forEach((syncedTx, idx) => {
-        const isDuplicate = transactions.some(
-          (existingTx) =>
-            existingTx.date === syncedTx.date &&
-            Math.abs(existingTx.amount - syncedTx.amount) < 0.01
-        );
-        if (isDuplicate) {
-          duplicates.add(idx);
-        }
+      const result = await syncTransactions({
+        bankConnectionId,
+        ...(cursor ? { cursor } : {}),
       });
-      setDuplicateWarnings(duplicates);
 
-      // Transform to pending transaction format
-      const pending: Partial<Transaction>[] = result.transactions.map((tx) => ({
-        date: tx.date,
-        description: tx.description,
-        amount: tx.amount,
-        type: tx.type,
-        fundId: tx.fundId || funds[0]?._id,
-        category: tx.type === 'Income' ? 'Donation' : 'Operating Expenses',
-        isReconciled: false,
-        isGiftAidEligible: false,
-      }));
-
-      setPendingTransactions(pending);
+      handleSyncedBankTransactions(result.transactions, append, bankConnectionId);
+      setBankSyncReviewConnectionId(bankConnectionId);
       setShowReviewModal(true);
 
-      if (result.hasMore) {
-        console.log('More transactions available - sync again for additional batches');
+      if (result.hasMore && result.nextCursor) {
+        setNextBankSyncCursor(result.nextCursor);
+        setNextBankSyncConnectionId(bankConnectionId);
+        notify("More Available", "More bank transactions are available. Fetch the next batch before importing if you want to include them in this review.");
+      } else {
+        setNextBankSyncCursor(null);
+        setNextBankSyncConnectionId(null);
+        if (result.hasMore) {
+          notify("More Available", "More bank transactions may be available, but the bank did not return a resume point. Import or discard this batch before syncing again.");
+        }
       }
     } catch (error: any) {
       console.error('Bank sync error:', error);
       notify("Error", error.message || "Failed to sync transactions from bank. Please try again.");
     } finally {
-      setIsUploading(false);
+      if (append) {
+        setIsFetchingMoreBankTransactions(false);
+      } else {
+        setIsUploading(false);
+      }
     }
+  };
+
+  const handleFetchMoreBankTransactions = async () => {
+    if (!nextBankSyncConnectionId || !nextBankSyncCursor) return;
+    await handleSyncFromBank(nextBankSyncConnectionId, nextBankSyncCursor, { append: true });
   };
 
   const handleApplyAI = async () => {
@@ -671,6 +761,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleConfirmImport = async () => {
+    if (bankSyncReviewConnectionId && nextBankSyncCursor) {
+      notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
+      return;
+    }
+
     try {
         // Build transactions - NO auto-donor creation or pledge linking
         // Just store the extracted donor name as text for manual linking later
@@ -692,6 +787,27 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         });
 
         const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
+
+        const bankTransactionDates = bankSyncReviewConnectionId
+            ? pendingTransactions
+                .filter((pt) => pt.source === 'bank' && pt.bankConnectionId === bankSyncReviewConnectionId && pt.date)
+                .map((pt) => pt.date as string)
+            : [];
+
+        if (bankSyncReviewConnectionId && bankTransactionDates.length > 0) {
+            const lastSyncedThrough = bankTransactionDates.reduce((latest, date) =>
+                date > latest ? date : latest
+            );
+            try {
+                await acknowledgeBankSync({
+                    bankConnectionId: bankSyncReviewConnectionId,
+                    lastSyncedThrough,
+                });
+            } catch (syncStateError) {
+                console.warn('Failed to update bank sync checkpoint:', syncStateError);
+                notify("Warning", "Transactions were imported, but the bank sync checkpoint was not updated. The next sync may show duplicate warnings.");
+            }
+        }
 
         // Record corrections for ML learning if we have original predictions
         if (originalPredictions.size > 0 && result?.ids) {
@@ -730,8 +846,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         }
 
         setShowReviewModal(false);
-        setPendingTransactions([]);
-        setOriginalPredictions(new Map()); // Clear predictions
+        clearBankSyncReviewState();
     } catch (error) {
         console.error("Import failed:", error);
         notify("Error", "Failed to import transactions.");
@@ -814,9 +929,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 >
                     {isUploading ? <Loader2 size={14} className="animate-spin"/> : <Building2 size={14} />}
                     Sync Bank
-                    {plaidItems.length > 0 && (
+                    {bankConnections.length > 0 && (
                       <span className="ml-1 px-1.5 py-0.5 bg-sage-light text-sage-dark rounded text-[10px] font-bold">
-                        {plaidItems.length}
+                        {bankConnections.length}
                       </span>
                     )}
                 </button>
@@ -1766,9 +1881,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </tbody>
                     </table>
                 </div>
-                <div className="p-5 border-t border-slate-100 flex justify-end gap-3 rounded-b-lg bg-paper">
-                    <button onClick={() => setShowReviewModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors">Discard</button>
+                <div className="p-5 border-t border-slate-100 flex flex-col gap-3 rounded-b-lg bg-paper sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      {nextBankSyncCursor && nextBankSyncConnectionId && (
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <p className="text-xs font-semibold text-sage-dark">More bank transactions are available.</p>
+                          <button
+                            onClick={handleFetchMoreBankTransactions}
+                            disabled={isFetchingMoreBankTransactions}
+                            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-sage/40 rounded-md text-sage-dark hover:border-sage hover:bg-sage-light/30 transition-colors font-bold text-xs uppercase tracking-wide"
+                          >
+                            {isFetchingMoreBankTransactions ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                            Fetch Next Batch
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        setShowReviewModal(false);
+                        clearBankSyncReviewState();
+                      }}
+                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors"
+                    >
+                      Discard
+                    </button>
                     <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
+                    </div>
                 </div>
             </div>
         </div>,
@@ -1789,7 +1929,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               </button>
             </div>
             <div className="p-6 space-y-3">
-              {plaidItems.map((item) => (
+              {bankConnections.map((item) => (
                 <button
                   key={item._id}
                   onClick={() => handleSyncFromBank(item._id)}
@@ -1831,4 +1971,3 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 };
 
 export default TransactionManager;
-

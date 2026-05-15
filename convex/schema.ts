@@ -317,6 +317,68 @@ export default defineSchema({
     .index("by_itemId", ["itemId"])
     .index("by_organization_status", ["organizationId", "status"]),
 
+  // Provider-neutral bank connections
+  bankConnections: defineTable({
+    organizationId: v.id("organizations"),
+    provider: v.union(v.literal("enable_banking")),
+    providerConnectionId: v.string(),
+    institutionName: v.string(),
+    institutionCountry: v.string(),
+    accounts: v.array(
+      v.object({
+        accountId: v.string(),
+        providerAccountHash: v.optional(v.string()),
+        providerAccountHashes: v.optional(v.array(v.string())),
+        name: v.string(),
+        mask: v.optional(v.string()),
+        type: v.optional(v.string()),
+        currency: v.optional(v.string()),
+        fundId: v.optional(v.id("funds")),
+      })
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("error"),
+      v.literal("consent_expired"),
+      v.literal("pending_reauth")
+    ),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    lastSyncAt: v.optional(v.number()),
+    lastSyncedThrough: v.optional(v.string()),
+    consentExpiresAt: v.optional(v.number()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_provider_connection", ["provider", "providerConnectionId"])
+    .index("by_organization_status", ["organizationId", "status"]),
+
+  pendingBankConnections: defineTable({
+    organizationId: v.id("organizations"),
+    createdBy: v.id("users"),
+    provider: v.union(v.literal("enable_banking")),
+    state: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("error")
+    ),
+    aspspCountry: v.string(),
+    aspspName: v.string(),
+    existingConnectionId: v.optional(v.id("bankConnections")),
+    errorCode: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_state", ["state"])
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_status", ["organizationId", "status"]),
+
   // AI Categorization corrections tracking (for ML learning)
   categorizationCorrections: defineTable({
     organizationId: v.id("organizations"),

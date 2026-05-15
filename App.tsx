@@ -14,6 +14,7 @@ import Onboarding from "./components/Onboarding";
 import AuthPage from "./components/AuthPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
+import LegalPage from "./components/legal/LegalPage";
 import AppContentRoutes from "./components/app/AppContentRoutes";
 import AppNotificationToast, {
   AppNotification,
@@ -27,6 +28,16 @@ function App() {
   const { isLoaded, isSignedIn, user: clerkUser } = useUser();
   const location = useLocation();
   const navigate = useNavigate();
+  const publicLegalPage =
+    location.pathname === "/privacy"
+      ? "privacy"
+      : location.pathname === "/terms"
+        ? "terms"
+        : null;
+
+  if (publicLegalPage) {
+    return <LegalPage type={publicLegalPage} />;
+  }
 
   // Convex queries - only run when signed in (pass "skip" to disable)
   // First, get the current user - this returns null for new users (no error)
