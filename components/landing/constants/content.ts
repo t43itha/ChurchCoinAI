@@ -268,8 +268,8 @@ export const landingContent: LandingContent = {
       links: [
         { label: "About", href: "#" },
         { label: "Contact", href: "#" },
-        { label: "Privacy", href: "#" },
-        { label: "Terms", href: "#" },
+        { label: "Privacy", href: "/privacy" },
+        { label: "Terms", href: "/terms" },
       ],
     },
   ],
