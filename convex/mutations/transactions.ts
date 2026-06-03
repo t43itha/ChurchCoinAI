@@ -747,6 +747,14 @@ export const recordCorrections = mutation({
             organizationId: user.organizationId,
             transactionId: correction.transactionId,
             newSearchText: searchText,
+            metadata: {
+              category: correction.finalCategory,
+              fundId: transaction.fundId,
+              type: transaction.type,
+              isGiftAidEligible: transaction.isGiftAidEligible,
+              donorName: transaction.donorName,
+              acceptedCount: 1,
+            },
           }
         );
       }
