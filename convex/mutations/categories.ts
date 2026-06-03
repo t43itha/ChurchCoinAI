@@ -401,6 +401,73 @@ export const migrateToMainCategories = mutation({
   },
 });
 
+// Backfill transactionType and mainCategory for existing categories using RCI mappings
+export const backfillCategoryTransactionTypes = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireRole(ctx, ["Admin"]);
+
+    const categories = await ctx.db
+      .query("categories")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    const incomeLookup = new Map<string, string>();
+    for (const [mainCategory, subcategories] of Object.entries(RCI_INCOME_CATEGORIES)) {
+      const names = subcategories.length === 0 ? [mainCategory] : subcategories;
+      for (const name of names) {
+        incomeLookup.set(name.toLowerCase(), mainCategory);
+      }
+    }
+
+    const expenditureLookup = new Map<string, string>();
+    for (const [mainCategory, subcategories] of Object.entries(RCI_EXPENDITURE_CATEGORIES)) {
+      const names = subcategories.length === 0 ? [mainCategory] : subcategories;
+      for (const name of names) {
+        expenditureLookup.set(name.toLowerCase(), mainCategory);
+      }
+    }
+
+    const aliasLookup = new Map<string, string>();
+    for (const [alias, canonicalName] of Object.entries(CATEGORY_ALIASES)) {
+      aliasLookup.set(alias.toLowerCase(), canonicalName);
+    }
+
+    let updated = 0;
+    const skipped: string[] = [];
+
+    for (const category of categories) {
+      if (category.transactionType) continue;
+
+      const canonicalName =
+        aliasLookup.get(category.name.toLowerCase()) ?? category.name;
+      const normalized = canonicalName.toLowerCase();
+      const incomeMain = incomeLookup.get(normalized);
+      const expenditureMain = expenditureLookup.get(normalized);
+
+      if (incomeMain) {
+        await ctx.db.patch(category._id, {
+          mainCategory: incomeMain,
+          transactionType: "Income",
+        });
+        updated++;
+      } else if (expenditureMain) {
+        await ctx.db.patch(category._id, {
+          mainCategory: expenditureMain,
+          transactionType: "Expenditure",
+        });
+        updated++;
+      } else {
+        skipped.push(category.name);
+      }
+    }
+
+    return { updated, skipped };
+  },
+});
+
 // Internal mutation to seed RCI categories for ALL organizations - can be run from CLI
 export const seedAllOrganizations = internalMutation({
   args: {},
