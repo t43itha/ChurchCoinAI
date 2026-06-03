@@ -23,6 +23,7 @@ The goal is a broader transaction categorisation engine: deterministic and histo
 - Preserve user review control: AI and automation suggest; treasurers approve.
 - Make suggestions explainable with a source, confidence, and evidence.
 - Capture feedback for category, fund, Gift Aid, and donor extraction.
+- Ensure categorisation preserves reporting integrity: income transactions only use income categories, and expenditure transactions only use expenditure categories.
 - Keep implementation incremental and aligned with the existing Convex architecture.
 
 ## Non-Goals
@@ -53,6 +54,7 @@ Create a focused backend categorisation module under `convex/intelligence/catego
 | File | Responsibility |
 | --- | --- |
 | `normalize.ts` | Canonicalizes descriptions, reference tokens, direction, amount bucket, and likely payee/donor hints. |
+| `categoryResolver.ts` | Resolves category names against organization categories, transaction types, aliases, and reporting main categories. |
 | `rules.ts` | Deterministic rules for common church finance and banking patterns. |
 | `memory.ts` | Exact and near-exact historical lookup from accepted categorisations. |
 | `rag.ts` | Semantic retrieval from accepted examples with metadata round-trip. |
@@ -95,6 +97,8 @@ transactionCategorizationMemory: defineTable({
 - normalized description/payee tokens after stripping common bank noise
 - amount bucket, using exact amount for expenditure and donor/payment-processor patterns where amount is stable
 
+Memory records are only valid when their `transactionType` matches the transaction being categorized. A memory hit with a mismatched type must be ignored rather than repaired inline.
+
 Keep `categorizationCorrections` for current audit and accuracy stats. Add a sibling table, `categorizationFeedbackEvents`, for detailed field-level feedback so the existing stats table can remain backward compatible. Feedback events should include original and final values for:
 
 - category
@@ -123,6 +127,8 @@ Fix RAG storage and retrieval so semantic matches can produce valid suggestions:
   - `acceptedCount`
 - Use type filtering where available so income searches do not retrieve expense examples. If filter values are not configured in the RAG component, include type in metadata and apply the filter after retrieval.
 - Prefer metadata from `entries` or documented RAG result shapes rather than non-existent `document.category` properties.
+- Reject RAG suggestions whose stored `type` does not match the transaction being categorized.
+- Reject RAG suggestions whose category is missing, has no `transactionType`, or has a `transactionType` that does not match the transaction.
 
 RAG should not be the first layer. It should handle semantically similar but non-identical descriptions after exact memory and rules have failed.
 
@@ -150,8 +156,9 @@ Return immediately if:
 
 - confidence is high enough,
 - accepted history is strong enough,
+- the memory record transaction type matches the transaction,
 - the stored fund still belongs to the organization,
-- the stored category still exists or is accepted as an organization category.
+- the stored category exists and has a matching `transactionType`.
 
 ### 3. Rules
 
@@ -167,6 +174,8 @@ Apply curated rules for known cases:
 
 Rules return a suggestion, confidence, and explanation. Rules should only auto-suggest when narrow enough to avoid category drift.
 
+Rules must declare the transaction type they apply to. A rule suggestion is invalid if it returns an income category for expenditure or an expenditure category for income.
+
 ### 4. RAG
 
 Search similar accepted examples for the organization and transaction type.
@@ -175,7 +184,7 @@ Use high-confidence RAG only when:
 
 - one result is very strong, or
 - top results agree on category/fund, and
-- retrieved metadata validates against current organization data.
+- retrieved metadata validates against current organization data and transaction type.
 
 If results disagree, pass the most relevant examples to Gemini rather than returning an automatic RAG suggestion.
 
@@ -186,18 +195,19 @@ Send only unresolved rows to `gemini-2.5-flash-lite`.
 The prompt should include:
 
 - transaction descriptions, amounts, and types
-- allowed categories
+- allowed categories filtered by each transaction's type
 - allowed funds
 - a small set of relevant historical examples
 - concise rule hints
 
-The response must use strict JSON schema. Returned category and fund names must be validated against organization data. Invalid model output becomes unresolved rather than accepted.
+The response must use strict JSON schema. Returned category and fund names must be validated against organization data and category type. Invalid model output becomes unresolved rather than accepted.
 
 ### 6. Review Requirement
 
 Every suggestion returns:
 
 - `category`
+- `categoryTransactionType`
 - `fundId` or `fundName`
 - `isGiftAidEligible`
 - `donorName`
@@ -222,22 +232,47 @@ Use numeric confidence internally:
 
 The UI can continue to display `High`, `Medium`, or `Low`, but backend analytics should store the numeric value.
 
+Confidence cannot override category type safety. Any suggestion with a missing or mismatched category type must be returned as unresolved, regardless of source confidence.
+
+## Category And Reporting Integrity
+
+Category type is part of the categorisation contract. The engine must use a shared category resolver so categorisation and reporting agree on category meaning.
+
+Requirements:
+
+- Income transactions can only be suggested categories with `transactionType: "Income"`.
+- Expenditure transactions can only be suggested categories with `transactionType: "Expenditure"`.
+- Categories with missing `transactionType` are excluded from memory, rules, RAG, and Gemini suggestions.
+- The Gemini prompt must only include categories valid for the transaction type being categorized.
+- Memory and RAG metadata must store transaction type, and lookup must reject mismatches.
+- Feedback must not train memory when the final category has missing or mismatched `transactionType`.
+- Reporting should use the same category resolver behavior: category name plus transaction type resolves to the correct `mainCategory`; unresolved categories fall back to `Other Income` for income and `Admin & Governance` for expenditure.
+
+Backfill and maintenance:
+
+- Seeded RCI categories already include `transactionType`; keep this as a required invariant.
+- Add a maintenance/backfill step that assigns missing `transactionType` where the category name matches canonical RCI income or expenditure categories.
+- Leave truly custom categories with unknown type unavailable for AI suggestions until an Admin or Finance Team user assigns their type.
+- Category management should make `transactionType` explicit when creating or editing custom categories.
+
 ## Learning Loop
 
 On import review confirmation:
 
 1. Compare original suggestion to final reviewed transaction.
 2. Write audit feedback.
-3. Upsert memory by normalized signature.
-4. Replace or update the RAG entry with corrected metadata.
-5. Track per-source accuracy.
+3. Validate the final category has a matching `transactionType`.
+4. Upsert memory by normalized signature when category type is valid.
+5. Replace or update the RAG entry with corrected metadata when category type is valid.
+6. Track per-source accuracy.
 
 On manual transaction update:
 
 1. Detect changes to category, fund, Gift Aid, or donor name.
-2. Treat those changes as feedback.
-3. Upsert memory and RAG.
-4. Avoid requiring the original suggestion to have come from the Apply AI flow.
+2. Validate category type against the transaction type.
+3. Treat valid changes as feedback.
+4. Upsert memory and RAG for valid category/type pairs.
+5. Avoid requiring the original suggestion to have come from the Apply AI flow.
 
 Reviewed user choices are authoritative. Model and RAG output only provide proposals.
 
@@ -267,9 +302,10 @@ Failures should degrade by stage:
 Validation rules:
 
 - Model outputs must match existing organization categories and funds.
+- Model outputs must use a category whose `transactionType` matches the transaction type.
 - Suggested funds must belong to the organization.
 - RAG metadata must be organization-scoped and transaction-type filtered.
-- Empty categories are unresolved.
+- Empty categories and unknown-type categories are unresolved.
 - External model confidence labels are advisory only.
 
 ## Privacy And Cost Controls
@@ -296,6 +332,7 @@ The first implementation should avoid a large UI redesign.
 Unit tests:
 
 - normalization signatures
+- category resolver type filtering and reporting fallback
 - deterministic rules
 - memory confidence updates
 - Gemini output validation
@@ -308,6 +345,7 @@ Backend integration or isolated Convex tests where practical:
 - corrected transaction replaces stale RAG entry
 - manual transaction update teaches memory
 - invalid model category/fund output falls back safely
+- income transactions never receive expenditure categories, and expenditure transactions never receive income categories
 
 Manual verification:
 
@@ -323,7 +361,7 @@ Manual verification:
 
 Phase 1: repair RAG metadata and replacement keys, add output validation.
 
-Phase 2: add memory table, normalization, and deterministic rules.
+Phase 2: add shared category resolver, category type backfill, memory table, normalization, and deterministic rules.
 
 Phase 3: route import categorisation through the new pipeline and switch fallback to Flash-Lite.
 
@@ -336,6 +374,7 @@ Phase 5: tune thresholds using real correction data.
 - Add `categorizationFeedbackEvents` rather than changing the meaning of existing `categorizationCorrections` records.
 - Use aggregate memory signatures as the primary RAG entries.
 - Teach memory from changes made by Admin and Finance Team users only, matching existing edit permissions.
+- Exclude categories with missing `transactionType` from all automated suggestions until they are backfilled or edited.
 - Start with deterministic rules for bank charges, payment processor fees, utilities, internal transfers, cash collections, giving aliases, and fund keyword hints.
 - Use the confidence thresholds defined in this spec for the first release, then tune them from source accuracy metrics.
 
