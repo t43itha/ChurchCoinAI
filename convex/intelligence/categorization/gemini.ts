@@ -19,7 +19,7 @@ const confidenceFromModelLabel = (label: unknown): number => {
 
   switch (label.trim().toLowerCase()) {
     case "high":
-      return 0.78;
+      return 0.85;
     case "medium":
       return 0.68;
     case "low":
@@ -91,12 +91,13 @@ export const validateGeminiSuggestion = (
 
   const suggestedFundName =
     typeof rawSuggestion.fundName === "string" ? rawSuggestion.fundName : "";
-  const fund =
-    funds.find(
-      (item) =>
-        item.name.trim().toLowerCase() ===
-        suggestedFundName.trim().toLowerCase()
-    ) ?? funds[0];
+  if (!suggestedFundName.trim()) return null;
+
+  const fund = funds.find(
+    (item) =>
+      item.name.trim().toLowerCase() ===
+      suggestedFundName.trim().toLowerCase()
+  );
   if (!fund) return null;
 
   const confidence = confidenceFromModelLabel(rawSuggestion.confidence);

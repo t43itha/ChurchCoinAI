@@ -58,4 +58,88 @@ describe("Gemini categorization helpers", () => {
 
     expect(result).toBeNull();
   });
+
+  it("accepts valid output and trims category, fund, evidence, and donor values", () => {
+    const result = validateGeminiSuggestion(
+      {
+        category: " Offerings ",
+        fundName: " General Fund ",
+        confidence: "High",
+        isGiftAidEligible: true,
+        donorName: " Jane Donor ",
+        evidence: " Standing order reference ",
+      },
+      { description: "Donation", amount: 50, type: "Income" },
+      categories,
+      funds
+    );
+
+    expect(result).toMatchObject({
+      category: "Offerings",
+      fundName: "General Fund",
+      fundId: "fund1",
+      predictionSource: "gemini",
+      donorName: "Jane Donor",
+      confidenceLabel: "High",
+      requiresReview: true,
+      isGiftAidEligible: true,
+      evidence: [{ source: "gemini", reason: "Standing order reference" }],
+    });
+  });
+
+  it("rejects invented funds instead of falling back to the first fund", () => {
+    const result = validateGeminiSuggestion(
+      {
+        category: "Offerings",
+        fundName: "Invented Fund",
+        confidence: "Medium",
+        isGiftAidEligible: false,
+      },
+      { description: "Donation", amount: 50, type: "Income" },
+      categories,
+      funds
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it.each([undefined, "", "   "])(
+    "rejects missing or blank fundName value %s",
+    (fundName) => {
+      const result = validateGeminiSuggestion(
+        {
+          category: "Offerings",
+          fundName,
+          confidence: "Medium",
+          isGiftAidEligible: false,
+        },
+        { description: "Donation", amount: 50, type: "Income" },
+        categories,
+        funds
+      );
+
+      expect(result).toBeNull();
+    }
+  );
+
+  it.each([
+    ["High", "High"],
+    ["Medium", "Medium"],
+    ["Low", "Low"],
+  ])("maps %s model confidence to %s confidenceLabel", (confidence, label) => {
+    const result = validateGeminiSuggestion(
+      {
+        category: "Offerings",
+        fundName: "General Fund",
+        confidence,
+        isGiftAidEligible: false,
+      },
+      { description: "Donation", amount: 50, type: "Income" },
+      categories,
+      funds
+    );
+
+    expect(result?.confidenceLabel).toBe(label);
+    expect(result?.requiresReview).toBe(true);
+  });
 });
