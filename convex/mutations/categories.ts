@@ -423,6 +423,7 @@ export const backfillCategoryTransactionTypes = mutation({
         incomeLookup.set(normalizeCategoryName(name), mainCategory);
       }
     }
+    incomeLookup.set(normalizeCategoryName("Donation"), "Donations");
 
     const expenditureLookup = new Map<string, string>();
     for (const [mainCategory, subcategories] of Object.entries(RCI_EXPENDITURE_CATEGORIES)) {
