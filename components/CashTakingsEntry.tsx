@@ -1,61 +1,34 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { useMutation, useQuery } from 'convex/react';
-import { api } from '../convex/_generated/api';
-import { Id } from '../convex/_generated/dataModel';
-import { Fund } from '../types';
-import DonorSearchInput from './DonorSearchInput';
+import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { useMutation } from "convex/react";
+import { api } from "../convex/_generated/api";
+import { Id } from "../convex/_generated/dataModel";
+import { Fund } from "../types";
 import {
-  X,
-  Plus,
-  Trash2,
+  AlertCircle,
   Banknote,
-  Users,
-  PiggyBank,
-  Receipt,
+  Calendar,
+  Loader2,
+  Plus,
   Save,
   Send,
-  Loader2,
-  Calendar,
-  Gift,
-  AlertCircle,
-  Check,
-  ChevronDown,
-  FileCheck,
-} from 'lucide-react';
+  Trash2,
+  X,
+} from "lucide-react";
 
 interface Category {
   _id: string;
   name: string;
 }
 
-// Contribution types for named contributions
-type ContributionType = 'Tithes & First Fruits' | 'Donation' | 'Offerings' | 'Thanksgiving';
-
-interface NamedContributionEntry {
+interface ServiceRowEntry {
   id: string;
-  donorName: string;
-  donorId: Id<"donors"> | null;
-  amount: string;
-  isGiftAidEligible: boolean;
-  type: ContributionType;
-  fundId?: string; // Required when type='Donation'
-  paymentMethod: "Cash" | "Cheque";
-}
-
-interface CategoryTotalEntry {
-  id: string;
-  category: string;
+  serviceDate: string;
+  serviceNote: string;
   fundId: string;
-  amount: string;
-  paymentMethod: "Cash" | "Cheque";
-}
-
-interface PettyCashEntry {
-  id: string;
-  purpose: string;
-  amount: string;
-  category: string;
+  cash: string;
+  pdq: string;
+  cheque: string;
 }
 
 interface CashTakingsEntryProps {
@@ -65,7 +38,6 @@ interface CashTakingsEntryProps {
   onSuccess?: (result: { cashCollectionId: string; transactionCount: number }) => void;
 }
 
-// Helper to get the next Sunday (week ending date)
 function getWeekEndingDate(date: Date): string {
   const dayOfWeek = date.getDay();
   const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
@@ -74,170 +46,121 @@ function getWeekEndingDate(date: Date): string {
   return sunday.toISOString().split("T")[0];
 }
 
-// Generate a unique ID for entries
 const generateId = () => Math.random().toString(36).substring(2, 9);
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(amount);
+
+const parseMoney = (value: string) => {
+  const amount = Number.parseFloat(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
+
+const dayLabel = (date: string) =>
+  new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
+    weekday: "short",
+  });
 
 const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   funds,
-  categories,
   onClose,
   onSuccess,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tithes' | 'categories' | 'petty'>('tithes');
+  const today = new Date().toISOString().split("T")[0];
+  const unrestrictedFund = funds.find((fund) => fund.type === "Unrestricted");
+  const defaultFundId = unrestrictedFund?._id || funds[0]?._id || "";
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Dates
-  const today = new Date().toISOString().split("T")[0];
   const [weekEndingDate, setWeekEndingDate] = useState(getWeekEndingDate(new Date()));
-  const [collectionDate, setCollectionDate] = useState(today);
   const [notes, setNotes] = useState("");
-
-  // Entries
-  const [namedContributions, setNamedContributions] = useState<NamedContributionEntry[]>([
-    { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithes & First Fruits', paymentMethod: "Cash" },
+  const [serviceRows, setServiceRows] = useState<ServiceRowEntry[]>([
+    {
+      id: generateId(),
+      serviceDate: today,
+      serviceNote: "Sunday Service",
+      fundId: defaultFundId,
+      cash: "",
+      pdq: "",
+      cheque: "",
+    },
   ]);
-  const [categoryTotals, setCategoryTotals] = useState<CategoryTotalEntry[]>([
-    { id: generateId(), category: "Offerings", fundId: "", amount: "", paymentMethod: "Cash" },
-  ]);
-  const [pettyCash, setPettyCash] = useState<PettyCashEntry[]>([]);
 
-  // Mutation
   const submitCollection = useMutation(api.mutations.cashCollections.submitCollection);
 
-  // Get unrestricted fund as default
-  const unrestrictedFund = funds.find((f) => f.type === "Unrestricted");
-  const restrictedFunds = funds.filter((f) => f.type === "Restricted" || f.type === "Designated");
-
-  // Set default fund for category totals
-  useEffect(() => {
-    if (unrestrictedFund && categoryTotals.some((ct) => !ct.fundId)) {
-      setCategoryTotals((prev) =>
-        prev.map((ct) => (ct.fundId ? ct : { ...ct, fundId: unrestrictedFund._id }))
-      );
-    }
-  }, [unrestrictedFund]);
-
-  // Calculate totals
   const totals = useMemo(() => {
-    const namedTotal = namedContributions.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
-    const categoryTotal = categoryTotals.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-    const pettyTotal = pettyCash.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-    const grossIncome = namedTotal + categoryTotal;
-    const bankableTotal = grossIncome - pettyTotal;
-    const giftAidEligible = namedContributions
-      .filter((t) => t.isGiftAidEligible)
-      .reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+    const rows = serviceRows.map((row) => ({
+      cash: parseMoney(row.cash),
+      pdq: parseMoney(row.pdq),
+      cheque: parseMoney(row.cheque),
+    }));
+
+    const cash = rows.reduce((sum, row) => sum + row.cash, 0);
+    const pdq = rows.reduce((sum, row) => sum + row.pdq, 0);
+    const cheque = rows.reduce((sum, row) => sum + row.cheque, 0);
 
     return {
-      namedTotal,
-      categoryTotal,
-      pettyTotal,
-      grossIncome,
-      bankableTotal,
-      giftAidEligible,
+      cash,
+      pdq,
+      cheque,
+      total: cash + pdq + cheque,
     };
-  }, [namedContributions, categoryTotals, pettyCash]);
+  }, [serviceRows]);
 
-  // Named contribution handlers
-  const addContribution = () => {
-    setNamedContributions([
-      ...namedContributions,
-      { id: generateId(), donorName: "", donorId: null, amount: "", isGiftAidEligible: false, type: 'Tithes & First Fruits', paymentMethod: "Cash" },
+  const addServiceRow = () => {
+    setServiceRows((rows) => [
+      ...rows,
+      {
+        id: generateId(),
+        serviceDate: today,
+        serviceNote: "",
+        fundId: defaultFundId,
+        cash: "",
+        pdq: "",
+        cheque: "",
+      },
     ]);
   };
 
-  const updateContribution = (id: string, updates: Partial<NamedContributionEntry>) => {
-    setNamedContributions(namedContributions.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+  const updateServiceRow = (id: string, updates: Partial<ServiceRowEntry>) => {
+    setServiceRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...updates } : row))
+    );
   };
 
-  const removeContribution = (id: string) => {
-    if (namedContributions.length > 1) {
-      setNamedContributions(namedContributions.filter((t) => t.id !== id));
-    }
+  const removeServiceRow = (id: string) => {
+    setServiceRows((rows) => rows.filter((row) => row.id !== id));
   };
 
-  // Category handlers
-  const addCategory = () => {
-    setCategoryTotals([
-      ...categoryTotals,
-      { id: generateId(), category: "", fundId: unrestrictedFund?._id || "", amount: "", paymentMethod: "Cash" },
-    ]);
-  };
-
-  const updateCategory = (id: string, updates: Partial<CategoryTotalEntry>) => {
-    setCategoryTotals(categoryTotals.map((c) => (c.id === id ? { ...c, ...updates } : c)));
-  };
-
-  const removeCategory = (id: string) => {
-    if (categoryTotals.length > 1) {
-      setCategoryTotals(categoryTotals.filter((c) => c.id !== id));
-    }
-  };
-
-  // Petty cash handlers
-  const addPettyCash = () => {
-    setPettyCash([
-      ...pettyCash,
-      { id: generateId(), purpose: "", amount: "", category: "Miscellaneous" },
-    ]);
-  };
-
-  const updatePettyCash = (id: string, updates: Partial<PettyCashEntry>) => {
-    setPettyCash(pettyCash.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-  };
-
-  const removePettyCash = (id: string) => {
-    setPettyCash(pettyCash.filter((p) => p.id !== id));
-  };
-
-  // Submit handler
-  const handleSubmit = async (asDraft: boolean = false) => {
+  const handleSubmit = async (asDraft: boolean) => {
     setError(null);
     setIsSubmitting(true);
 
     try {
-      // Validate entries
-      const validContributions = namedContributions.filter((t) => {
-        const hasBasics = t.donorName && parseFloat(t.amount) > 0;
-        // Donations require a fund selection
-        if (t.type === 'Donation' && !t.fundId) return false;
-        return hasBasics;
-      });
-      const validCategories = categoryTotals.filter(
-        (c) => c.category && c.fundId && parseFloat(c.amount) > 0
-      );
-      const validPetty = pettyCash.filter((p) => p.purpose && parseFloat(p.amount) > 0);
+      const validRows = serviceRows
+        .map((row) => ({
+          serviceDate: row.serviceDate,
+          serviceNote: row.serviceNote.trim() || "Service",
+          fundId: row.fundId as Id<"funds">,
+          cash: parseMoney(row.cash),
+          pdq: parseMoney(row.pdq),
+          cheque: parseMoney(row.cheque),
+        }))
+        .filter((row) => row.fundId && row.serviceDate && row.cash + row.pdq + row.cheque > 0);
 
-      if (validContributions.length === 0 && validCategories.length === 0) {
-        throw new Error("Please add at least one named contribution or category total");
+      if (validRows.length === 0) {
+        throw new Error("Please add at least one service row with a cash, PDQ, or cheque amount.");
       }
 
       const result = await submitCollection({
         weekEndingDate,
-        collectionDate,
+        collectionDate: validRows[0].serviceDate,
         notes: notes || undefined,
         status: asDraft ? "draft" : "submitted",
-        namedContributions: validContributions.map((t) => ({
-          donorName: t.donorName,
-          donorId: t.donorId || undefined,
-          amount: parseFloat(t.amount),
-          isGiftAidEligible: t.isGiftAidEligible,
-          type: t.type,
-          fundId: t.fundId as Id<"funds"> | undefined,
-          paymentMethod: t.paymentMethod,
-        })),
-        categoryTotals: validCategories.map((c) => ({
-          category: c.category,
-          fundId: c.fundId as Id<"funds">,
-          amount: parseFloat(c.amount),
-          paymentMethod: c.paymentMethod,
-        })),
-        pettyCash: validPetty.map((p) => ({
-          purpose: p.purpose,
-          amount: parseFloat(p.amount),
-          category: p.category,
-        })),
+        serviceRows: validRows,
       });
 
       onSuccess?.({
@@ -252,548 +175,162 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
     }
   };
 
-  // Format currency
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: "GBP",
-    }).format(amount);
-  };
-
-  const tabs = [
-    { id: 'tithes' as const, label: 'Named Contributions', icon: Users, count: namedContributions.filter(t => t.donorName && t.amount).length },
-    { id: 'categories' as const, label: 'Category Totals', icon: Receipt, count: categoryTotals.filter(c => c.category && c.amount).length },
-    { id: 'petty' as const, label: 'Petty Cash', icon: PiggyBank, count: pettyCash.filter(p => p.purpose && p.amount).length },
-  ];
-
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-lg border-2 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col">
-        {/* Header */}
+      <div className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-lg border-2 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b-2 border-black">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-sage-100 rounded-lg">
               <Banknote className="h-5 w-5 text-sage-700" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Record Cash & Cheques</h2>
-              <p className="text-sm text-gray-500">Enter weekly cash and cheque takings</p>
+              <h2 className="text-lg font-bold">Record In-Person Giving</h2>
+              <p className="text-sm text-gray-500">Enter weekly service totals for cash, PDQ, and cheques.</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-md transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-md transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Date Selection */}
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Week Ending (Sunday)
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="date"
-                  value={weekEndingDate}
-                  onChange={(e) => setWeekEndingDate(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
-                />
-              </div>
-            </div>
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Collection Date
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="date"
-                  value={collectionDate}
-                  onChange={(e) => setCollectionDate(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
-                />
-              </div>
+          <div className="max-w-xs">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Week Ending (Sunday)
+            </label>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="date"
+                value={weekEndingDate}
+                onChange={(e) => setWeekEndingDate(e.target.value)}
+                className="w-full h-10 pl-9 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
+              />
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors
-                ${activeTab === tab.id
-                  ? "border-b-2 border-black text-black bg-white"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                }`}
-            >
-              <tab.icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-              {tab.count > 0 && (
-                <span className="ml-1 bg-sage-100 text-sage-700 text-xs px-1.5 py-0.5 rounded-full">
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Named Contributions Tab */}
-          {activeTab === 'tithes' && (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-500 mb-4">
-                Enter individual contributions with donor names for Gift Aid tracking.
-              </p>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-gray-100 text-xs uppercase tracking-wide text-gray-600">
+                  <th className="border border-gray-300 px-3 py-2 text-left w-20">Day</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left w-40">Service Date</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left min-w-44">Service / Note</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left min-w-44">Fund</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right w-28">Cash</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right w-28">PDQ</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right w-28">Cheque</th>
+                  <th className="border border-gray-300 px-3 py-2 text-right w-28">Total</th>
+                  <th className="border border-gray-300 px-3 py-2 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {serviceRows.map((row) => {
+                  const rowTotal = parseMoney(row.cash) + parseMoney(row.pdq) + parseMoney(row.cheque);
 
-              {/* Header Row - Hidden on Mobile */}
-              <div className="hidden sm:flex items-center gap-3 px-2 pb-2 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <div className="w-28">Type</div>
-                <div className="flex-1 min-w-[120px]">Donor Name</div>
-                <div className="w-24 text-right">Amount</div>
-                <div className="w-20 text-center">Method</div>
-                <div className="w-20 text-center">Gift Aid</div>
-                <div className="w-10"></div>
-              </div>
-
-              {/* Rows */}
-              <div className="space-y-2">
-                {namedContributions.map((contribution, index) => (
-                  <div
-                    key={contribution.id}
-                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 p-3 sm:p-0 sm:py-2 bg-gray-50 sm:bg-transparent rounded-lg sm:rounded-none border sm:border-0 border-gray-200 sm:border-b sm:border-gray-100 last:border-0"
-                  >
-                    {/* Type Select */}
-                    <div className="w-full sm:w-28">
-                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Type</label>
-                      <div className="relative">
-                        <select
-                          value={contribution.type}
-                          onChange={(e) => updateContribution(contribution.id, {
-                            type: e.target.value as ContributionType,
-                            fundId: e.target.value === 'Donation' ? contribution.fundId : undefined
-                          })}
-                          className="w-full h-9 pl-2 pr-7 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                        >
-                          <option value="Tithes & First Fruits">Tithes & First Fruits</option>
-                          <option value="Donation">Donation</option>
-                          <option value="Offerings">Offerings</option>
-                          <option value="Thanksgiving">Thanksgiving</option>
-                        </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                          <ChevronDown className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Fund Select - Only shown for Donations */}
-                    {contribution.type === 'Donation' && (
-                      <div className="w-full sm:w-32">
-                        <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Fund</label>
-                        <div className="relative">
-                          <select
-                            value={contribution.fundId || ""}
-                            onChange={(e) => updateContribution(contribution.id, { fundId: e.target.value })}
-                            className="w-full h-9 pl-2 pr-7 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                          >
-                            <option value="">Select fund...</option>
-                            {restrictedFunds.map((f) => (
-                              <option key={f._id} value={f._id}>{f.name}</option>
-                            ))}
-                          </select>
-                          <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                            <ChevronDown className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Donor Name */}
-                    <div className="flex-1 min-w-[120px]">
-                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Donor Name</label>
-                      <DonorSearchInput
-                        value={contribution.donorName}
-                        onChange={(name) => updateContribution(contribution.id, { donorName: name })}
-                        onDonorSelect={(donor) =>
-                          updateContribution(contribution.id, {
-                            donorName: donor.donorName,
-                            donorId: donor.donorId,
-                            isGiftAidEligible: donor.isGiftAidActive,
-                          })
-                        }
-                        autoFocus={index === namedContributions.length - 1}
-                      />
-                    </div>
-
-                    {/* Amount */}
-                    <div className="w-full sm:w-24">
-                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Amount</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
+                  return (
+                    <tr key={row.id}>
+                      <td className="border border-gray-300 px-3 py-2 font-mono text-xs text-gray-500">
+                        {dayLabel(row.serviceDate)}
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2">
                         <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={contribution.amount}
-                          onChange={(e) => updateContribution(contribution.id, { amount: e.target.value })}
-                          placeholder="0.00"
-                          className="w-full h-9 pl-7 pr-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
+                          type="date"
+                          value={row.serviceDate}
+                          onChange={(e) => updateServiceRow(row.id, { serviceDate: e.target.value })}
+                          className="w-full h-9 px-2 border border-gray-300 rounded-md font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black/10"
                         />
-                      </div>
-                    </div>
-
-                    {/* Cash/Cheque Toggle */}
-                    <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
-                      <span className="sm:hidden text-xs font-medium text-gray-600">Method</span>
-                      <button
-                        type="button"
-                        onClick={() => updateContribution(contribution.id, {
-                          paymentMethod: contribution.paymentMethod === "Cash" ? "Cheque" : "Cash"
-                        })}
-                        title={contribution.paymentMethod === "Cash" ? "Cash — click to switch to Cheque" : "Cheque — click to switch to Cash"}
-                        className={`relative flex items-center gap-1 px-2 h-9 rounded-md border text-xs font-medium transition-all
-                          ${contribution.paymentMethod === "Cheque"
-                            ? 'bg-blue-50 border-blue-400 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
-                          }`}
-                      >
-                        {contribution.paymentMethod === "Cheque" ? (
-                          <FileCheck className="h-3.5 w-3.5" />
-                        ) : (
-                          <Banknote className="h-3.5 w-3.5" />
-                        )}
-                        <span className="hidden sm:inline">{contribution.paymentMethod === "Cheque" ? "Chq" : "Cash"}</span>
-                      </button>
-                    </div>
-
-                    {/* Gift Aid Toggle */}
-                    <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
-                      <span className="sm:hidden text-xs font-medium text-gray-600">Gift Aid</span>
-                      <button
-                        type="button"
-                        onClick={() => updateContribution(contribution.id, { isGiftAidEligible: !contribution.isGiftAidEligible })}
-                        aria-pressed={contribution.isGiftAidEligible}
-                        title="Gift Aid: Claim +25% tax relief"
-                        className={`relative flex items-center gap-1 px-2 h-9 rounded-md border text-xs font-medium transition-all
-                          ${contribution.isGiftAidEligible
-                            ? 'bg-sage-100 border-sage-500 text-sage-700'
-                            : 'bg-white border-gray-300 text-gray-500 hover:border-sage-400 hover:text-sage-600'
-                          }`}
-                      >
-                        {contribution.isGiftAidEligible ? (
-                          <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                        ) : (
-                          <Gift className="h-3.5 w-3.5" />
-                        )}
-                        {contribution.isGiftAidEligible && (
-                          <span className="absolute -top-1.5 -right-1.5 px-1 py-0.5 rounded-full bg-sage-600 text-[9px] text-white font-bold leading-none">
-                            +25%
-                          </span>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Delete Button */}
-                    <div className="flex justify-end sm:justify-center w-full sm:w-10">
-                      <button
-                        type="button"
-                        onClick={() => removeContribution(contribution.id)}
-                        disabled={namedContributions.length === 1}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={addContribution}
-                className="w-full mt-4 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Contribution
-              </button>
-            </div>
-          )}
-
-          {/* Categories Tab */}
-          {activeTab === 'categories' && (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-500 mb-4">
-                Enter total amounts for each income category.
-              </p>
-
-              {/* Header Row - Hidden on Mobile */}
-              <div className="hidden sm:flex items-center gap-3 px-2 pb-2 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                <div className="flex-1 min-w-[150px]">Category</div>
-                <div className="flex-1 min-w-[150px]">Fund</div>
-                <div className="w-32 text-right pr-3">Amount</div>
-                <div className="w-20 text-center">Method</div>
-                <div className="w-10"></div>
-              </div>
-
-              {/* Rows */}
-              <div className="space-y-2">
-                {categoryTotals.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 p-3 sm:p-0 sm:py-2 bg-gray-50 sm:bg-transparent rounded-lg sm:rounded-none border sm:border-0 border-gray-200 sm:border-b sm:border-gray-100 last:border-0"
-                  >
-                    {/* Category Select */}
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Category</label>
-                      <div className="relative">
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2">
+                        <input
+                          type="text"
+                          value={row.serviceNote}
+                          onChange={(e) => updateServiceRow(row.id, { serviceNote: e.target.value })}
+                          placeholder="e.g., Sunday Service"
+                          className="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
+                        />
+                      </td>
+                      <td className="border border-gray-300 px-3 py-2">
                         <select
-                          value={cat.category}
-                          onChange={(e) => updateCategory(cat.id, { category: e.target.value })}
-                          className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                        >
-                          <option value="">Select category...</option>
-                          <option value="Offerings">Offerings</option>
-                          <option value="Thanksgiving">Thanksgiving</option>
-                          <option value="Merchandise">Merchandise</option>
-                          <option value="Uncategorised">Uncategorised</option>
-                        </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                          <ChevronDown className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Fund Select */}
-                    <div className="flex-1 min-w-[150px]">
-                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Fund</label>
-                      <div className="relative">
-                        <select
-                          value={cat.fundId}
-                          onChange={(e) => updateCategory(cat.id, { fundId: e.target.value })}
-                          className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+                          value={row.fundId}
+                          onChange={(e) => updateServiceRow(row.id, { fundId: e.target.value })}
+                          className="w-full h-9 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
                         >
                           <option value="">Select fund...</option>
-                          {funds.map((f) => (
-                            <option key={f._id} value={f._id}>
-                              {f.name} ({f.type})
+                          {funds.map((fund) => (
+                            <option key={fund._id} value={fund._id}>
+                              {fund.name}
                             </option>
                           ))}
                         </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                          <ChevronDown className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Amount Input */}
-                    <div className="w-full sm:w-32">
-                      <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Amount</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={cat.amount}
-                          onChange={(e) => updateCategory(cat.id, { amount: e.target.value })}
-                          placeholder="0.00"
-                          className="w-full h-9 pl-7 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Cash/Cheque Toggle */}
-                    <div className="flex items-center justify-between sm:justify-center w-full sm:w-20">
-                      <span className="sm:hidden text-xs font-medium text-gray-600">Method</span>
-                      <button
-                        type="button"
-                        onClick={() => updateCategory(cat.id, {
-                          paymentMethod: cat.paymentMethod === "Cash" ? "Cheque" : "Cash"
-                        })}
-                        title={cat.paymentMethod === "Cash" ? "Cash — click to switch to Cheque" : "Cheque — click to switch to Cash"}
-                        className={`relative flex items-center gap-1 px-2 h-9 rounded-md border text-xs font-medium transition-all
-                          ${cat.paymentMethod === "Cheque"
-                            ? 'bg-blue-50 border-blue-400 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-500 hover:border-gray-400'
-                          }`}
-                      >
-                        {cat.paymentMethod === "Cheque" ? (
-                          <FileCheck className="h-3.5 w-3.5" />
-                        ) : (
-                          <Banknote className="h-3.5 w-3.5" />
-                        )}
-                        <span className="hidden sm:inline">{cat.paymentMethod === "Cheque" ? "Chq" : "Cash"}</span>
-                      </button>
-                    </div>
-
-                    {/* Delete Button */}
-                    <div className="flex justify-end sm:justify-center w-full sm:w-10">
-                      <button
-                        onClick={() => removeCategory(cat.id)}
-                        disabled={categoryTotals.length === 1}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        title="Remove row"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={addCategory}
-                className="w-full mt-4 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Category
-              </button>
-            </div>
-          )}
-
-          {/* Petty Cash Tab */}
-          {activeTab === 'petty' && (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-500 mb-4">
-                Record petty cash withdrawals. These will be deducted from the bankable total.
-              </p>
-
-              {pettyCash.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <PiggyBank className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>No petty cash entries yet</p>
-                </div>
-              ) : (
-                <>
-                  {/* Header Row - Hidden on Mobile */}
-                  <div className="hidden sm:flex items-center gap-3 px-2 pb-2 border-b border-amber-200 text-xs font-semibold text-amber-700 uppercase tracking-wider">
-                    <div className="flex-1 min-w-[150px]">Purpose</div>
-                    <div className="w-36">Category</div>
-                    <div className="w-28 text-right pr-3">Amount</div>
-                    <div className="w-10"></div>
-                  </div>
-
-                  {/* Rows */}
-                  <div className="space-y-2">
-                    {pettyCash.map((petty) => (
-                      <div
-                        key={petty.id}
-                        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 p-3 sm:p-0 sm:py-2 bg-amber-50 sm:bg-transparent rounded-lg sm:rounded-none border sm:border-0 border-amber-200 sm:border-b sm:border-amber-100 last:border-0"
-                      >
-                        {/* Purpose */}
-                        <div className="flex-1 min-w-[150px]">
-                          <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Purpose</label>
-                          <input
-                            type="text"
-                            value={petty.purpose}
-                            onChange={(e) => updatePettyCash(petty.id, { purpose: e.target.value })}
-                            placeholder="e.g., Tea supplies, postage..."
-                            className="w-full h-9 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                          />
-                        </div>
-
-                        {/* Category */}
-                        <div className="w-full sm:w-36">
-                          <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Category</label>
+                      </td>
+                      {(["cash", "pdq", "cheque"] as const).map((field) => (
+                        <td key={field} className="border border-gray-300 px-3 py-2">
                           <div className="relative">
-                            <select
-                              value={petty.category}
-                              onChange={(e) => updatePettyCash(petty.id, { category: e.target.value })}
-                              className="w-full h-9 pl-3 pr-8 text-sm bg-white border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
-                            >
-                              <option value="Miscellaneous">Miscellaneous</option>
-                              <option value="Hospitality">Hospitality</option>
-                              <option value="Office">Office</option>
-                              <option value="Maintenance">Maintenance</option>
-                              {categories.map((c) => (
-                                <option key={c._id} value={c.name}>{c.name}</option>
-                              ))}
-                            </select>
-                            <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-500">
-                              <ChevronDown className="w-4 h-4" />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Amount */}
-                        <div className="w-full sm:w-28">
-                          <label className="block sm:hidden text-xs font-medium text-gray-600 mb-1">Amount</label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400">£</span>
                             <input
                               type="number"
                               step="0.01"
                               min="0"
-                              value={petty.amount}
-                              onChange={(e) => updatePettyCash(petty.id, { amount: e.target.value })}
+                              value={row[field]}
+                              onChange={(e) => updateServiceRow(row.id, { [field]: e.target.value })}
                               placeholder="0.00"
-                              className="w-full h-9 pl-7 pr-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono text-right"
+                              className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
                             />
                           </div>
-                        </div>
-
-                        {/* Delete Button */}
-                        <div className="flex justify-end sm:justify-center w-full sm:w-10">
-                          <button
-                            onClick={() => removePettyCash(petty.id)}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              <button
-                onClick={addPettyCash}
-                className="w-full mt-4 py-2 px-4 border-2 border-dashed border-amber-300 rounded-lg text-sm font-medium text-amber-700 hover:border-amber-400 hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Petty Cash Withdrawal
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Summary Panel - Compact for mobile */}
-        <div className="px-4 py-2 border-t-2 border-black bg-gray-50">
-          <div className="flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-4">
-              <div>
-                <span className="text-gray-400 block">Gross</span>
-                <span className="font-bold text-sage-700 tabular-nums">{formatCurrency(totals.grossIncome)}</span>
-              </div>
-              {totals.pettyTotal > 0 && (
-                <div>
-                  <span className="text-gray-400 block">Petty</span>
-                  <span className="font-bold text-amber-600 tabular-nums">-{formatCurrency(totals.pettyTotal)}</span>
-                </div>
-              )}
-              {totals.giftAidEligible > 0 && (
-                <div className="hidden sm:block">
-                  <span className="text-gray-400 flex items-center gap-1"><Gift className="h-3 w-3" /> Gift Aid</span>
-                  <span className="font-medium text-sage-600 tabular-nums">{formatCurrency(totals.giftAidEligible)}</span>
-                </div>
-              )}
-            </div>
-            <div className="text-right">
-              <span className="text-gray-400 block">Bankable</span>
-              <span className="text-base font-bold text-black tabular-nums">{formatCurrency(totals.bankableTotal)}</span>
-            </div>
+                        </td>
+                      ))}
+                      <td className="border border-gray-300 px-3 py-2 text-right font-mono font-bold">
+                        {formatCurrency(rowTotal)}
+                      </td>
+                      <td className="border border-gray-300 px-2 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeServiceRow(row.id)}
+                          disabled={serviceRows.length === 1}
+                          className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Remove row"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-gray-100 font-bold">
+                  <td className="border border-gray-300 px-3 py-2" colSpan={4}>
+                    TOTAL
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2 text-right font-mono">
+                    {formatCurrency(totals.cash)}
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2 text-right font-mono">
+                    {formatCurrency(totals.pdq)}
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2 text-right font-mono">
+                    {formatCurrency(totals.cheque)}
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2 text-right font-mono">
+                    {formatCurrency(totals.total)}
+                  </td>
+                  <td className="border border-gray-300"></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+
+          <button
+            type="button"
+            onClick={addServiceRow}
+            className="w-full mt-4 py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Service Row
+          </button>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="px-6 py-3 bg-red-50 border-t border-red-200 flex items-center gap-2 text-red-700 text-sm">
             <AlertCircle className="h-4 w-4" />
@@ -801,7 +338,6 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
           </div>
         )}
 
-        {/* Footer - Compact for mobile */}
         <div className="px-4 py-3 border-t border-gray-200">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <input
@@ -821,7 +357,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               </button>
               <button
                 onClick={() => handleSubmit(true)}
-                disabled={isSubmitting || totals.grossIncome === 0}
+                disabled={isSubmitting || totals.total === 0}
                 className="px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-3.5 w-3.5" />
@@ -829,7 +365,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               </button>
               <button
                 onClick={() => handleSubmit(false)}
-                disabled={isSubmitting || totals.grossIncome === 0}
+                disabled={isSubmitting || totals.total === 0}
                 className="px-3 py-2 text-xs font-medium text-white bg-black hover:bg-gray-800 rounded-md transition-colors shadow-[2px_2px_0px_rgba(0,0,0,0.1)] flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (

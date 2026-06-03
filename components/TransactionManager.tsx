@@ -4,10 +4,11 @@ import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
+import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections } from '../lib/inPersonGiving';
 
 interface Category {
   _id: string;
@@ -55,8 +56,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 }) => {
   // Fetch all transactions - virtualization handles rendering performance
   const allTransactions = useQuery(api.queries.transactions.list, {});
+  const cashCollectionsResult = useQuery(api.queries.cashCollections.list, {});
   const isLoading = allTransactions === undefined;
   const transactions = allTransactions ?? [];
+  const cashCollections = cashCollectionsResult ?? [];
 
   // Convex mutations and actions
   const createTransaction = useMutation(api.mutations.transactions.create);
@@ -114,6 +117,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson'>('all');
+  const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -198,6 +203,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [filteredTransactions, displayLimit]);
 
   const hasMore = filteredTransactions.length > displayLimit;
+
+  const inPersonGivingLedgers = useMemo(
+    () =>
+      groupInPersonGivingCollections({
+        collections: cashCollections,
+        transactions,
+        funds,
+      }),
+    [cashCollections, transactions, funds]
+  );
+  const filteredInPersonGivingLedgers = useMemo(
+    () => filterInPersonGivingLedgersByMonth(inPersonGivingLedgers, filterMonth, filterYear),
+    [inPersonGivingLedgers, filterMonth, filterYear]
+  );
+
+  const isInPersonGivingLoading = cashCollectionsResult === undefined || isLoading;
+
+  const toggleGivingExpanded = (collectionId: string) => {
+    setExpandedGivingIds((current) => {
+      const next = new Set(current);
+      if (next.has(collectionId)) {
+        next.delete(collectionId);
+      } else {
+        next.add(collectionId);
+      }
+      return next;
+    });
+  };
 
   const relevantPledges = useMemo(() => {
       // Always include the currently linked pledge so it shows in the dropdown, even if name filter doesn't match
@@ -961,6 +994,33 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         </div>
       </header>
 
+      <div className="flex items-center gap-2 border-b border-ledger">
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('all')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'all'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          All Transactions
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('inPerson')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'inPerson'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          In-Person Giving
+        </button>
+      </div>
+
+      {activeTransactionTab === 'all' && (
+      <>
       {/* Filter Bar */}
       <div className="bg-white p-3 rounded-lg border border-ledger shadow-sm flex flex-col lg:flex-row gap-3">
           {/* Global Search */}
@@ -1171,9 +1231,178 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {activeTransactionTab === 'inPerson' && (
+        <>
+        <div className="bg-white p-3 rounded-lg border border-ledger shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center bg-white border border-ledger rounded-md h-[34px]">
+            <button
+              onClick={handlePreviousMonth}
+              disabled={filterMonth === null || filterYear === null}
+              className="px-2 h-full hover:bg-grey-light transition-colors rounded-l-md disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowLeft size={14} />
+            </button>
+            <div className="flex items-center gap-2 px-2">
+              <Calendar size={14} className="text-grey-mid shrink-0" />
+              <select
+                value={filterMonth ?? ''}
+                onChange={(e) => setFilterMonth(e.target.value === '' ? null : Number(e.target.value))}
+                className="text-xs font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+              >
+                <option value="">All Months</option>
+                {monthOptions.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                value={filterYear ?? ''}
+                onChange={(e) => setFilterYear(e.target.value === '' ? null : Number(e.target.value))}
+                className="text-xs font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+              >
+                <option value="">All Years</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handleNextMonth}
+              disabled={filterMonth === null || filterYear === null}
+              className="px-2 h-full hover:bg-grey-light transition-colors rounded-r-md disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowRight size={14} />
+            </button>
+          </div>
+          {(filterMonth !== null || filterYear !== null) && (
+            <button onClick={() => { setFilterMonth(null); setFilterYear(null); }} className="h-[34px] px-3 text-xs text-error font-bold uppercase tracking-wide hover:bg-error-light rounded-md flex items-center gap-1 transition-colors">
+              <RotateCcw size={12} />
+            </button>
+          )}
+        </div>
+        <div className="swiss-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left ledger-table">
+              <thead className="bg-paper border-b border-ledger">
+                <tr>
+                  <th className="px-6 py-3 text-xs">Week Ending</th>
+                  <th className="px-6 py-3 text-xs">Fund / Status</th>
+                  <th className="px-6 py-3 text-xs text-right">Total</th>
+                  <th className="px-6 py-3 w-12"></th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {isInPersonGivingLoading ? (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-grey-mid">
+                      <Loader2 size={32} className="mx-auto mb-2 animate-spin opacity-40" />
+                      <p className="text-sm">Loading in-person giving...</p>
+                    </td>
+                  </tr>
+                ) : filteredInPersonGivingLedgers.length > 0 ? (
+                  filteredInPersonGivingLedgers.map((ledger) => {
+                    const isExpanded = expandedGivingIds.has(ledger.collectionId);
+                    const cashTotal = ledger.rows.reduce((sum, row) => sum + row.cash, 0);
+                    const pdqTotal = ledger.rows.reduce((sum, row) => sum + row.pdq, 0);
+                    const chequeTotal = ledger.rows.reduce((sum, row) => sum + row.cheque, 0);
+
+                    return (
+                      <React.Fragment key={ledger.collectionId}>
+                        <tr className="hover:bg-paper transition-colors">
+                          <td className="px-6 py-4 border-b border-slate-100">
+                            <div className="font-bold text-ink text-sm">{formatDateUK(ledger.weekEndingDate)}</div>
+                          </td>
+                          <td className="px-6 py-4 border-b border-slate-100">
+                            <div className="space-y-1">
+                              {ledger.fundTotals.length > 0 ? (
+                                ledger.fundTotals.map((fundTotal) => (
+                                  <div key={fundTotal.fundId} className="flex items-center justify-between gap-4 text-sm text-ink font-medium">
+                                    <span>{fundTotal.fundName}</span>
+                                    <span className="font-mono">£{fundTotal.total.toFixed(2)}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-sm text-ink font-medium">Unassigned fund</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 border-b border-slate-100 text-right font-mono text-sm font-bold text-sage">
+                            £{ledger.total.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 border-b border-slate-100 text-right">
+                            <button
+                              type="button"
+                              onClick={() => toggleGivingExpanded(ledger.collectionId)}
+                              className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                              aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
+                            >
+                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={4} className="p-4 bg-paper border-b border-ledger">
+                              <div className="overflow-x-auto border border-ledger bg-white">
+                                <table className="w-full border-collapse text-xs">
+                                  <thead className="bg-grey-light">
+                                    <tr>
+                                      <th className="border border-ledger px-3 py-2 text-left">Day</th>
+                                      <th className="border border-ledger px-3 py-2 text-left">Service Date</th>
+                                      <th className="border border-ledger px-3 py-2 text-left">Service / Note</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">Cash</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">PDQ</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">Cheque</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {ledger.rows.map((row) => (
+                                      <tr key={row.id}>
+                                        <td className="border border-ledger px-3 py-2 font-mono text-grey-mid">{row.day}</td>
+                                        <td className="border border-ledger px-3 py-2 font-mono">{formatDateUK(row.serviceDate)}</td>
+                                        <td className="border border-ledger px-3 py-2 font-medium text-ink">{row.serviceNote}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.cash.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.pdq.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.cheque.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{row.total.toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                    <tr className="bg-grey-light font-bold">
+                                      <td colSpan={3} className="border border-ledger px-3 py-2">TOTAL</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{cashTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{pdqTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{chequeTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{ledger.total.toFixed(2)}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-grey-mid">
+                      <Banknote size={32} className="mx-auto mb-2 opacity-20" />
+                      <p className="text-sm">No in-person giving matches this period.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </>
+      )}
 
       {/* Floating Bulk Actions - Fixed to bottom of viewport */}
-      {selectedIds.size > 0 && canEdit && createPortal(
+      {activeTransactionTab === 'all' && selectedIds.size > 0 && canEdit && createPortal(
           <div
             className="fixed bottom-0 left-0 right-0 bg-ink text-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex items-center gap-4 md:gap-6 z-50 border-t border-slate-700 justify-between md:justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
             style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
