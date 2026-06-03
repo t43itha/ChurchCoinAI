@@ -414,54 +414,73 @@ export const backfillCategoryTransactionTypes = mutation({
       )
       .collect();
 
+    const normalizeCategoryName = (name: string) => name.trim().toLowerCase();
+
     const incomeLookup = new Map<string, string>();
     for (const [mainCategory, subcategories] of Object.entries(RCI_INCOME_CATEGORIES)) {
-      const names = subcategories.length === 0 ? [mainCategory] : subcategories;
+      const names = [mainCategory, ...subcategories];
       for (const name of names) {
-        incomeLookup.set(name.toLowerCase(), mainCategory);
+        incomeLookup.set(normalizeCategoryName(name), mainCategory);
       }
     }
 
     const expenditureLookup = new Map<string, string>();
     for (const [mainCategory, subcategories] of Object.entries(RCI_EXPENDITURE_CATEGORIES)) {
-      const names = subcategories.length === 0 ? [mainCategory] : subcategories;
+      const names = [mainCategory, ...subcategories];
       for (const name of names) {
-        expenditureLookup.set(name.toLowerCase(), mainCategory);
+        expenditureLookup.set(normalizeCategoryName(name), mainCategory);
       }
     }
 
     const aliasLookup = new Map<string, string>();
     for (const [alias, canonicalName] of Object.entries(CATEGORY_ALIASES)) {
-      aliasLookup.set(alias.toLowerCase(), canonicalName);
+      aliasLookup.set(normalizeCategoryName(alias), canonicalName.trim());
     }
 
     let updated = 0;
     const skipped: string[] = [];
 
     for (const category of categories) {
-      if (category.transactionType) continue;
+      const normalizedName = normalizeCategoryName(category.name);
+      const canonicalName = aliasLookup.get(normalizedName);
+      const lookupNames = canonicalName
+        ? [normalizedName, normalizeCategoryName(canonicalName)]
+        : [normalizedName];
 
-      const canonicalName =
-        aliasLookup.get(category.name.toLowerCase()) ?? category.name;
-      const normalized = canonicalName.toLowerCase();
-      const incomeMain = incomeLookup.get(normalized);
-      const expenditureMain = expenditureLookup.get(normalized);
+      let expectedMainCategory: string | undefined;
+      let expectedTransactionType: "Income" | "Expenditure" | undefined;
 
-      if (incomeMain) {
-        await ctx.db.patch(category._id, {
-          mainCategory: incomeMain,
-          transactionType: "Income",
-        });
-        updated++;
-      } else if (expenditureMain) {
-        await ctx.db.patch(category._id, {
-          mainCategory: expenditureMain,
-          transactionType: "Expenditure",
-        });
-        updated++;
-      } else {
-        skipped.push(category.name);
+      for (const lookupName of lookupNames) {
+        expectedMainCategory = incomeLookup.get(lookupName);
+        if (expectedMainCategory) {
+          expectedTransactionType = "Income";
+          break;
+        }
+
+        expectedMainCategory = expenditureLookup.get(lookupName);
+        if (expectedMainCategory) {
+          expectedTransactionType = "Expenditure";
+          break;
+        }
       }
+
+      if (!expectedMainCategory || !expectedTransactionType) {
+        skipped.push(category.name);
+        continue;
+      }
+
+      if (
+        category.transactionType === expectedTransactionType &&
+        category.mainCategory === expectedMainCategory
+      ) {
+        continue;
+      }
+
+      await ctx.db.patch(category._id, {
+        mainCategory: expectedMainCategory,
+        transactionType: expectedTransactionType,
+      });
+      updated++;
     }
 
     return { updated, skipped };
