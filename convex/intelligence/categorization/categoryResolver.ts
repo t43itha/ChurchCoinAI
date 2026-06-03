@@ -4,6 +4,13 @@ import { CategoryLike, TransactionType } from "./types";
 const normalizeCategoryName = (value: string): string =>
   value.trim().toLowerCase();
 
+const NORMALIZED_CATEGORY_ALIASES: Record<string, string> = Object.fromEntries(
+  Object.entries(CATEGORY_ALIASES).map(([alias, canonicalName]) => [
+    normalizeCategoryName(alias),
+    canonicalName,
+  ])
+);
+
 export const allowedCategoriesForType = (
   categories: CategoryLike[],
   transactionType: TransactionType
@@ -30,7 +37,8 @@ export const resolveCategoryForTransaction = (
   const rawName = categoryName.trim();
   if (!rawName) return null;
 
-  const canonicalName = CATEGORY_ALIASES[rawName] ?? rawName;
+  const normalizedRawName = normalizeCategoryName(rawName);
+  const canonicalName = NORMALIZED_CATEGORY_ALIASES[normalizedRawName] ?? rawName;
   const normalized = normalizeCategoryName(canonicalName);
 
   const match = categories.find(

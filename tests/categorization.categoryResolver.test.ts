@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allowedCategoriesForType,
+  categoryNamesForPrompt,
   resolveCategoryForTransaction,
   resolveReportingMainCategory,
 } from "../convex/intelligence/categorization/categoryResolver";
@@ -33,6 +34,15 @@ describe("category resolver", () => {
     expect(resolveCategoryForTransaction("Tithe", "Expenditure", categories)).toBeNull();
   });
 
+  it("resolves aliases case-insensitively after trimming whitespace", () => {
+    expect(resolveCategoryForTransaction("tithe", "Income", categories)?.name).toBe(
+      "Tithes & First Fruits"
+    );
+    expect(resolveCategoryForTransaction(" tithe ", "Income", categories)?.name).toBe(
+      "Tithes & First Fruits"
+    );
+  });
+
   it("rejects mismatched and unknown type categories", () => {
     expect(resolveCategoryForTransaction("Bank Charges", "Income", categories)).toBeNull();
     expect(resolveCategoryForTransaction("Legacy", "Income", categories)).toBeNull();
@@ -43,5 +53,12 @@ describe("category resolver", () => {
     expect(resolveReportingMainCategory("Missing", "Expenditure", categories)).toBe(
       "Admin & Governance"
     );
+  });
+
+  it("returns prompt category names allowed for the requested transaction type", () => {
+    expect(categoryNamesForPrompt(categories, "Expenditure")).toEqual([
+      "Bank Charges",
+      "Utilities",
+    ]);
   });
 });
