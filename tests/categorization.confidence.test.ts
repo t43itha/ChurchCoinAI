@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   confidenceLabel,
+  confidenceNeedsReview,
   defaultConfidenceForSource,
   isHighConfidence,
 } from "../convex/intelligence/categorization/confidence";
@@ -16,6 +17,14 @@ describe("categorization confidence helpers", () => {
   it("identifies high confidence suggestions", () => {
     expect(isHighConfidence(0.9)).toBe(true);
     expect(isHighConfidence(0.849)).toBe(false);
+  });
+
+  it("does not require review at the confidence threshold", () => {
+    expect(confidenceNeedsReview(0.95)).toBe(false);
+  });
+
+  it("requires review below the confidence threshold", () => {
+    expect(confidenceNeedsReview(0.949)).toBe(true);
   });
 
   it("assigns conservative source defaults", () => {

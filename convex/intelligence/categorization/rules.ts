@@ -31,7 +31,8 @@ const RULES: RuleDefinition[] = [
   {
     id: "utilities",
     transactionType: "Expenditure",
-    pattern: /\butility|utilities|electric|gas|water|thames|british\s+gas|eon\b/,
+    pattern:
+      /\b(?:utility|utilities|electric|gas|water|thames|british\s+gas|eon)\b/,
     category: "Utilities",
     confidence: 0.9,
     reason: "Utility supplier pattern matched.",
@@ -39,7 +40,7 @@ const RULES: RuleDefinition[] = [
   {
     id: "tithes",
     transactionType: "Income",
-    pattern: /\btithe|tithes|first\s+fruit|firstfruit\b/,
+    pattern: /\b(?:tithe|tithes|first\s+fruit|firstfruit)\b/,
     category: "Tithes & First Fruits",
     confidence: 0.92,
     giftAidEligible: true,
@@ -48,7 +49,7 @@ const RULES: RuleDefinition[] = [
   {
     id: "offerings",
     transactionType: "Income",
-    pattern: /\boffering|offerings|thanksgiving|donation\b/,
+    pattern: /\b(?:offering|offerings|thanksgiving|donation)\b/,
     category: "Offerings",
     confidence: 0.86,
     giftAidEligible: true,
