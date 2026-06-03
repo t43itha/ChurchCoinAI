@@ -76,64 +76,33 @@ async function findOrCreateDonor(
   return { donorId, matchedName: name.trim(), isNew: true };
 }
 
-// Submit a cash collection with all entries
 export const submitCollection = mutation({
   args: {
     weekEndingDate: v.string(),
     collectionDate: v.string(),
     notes: v.optional(v.string()),
     status: v.optional(v.union(v.literal("draft"), v.literal("submitted"))),
-    // Named contributions with donor attribution (tithes, pledges, etc.)
-    namedContributions: v.array(
+    serviceRows: v.array(
       v.object({
-        donorName: v.string(),
-        donorId: v.optional(v.id("donors")),
-        amount: v.number(),
-        isGiftAidEligible: v.boolean(),
-        type: v.union(
-          v.literal("Tithes & First Fruits"),
-          v.literal("Donation"),
-          v.literal("Offerings"),
-          v.literal("Thanksgiving")
-        ),
-        fundId: v.optional(v.id("funds")), // Required for Donation type
-        paymentMethod: v.optional(v.union(v.literal("Cash"), v.literal("Cheque"))),
-      })
-    ),
-    // Category totals (offering, restricted funds, etc.)
-    categoryTotals: v.array(
-      v.object({
-        category: v.string(),
+        serviceDate: v.string(),
+        serviceNote: v.string(),
         fundId: v.id("funds"),
-        amount: v.number(),
-        paymentMethod: v.optional(v.union(v.literal("Cash"), v.literal("Cheque"))),
-      })
-    ),
-    // Petty cash withdrawals
-    pettyCash: v.array(
-      v.object({
-        purpose: v.string(),
-        amount: v.number(),
-        category: v.string(),
+        cash: v.number(),
+        pdq: v.number(),
+        cheque: v.number(),
       })
     ),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const validRows = args.serviceRows.filter(
+      (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
+    );
 
-    // Get the unrestricted fund for tithes (usually "General Fund")
-    const unrestrictedFund = await ctx.db
-      .query("funds")
-      .withIndex("by_organization_type", (q) =>
-        q.eq("organizationId", user.organizationId).eq("type", "Unrestricted")
-      )
-      .first();
-
-    if (!unrestrictedFund) {
-      throw new Error("No unrestricted fund found for tithes");
+    if (validRows.length === 0) {
+      throw new Error("Please add at least one service row with a cash, PDQ, or cheque amount.");
     }
 
-    // Create the cash collection record
     const cashCollectionId = await ctx.db.insert("cashCollections", {
       organizationId: user.organizationId,
       weekEndingDate: args.weekEndingDate,
@@ -146,107 +115,46 @@ export const submitCollection = mutation({
     });
 
     const transactionIds: Id<"transactions">[] = [];
-    const newDonors: { name: string; id: Id<"donors"> }[] = [];
 
-    // Process named contributions (tithes, pledges, etc.)
-    for (const contribution of args.namedContributions) {
-      // Find or create donor
-      let donorId = contribution.donorId;
-      let donorName = contribution.donorName;
-
-      if (!donorId && contribution.donorName) {
-        const result = await findOrCreateDonor(
-          ctx,
-          user.organizationId,
-          contribution.donorName,
-          contribution.isGiftAidEligible
-        );
-        donorId = result.donorId;
-        donorName = result.matchedName;
-        if (result.isNew) {
-          newDonors.push({ name: donorName, id: donorId });
-        }
-      }
-
-      // Determine the fund: Donations use their specified fund, others use unrestricted
-      let transactionFundId = unrestrictedFund._id;
-      if (contribution.type === "Donation" && contribution.fundId) {
-        const donationFund = await ctx.db.get(contribution.fundId);
-        if (!donationFund || donationFund.organizationId !== user.organizationId) {
-          throw new Error(`Invalid fund for donation: ${contribution.fundId}`);
-        }
-        transactionFundId = contribution.fundId;
-      }
-
-      const transactionId = await ctx.db.insert("transactions", {
-        organizationId: user.organizationId,
-        date: args.collectionDate,
-        description: `${contribution.type} - ${donorName}`,
-        amount: contribution.amount,
-        type: "Income",
-        category: contribution.type,
-        fundId: transactionFundId,
-        isReconciled: false,
-        isGiftAidEligible: contribution.isGiftAidEligible,
-        donorName,
-        donorId,
-        paymentMethod: contribution.paymentMethod ?? "Cash",
-        cashCollectionId,
-        createdAt: Date.now(),
-      });
-
-      transactionIds.push(transactionId);
-    }
-
-    // Process category totals
-    for (const categoryTotal of args.categoryTotals) {
-      // Verify fund belongs to organization
-      const fund = await ctx.db.get(categoryTotal.fundId);
+    for (const row of validRows) {
+      const fund = await ctx.db.get(row.fundId);
       if (!fund || fund.organizationId !== user.organizationId) {
-        throw new Error(`Invalid fund: ${categoryTotal.fundId}`);
+        throw new Error(`Invalid fund: ${row.fundId}`);
       }
+      const serviceNote = row.serviceNote.trim() || "Service";
 
-      const transactionId = await ctx.db.insert("transactions", {
-        organizationId: user.organizationId,
-        date: args.collectionDate,
-        description: `${categoryTotal.category} Collection`,
-        amount: categoryTotal.amount,
-        type: "Income",
-        category: categoryTotal.category,
-        fundId: categoryTotal.fundId,
-        isReconciled: false,
-        paymentMethod: categoryTotal.paymentMethod ?? "Cash",
-        cashCollectionId,
-        createdAt: Date.now(),
-      });
+      const methods = [
+        { label: "Cash", amount: row.cash, paymentMethod: "Cash" as const },
+        { label: "PDQ", amount: row.pdq, paymentMethod: "Card" as const },
+        { label: "Cheque", amount: row.cheque, paymentMethod: "Cheque" as const },
+      ];
 
-      transactionIds.push(transactionId);
-    }
+      for (const method of methods) {
+        if (method.amount <= 0) continue;
 
-    // Process petty cash (expenditure transactions)
-    for (const petty of args.pettyCash) {
-      const transactionId = await ctx.db.insert("transactions", {
-        organizationId: user.organizationId,
-        date: args.collectionDate,
-        description: `Petty Cash - ${petty.purpose}`,
-        amount: petty.amount,
-        type: "Expenditure",
-        category: petty.category,
-        fundId: unrestrictedFund._id,
-        isReconciled: false,
-        paymentMethod: "Cash",
-        cashCollectionId,
-        createdAt: Date.now(),
-      });
+        const transactionId = await ctx.db.insert("transactions", {
+          organizationId: user.organizationId,
+          date: row.serviceDate,
+          description: `${serviceNote} - ${method.label}`,
+          amount: method.amount,
+          type: "Income",
+          category: "Offerings",
+          fundId: row.fundId,
+          isReconciled: false,
+          paymentMethod: method.paymentMethod,
+          cashCollectionId,
+          notes: `service:${serviceNote}`,
+          createdAt: Date.now(),
+        });
 
-      transactionIds.push(transactionId);
+        transactionIds.push(transactionId);
+      }
     }
 
     return {
       cashCollectionId,
       transactionCount: transactionIds.length,
       transactionIds,
-      newDonorsCreated: newDonors,
     };
   },
 });

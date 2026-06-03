@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireAuth, requireRole } from "../lib/auth";
 
 // List all cash collections for the organization
 export const list = query({
@@ -10,7 +10,7 @@ export const list = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireAuth(ctx);
 
     let collections;
 
