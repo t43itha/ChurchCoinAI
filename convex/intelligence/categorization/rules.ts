@@ -1,5 +1,5 @@
 import { resolveCategoryForTransaction } from "./categoryResolver";
-import { confidenceLabel } from "./confidence";
+import { confidenceLabel, confidenceNeedsReview } from "./confidence";
 import { normalizeDescription } from "./normalize";
 import {
   CategoryLike,
@@ -89,7 +89,7 @@ export const applyDeterministicRules = (
       isGiftAidEligible: rule.giftAidEligible ?? false,
       donorName: null,
       predictionSource: "rule",
-      requiresReview: rule.confidence < 0.95,
+      requiresReview: confidenceNeedsReview(rule.confidence),
       evidence: [{ source: "rule", reason: rule.reason }],
     };
   }

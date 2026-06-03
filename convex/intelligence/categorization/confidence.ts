@@ -9,6 +9,9 @@ export const confidenceLabel = (confidence: number): ConfidenceLabel => {
 export const isHighConfidence = (confidence: number): boolean =>
   confidence >= 0.85;
 
+export const confidenceNeedsReview = (confidence: number): boolean =>
+  confidence < 0.95;
+
 export const defaultConfidenceForSource = (
   source: CategorizationSource
 ): number => {
