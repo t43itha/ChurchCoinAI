@@ -399,4 +399,56 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_accuracy", ["organizationId", "wasCorrect"])
     .index("by_transaction", ["transactionId"]),
+
+  transactionCategorizationMemory: defineTable({
+    organizationId: v.id("organizations"),
+    signature: v.string(),
+    descriptionExample: v.string(),
+    transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
+    category: v.string(),
+    fundId: v.id("funds"),
+    isGiftAidEligible: v.optional(v.boolean()),
+    donorName: v.optional(v.string()),
+    sourceTransactionId: v.optional(v.id("transactions")),
+    acceptedCount: v.number(),
+    correctedCount: v.number(),
+    lastAcceptedAt: v.number(),
+    lastCorrectedAt: v.optional(v.number()),
+    confidence: v.number(),
+  })
+    .index("by_organization_signature", ["organizationId", "signature"])
+    .index("by_organization_type", ["organizationId", "transactionType"])
+    .index("by_organization_lastAccepted", ["organizationId", "lastAcceptedAt"]),
+
+  categorizationFeedbackEvents: defineTable({
+    organizationId: v.id("organizations"),
+    transactionId: v.id("transactions"),
+    signature: v.string(),
+    transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
+    source: v.union(
+      v.literal("memory"),
+      v.literal("rule"),
+      v.literal("rag"),
+      v.literal("gemini"),
+      v.literal("none")
+    ),
+    confidence: v.number(),
+    originalCategory: v.optional(v.string()),
+    finalCategory: v.string(),
+    categoryChanged: v.boolean(),
+    originalFundId: v.optional(v.id("funds")),
+    finalFundId: v.id("funds"),
+    fundChanged: v.boolean(),
+    originalGiftAidEligible: v.optional(v.boolean()),
+    finalGiftAidEligible: v.optional(v.boolean()),
+    giftAidChanged: v.boolean(),
+    originalDonorName: v.optional(v.string()),
+    finalDonorName: v.optional(v.string()),
+    donorNameChanged: v.boolean(),
+    learned: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_transaction", ["transactionId"])
+    .index("by_organization_source", ["organizationId", "source"]),
 });
