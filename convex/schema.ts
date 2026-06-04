@@ -389,6 +389,7 @@ export default defineSchema({
     predictionSource: v.union(
       v.literal("gemini"),
       v.literal("rag"),
+      v.literal("memory"),
       v.literal("none")
     ),
     ragScore: v.optional(v.number()),
@@ -410,6 +411,7 @@ export default defineSchema({
     isGiftAidEligible: v.optional(v.boolean()),
     donorName: v.optional(v.string()),
     sourceTransactionId: v.optional(v.id("transactions")),
+    acceptedSourceTransactionIds: v.optional(v.array(v.id("transactions"))),
     acceptedCount: v.number(),
     correctedCount: v.number(),
     lastAcceptedAt: v.number(),

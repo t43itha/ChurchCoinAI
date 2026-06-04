@@ -696,6 +696,7 @@ export const recordCorrections = mutation({
         predictionSource: v.union(
           v.literal("gemini"),
           v.literal("rag"),
+          v.literal("memory"),
           v.literal("none")
         ),
         ragScore: v.optional(v.number()),
@@ -787,6 +788,7 @@ export const getCategorizationStats = query({
     const bySource = {
       gemini: allCorrections.filter((c) => c.predictionSource === "gemini"),
       rag: allCorrections.filter((c) => c.predictionSource === "rag"),
+      memory: allCorrections.filter((c) => c.predictionSource === "memory"),
     };
 
     return {
@@ -805,8 +807,15 @@ export const getCategorizationStats = query({
               bySource.rag.length) *
             100
           : 0,
+      memoryAccuracy:
+        bySource.memory.length > 0
+          ? (bySource.memory.filter((c) => c.wasCorrect).length /
+              bySource.memory.length) *
+            100
+          : 0,
       ragCount: bySource.rag.length,
       geminiCount: bySource.gemini.length,
+      memoryCount: bySource.memory.length,
     };
   },
 });

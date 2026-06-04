@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildMemorySuggestion,
   confidenceFromCounts,
+  nextAcceptedMemoryState,
   shouldUseMemorySuggestion,
 } from "../convex/intelligence/categorization/memory";
 import { CategoryLike, FundLike } from "../convex/intelligence/categorization/types";
@@ -125,5 +126,104 @@ describe("categorization memory helpers", () => {
         },
       ],
     });
+  });
+
+  it("does not increment accepted count twice for the same source transaction", () => {
+    const next = nextAcceptedMemoryState(
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+        isGiftAidEligible: true,
+        donorName: "Jane Smith",
+        acceptedCount: 3,
+        correctedCount: 0,
+        acceptedSourceTransactionIds: ["tx-1"],
+      },
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+        isGiftAidEligible: true,
+        donorName: "Jane Smith",
+        sourceTransactionId: "tx-1",
+      }
+    );
+
+    expect(next.acceptedCount).toBe(3);
+    expect(next.acceptedSourceTransactionIds).toEqual(["tx-1"]);
+    expect(next.confidence).toBe(confidenceFromCounts(3, 0));
+  });
+
+  it("treats the legacy source transaction id as already accepted", () => {
+    const next = nextAcceptedMemoryState(
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+        acceptedCount: 3,
+        correctedCount: 0,
+        sourceTransactionId: "tx-1",
+      },
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+        sourceTransactionId: "tx-1",
+      }
+    );
+
+    expect(next.acceptedCount).toBe(3);
+    expect(next.acceptedSourceTransactionIds).toEqual(["tx-1"]);
+  });
+
+  it("records omitted source transactions without idempotency checks", () => {
+    const next = nextAcceptedMemoryState(
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+        acceptedCount: 3,
+        correctedCount: 0,
+        acceptedSourceTransactionIds: ["tx-1"],
+      },
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+      }
+    );
+
+    expect(next.acceptedCount).toBe(4);
+    expect(next.acceptedSourceTransactionIds).toEqual(["tx-1"]);
+    expect(next.confidence).toBe(confidenceFromCounts(4, 0));
+  });
+
+  it("resets accepted count when the accepted outcome changes", () => {
+    const next = nextAcceptedMemoryState(
+      {
+        transactionType: "Income",
+        category: "Offerings",
+        fundId: "fund-general",
+        isGiftAidEligible: true,
+        donorName: "Jane Smith",
+        acceptedCount: 4,
+        correctedCount: 1,
+        acceptedSourceTransactionIds: ["tx-1", "tx-2"],
+      },
+      {
+        transactionType: "Income",
+        category: "Gift Day",
+        fundId: "fund-general",
+        isGiftAidEligible: true,
+        donorName: "Jane Smith",
+        sourceTransactionId: "tx-3",
+      }
+    );
+
+    expect(next.acceptedCount).toBe(1);
+    expect(next.correctedCount).toBe(2);
+    expect(next.acceptedSourceTransactionIds).toEqual(["tx-3"]);
+    expect(next.confidence).toBe(confidenceFromCounts(1, 2));
   });
 });

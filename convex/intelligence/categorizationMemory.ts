@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
-import { confidenceFromCounts } from "./categorization/memory";
+import { Id } from "../_generated/dataModel";
+import {
+  confidenceFromCounts,
+  nextAcceptedMemoryState,
+} from "./categorization/memory";
 
 export const getBySignature = internalQuery({
   args: {
@@ -49,6 +53,9 @@ export const upsertAccepted = internalMutation({
         isGiftAidEligible: args.isGiftAidEligible,
         donorName: args.donorName,
         sourceTransactionId: args.sourceTransactionId,
+        acceptedSourceTransactionIds: args.sourceTransactionId
+          ? [args.sourceTransactionId]
+          : [],
         acceptedCount: 1,
         correctedCount: 0,
         lastAcceptedAt: now,
@@ -56,7 +63,28 @@ export const upsertAccepted = internalMutation({
       });
     }
 
-    const acceptedCount = existing.acceptedCount + 1;
+    const next = nextAcceptedMemoryState(
+      {
+        transactionType: existing.transactionType,
+        category: existing.category,
+        fundId: existing.fundId,
+        isGiftAidEligible: existing.isGiftAidEligible,
+        donorName: existing.donorName,
+        acceptedCount: existing.acceptedCount,
+        correctedCount: existing.correctedCount,
+        sourceTransactionId: existing.sourceTransactionId,
+        acceptedSourceTransactionIds: existing.acceptedSourceTransactionIds,
+      },
+      {
+        transactionType: args.transactionType,
+        category: args.category,
+        fundId: args.fundId,
+        isGiftAidEligible: args.isGiftAidEligible,
+        donorName: args.donorName,
+        sourceTransactionId: args.sourceTransactionId,
+      }
+    );
+
     await ctx.db.patch(existing._id, {
       descriptionExample: args.descriptionExample,
       transactionType: args.transactionType,
@@ -65,9 +93,12 @@ export const upsertAccepted = internalMutation({
       isGiftAidEligible: args.isGiftAidEligible,
       donorName: args.donorName,
       sourceTransactionId: args.sourceTransactionId,
-      acceptedCount,
+      acceptedSourceTransactionIds:
+        next.acceptedSourceTransactionIds as Id<"transactions">[],
+      acceptedCount: next.acceptedCount,
+      correctedCount: next.correctedCount,
       lastAcceptedAt: now,
-      confidence: confidenceFromCounts(acceptedCount, existing.correctedCount),
+      confidence: next.confidence,
     });
 
     return existing._id;
