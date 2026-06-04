@@ -889,6 +889,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         predictionSource: prediction.predictionSource,
                         ragScore: prediction.ragScore,
                         finalCategory: pt.category || categoryNames[0] || 'Donation',
+                        aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,
+                        aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
+                        aiPredictedDonorName: prediction.donorName || undefined,
+                        aiConfidenceScore: prediction.confidenceScore,
+                        finalFundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+                        finalGiftAidEligible: pt.isGiftAidEligible || false,
+                        finalDonorName: pt.donorName || undefined,
                     };
                 })
                 .filter((c): c is NonNullable<typeof c> => c !== null);
