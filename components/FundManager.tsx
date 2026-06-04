@@ -2,6 +2,7 @@ import React from 'react';
 import { Fund, Transaction, FundType, TransactionType } from '../types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import { ArrowRight, Wallet, Target, Activity } from 'lucide-react';
+import { filterActiveTransactions } from '../lib/voidedTransactions';
 
 interface FundManagerProps {
   funds: Fund[];
@@ -12,13 +13,14 @@ interface FundManagerProps {
 const COLORS = ['#d4a574', '#000000', '#6b8e6b', '#e5e5e5'];
 
 const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLedger }) => {
+  const activeTransactions = filterActiveTransactions(transactions);
   const data = funds.map(f => ({ name: f.name, value: f.balance }));
 
   // Calculate General Fund (Unrestricted) Expenditure Breakdown
   const generalFunds = funds.filter(f => f.type === FundType.UNRESTRICTED);
   const generalFundIds = new Set(generalFunds.map(f => f._id));
   
-  const generalFundExpenditure = transactions.filter(t => 
+  const generalFundExpenditure = activeTransactions.filter(t =>
     generalFundIds.has(t.fundId) && t.type === TransactionType.EXPENDITURE
   );
 

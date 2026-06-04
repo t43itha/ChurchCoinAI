@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info, ArrowUpRight, Sparkles, Activity, Users, Target, ArrowRight, Banknote } from 'lucide-react';
 import SmartSuggestionsPanel from './intelligence/SmartSuggestionsPanel';
 import CashTakingsEntry from './CashTakingsEntry';
+import { filterActiveTransactions } from '../lib/voidedTransactions';
 
 interface Category {
   _id: string;
@@ -23,13 +24,14 @@ const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, currentUser }) => {
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const activeTransactions = useMemo(() => filterActiveTransactions(transactions), [transactions]);
   // --- Calculations ---
 
   // 1. Cash Flow Health (Previous Month - has complete data)
   const defaultDate = new Date();
   defaultDate.setMonth(defaultDate.getMonth() - 1);
   const currentMonthKey = defaultDate.toISOString().slice(0, 7); // Previous month
-  const currentMonthTxns = transactions.filter(t => t.date.startsWith(currentMonthKey));
+  const currentMonthTxns = activeTransactions.filter(t => t.date.startsWith(currentMonthKey));
   const incomeMonth = currentMonthTxns.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
   const expenseMonth = currentMonthTxns.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
   const netCashFlow = incomeMonth - expenseMonth;
@@ -41,7 +43,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
   
   const getActiveDonorCount = (monthKey: string) => {
       const donors = new Set(
-          transactions
+          activeTransactions
             .filter(t => t.date.startsWith(monthKey) && t.type === 'Income' && t.donorName)
             .map(t => t.donorName)
       );
@@ -66,14 +68,14 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
        const monthKey = d.toISOString().slice(0, 7);
        const label = d.toLocaleString('default', { month: 'short' });
        
-       const monthlyTxns = transactions.filter(t => t.date.startsWith(monthKey));
+       const monthlyTxns = activeTransactions.filter(t => t.date.startsWith(monthKey));
        const inc = monthlyTxns.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
        const exp = monthlyTxns.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
        
        data.push({ name: label, Income: inc, Expenditure: exp });
     }
     return data;
-  }, [transactions]);
+  }, [activeTransactions]);
 
   // 5. Priority Funds (Restricted or Low Balance)
   const priorityFunds = funds

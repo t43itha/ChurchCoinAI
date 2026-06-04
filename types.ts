@@ -131,6 +131,11 @@ export interface Transaction {
   paymentMethod?: PaymentMethod;
   cashCollectionId?: string;
   isVoided?: boolean;
+  voidReason?: string;
+  voidedAt?: number;
+  voidedBy?: string;
+  unvoidedAt?: number;
+  unvoidedBy?: string;
 }
 
 export type TransactionCreateInput = Omit<Transaction, "_id">;

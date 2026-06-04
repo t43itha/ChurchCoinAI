@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
+import { filterActiveTransactions } from "../../lib/voidedTransactions";
 
 // List all cash collections for the organization
 export const list = query({
@@ -72,13 +73,14 @@ export const getWithTransactions = query({
         q.eq("cashCollectionId", args.cashCollectionId)
       )
       .collect();
+    const activeTransactions = filterActiveTransactions(transactions);
 
     // Get the user who recorded this
     const recordedByUser = await ctx.db.get(collection.recordedBy);
 
     // Separate into income (tithes + category totals) and expenditure (petty cash)
-    const incomeTransactions = transactions.filter((t) => t.type === "Income");
-    const expenditureTransactions = transactions.filter(
+    const incomeTransactions = activeTransactions.filter((t) => t.type === "Income");
+    const expenditureTransactions = activeTransactions.filter(
       (t) => t.type === "Expenditure"
     );
 
@@ -114,7 +116,7 @@ export const getWithTransactions = query({
         bankableTotal,
         giftAidEligible,
         byCategory,
-        transactionCount: transactions.length,
+        transactionCount: activeTransactions.length,
       },
     };
   },

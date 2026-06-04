@@ -3,6 +3,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
 import { ALL_INCOME_SUBCATEGORIES } from "../../constants/rciCategories";
+import { filterActiveTransactions } from "../../lib/voidedTransactions";
 
 const MIN_DATE = "0000-01-01";
 const MAX_DATE = "9999-12-31";
@@ -194,7 +195,10 @@ export const listGiftAidEligible = query({
         )
         .collect();
       return boundedTransactions.filter(
-        (t) => t.isGiftAidEligible === true && t.type === "Income"
+        (t) =>
+          t.isGiftAidEligible === true &&
+          t.type === "Income" &&
+          t.isVoided !== true
       );
     }
 
@@ -206,7 +210,8 @@ export const listGiftAidEligible = query({
       .filter((q) =>
         q.and(
           q.eq(q.field("isGiftAidEligible"), true),
-          q.eq(q.field("type"), "Income")
+          q.eq(q.field("type"), "Income"),
+          q.neq(q.field("isVoided"), true)
         )
       )
       .collect();
@@ -243,9 +248,10 @@ export const aggregateByCategory = query({
           )
           .collect();
 
+    const activeTransactions = filterActiveTransactions(transactions);
     const filtered = args.transactionType
-      ? transactions.filter((t) => t.type === args.transactionType)
-      : transactions;
+      ? activeTransactions.filter((t) => t.type === args.transactionType)
+      : activeTransactions;
 
     // Aggregate by category
     const aggregated = filtered.reduce(
@@ -281,7 +287,7 @@ export const listUnlinkedIncome = query({
       .order("desc")
       .collect();
 
-    return transactions.filter((t) => t.pledgeId == null);
+    return transactions.filter((t) => t.pledgeId == null && t.isVoided !== true);
   },
 });
 
@@ -307,7 +313,7 @@ export const monthlySummary = query({
     // Group by month
     const monthly: Record<string, { income: number; expenditure: number }> = {};
 
-    transactions.forEach((t) => {
+    filterActiveTransactions(transactions).forEach((t) => {
       const month = t.date.substring(0, 7); // YYYY-MM
       if (!monthly[month]) {
         monthly[month] = { income: 0, expenditure: 0 };
