@@ -2,12 +2,21 @@
 
 import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import { GoogleGenAI, Type } from "@google/genai";
 import { transactionRAG } from "../lib/ragInstance";
 import {
   safeJsonParse,
   validateGiftAidEligibleTransactions,
 } from "../lib/aiValidation";
+import {
+  categorizeWithoutExternalAI,
+  mergeGeminiFallbackSafely,
+} from "../intelligence/categorization/pipeline";
+import {
+  buildGeminiCategorizationPrompt,
+  CATEGORIZATION_MODEL,
+} from "../intelligence/categorization/gemini";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
@@ -22,18 +31,18 @@ const getAI = () => {
 };
 
 // Require an authenticated Convex user (protects all AI actions)
-const requireUser = async (ctx: ActionCtx) => {
+const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
   }
-  const { api } = await import("../_generated/api");
+  const { api } = (await import("../_generated/api")) as any;
   const currentUser = await ctx.runQuery(api.queries.users.current, {});
   if (!currentUser) {
     throw new Error("Forbidden: complete onboarding first");
   }
 
-  const { internal } = await import("../_generated/api");
+  const { internal } = (await import("../_generated/api")) as any;
   const configuredLimit = Number(process.env.AI_RATE_LIMIT_PER_MINUTE);
   const perMinuteLimit =
     Number.isFinite(configuredLimit) && configuredLimit > 0
@@ -120,6 +129,102 @@ export const categorizeTransactions = action({
       console.error("Gemini Categorization Error:", error);
       return [];
     }
+  },
+});
+
+// Preview the categorization pipeline, using Gemini only for unresolved rows.
+export const categorizeWithPipelinePreview = action({
+  args: {
+    transactions: v.array(
+      v.object({
+        description: v.string(),
+        amount: v.number(),
+        type: v.union(v.literal("Income"), v.literal("Expenditure")),
+      })
+    ),
+    fundNames: v.array(v.string()),
+    categories: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const { api } = (await import("../_generated/api")) as any;
+    const [categoryDetails, funds] = await Promise.all([
+      ctx.runQuery(api.queries.categories.listWithDetails, {}),
+      ctx.runQuery(api.queries.funds.list, {}),
+    ]);
+
+    const initialSuggestions = await categorizeWithoutExternalAI(
+      ctx,
+      user.organizationId,
+      args.transactions,
+      categoryDetails,
+      funds
+    );
+    const unresolvedTransactions = initialSuggestions
+      .map((suggestion, index) =>
+        suggestion.predictionSource === "none" ? args.transactions[index] : null
+      )
+      .filter((transaction): transaction is (typeof args.transactions)[number] =>
+        Boolean(transaction)
+      );
+
+    if (unresolvedTransactions.length === 0) {
+      return initialSuggestions;
+    }
+
+    return mergeGeminiFallbackSafely(
+      initialSuggestions,
+      async () => {
+        const ai = getAI();
+        const response = await ai.models.generateContent({
+          model: CATEGORIZATION_MODEL,
+          contents: buildGeminiCategorizationPrompt(
+            unresolvedTransactions,
+            categoryDetails,
+            funds,
+            initialSuggestions.flatMap((suggestion) => suggestion.evidence)
+          ),
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  description: { type: Type.STRING },
+                  category: { type: Type.STRING },
+                  fundName: { type: Type.STRING },
+                  confidence: {
+                    type: Type.STRING,
+                    description: "High, Medium, or Low",
+                  },
+                  isGiftAidEligible: { type: Type.BOOLEAN },
+                  donorName: { type: Type.STRING },
+                  evidence: { type: Type.STRING },
+                },
+              },
+            },
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        });
+
+        return response.text
+          ? safeJsonParse<Record<string, unknown>[]>(
+              response.text,
+              "categorizeWithPipelinePreview response"
+            )
+          : [];
+      },
+      args.transactions,
+      categoryDetails,
+      funds,
+      (error) => {
+        console.error(
+          "Gemini pipeline fallback failed; returning non-AI categorization suggestions.",
+          error
+        );
+      }
+    );
   },
 });
 

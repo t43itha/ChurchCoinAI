@@ -401,6 +401,93 @@ export const migrateToMainCategories = mutation({
   },
 });
 
+// Backfill transactionType and mainCategory for existing categories using RCI mappings
+export const backfillCategoryTransactionTypes = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireRole(ctx, ["Admin"]);
+
+    const categories = await ctx.db
+      .query("categories")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    const normalizeCategoryName = (name: string) => name.trim().toLowerCase();
+
+    const incomeLookup = new Map<string, string>();
+    for (const [mainCategory, subcategories] of Object.entries(RCI_INCOME_CATEGORIES)) {
+      const names = [mainCategory, ...subcategories];
+      for (const name of names) {
+        incomeLookup.set(normalizeCategoryName(name), mainCategory);
+      }
+    }
+    incomeLookup.set(normalizeCategoryName("Donation"), "Donations");
+
+    const expenditureLookup = new Map<string, string>();
+    for (const [mainCategory, subcategories] of Object.entries(RCI_EXPENDITURE_CATEGORIES)) {
+      const names = [mainCategory, ...subcategories];
+      for (const name of names) {
+        expenditureLookup.set(normalizeCategoryName(name), mainCategory);
+      }
+    }
+
+    const aliasLookup = new Map<string, string>();
+    for (const [alias, canonicalName] of Object.entries(CATEGORY_ALIASES)) {
+      aliasLookup.set(normalizeCategoryName(alias), canonicalName.trim());
+    }
+
+    let updated = 0;
+    const skipped: string[] = [];
+
+    for (const category of categories) {
+      const normalizedName = normalizeCategoryName(category.name);
+      const canonicalName = aliasLookup.get(normalizedName);
+      const lookupNames = canonicalName
+        ? [normalizedName, normalizeCategoryName(canonicalName)]
+        : [normalizedName];
+
+      let expectedMainCategory: string | undefined;
+      let expectedTransactionType: "Income" | "Expenditure" | undefined;
+
+      for (const lookupName of lookupNames) {
+        expectedMainCategory = incomeLookup.get(lookupName);
+        if (expectedMainCategory) {
+          expectedTransactionType = "Income";
+          break;
+        }
+
+        expectedMainCategory = expenditureLookup.get(lookupName);
+        if (expectedMainCategory) {
+          expectedTransactionType = "Expenditure";
+          break;
+        }
+      }
+
+      if (!expectedMainCategory || !expectedTransactionType) {
+        skipped.push(category.name);
+        continue;
+      }
+
+      if (
+        category.transactionType === expectedTransactionType &&
+        category.mainCategory === expectedMainCategory
+      ) {
+        continue;
+      }
+
+      await ctx.db.patch(category._id, {
+        mainCategory: expectedMainCategory,
+        transactionType: expectedTransactionType,
+      });
+      updated++;
+    }
+
+    return { updated, skipped };
+  },
+});
+
 // Internal mutation to seed RCI categories for ALL organizations - can be run from CLI
 export const seedAllOrganizations = internalMutation({
   args: {},

@@ -40,6 +40,43 @@ type PendingReviewTransaction = Partial<Transaction> & {
   bankConnectionId?: Id<"bankConnections">;
 };
 
+type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'rag' | 'none';
+
+type OriginalPrediction = {
+  category: string;
+  fundId?: string;
+  isGiftAidEligible?: boolean;
+  donorName?: string | null;
+  confidence: string;
+  confidenceScore?: number;
+  predictionSource: PipelinePredictionSource;
+  ragScore?: number;
+};
+
+const reindexSetAfterRemoval = (values: Set<number>, removedIndex: number): Set<number> => {
+  const reindexed = new Set<number>();
+  values.forEach((value) => {
+    if (value < removedIndex) {
+      reindexed.add(value);
+    } else if (value > removedIndex) {
+      reindexed.add(value - 1);
+    }
+  });
+  return reindexed;
+};
+
+const reindexMapAfterRemoval = <T,>(values: Map<number, T>, removedIndex: number): Map<number, T> => {
+  const reindexed = new Map<number, T>();
+  values.forEach((value, index) => {
+    if (index < removedIndex) {
+      reindexed.set(index, value);
+    } else if (index > removedIndex) {
+      reindexed.set(index - 1, value);
+    }
+  });
+  return reindexed;
+};
+
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -68,7 +105,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
   const batchUpdateTransactions = useMutation(api.mutations.transactions.batchUpdate);
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
-  const categorizeWithRAG = useAction(api.actions.ai.categorizeWithRAG);
+  const categorizeWithPipeline = useAction(api.actions.ai.categorizeWithPipelinePreview);
   const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
   const toggleVoided = useMutation(api.mutations.transactions.toggleVoided);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
@@ -87,12 +124,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Track original AI predictions for correction learning
-  const [originalPredictions, setOriginalPredictions] = useState<Map<number, {
-    category: string;
-    confidence: string;
-    predictionSource: 'gemini' | 'rag' | 'none';
-    ragScore?: number;
-  }>>(new Map());
+  const [originalPredictions, setOriginalPredictions] = useState<Map<number, OriginalPrediction>>(new Map());
   
   // Smart Link State
   const [isReconciling, setIsReconciling] = useState(false);
@@ -581,6 +613,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setOriginalPredictions(new Map());
   };
 
+  const removePendingTransactionAt = useCallback((removedIndex: number) => {
+    setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
+    setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
+    setOriginalPredictions((current) => reindexMapAfterRemoval(current, removedIndex));
+  }, []);
+
   const handleSyncedBankTransactions = (
     syncedTransactions: Array<{
       date: string;
@@ -704,56 +742,79 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     await handleSyncFromBank(nextBankSyncConnectionId, nextBankSyncCursor, { append: true });
   };
 
+  const getPipelineConfidenceLabel = (suggestion: {
+    confidenceLabel?: string;
+    confidence?: string | number;
+  }): string => {
+    const confidence = suggestion.confidenceLabel ?? suggestion.confidence;
+    if (typeof confidence === 'number') return String(confidence);
+    return confidence || 'Low';
+  };
+
+  const getPipelineSourceLabel = (predictionSource: PipelinePredictionSource, ragScore?: number): string => {
+    switch (predictionSource) {
+      case 'memory':
+        return 'Memory Match';
+      case 'rule':
+        return 'Rule Match';
+      case 'rag':
+        return typeof ragScore === 'number'
+          ? `RAG Match (${Math.round(ragScore * 100)}%)`
+          : 'RAG Match';
+      case 'gemini':
+        return 'Gemini AI';
+      case 'none':
+      default:
+        return 'No AI suggestion';
+    }
+  };
+
   const handleApplyAI = async () => {
     setIsProcessingAI(true);
     try {
-        // Use RAG-enhanced categorization - learns from existing transactions
+        // Use the categorization pipeline, with Gemini only for unresolved transactions.
         const transactionsForAI = pendingTransactions.map(t => ({
             description: t.description || '',
             amount: t.amount || 0,
             type: (t.type || 'Income') as 'Income' | 'Expenditure',
         }));
 
-        const suggestions = await categorizeWithRAG({
+        const suggestions = await categorizeWithPipeline({
             transactions: transactionsForAI,
             fundNames: funds.map(f => f.name),
             categories: categoryNames
         });
 
         // Track original AI predictions for correction learning
-        const predictions = new Map<number, {
-            category: string;
-            confidence: string;
-            predictionSource: 'gemini' | 'rag' | 'none';
-            ragScore?: number;
-        }>();
+        const predictions = new Map<number, OriginalPrediction>();
 
         const updatedPending = pendingTransactions.map((t, idx) => {
             const suggestion = suggestions[idx];
             if (!suggestion) return t;
-            const suggestedFund = funds.find(f => f.name === suggestion.fundName);
+            const confidence = getPipelineConfidenceLabel(suggestion);
+            const confidenceScore = typeof suggestion.confidence === 'number' ? suggestion.confidence : undefined;
+            const predictionSource = suggestion.predictionSource || 'none';
+            const ragScore = typeof suggestion.ragScore === 'number' ? suggestion.ragScore : undefined;
 
             // Store original prediction for later comparison
             predictions.set(idx, {
                 category: suggestion.category || '',
-                confidence: suggestion.confidence || 'Low',
-                predictionSource: suggestion.predictionSource || 'none',
-                ragScore: suggestion.ragScore,
+                fundId: suggestion.fundId,
+                isGiftAidEligible: suggestion.isGiftAidEligible,
+                donorName: suggestion.donorName,
+                confidence,
+                confidenceScore,
+                predictionSource,
+                ragScore,
             });
-
-            const sourceLabel = suggestion.predictionSource === 'rag'
-                ? `RAG Match (${Math.round((suggestion.ragScore || 0) * 100)}%)`
-                : suggestion.predictionSource === 'gemini'
-                    ? 'Gemini AI'
-                    : 'Manual';
 
             return {
                 ...t,
-                category: suggestion.category,
-                fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
+                category: suggestion.category || t.category,
+                ...(suggestion.fundId ? { fundId: suggestion.fundId } : {}),
                 isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.extractedDonorName || undefined,
-                notes: `${sourceLabel} | Confidence: ${suggestion.confidence}`,
+                donorName: suggestion.donorName || undefined,
+                notes: `${getPipelineSourceLabel(predictionSource, ragScore)} | Confidence: ${confidence}`,
             };
         });
 
@@ -848,6 +909,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 .map((pt, idx) => {
                     const prediction = originalPredictions.get(idx);
                     if (!prediction || !result.ids[idx]) return null;
+                    if (prediction.predictionSource === 'rule') return null;
 
                     return {
                         transactionId: result.ids[idx] as Id<"transactions">,
@@ -857,6 +919,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         predictionSource: prediction.predictionSource,
                         ragScore: prediction.ragScore,
                         finalCategory: pt.category || categoryNames[0] || 'Donation',
+                        aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,
+                        aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
+                        aiPredictedDonorName: prediction.donorName || undefined,
+                        aiConfidenceScore: prediction.confidenceScore,
+                        finalFundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+                        finalGiftAidEligible: pt.isGiftAidEligible || false,
+                        finalDonorName: pt.donorName || undefined,
                     };
                 })
                 .filter((c): c is NonNullable<typeof c> => c !== null);
@@ -2085,19 +2154,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
                                         <button
-                                          onClick={() => {
-                                            const newPending = pendingTransactions.filter((_, idx) => idx !== i);
-                                            setPendingTransactions(newPending);
-                                            const newWarnings = new Set(duplicateWarnings);
-                                            newWarnings.delete(i);
-                                            // Reindex warnings
-                                            const reindexed = new Set<number>();
-                                            newWarnings.forEach(w => {
-                                              if (w > i) reindexed.add(w - 1);
-                                              else reindexed.add(w);
-                                            });
-                                            setDuplicateWarnings(reindexed);
-                                          }}
+                                          onClick={() => removePendingTransactionAt(i)}
                                           className="text-error hover:text-error-dark text-xs font-bold"
                                           title="Remove duplicate"
                                         >

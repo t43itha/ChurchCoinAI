@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
+import { resolveReportingMainCategory } from "../intelligence/categorization/categoryResolver";
 
 // Mission Tithe eligible categories (canonical names only)
 const MISSION_TITHE_CATEGORIES = new Set([
@@ -386,11 +387,12 @@ export const monthlyReportData = query({
 
     const fundMap = new Map(funds.map((f) => [f._id, f]));
 
-    // Build category to mainCategory lookup
-    const categoryToMain = new Map<string, string>();
-    for (const cat of categories) {
-      categoryToMain.set(cat.name, cat.mainCategory || "Other");
-    }
+    const categoryDetails = categories.map((cat) => ({
+      name: cat.name,
+      mainCategory: cat.mainCategory,
+      transactionType: cat.transactionType,
+      displayOrder: cat.displayOrder,
+    }));
 
     // Resolve mainCategory for a transaction, with alias fallback and fund-based grouping
     const getMainCategory = (
@@ -398,16 +400,13 @@ export const monthlyReportData = query({
       fundId: Id<"funds">,
       transactionType: "Income" | "Expenditure"
     ): string => {
-      // 1. Direct DB lookup
-      let mainCategory = categoryToMain.get(category);
+      const resolvedMainCategory = resolveReportingMainCategory(
+        category,
+        transactionType,
+        categoryDetails
+      );
 
-      // 2. Alias fallback: resolve variant name, then look up again
-      if (!mainCategory) {
-        const canonical = resolveCategory(category);
-        mainCategory = categoryToMain.get(canonical);
-      }
-
-      // 3. Special case for "Donation"/"Donations": group by fund (primarily for Building Fund)
+      // Special case for "Donation"/"Donations": group by fund (primarily for Building Fund)
       if (category === "Donation" || category === "Donations") {
         if (fundId) {
           const fund = fundMap.get(fundId);
@@ -421,12 +420,10 @@ export const monthlyReportData = query({
             return fund.name;
           }
         }
-        return mainCategory || "Donations";
+        return resolvedMainCategory;
       }
 
-      // 4. Return found mainCategory or fallback
-      if (mainCategory) return mainCategory;
-      return transactionType === "Income" ? "Other Income" : "Admin & Governance";
+      return resolvedMainCategory;
     };
 
     // Separate income and expenditure
@@ -716,14 +713,12 @@ export const annualReportData = query({
       )
       .collect();
 
-    // Build category to mainCategory lookup
-    const categoryToMain = new Map<string, { mainCategory: string; transactionType?: string }>();
-    for (const cat of categories) {
-      categoryToMain.set(cat.name, {
-        mainCategory: cat.mainCategory || "Other",
-        transactionType: cat.transactionType,
-      });
-    }
+    const categoryDetails = categories.map((cat) => ({
+      name: cat.name,
+      mainCategory: cat.mainCategory,
+      transactionType: cat.transactionType,
+      displayOrder: cat.displayOrder,
+    }));
 
     // Separate income and expenditure
     const incomeTransactions = allTransactions.filter((t) => t.type === "Income");
@@ -734,8 +729,11 @@ export const annualReportData = query({
     const incomeSubcategoryMap = new Map<string, Map<string, number>>();
 
     for (const t of incomeTransactions) {
-      const catData = categoryToMain.get(t.category);
-      const mainCategory = catData?.mainCategory || "Other Income";
+      const mainCategory = resolveReportingMainCategory(
+        t.category,
+        "Income",
+        categoryDetails
+      );
 
       if (!incomeByMainCategory[mainCategory]) {
         incomeByMainCategory[mainCategory] = { total: 0, subcategories: [] };
@@ -759,8 +757,11 @@ export const annualReportData = query({
     const expenditureSubcategoryMap = new Map<string, Map<string, number>>();
 
     for (const t of expenditureTransactions) {
-      const catData = categoryToMain.get(t.category);
-      const mainCategory = catData?.mainCategory || "Admin & Governance";
+      const mainCategory = resolveReportingMainCategory(
+        t.category,
+        "Expenditure",
+        categoryDetails
+      );
 
       if (!expenditureByMainCategory[mainCategory]) {
         expenditureByMainCategory[mainCategory] = { total: 0, subcategories: [] };

@@ -49,7 +49,17 @@ export const indexSingleTransaction = internalAction({
 
     await transactionRAG.add(ctx, {
       namespace,
+      key: `tx:${args.transactionId}`,
       text: args.searchText,
+      metadata: {
+        transactionId: String(args.transactionId),
+        category: args.metadata.category,
+        fundId: String(args.metadata.fundId),
+        type: args.metadata.type,
+        isGiftAidEligible: args.metadata.isGiftAidEligible ?? false,
+        donorName: args.metadata.donorName ?? "",
+        acceptedCount: 1,
+      },
     });
 
     return { success: true, transactionId: args.transactionId };
