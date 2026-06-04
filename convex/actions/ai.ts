@@ -2,12 +2,14 @@
 
 import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import { GoogleGenAI, Type } from "@google/genai";
 import { transactionRAG } from "../lib/ragInstance";
 import {
   safeJsonParse,
   validateGiftAidEligibleTransactions,
 } from "../lib/aiValidation";
+import { categorizeWithoutExternalAI } from "../intelligence/categorization/pipeline";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
@@ -22,18 +24,18 @@ const getAI = () => {
 };
 
 // Require an authenticated Convex user (protects all AI actions)
-const requireUser = async (ctx: ActionCtx) => {
+const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
   }
-  const { api } = await import("../_generated/api");
+  const { api } = (await import("../_generated/api")) as any;
   const currentUser = await ctx.runQuery(api.queries.users.current, {});
   if (!currentUser) {
     throw new Error("Forbidden: complete onboarding first");
   }
 
-  const { internal } = await import("../_generated/api");
+  const { internal } = (await import("../_generated/api")) as any;
   const configuredLimit = Number(process.env.AI_RATE_LIMIT_PER_MINUTE);
   const perMinuteLimit =
     Number.isFinite(configuredLimit) && configuredLimit > 0
@@ -120,6 +122,37 @@ export const categorizeTransactions = action({
       console.error("Gemini Categorization Error:", error);
       return [];
     }
+  },
+});
+
+// Preview the local categorization pipeline without calling external AI.
+export const categorizeWithPipelinePreview = action({
+  args: {
+    transactions: v.array(
+      v.object({
+        description: v.string(),
+        amount: v.number(),
+        type: v.union(v.literal("Income"), v.literal("Expenditure")),
+      })
+    ),
+    fundNames: v.array(v.string()),
+    categories: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const { api } = (await import("../_generated/api")) as any;
+    const [categoryDetails, funds] = await Promise.all([
+      ctx.runQuery(api.queries.categories.listWithDetails, {}),
+      ctx.runQuery(api.queries.funds.list, {}),
+    ]);
+
+    return categorizeWithoutExternalAI(
+      ctx,
+      user.organizationId,
+      args.transactions,
+      categoryDetails,
+      funds
+    );
   },
 });
 
