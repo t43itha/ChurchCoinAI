@@ -10,6 +10,7 @@ import {
 } from "../lib/transactionValidation";
 import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
+import { sumActiveIncome } from "../../lib/voidedTransactions";
 
 const upsertAcceptedCategorizationMemory = makeFunctionReference<
   "mutation",
@@ -78,13 +79,9 @@ async function checkPledgeCompletion(
   const linkedTransactions = await ctx.db
     .query("transactions")
     .withIndex("by_pledge", (q: any) => q.eq("pledgeId", pledgeId))
-    .filter((q: any) => q.eq(q.field("type"), "Income"))
     .collect();
 
-  const totalReceived = linkedTransactions.reduce(
-    (sum: number, t: any) => sum + t.amount,
-    0
-  );
+  const totalReceived = sumActiveIncome(linkedTransactions);
 
   if (totalReceived >= pledge.amount) {
     await ctx.db.patch(pledgeId, { status: "Completed" });
@@ -97,6 +94,41 @@ async function checkPledgeCompletion(
   }
 
   return null;
+}
+
+async function refreshPledgeStatus(
+  ctx: any,
+  pledgeId: Id<"pledges">,
+  organizationId: Id<"organizations">
+) {
+  const pledge = await ctx.db.get(pledgeId);
+  if (!pledge || pledge.organizationId !== organizationId) {
+    return null;
+  }
+
+  const linkedTransactions = await ctx.db
+    .query("transactions")
+    .withIndex("by_pledge", (q: any) => q.eq("pledgeId", pledgeId))
+    .collect();
+
+  const totalReceived = sumActiveIncome(linkedTransactions);
+  const nextStatus = totalReceived >= pledge.amount ? "Completed" : "Active";
+  const statusChanged =
+    (pledge.status === "Active" || pledge.status === "Completed") &&
+    pledge.status !== nextStatus;
+
+  if (statusChanged) {
+    await ctx.db.patch(pledgeId, { status: nextStatus });
+  }
+
+  return statusChanged && nextStatus === "Completed"
+    ? {
+        completed: true,
+        pledgeId,
+        donorName: pledge.donorName,
+        amount: pledge.amount,
+      }
+    : null;
 }
 
 // Create a new transaction
@@ -202,7 +234,6 @@ export const update = mutation({
     donorName: v.optional(v.string()),
     donorId: v.optional(v.id("donors")),
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
-    isVoided: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -263,7 +294,6 @@ export const update = mutation({
     if (args.donorName !== undefined) updates.donorName = args.donorName;
     if (args.donorId !== undefined) updates.donorId = args.donorId;
     if (args.pledgeId !== undefined) updates.pledgeId = args.pledgeId;
-    if (args.isVoided !== undefined) updates.isVoided = args.isVoided;
 
     await ctx.db.patch(args.transactionId, updates);
 
@@ -273,7 +303,7 @@ export const update = mutation({
     const transactionType = args.type ?? transaction.type;
 
     if (newPledgeId && transactionType === "Income") {
-      pledgeCompleted = await checkPledgeCompletion(
+      pledgeCompleted = await refreshPledgeStatus(
         ctx,
         newPledgeId,
         user.organizationId
@@ -291,13 +321,9 @@ export const update = mutation({
         const linkedTransactions = await ctx.db
           .query("transactions")
           .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
-          .filter((q) => q.eq(q.field("type"), "Income"))
           .collect();
 
-        const totalReceived = linkedTransactions.reduce(
-          (sum, t) => sum + t.amount,
-          0
-        );
+        const totalReceived = sumActiveIncome(linkedTransactions);
 
         if (totalReceived < oldPledge.amount) {
           await ctx.db.patch(oldPledgeId, { status: "Active" });
@@ -641,13 +667,9 @@ export const unlinkFromPledge = mutation({
       const linkedTransactions = await ctx.db
         .query("transactions")
         .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
-        .filter((q) => q.eq(q.field("type"), "Income"))
         .collect();
 
-      const totalReceived = linkedTransactions.reduce(
-        (sum, t) => sum + t.amount,
-        0
-      );
+      const totalReceived = sumActiveIncome(linkedTransactions);
 
       if (totalReceived < oldPledge.amount) {
         await ctx.db.patch(oldPledgeId, { status: "Active" });
@@ -687,13 +709,9 @@ export const remove = mutation({
         const linkedTransactions = await ctx.db
           .query("transactions")
           .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
-          .filter((q) => q.eq(q.field("type"), "Income"))
           .collect();
 
-        const totalReceived = linkedTransactions.reduce(
-          (sum, t) => sum + t.amount,
-          0
-        );
+        const totalReceived = sumActiveIncome(linkedTransactions);
 
         if (totalReceived < pledge.amount) {
           await ctx.db.patch(pledgeId, { status: "Active" });
@@ -705,8 +723,39 @@ export const remove = mutation({
   },
 });
 
-// Toggle voided status on a transaction (excludes from report calculations)
-export const toggleVoided = mutation({
+export const voidTransaction = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const reason = args.reason.trim();
+    if (reason.length < 3) {
+      throw new Error("Void reason must be at least 3 characters");
+    }
+
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction || transaction.organizationId !== user.organizationId) {
+      throw new Error("Transaction not found");
+    }
+
+    await ctx.db.patch(args.transactionId, {
+      isVoided: true,
+      voidReason: reason,
+      voidedAt: Date.now(),
+      voidedBy: user._id,
+    });
+
+    if (transaction.pledgeId && transaction.type === "Income") {
+      await refreshPledgeStatus(ctx, transaction.pledgeId, user.organizationId);
+    }
+
+    return { transactionId: args.transactionId, isVoided: true };
+  },
+});
+
+export const unvoidTransaction = mutation({
   args: {
     transactionId: v.id("transactions"),
   },
@@ -719,10 +768,52 @@ export const toggleVoided = mutation({
     }
 
     await ctx.db.patch(args.transactionId, {
-      isVoided: !transaction.isVoided,
+      isVoided: false,
+      unvoidedAt: Date.now(),
+      unvoidedBy: user._id,
     });
 
-    return { transactionId: args.transactionId, isVoided: !transaction.isVoided };
+    if (transaction.pledgeId && transaction.type === "Income") {
+      await refreshPledgeStatus(ctx, transaction.pledgeId, user.organizationId);
+    }
+
+    return { transactionId: args.transactionId, isVoided: false };
+  },
+});
+
+// Compatibility wrapper for existing generated clients.
+export const toggleVoided = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction || transaction.organizationId !== user.organizationId) {
+      throw new Error("Transaction not found");
+    }
+
+    const nextVoided = !transaction.isVoided;
+    await ctx.db.patch(args.transactionId, {
+      isVoided: nextVoided,
+      ...(nextVoided
+        ? {
+            voidReason: transaction.voidReason ?? "Voided from legacy toggle",
+            voidedAt: Date.now(),
+            voidedBy: user._id,
+          }
+        : {
+            unvoidedAt: Date.now(),
+            unvoidedBy: user._id,
+          }),
+    });
+
+    if (transaction.pledgeId && transaction.type === "Income") {
+      await refreshPledgeStatus(ctx, transaction.pledgeId, user.organizationId);
+    }
+
+    return { transactionId: args.transactionId, isVoided: nextVoided };
   },
 });
 

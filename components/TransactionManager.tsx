@@ -107,7 +107,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
   const categorizeWithPipeline = useAction(api.actions.ai.categorizeWithPipelinePreview);
   const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
-  const toggleVoided = useMutation(api.mutations.transactions.toggleVoided);
+  const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
+  const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
 
   // Bank sync
@@ -155,6 +156,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [isVoiding, setIsVoiding] = useState(false);
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
       type: 'Income' as TransactionType,
       date: new Date().toISOString().split('T')[0],
@@ -220,6 +224,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (filterFund && t.fundId !== filterFund) return false;
 
       // Status
+      if (filterStatus === 'active' && t.isVoided) return false;
+      if (filterStatus === 'voided' && !t.isVoided) return false;
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
@@ -228,6 +234,48 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
+
+  const handleOpenVoidModal = (transaction: Transaction) => {
+    setVoidTarget(transaction);
+    setVoidReason('');
+  };
+
+  const handleVoidTransaction = async () => {
+    if (!voidTarget) return;
+    const reason = voidReason.trim();
+    if (reason.length < 3) {
+      notify("Reason Required", "Add a short reason before voiding this transaction.");
+      return;
+    }
+
+    setIsVoiding(true);
+    try {
+      await voidTransaction({
+        transactionId: voidTarget._id as Id<"transactions">,
+        reason,
+      });
+      notify("Transaction Voided", "The transaction has been excluded from financial calculations.");
+      setVoidTarget(null);
+      setVoidReason('');
+    } catch (error) {
+      console.error("Failed to void transaction:", error);
+      notify("Error", "Failed to void transaction.");
+    } finally {
+      setIsVoiding(false);
+    }
+  };
+
+  const handleUnvoidTransaction = async (transaction: Transaction) => {
+    try {
+      await unvoidTransaction({
+        transactionId: transaction._id as Id<"transactions">,
+      });
+      notify("Transaction Restored", "The transaction is included in financial calculations again.");
+    } catch (error) {
+      console.error("Failed to restore transaction:", error);
+      notify("Error", "Failed to restore transaction.");
+    }
+  };
 
   // Limit displayed transactions for performance
   const displayedTransactions = useMemo(() => {
@@ -1150,6 +1198,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               <div className="relative group h-[34px]">
                   <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
                       <option value="all">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="voided">Voided</option>
                       <option value="reconciled">Reconciled</option>
                       <option value="unreconciled">Pending</option>
                       <option value="unlinked">Unlinked Income</option>
@@ -1219,7 +1269,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
 
                   return (
-                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''} ${t.isVoided ? 'opacity-50 line-through' : ''}`}>
+                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''} ${t.isVoided ? 'opacity-60 bg-error-light/20' : ''}`}>
                       <td className="px-4 py-3 border-b border-slate-100">
                           {canEdit && (
                                <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
@@ -1230,6 +1280,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           <div className="flex items-center gap-2">
                              <div className="font-medium text-ink text-sm truncate max-w-[200px]">{t.description}</div>
                              {t.pledgeId && <LinkIcon size={12} className="text-sage" />}
+                             {t.isVoided && (
+                              <span
+                                className="px-1.5 py-0.5 rounded border border-error/30 bg-error-light text-[9px] font-bold text-error uppercase tracking-wide"
+                                title={t.voidReason ? `Void reason: ${t.voidReason}` : "Voided transaction"}
+                              >
+                                Voided
+                              </span>
+                             )}
                           </div>
                           {t.donorName && <div className="text-[10px] text-grey-mid font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
                           {linkedPledge && <div className="text-[9px] text-sage font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
@@ -1248,13 +1306,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       </td>
                       <td className="px-6 py-3 border-b border-slate-100 text-center">
                           {canEdit ? (
-                            <input
-                              type="checkbox"
-                              checked={t.isVoided || false}
-                              onChange={() => toggleVoided({ transactionId: t._id })}
-                              className="w-4 h-4 text-red-500 rounded border-slate-300 focus:ring-0 cursor-pointer"
-                              title={t.isVoided ? "Unvoid transaction" : "Void transaction (exclude from reports)"}
-                            />
+                            t.isVoided ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUnvoidTransaction(t)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded border border-ledger text-grey-mid hover:text-sage hover:border-sage transition-colors"
+                                title="Restore transaction to financial calculations"
+                              >
+                                <RotateCcw size={14} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenVoidModal(t)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded border border-ledger text-grey-mid hover:text-error hover:border-error transition-colors"
+                                title="Void transaction and exclude it from financial calculations"
+                              >
+                                <X size={14} />
+                              </button>
+                            )
                           ) : (
                             t.isVoided && <X size={14} className="mx-auto text-red-400" />
                           )}
@@ -1902,7 +1972,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                   ? { donorId: editingTransaction.donorId as Id<"donors"> }
                                   : {}),
                                 pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null,
-                                isVoided: editingTransaction.isVoided || false,
                             });
                             // Check if pledge was completed
                             if (result?.pledgeCompleted && onPledgeCompleted) {
@@ -2057,15 +2126,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
 
-                         <label className="flex items-center gap-2 cursor-pointer group">
-                             <input
-                                type="checkbox"
-                                checked={editingTransaction.isVoided || false}
-                                onChange={(e) => setEditingTransaction({...editingTransaction, isVoided: e.target.checked})}
-                                className="rounded border-red-300 text-red-500 focus:ring-0 w-4 h-4"
-                            />
-                            <span className="text-sm text-red-400 group-hover:text-red-600">Void</span>
-                        </label>
+                        {editingTransaction.isVoided && (
+                          <div className="flex items-center gap-2 text-sm text-error">
+                            <X size={14} />
+                            <span>
+                              Voided{editingTransaction.voidReason ? `: ${editingTransaction.voidReason}` : ''}
+                            </span>
+                          </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
@@ -2076,6 +2144,70 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </form>
             </div>
+        </div>,
+        document.body
+      )}
+
+      {voidTarget && canEdit && createPortal(
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-ledger animate-enter">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+              <div>
+                <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Void Transaction</h3>
+                <p className="text-xs text-grey-mid mt-1">
+                  This excludes the transaction from reports, totals, pledge progress, and AI summaries.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoidTarget(null)}
+                className="text-grey-mid hover:text-grey-dark"
+                disabled={isVoiding}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="rounded border border-ledger bg-paper p-3">
+                <div className="text-xs font-bold text-ink truncate">{voidTarget.description}</div>
+                <div className="text-xs text-grey-mid font-mono mt-1">
+                  {formatDateUK(voidTarget.date)} - {voidTarget.type === 'Income' ? '+' : '-'}£{voidTarget.amount.toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">
+                  Reason
+                </label>
+                <textarea
+                  value={voidReason}
+                  onChange={(event) => setVoidReason(event.target.value)}
+                  rows={3}
+                  className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none resize-none"
+                  placeholder="e.g. Duplicate bank import"
+                  disabled={isVoiding}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setVoidTarget(null)}
+                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+                  disabled={isVoiding}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVoidTransaction}
+                  disabled={isVoiding}
+                  className="px-4 py-2 bg-error text-white rounded font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
+                >
+                  {isVoiding ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                  Void
+                </button>
+              </div>
+            </div>
+          </div>
         </div>,
         document.body
       )}

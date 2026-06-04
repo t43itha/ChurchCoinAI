@@ -1,5 +1,6 @@
 import { query } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
+import { filterActiveTransactions } from "../../lib/voidedTransactions";
 
 const AI_CONTEXT_MONTH_WINDOW = 24;
 const AI_CONTEXT_PAGE_SIZE = 500;
@@ -55,7 +56,9 @@ export const getAIContext = query({
         break;
       }
 
-      const pageItems = page.page.slice(0, remaining).map((transaction) => ({
+      const pageItems = filterActiveTransactions(page.page)
+        .slice(0, remaining)
+        .map((transaction) => ({
         date: transaction.date,
         amount: transaction.amount,
         type: transaction.type,

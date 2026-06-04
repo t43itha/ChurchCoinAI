@@ -152,6 +152,11 @@ export default defineSchema({
     )),
     cashCollectionId: v.optional(v.id("cashCollections")),
     isVoided: v.optional(v.boolean()),
+    voidReason: v.optional(v.string()),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.id("users")),
+    unvoidedAt: v.optional(v.number()),
+    unvoidedBy: v.optional(v.id("users")),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])

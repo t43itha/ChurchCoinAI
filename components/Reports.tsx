@@ -31,6 +31,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { filterActiveTransactions } from '../lib/voidedTransactions';
 
 // ============ TYPE DEFINITIONS ============
 
@@ -1111,6 +1112,7 @@ interface AIReportsContentProps {
 }
 
 const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds, pledges, churchDetails }) => {
+  const activeTransactions = filterActiveTransactions(transactions);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1157,10 +1159,10 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
     setIsGenerating(true);
     setReportTitle("Treasurer's Financial Commentary");
     try {
-      const totalIncome = transactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-      const totalExpenditure = transactions.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
+      const totalIncome = activeTransactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
+      const totalExpenditure = activeTransactions.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
       const fundsStatus = funds.map(f => ({ name: f.name, balance: f.balance }));
-      const recentLargeTransactions = transactions
+      const recentLargeTransactions = activeTransactions
         .filter(t => t.amount > 500)
         .map(t => ({ desc: t.description, amount: t.amount }));
       const summaryData = JSON.stringify({ totalIncome, totalExpenditure, fundsStatus, recentLargeTransactions });
@@ -1179,7 +1181,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
     setReportTitle("HMRC Gift Aid Schedule");
     const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const eligible = transactions.filter(t =>
+      const eligible = activeTransactions.filter(t =>
         t.type === 'Income' &&
         t.isGiftAidEligible &&
         (!start || t.date >= start) &&
@@ -1207,7 +1209,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
     setReportTitle(`${fund.name} Impact Report`);
     const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const periodTxns = transactions.filter(t =>
+      const periodTxns = activeTransactions.filter(t =>
         t.fundId === fund._id &&
         (!start || t.date >= start) &&
         (!end || t.date <= end)
@@ -1239,7 +1241,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
     setIsGenerating(true);
     setReportTitle(`${fund.name} Campaign Analysis`);
     try {
-      const fundTxns = transactions.filter(t => t.fundId === fund._id && t.type === 'Income');
+      const fundTxns = activeTransactions.filter(t => t.fundId === fund._id && t.type === 'Income');
       const fundPledges = pledges.filter(p => p.fundId === fund._id);
       const totalRaisedCash = fundTxns.reduce((s, t) => s + t.amount, 0);
       const totalPledged = fundPledges.reduce((s, p) => s + p.amount, 0);
@@ -1269,7 +1271,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
     setReportTitle("Annual Financial Statement");
     const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const periodTxns = transactions.filter(t =>
+      const periodTxns = activeTransactions.filter(t =>
         (!start || t.date >= start) &&
         (!end || t.date <= end)
       );
@@ -1307,7 +1309,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
     setReportTitle("Monthly Income & Expense Breakdown");
     const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const periodTxns = transactions.filter(t =>
+      const periodTxns = activeTransactions.filter(t =>
         (!start || t.date >= start) &&
         (!end || t.date <= end)
       );
