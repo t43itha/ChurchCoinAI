@@ -141,6 +141,7 @@ describe("categorization pipeline", () => {
       currentSuggestions,
       [
         {
+          description: unresolvedIncome.description,
           category: "Offerings",
           fundName: "General Fund",
           confidence: "High",
@@ -148,6 +149,7 @@ describe("categorization pipeline", () => {
           donorName: "A Donor",
         },
         {
+          description: unresolvedExpense.description,
           category: "Bank Charges",
           fundName: "General Fund",
           confidence: "Medium",
@@ -208,11 +210,13 @@ describe("categorization pipeline", () => {
       currentSuggestions,
       [
         {
+          description: firstUnresolved.description,
           category: "Bank Charges",
           fundName: "General Fund",
           confidence: "High",
         },
         {
+          description: secondUnresolved.description,
           category: "Bank Charges",
           fundName: "General Fund",
           confidence: "High",
@@ -229,5 +233,88 @@ describe("categorization pipeline", () => {
       category: "Bank Charges",
       predictionSource: "gemini",
     });
+  });
+
+  it("keeps unresolved suggestions when same-type Gemini rows are reordered", () => {
+    const firstIncome = {
+      description: "Mystery gift A",
+      amount: 40,
+      type: "Income" as const,
+    };
+    const secondIncome = {
+      description: "Mystery gift B",
+      amount: 60,
+      type: "Income" as const,
+    };
+    const currentSuggestions = [
+      suggestion(firstIncome, "none"),
+      suggestion(secondIncome, "none"),
+    ];
+
+    const merged = mergeGeminiFallback(
+      currentSuggestions,
+      [
+        {
+          description: secondIncome.description,
+          category: "Offerings",
+          fundName: "General Fund",
+          confidence: "High",
+          donorName: "Second Donor",
+        },
+        {
+          description: firstIncome.description,
+          category: "Offerings",
+          fundName: "General Fund",
+          confidence: "High",
+          donorName: "First Donor",
+        },
+      ],
+      [firstIncome, secondIncome],
+      categories,
+      funds
+    );
+
+    expect(merged[0]).toBe(currentSuggestions[0]);
+    expect(merged[1]).toBe(currentSuggestions[1]);
+  });
+
+  it("keeps unresolved suggestions for missing descriptions and missing Gemini rows", () => {
+    const firstUnresolved = {
+      description: "Unknown gift",
+      amount: 40,
+      type: "Income" as const,
+    };
+    const secondUnresolved = {
+      description: "Unknown supplier",
+      amount: 12,
+      type: "Expenditure" as const,
+    };
+    const currentSuggestions = [
+      suggestion(firstUnresolved, "none"),
+      suggestion(secondUnresolved, "none"),
+    ];
+
+    const merged = mergeGeminiFallback(
+      currentSuggestions,
+      [
+        {
+          category: "Offerings",
+          fundName: "General Fund",
+          confidence: "High",
+        },
+        {
+          description: "Extra row that should not be used",
+          category: "Bank Charges",
+          fundName: "General Fund",
+          confidence: "High",
+        },
+      ],
+      [firstUnresolved, secondUnresolved],
+      categories,
+      funds
+    );
+
+    expect(merged[0]).toBe(currentSuggestions[0]);
+    expect(merged[1]).toBe(currentSuggestions[1]);
   });
 });

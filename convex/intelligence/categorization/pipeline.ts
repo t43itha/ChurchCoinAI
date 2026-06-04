@@ -2,7 +2,7 @@ import { internal } from "../../_generated/api";
 import { Id } from "../../_generated/dataModel";
 import { validateGeminiSuggestion } from "./gemini";
 import { buildMemorySuggestion } from "./memory";
-import { normalizeTransaction } from "./normalize";
+import { normalizeDescription, normalizeTransaction } from "./normalize";
 import { applyDeterministicRules } from "./rules";
 import {
   CategoryLike,
@@ -42,6 +42,23 @@ const unresolvedSuggestion = (
     },
   ],
 });
+
+const hasMatchingRawDescription = (
+  rawSuggestion: Record<string, unknown>,
+  transaction: CategorizationInput
+): boolean => {
+  if (
+    typeof rawSuggestion.description !== "string" ||
+    !rawSuggestion.description.trim()
+  ) {
+    return false;
+  }
+
+  return (
+    normalizeDescription(rawSuggestion.description) ===
+    normalizeDescription(transaction.description)
+  );
+};
 
 export const categorizeWithoutExternalAI = async (
   ctx: PipelineCtx,
@@ -113,6 +130,10 @@ export const mergeGeminiFallback = (
 
     const transaction = originalTransactions[index];
     if (!transaction) {
+      return suggestion;
+    }
+
+    if (!hasMatchingRawDescription(rawSuggestion, transaction)) {
       return suggestion;
     }
 

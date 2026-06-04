@@ -172,53 +172,61 @@ export const categorizeWithPipelinePreview = action({
       return initialSuggestions;
     }
 
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: CATEGORIZATION_MODEL,
-      contents: buildGeminiCategorizationPrompt(
-        unresolvedTransactions,
-        categoryDetails,
-        funds,
-        initialSuggestions.flatMap((suggestion) => suggestion.evidence)
-      ),
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              description: { type: Type.STRING },
-              category: { type: Type.STRING },
-              fundName: { type: Type.STRING },
-              confidence: {
-                type: Type.STRING,
-                description: "High, Medium, or Low",
+    try {
+      const ai = getAI();
+      const response = await ai.models.generateContent({
+        model: CATEGORIZATION_MODEL,
+        contents: buildGeminiCategorizationPrompt(
+          unresolvedTransactions,
+          categoryDetails,
+          funds,
+          initialSuggestions.flatMap((suggestion) => suggestion.evidence)
+        ),
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                description: { type: Type.STRING },
+                category: { type: Type.STRING },
+                fundName: { type: Type.STRING },
+                confidence: {
+                  type: Type.STRING,
+                  description: "High, Medium, or Low",
+                },
+                isGiftAidEligible: { type: Type.BOOLEAN },
+                donorName: { type: Type.STRING },
+                evidence: { type: Type.STRING },
               },
-              isGiftAidEligible: { type: Type.BOOLEAN },
-              donorName: { type: Type.STRING },
-              evidence: { type: Type.STRING },
             },
           },
+          thinkingConfig: { thinkingBudget: 0 },
         },
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    });
+      });
 
-    const rawGeminiSuggestions = response.text
-      ? safeJsonParse<Record<string, unknown>[]>(
-          response.text,
-          "categorizeWithPipelinePreview response"
-        )
-      : [];
+      const rawGeminiSuggestions = response.text
+        ? safeJsonParse<Record<string, unknown>[]>(
+            response.text,
+            "categorizeWithPipelinePreview response"
+          )
+        : [];
 
-    return mergeGeminiFallback(
-      initialSuggestions,
-      rawGeminiSuggestions,
-      args.transactions,
-      categoryDetails,
-      funds
-    );
+      return mergeGeminiFallback(
+        initialSuggestions,
+        rawGeminiSuggestions,
+        args.transactions,
+        categoryDetails,
+        funds
+      );
+    } catch (error) {
+      console.error(
+        "Gemini pipeline fallback failed; returning non-AI categorization suggestions.",
+        error
+      );
+      return initialSuggestions;
+    }
   },
 });
 
