@@ -1,3 +1,4 @@
+import { makeFunctionReference } from "convex/server";
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
@@ -7,6 +8,23 @@ import {
   assertValidTransactionAmount,
   assertValidTransactionDate,
 } from "../lib/transactionValidation";
+import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
+import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
+
+const upsertAcceptedCategorizationMemory = makeFunctionReference<
+  "mutation",
+  {
+    organizationId: Id<"organizations">;
+    signature: string;
+    descriptionExample: string;
+    transactionType: "Income" | "Expenditure";
+    category: string;
+    fundId: Id<"funds">;
+    isGiftAidEligible?: boolean;
+    donorName?: string;
+    sourceTransactionId?: Id<"transactions">;
+  }
+>("intelligence/categorizationMemory:upsertAccepted");
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {
@@ -701,11 +719,24 @@ export const recordCorrections = mutation({
         ),
         ragScore: v.optional(v.number()),
         finalCategory: v.string(),
+        aiPredictedFundId: v.optional(v.id("funds")),
+        aiPredictedGiftAidEligible: v.optional(v.boolean()),
+        aiPredictedDonorName: v.optional(v.string()),
+        aiConfidenceScore: v.optional(v.number()),
+        finalFundId: v.optional(v.id("funds")),
+        finalGiftAidEligible: v.optional(v.boolean()),
+        finalDonorName: v.optional(v.string()),
       })
     ),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const categories = await ctx.db
+      .query("categories")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
 
     const recorded: string[] = [];
     for (const correction of args.corrections) {
@@ -715,8 +746,35 @@ export const recordCorrections = mutation({
         continue; // Skip invalid transactions
       }
 
+      if (correction.aiPredictedFundId) {
+        const predictedFund = await ctx.db.get(correction.aiPredictedFundId);
+        if (!predictedFund || predictedFund.organizationId !== user.organizationId) {
+          throw new Error("Invalid predicted fund");
+        }
+      }
+
+      if (correction.finalFundId) {
+        const finalFund = await ctx.db.get(correction.finalFundId);
+        if (!finalFund || finalFund.organizationId !== user.organizationId) {
+          throw new Error("Invalid final fund");
+        }
+      }
+
       const wasCorrect =
         correction.aiPredictedCategory === correction.finalCategory;
+      const finalCategory = resolveCategoryForTransaction(
+        correction.finalCategory,
+        transaction.type,
+        categories
+      );
+      const learned = Boolean(finalCategory);
+      const finalCategoryName = finalCategory?.name ?? correction.finalCategory;
+      const finalFundId = correction.finalFundId ?? transaction.fundId;
+      const finalGiftAidEligible =
+        correction.finalGiftAidEligible ?? transaction.isGiftAidEligible;
+      const finalDonorName =
+        correction.finalDonorName ?? transaction.donorName;
+      const createdAt = Date.now();
 
       const correctionId = await ctx.db.insert("categorizationCorrections", {
         organizationId: user.organizationId,
@@ -728,17 +786,58 @@ export const recordCorrections = mutation({
         ragScore: correction.ragScore,
         finalCategory: correction.finalCategory,
         wasCorrect,
-        createdAt: Date.now(),
+        createdAt,
       });
       recorded.push(correctionId);
 
+      const feedbackEvent = buildFeedbackEvent({
+        organizationId: user.organizationId,
+        transactionId: correction.transactionId,
+        transaction: {
+          description: correction.description,
+          amount: transaction.amount,
+          type: transaction.type,
+        },
+        source: correction.predictionSource,
+        confidence: correction.aiConfidenceScore ?? 0,
+        originalCategory: correction.aiPredictedCategory,
+        finalCategory: finalCategoryName,
+        originalFundId: correction.aiPredictedFundId,
+        finalFundId,
+        originalGiftAidEligible: correction.aiPredictedGiftAidEligible,
+        finalGiftAidEligible,
+        originalDonorName: correction.aiPredictedDonorName,
+        finalDonorName,
+        learned,
+        createdAt,
+      });
+      await ctx.db.insert("categorizationFeedbackEvents", feedbackEvent);
+
+      if (learned) {
+        await ctx.scheduler.runAfter(
+          0,
+          upsertAcceptedCategorizationMemory,
+          {
+            organizationId: user.organizationId,
+            signature: feedbackEvent.signature,
+            descriptionExample: correction.description,
+            transactionType: transaction.type,
+            category: finalCategoryName,
+            fundId: finalFundId,
+            isGiftAidEligible: finalGiftAidEligible,
+            donorName: finalDonorName,
+            sourceTransactionId: correction.transactionId,
+          }
+        );
+      }
+
       // If there was a correction, update the RAG index with the corrected category
-      if (!wasCorrect) {
+      if (!wasCorrect && finalCategory) {
         const searchText = buildRAGSearchText({
           description: correction.description,
-          category: correction.finalCategory, // Use the corrected category
+          category: finalCategoryName,
           type: transaction.type,
-          donorName: transaction.donorName,
+          donorName: finalDonorName,
         });
 
         await ctx.scheduler.runAfter(
@@ -749,11 +848,11 @@ export const recordCorrections = mutation({
             transactionId: correction.transactionId,
             newSearchText: searchText,
             metadata: {
-              category: correction.finalCategory,
-              fundId: transaction.fundId,
+              category: finalCategoryName,
+              fundId: finalFundId,
               type: transaction.type,
-              isGiftAidEligible: transaction.isGiftAidEligible,
-              donorName: transaction.donorName,
+              isGiftAidEligible: finalGiftAidEligible,
+              donorName: finalDonorName,
               acceptedCount: 1,
             },
           }
