@@ -53,6 +53,30 @@ type OriginalPrediction = {
   ragScore?: number;
 };
 
+const reindexSetAfterRemoval = (values: Set<number>, removedIndex: number): Set<number> => {
+  const reindexed = new Set<number>();
+  values.forEach((value) => {
+    if (value < removedIndex) {
+      reindexed.add(value);
+    } else if (value > removedIndex) {
+      reindexed.add(value - 1);
+    }
+  });
+  return reindexed;
+};
+
+const reindexMapAfterRemoval = <T,>(values: Map<number, T>, removedIndex: number): Map<number, T> => {
+  const reindexed = new Map<number, T>();
+  values.forEach((value, index) => {
+    if (index < removedIndex) {
+      reindexed.set(index, value);
+    } else if (index > removedIndex) {
+      reindexed.set(index - 1, value);
+    }
+  });
+  return reindexed;
+};
+
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -588,6 +612,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setBankSyncReviewConnectionId(null);
     setOriginalPredictions(new Map());
   };
+
+  const removePendingTransactionAt = useCallback((removedIndex: number) => {
+    setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
+    setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
+    setOriginalPredictions((current) => reindexMapAfterRemoval(current, removedIndex));
+  }, []);
 
   const handleSyncedBankTransactions = (
     syncedTransactions: Array<{
@@ -2124,19 +2154,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
                                         <button
-                                          onClick={() => {
-                                            const newPending = pendingTransactions.filter((_, idx) => idx !== i);
-                                            setPendingTransactions(newPending);
-                                            const newWarnings = new Set(duplicateWarnings);
-                                            newWarnings.delete(i);
-                                            // Reindex warnings
-                                            const reindexed = new Set<number>();
-                                            newWarnings.forEach(w => {
-                                              if (w > i) reindexed.add(w - 1);
-                                              else reindexed.add(w);
-                                            });
-                                            setDuplicateWarnings(reindexed);
-                                          }}
+                                          onClick={() => removePendingTransactionAt(i)}
                                           className="text-error hover:text-error-dark text-xs font-bold"
                                           title="Remove duplicate"
                                         >
