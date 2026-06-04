@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFeedbackEvent } from "../convex/intelligence/categorization/feedback";
+import { shouldUpdateCategorizationRagIndex } from "../convex/mutations/transactions";
 
 describe("categorization feedback event builder", () => {
   it("normalizes the transaction signature and compares predicted and accepted fields", () => {
@@ -73,5 +74,39 @@ describe("categorization feedback event builder", () => {
     expect(event.giftAidChanged).toBe(false);
     expect(event.donorNameChanged).toBe(false);
     expect(event.learned).toBe(false);
+  });
+});
+
+describe("categorization feedback RAG update decision", () => {
+  it("updates when learned metadata changes even if the category is accepted", () => {
+    expect(
+      shouldUpdateCategorizationRagIndex({
+        finalCategory: "Tithes & First Fruits",
+        predictedCategory: "Tithes & First Fruits",
+        finalCategoryName: "Tithes & First Fruits",
+        predictedFundId: "fund-general" as any,
+        finalFundId: "fund-building" as any,
+        predictedGiftAidEligible: true,
+        finalGiftAidEligible: true,
+        predictedDonorName: "Jane Smith",
+        finalDonorName: "Jane Smith",
+      })
+    ).toBe(true);
+  });
+
+  it("does not update without a learned final category", () => {
+    expect(
+      shouldUpdateCategorizationRagIndex({
+        finalCategory: null,
+        predictedCategory: "Legacy",
+        finalCategoryName: "Legacy",
+        predictedFundId: "fund-general" as any,
+        finalFundId: "fund-building" as any,
+        predictedGiftAidEligible: false,
+        finalGiftAidEligible: true,
+        predictedDonorName: "J Smith",
+        finalDonorName: "Jane Smith",
+      })
+    ).toBe(false);
   });
 });

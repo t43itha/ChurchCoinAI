@@ -40,6 +40,30 @@ function buildRAGSearchText(tx: {
   return text;
 }
 
+export function shouldUpdateCategorizationRagIndex(args: {
+  finalCategory: unknown | null;
+  predictedCategory?: string;
+  finalCategoryName: string;
+  predictedFundId?: Id<"funds">;
+  finalFundId?: Id<"funds">;
+  predictedGiftAidEligible?: boolean;
+  finalGiftAidEligible?: boolean;
+  predictedDonorName?: string;
+  finalDonorName?: string;
+}): boolean {
+  if (!args.finalCategory) {
+    return false;
+  }
+
+  const categoryChanged = args.predictedCategory !== args.finalCategoryName;
+  const fundChanged = args.predictedFundId !== args.finalFundId;
+  const giftAidChanged =
+    args.predictedGiftAidEligible !== args.finalGiftAidEligible;
+  const donorNameChanged = args.predictedDonorName !== args.finalDonorName;
+
+  return categoryChanged || fundChanged || giftAidChanged || donorNameChanged;
+}
+
 // Helper to check pledge completion after transaction changes
 async function checkPledgeCompletion(
   ctx: any,
@@ -799,7 +823,7 @@ export const recordCorrections = mutation({
           type: transaction.type,
         },
         source: correction.predictionSource,
-        confidence: correction.aiConfidenceScore ?? 0,
+        confidence: correction.aiConfidenceScore ?? correction.ragScore ?? 0,
         originalCategory: correction.aiPredictedCategory,
         finalCategory: finalCategoryName,
         originalFundId: correction.aiPredictedFundId,
@@ -831,8 +855,20 @@ export const recordCorrections = mutation({
         );
       }
 
-      // If there was a correction, update the RAG index with the corrected category
-      if (!wasCorrect && finalCategory) {
+      const shouldUpdateRagIndex = shouldUpdateCategorizationRagIndex({
+        finalCategory,
+        predictedCategory: correction.aiPredictedCategory,
+        finalCategoryName,
+        predictedFundId: correction.aiPredictedFundId,
+        finalFundId,
+        predictedGiftAidEligible: correction.aiPredictedGiftAidEligible,
+        finalGiftAidEligible,
+        predictedDonorName: correction.aiPredictedDonorName,
+        finalDonorName,
+      });
+
+      // Update RAG whenever the accepted categorization metadata differs.
+      if (shouldUpdateRagIndex) {
         const searchText = buildRAGSearchText({
           description: correction.description,
           category: finalCategoryName,
