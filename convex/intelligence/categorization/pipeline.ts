@@ -1,5 +1,6 @@
 import { internal } from "../../_generated/api";
 import { Id } from "../../_generated/dataModel";
+import { validateGeminiSuggestion } from "./gemini";
 import { buildMemorySuggestion } from "./memory";
 import { normalizeTransaction } from "./normalize";
 import { applyDeterministicRules } from "./rules";
@@ -88,4 +89,40 @@ export const categorizeWithoutExternalAI = async (
   }
 
   return suggestions;
+};
+
+export const mergeGeminiFallback = (
+  currentSuggestions: CategorizationSuggestion[],
+  rawGeminiSuggestions: Record<string, unknown>[],
+  originalTransactions: CategorizationInput[],
+  categories: CategoryLike[],
+  funds: FundLike[]
+): CategorizationSuggestion[] => {
+  let geminiIndex = 0;
+
+  return currentSuggestions.map((suggestion, index) => {
+    if (suggestion.predictionSource !== "none") {
+      return suggestion;
+    }
+
+    const rawSuggestion = rawGeminiSuggestions[geminiIndex];
+    geminiIndex += 1;
+    if (!rawSuggestion) {
+      return suggestion;
+    }
+
+    const transaction = originalTransactions[index];
+    if (!transaction) {
+      return suggestion;
+    }
+
+    return (
+      validateGeminiSuggestion(
+        rawSuggestion,
+        transaction,
+        categories,
+        funds
+      ) ?? suggestion
+    );
+  });
 };

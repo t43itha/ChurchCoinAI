@@ -9,7 +9,14 @@ import {
   safeJsonParse,
   validateGiftAidEligibleTransactions,
 } from "../lib/aiValidation";
-import { categorizeWithoutExternalAI } from "../intelligence/categorization/pipeline";
+import {
+  categorizeWithoutExternalAI,
+  mergeGeminiFallback,
+} from "../intelligence/categorization/pipeline";
+import {
+  buildGeminiCategorizationPrompt,
+  CATEGORIZATION_MODEL,
+} from "../intelligence/categorization/gemini";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
@@ -125,7 +132,7 @@ export const categorizeTransactions = action({
   },
 });
 
-// Preview the local categorization pipeline without calling external AI.
+// Preview the categorization pipeline, using Gemini only for unresolved rows.
 export const categorizeWithPipelinePreview = action({
   args: {
     transactions: v.array(
@@ -146,9 +153,68 @@ export const categorizeWithPipelinePreview = action({
       ctx.runQuery(api.queries.funds.list, {}),
     ]);
 
-    return categorizeWithoutExternalAI(
+    const initialSuggestions = await categorizeWithoutExternalAI(
       ctx,
       user.organizationId,
+      args.transactions,
+      categoryDetails,
+      funds
+    );
+    const unresolvedTransactions = initialSuggestions
+      .map((suggestion, index) =>
+        suggestion.predictionSource === "none" ? args.transactions[index] : null
+      )
+      .filter((transaction): transaction is (typeof args.transactions)[number] =>
+        Boolean(transaction)
+      );
+
+    if (unresolvedTransactions.length === 0) {
+      return initialSuggestions;
+    }
+
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: CATEGORIZATION_MODEL,
+      contents: buildGeminiCategorizationPrompt(
+        unresolvedTransactions,
+        categoryDetails,
+        funds,
+        initialSuggestions.flatMap((suggestion) => suggestion.evidence)
+      ),
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              description: { type: Type.STRING },
+              category: { type: Type.STRING },
+              fundName: { type: Type.STRING },
+              confidence: {
+                type: Type.STRING,
+                description: "High, Medium, or Low",
+              },
+              isGiftAidEligible: { type: Type.BOOLEAN },
+              donorName: { type: Type.STRING },
+              evidence: { type: Type.STRING },
+            },
+          },
+        },
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
+
+    const rawGeminiSuggestions = response.text
+      ? safeJsonParse<Record<string, unknown>[]>(
+          response.text,
+          "categorizeWithPipelinePreview response"
+        )
+      : [];
+
+    return mergeGeminiFallback(
+      initialSuggestions,
+      rawGeminiSuggestions,
       args.transactions,
       categoryDetails,
       funds
