@@ -21,6 +21,28 @@ export const getBySignature = internalQuery({
   },
 });
 
+export const getBySignatures = internalQuery({
+  args: {
+    organizationId: v.id("organizations"),
+    signatures: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const uniqueSignatures = [...new Set(args.signatures)];
+    const memories = await Promise.all(
+      uniqueSignatures.map((signature) =>
+        ctx.db
+          .query("transactionCategorizationMemory")
+          .withIndex("by_organization_signature", (q) =>
+            q.eq("organizationId", args.organizationId).eq("signature", signature)
+          )
+          .first()
+      )
+    );
+
+    return memories.filter((memory) => memory !== null);
+  },
+});
+
 export const upsertAccepted = internalMutation({
   args: {
     organizationId: v.id("organizations"),

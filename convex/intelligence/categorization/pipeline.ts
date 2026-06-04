@@ -13,12 +13,12 @@ import {
 type PipelineCtx = {
   runQuery: (
     query: any,
-    args: { organizationId: Id<"organizations">; signature: string }
+    args: { organizationId: Id<"organizations">; signatures: string[] }
   ) => Promise<any>;
 };
 
-const getCategorizationMemoryBySignature = (internal as any).intelligence
-  .categorizationMemory.getBySignature;
+const getCategorizationMemoryBySignatures = (internal as any).intelligence
+  .categorizationMemory.getBySignatures;
 
 const unresolvedSuggestion = (
   transaction: CategorizationInput
@@ -49,17 +49,27 @@ export const categorizeWithoutExternalAI = async (
   categories: CategoryLike[],
   funds: FundLike[]
 ): Promise<CategorizationSuggestion[]> => {
+  const normalizedTransactions = transactions.map((transaction) =>
+    normalizeTransaction(transaction)
+  );
+  const signatures = [
+    ...new Set(
+      normalizedTransactions.map((transaction) => transaction.signature)
+    ),
+  ];
+  const memories: any[] = signatures.length
+    ? await ctx.runQuery(getCategorizationMemoryBySignatures, {
+        organizationId,
+        signatures,
+      })
+    : [];
+  const memoryBySignature = new Map<string, any>(
+    memories.map((memory) => [memory.signature, memory])
+  );
   const suggestions: CategorizationSuggestion[] = [];
 
-  for (const transaction of transactions) {
-    const normalized = normalizeTransaction(transaction);
-    const memory = await ctx.runQuery(
-      getCategorizationMemoryBySignature,
-      {
-        organizationId,
-        signature: normalized.signature,
-      }
-    );
+  for (const normalized of normalizedTransactions) {
+    const memory = memoryBySignature.get(normalized.signature);
     const memorySuggestion = memory
       ? buildMemorySuggestion(memory, normalized, categories, funds)
       : null;
@@ -70,11 +80,11 @@ export const categorizeWithoutExternalAI = async (
     }
 
     const ruleSuggestion = applyDeterministicRules(
-      transaction,
+      normalized,
       categories,
       funds
     );
-    suggestions.push(ruleSuggestion ?? unresolvedSuggestion(transaction));
+    suggestions.push(ruleSuggestion ?? unresolvedSuggestion(normalized));
   }
 
   return suggestions;
