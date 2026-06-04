@@ -147,3 +147,27 @@ export const mergeGeminiFallback = (
     );
   });
 };
+
+export const mergeGeminiFallbackSafely = async (
+  initialSuggestions: CategorizationSuggestion[],
+  loadRawGeminiSuggestions: () =>
+    | Promise<Record<string, unknown>[]>
+    | Record<string, unknown>[],
+  originalTransactions: CategorizationInput[],
+  categories: CategoryLike[],
+  funds: FundLike[],
+  onError?: (error: unknown) => void
+): Promise<CategorizationSuggestion[]> => {
+  try {
+    return mergeGeminiFallback(
+      initialSuggestions,
+      await loadRawGeminiSuggestions(),
+      originalTransactions,
+      categories,
+      funds
+    );
+  } catch (error) {
+    onError?.(error);
+    return initialSuggestions;
+  }
+};

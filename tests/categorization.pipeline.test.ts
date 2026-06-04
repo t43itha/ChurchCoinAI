@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   categorizeWithoutExternalAI,
   mergeGeminiFallback,
+  mergeGeminiFallbackSafely,
 } from "../convex/intelligence/categorization/pipeline";
 import { normalizeTransaction } from "../convex/intelligence/categorization/normalize";
 import {
@@ -316,5 +317,34 @@ describe("categorization pipeline", () => {
 
     expect(merged[0]).toBe(currentSuggestions[0]);
     expect(merged[1]).toBe(currentSuggestions[1]);
+  });
+
+  it("preserves initial suggestions when Gemini fallback fails", async () => {
+    const remembered = {
+      description: "Standing order from Jane Smith",
+      amount: 50,
+      type: "Income" as const,
+    };
+    const unresolvedIncome = {
+      description: "Mystery church gift",
+      amount: 25,
+      type: "Income" as const,
+    };
+    const currentSuggestions = [
+      suggestion(remembered, "memory", "Offerings"),
+      suggestion(unresolvedIncome, "none"),
+    ];
+
+    const merged = await mergeGeminiFallbackSafely(
+      currentSuggestions,
+      async () => {
+        throw new Error("Gemini unavailable");
+      },
+      [remembered, unresolvedIncome],
+      categories,
+      funds
+    );
+
+    expect(merged).toBe(currentSuggestions);
   });
 });
