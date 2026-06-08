@@ -12,6 +12,8 @@ const normalizeName = (name: string): string => {
     .replace(/\s+/g, " ");
 };
 
+const validNamedDonationPaymentMethods = new Set(["Cash", "Cheque", "Card"]);
+
 // Find or create donor by name (internal helper)
 async function findOrCreateDonor(
   ctx: any,
@@ -92,15 +94,40 @@ export const submitCollection = mutation({
         cheque: v.number(),
       })
     ),
+    namedDonations: v.optional(
+      v.array(
+        v.object({
+          donorName: v.string(),
+          donorId: v.optional(v.id("donors")),
+          category: v.string(),
+          fundId: v.id("funds"),
+          paymentMethod: v.union(
+            v.literal("Cash"),
+            v.literal("Cheque"),
+            v.literal("Card")
+          ),
+          amount: v.number(),
+          isGiftAidEligible: v.boolean(),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
     const validRows = args.serviceRows.filter(
       (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
     );
+    const validNamedDonations = (args.namedDonations ?? []).filter(
+      (donation) =>
+        donation.donorName.trim().length >= 2 &&
+        donation.fundId &&
+        donation.amount > 0 &&
+        donation.category.trim().length > 0 &&
+        validNamedDonationPaymentMethods.has(donation.paymentMethod)
+    );
 
-    if (validRows.length === 0) {
-      throw new Error("Please add at least one service row with a cash, PDQ, or cheque amount.");
+    if (validRows.length === 0 && validNamedDonations.length === 0) {
+      throw new Error("Please add at least one service row or named donation with an amount.");
     }
 
     const cashCollectionId = await ctx.db.insert("cashCollections", {
@@ -149,6 +176,54 @@ export const submitCollection = mutation({
 
         transactionIds.push(transactionId);
       }
+    }
+
+    for (const donation of validNamedDonations) {
+      const fund = await ctx.db.get(donation.fundId);
+      if (!fund || fund.organizationId !== user.organizationId) {
+        throw new Error(`Invalid fund: ${donation.fundId}`);
+      }
+
+      let donorId: Id<"donors">;
+      let matchedName: string;
+
+      if (donation.donorId) {
+        const donor = await ctx.db.get(donation.donorId);
+        if (!donor || donor.organizationId !== user.organizationId) {
+          throw new Error("Invalid donor");
+        }
+        donorId = donor._id;
+        matchedName = donor.name;
+      } else {
+        const donorMatch = await findOrCreateDonor(
+          ctx,
+          user.organizationId,
+          donation.donorName,
+          donation.isGiftAidEligible
+        );
+        donorId = donorMatch.donorId;
+        matchedName = donorMatch.matchedName;
+      }
+
+      const category = donation.category.trim();
+      const transactionId = await ctx.db.insert("transactions", {
+        organizationId: user.organizationId,
+        date: args.weekEndingDate,
+        description: `${category} - ${matchedName}`,
+        amount: donation.amount,
+        type: "Income",
+        category,
+        fundId: donation.fundId,
+        isReconciled: false,
+        paymentMethod: donation.paymentMethod,
+        cashCollectionId,
+        donorId,
+        donorName: matchedName,
+        isGiftAidEligible: donation.isGiftAidEligible,
+        createdAt: Date.now(),
+      });
+
+      transactionIds.push(transactionId);
     }
 
     return {
