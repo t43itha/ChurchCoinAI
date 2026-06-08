@@ -72,7 +72,7 @@ export type ExecutiveDashboardSummary = {
     operatingPosition: "Healthy" | "Watch" | "Deficit";
     netMovement: number;
     givingTrendPercent: number;
-    generalFundCoverageMonths: number;
+    generalFundCoverageMonths: number | null;
     donorAttentionCount: number;
   };
   readiness: {
@@ -166,7 +166,7 @@ export function getDashboardPeriod(
     return buildPeriod(
       periodKey,
       new Date(Date.UTC(year, 0, 1)),
-      endOfMonth(year, month),
+      new Date(Date.UTC(year, month, now.getUTCDate())),
       `${year} YTD`
     );
   }
@@ -197,9 +197,6 @@ export function buildExecutiveDashboardSummary({
   const unrestrictedFundIds = new Set(
     funds.filter((fund) => fund.type === "Unrestricted").map((fund) => fund._id)
   );
-  const generalFundId =
-    funds.find((fund) => fund.name.toLowerCase().includes("general"))?._id ??
-    funds.find((fund) => fund.type === "Unrestricted")?._id;
 
   const periodIncome = sumByType(periodTransactions, "Income");
   const periodExpenditure = sumByType(periodTransactions, "Expenditure");
@@ -224,7 +221,6 @@ export function buildExecutiveDashboardSummary({
       periodTransactions.filter(
         (transaction) =>
           transaction.type === "Income" &&
-          transaction.isGiftAidEligible === true &&
           isUnrestrictedTransaction(transaction, unrestrictedFundIds) &&
           MISSION_TITHE_CATEGORIES.has(transaction.category ?? "")
       )
@@ -240,31 +236,20 @@ export function buildExecutiveDashboardSummary({
     periodTransactions.filter(
       (transaction) => transaction.type === "Expenditure" && transaction.isReconciled !== true
     ).length + cashBankingPendingWeeks;
-  const trends = buildSixMonthTrend(now, activeTransactions);
-  const rawGeneralFundBalance = generalFundId
-    ? sumActiveSigned(activeTransactions.filter((transaction) => transaction.fundId === generalFundId))
-    : 0;
-  const pendingExpenseExposure = periodTransactions
-    .filter(
-      (transaction) =>
-        transaction.fundId === generalFundId &&
-        transaction.type === "Expenditure" &&
-        transaction.isReconciled !== true
-    )
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const trends = buildSixMonthTrend(now, activeTransactions, unrestrictedFundIds);
   const generalFundBalance = roundCurrency(
-    rawGeneralFundBalance - pendingExpenseExposure - evidenceCheckCount * 15
+    sumActiveSigned(
+      activeTransactions.filter((transaction) =>
+        isUnrestrictedTransaction(transaction, unrestrictedFundIds)
+      )
+    )
   );
   const averageMonthlyUnrestrictedExpenditure =
-    average(
-      trends.monthlyIncomeExpenditure.map((month) =>
-        Math.max(month.expenditure, month.expenditure > 0 ? month.expenditure : 0)
-      )
-    ) || 1000;
-  const coverageDenominator = Math.max(averageMonthlyUnrestrictedExpenditure, 1000);
-  const generalFundCoverageMonths = roundToOneDecimal(
-    coverageDenominator > 0 ? generalFundBalance / coverageDenominator : 0
-  );
+    average(trends.monthlyIncomeExpenditure.map((month) => month.expenditure));
+  const generalFundCoverageMonths =
+    averageMonthlyUnrestrictedExpenditure > 0
+      ? roundToOneDecimal(generalFundBalance / averageMonthlyUnrestrictedExpenditure)
+      : null;
   const givingTrendPercent = calculateGivingTrendPercent(period, activeTransactions, unrestrictedFundIds);
   const donorAttentionCount = countDonorAttention(period, periodTransactions, donors, pledges);
   const campaignProgress = buildCampaignProgress(funds, activeTransactions);
@@ -397,11 +382,19 @@ function countCashBankingPendingWeeks(
   }).length;
 }
 
-function buildSixMonthTrend(now: Date, transactions: DashboardTransaction[]) {
+function buildSixMonthTrend(
+  now: Date,
+  transactions: DashboardTransaction[],
+  unrestrictedFundIds: Set<string>
+) {
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (5 - index), 1));
     const period = buildPeriod("currentMonth", date, endOfMonth(date.getUTCFullYear(), date.getUTCMonth()));
-    const monthTransactions = transactions.filter((transaction) => isWithinPeriod(transaction.date, period));
+    const monthTransactions = transactions.filter(
+      (transaction) =>
+        isWithinPeriod(transaction.date, period) &&
+        isUnrestrictedTransaction(transaction, unrestrictedFundIds)
+    );
     const income = sumByType(monthTransactions, "Income");
     const expenditure = sumByType(monthTransactions, "Expenditure");
 

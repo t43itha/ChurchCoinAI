@@ -174,6 +174,29 @@ describe("dashboard KPI helpers", () => {
     });
   });
 
+  it("builds supported dashboard periods", () => {
+    const now = new Date("2026-06-08T12:00:00Z");
+
+    expect(getDashboardPeriod("currentMonth", now)).toEqual({
+      key: "currentMonth",
+      label: "June 2026",
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+    });
+    expect(getDashboardPeriod("quarter", now)).toEqual({
+      key: "quarter",
+      label: "Q2 2026",
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+    });
+    expect(getDashboardPeriod("ytd", now)).toEqual({
+      key: "ytd",
+      label: "2026 YTD",
+      startDate: "2026-01-01",
+      endDate: "2026-06-08",
+    });
+  });
+
   it("calculates executive health, readiness, trends, funds, and alerts", () => {
     const summary = buildExecutiveDashboardSummary({
       periodKey: "previousMonth",
@@ -190,17 +213,17 @@ describe("dashboard KPI helpers", () => {
     expect(summary.health.operatingPosition).toBe("Healthy");
     expect(summary.health.netMovement).toBe(630);
     expect(summary.health.givingTrendPercent).toBeCloseTo(48, 0);
-    expect(summary.health.generalFundCoverageMonths).toBeCloseTo(3.8, 1);
+    expect(summary.health.generalFundCoverageMonths).toBeCloseTo(19.7, 1);
     expect(summary.health.donorAttentionCount).toBe(3);
 
     expect(summary.readiness.reconciledPercent).toBe(40);
     expect(summary.readiness.categorizedPercent).toBe(100);
     expect(summary.readiness.cashBankingPendingWeeks).toBe(1);
     expect(summary.readiness.giftAidClaimable).toBe(350);
-    expect(summary.readiness.missionTitheDue).toBe(140);
+    expect(summary.readiness.missionTitheDue).toBe(148);
     expect(summary.readiness.evidenceCheckCount).toBe(2);
 
-    expect(summary.funds.generalFundBalance).toBe(3750);
+    expect(summary.funds.generalFundBalance).toBe(4430);
     expect(summary.funds.campaignProgress).toEqual({
       fundId: "building",
       name: "Building Fund",
