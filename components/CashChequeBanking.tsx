@@ -43,6 +43,11 @@ type BankCreditDraftSplit = {
   chequeAmount: string;
 };
 
+type CollectionSplitOverride = {
+  cashAmount: string;
+  chequeAmount: string;
+};
+
 interface CashChequeBankingProps {
   funds: Fund[];
   currentUser: AppUser;
@@ -75,6 +80,16 @@ const parseMoneyInput = (value: string) => {
   return Number.isFinite(amount) ? amount : undefined;
 };
 
+const parseCollectionSplitAmount = (value: string) => {
+  const trimmed = value.trim();
+  if (trimmed === "") return undefined;
+
+  const amount = Number(trimmed);
+  return Number.isFinite(amount) ? amount : undefined;
+};
+
+const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+
 const defaultSplitForCredit = (credit: CandidateBankCredit): BankCreditDraftSplit => ({
   medium: "cash",
   cashAmount: credit.amount.toFixed(2),
@@ -99,6 +114,9 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   );
   const [bankCreditSplits, setBankCreditSplits] = useState<
     Record<string, BankCreditDraftSplit>
+  >({});
+  const [collectionSplitOverrides, setCollectionSplitOverrides] = useState<
+    Record<string, CollectionSplitOverride>
   >({});
   const [bankSearchTerm, setBankSearchTerm] = useState("");
   const [varianceType, setVarianceType] = useState<CashBankingVarianceType | "">("");
@@ -154,15 +172,72 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
     [bankCredits, selectedBankCreditIds]
   );
 
-  const collectionSplits = useMemo<CollectionSplit[]>(
-    () =>
-      selectedCollections.map((collection) => ({
+  const collectionSplitResult = useMemo<{
+    splits: CollectionSplit[];
+    error: string | null;
+  }>(() => {
+    const splits: CollectionSplit[] = [];
+
+    for (const collection of selectedCollections) {
+      const override = collectionSplitOverrides[collection._id];
+      const cashValue = override?.cashAmount ?? collection.openCashAmount.toFixed(2);
+      const chequeValue =
+        override?.chequeAmount ?? collection.openChequeAmount.toFixed(2);
+      const cashAmount = parseCollectionSplitAmount(cashValue);
+      const chequeAmount = parseCollectionSplitAmount(chequeValue);
+      const collectionLabel = formatDate(collection.weekEndingDate);
+
+      if (cashAmount === undefined || chequeAmount === undefined) {
+        return {
+          splits: [],
+          error: `Enter valid cash and cheque amounts for ${collectionLabel}.`,
+        };
+      }
+
+      if (cashAmount < 0 || chequeAmount < 0) {
+        return {
+          splits: [],
+          error: `Collection split amounts cannot be negative for ${collectionLabel}.`,
+        };
+      }
+
+      const roundedCashAmount = roundMoney(cashAmount);
+      const roundedChequeAmount = roundMoney(chequeAmount);
+      const openCashAmount = roundMoney(collection.openCashAmount);
+      const openChequeAmount = roundMoney(collection.openChequeAmount);
+
+      if (roundedCashAmount > openCashAmount) {
+        return {
+          splits: [],
+          error: `Cash split for ${collectionLabel} cannot exceed the open cash amount.`,
+        };
+      }
+
+      if (roundedChequeAmount > openChequeAmount) {
+        return {
+          splits: [],
+          error: `Cheque split for ${collectionLabel} cannot exceed the open cheque amount.`,
+        };
+      }
+
+      if (roundMoney(roundedCashAmount + roundedChequeAmount) <= 0) {
+        return {
+          splits: [],
+          error: `Enter a cash or cheque amount greater than zero for ${collectionLabel}.`,
+        };
+      }
+
+      splits.push({
         cashCollectionId: collection._id,
-        cashAmount: collection.openCashAmount,
-        chequeAmount: collection.openChequeAmount,
-      })),
-    [selectedCollections]
-  );
+        cashAmount: roundedCashAmount,
+        chequeAmount: roundedChequeAmount,
+      });
+    }
+
+    return { splits, error: null };
+  }, [collectionSplitOverrides, selectedCollections]);
+
+  const collectionSplits = collectionSplitResult.splits;
 
   const bankTransactionSplitInputs = useMemo<BankTransactionSplitInput[]>(
     () =>
@@ -204,16 +279,28 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   }, [bankTransactionSplitInputs]);
 
   const summary = useMemo(() => {
+    if (collectionSplitResult.error) return null;
     if (normalizedBankSplitResult.error) return null;
     return calculateReconciliationSummary({
       collectionSplits,
       bankTransactionSplits: normalizedBankSplitResult.splits,
     });
-  }, [collectionSplits, normalizedBankSplitResult]);
+  }, [collectionSplitResult.error, collectionSplits, normalizedBankSplitResult]);
 
-  const selectedExpectedTotal = collectionSplits.reduce(
-    (sum, split) => sum + split.cashAmount + split.chequeAmount,
-    0
+  const selectedExpectedCashTotal = collectionSplitResult.error
+    ? selectedCollections.reduce(
+        (sum, collection) => sum + collection.openCashAmount,
+        0
+      )
+    : collectionSplits.reduce((sum, split) => sum + split.cashAmount, 0);
+  const selectedExpectedChequeTotal = collectionSplitResult.error
+    ? selectedCollections.reduce(
+        (sum, collection) => sum + collection.openChequeAmount,
+        0
+      )
+    : collectionSplits.reduce((sum, split) => sum + split.chequeAmount, 0);
+  const selectedExpectedTotal = roundMoney(
+    selectedExpectedCashTotal + selectedExpectedChequeTotal
   );
   const selectedBankTotal = selectedBankCredits.reduce(
     (sum, credit) => sum + credit.amount,
@@ -226,12 +313,14 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
     selectedCollections.length > 0 &&
     selectedBankCredits.length > 0 &&
     summary !== null &&
+    !collectionSplitResult.error &&
     !normalizedBankSplitResult.error &&
     (!hasVariance || (varianceType !== "" && !varianceNoteRequired)) &&
     !isCompleting;
 
   const toggleCollection = (collectionId: string) => {
     setFormError(null);
+    const isSelected = selectedCollectionIds.has(collectionId);
     setSelectedCollectionIds((current) => {
       const next = new Set(current);
       if (next.has(collectionId)) {
@@ -241,6 +330,12 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
       }
       return next;
     });
+    if (isSelected) {
+      setCollectionSplitOverrides((current) => {
+        const { [collectionId]: _removed, ...rest } = current;
+        return rest;
+      });
+    }
   };
 
   const toggleBankCredit = (credit: CandidateBankCredit) => {
@@ -313,10 +408,33 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
     });
   };
 
+  const updateCollectionSplitAmount = (
+    collection: AwaitingCollection,
+    field: keyof CollectionSplitOverride,
+    value: string
+  ) => {
+    setFormError(null);
+    setCollectionSplitOverrides((current) => {
+      const existing = current[collection._id] ?? {
+        cashAmount: collection.openCashAmount.toFixed(2),
+        chequeAmount: collection.openChequeAmount.toFixed(2),
+      };
+
+      return {
+        ...current,
+        [collection._id]: {
+          ...existing,
+          [field]: value,
+        },
+      };
+    });
+  };
+
   const clearDraftState = () => {
     setSelectedCollectionIds(new Set());
     setSelectedBankCreditIds(new Set());
     setBankCreditSplits({});
+    setCollectionSplitOverrides({});
     setVarianceType("");
     setVarianceNote("");
     setFormError(null);
@@ -328,7 +446,11 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
       return;
     }
     if (!summary || normalizedBankSplitResult.error) {
-      setFormError(normalizedBankSplitResult.error || "Review the selected splits.");
+      setFormError(
+        collectionSplitResult.error ||
+          normalizedBankSplitResult.error ||
+          "Review the selected splits."
+      );
       return;
     }
     if (selectedCollections.length === 0 || selectedBankCredits.length === 0) {
@@ -669,8 +791,14 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
               {formatCurrency(summary?.expectedTotal ?? selectedExpectedTotal)}
             </div>
             <div className="text-[11px] text-grey-mid mt-1">
-              Cash {formatCurrency(summary?.expectedCashAmount ?? 0)} / Cheque{" "}
-              {formatCurrency(summary?.expectedChequeAmount ?? 0)}
+              Cash{" "}
+              {formatCurrency(
+                summary?.expectedCashAmount ?? selectedExpectedCashTotal
+              )}{" "}
+              / Cheque{" "}
+              {formatCurrency(
+                summary?.expectedChequeAmount ?? selectedExpectedChequeTotal
+              )}
             </div>
           </div>
           <div className="border border-ledger rounded-md p-3 bg-paper">
@@ -706,10 +834,12 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
             </div>
             <div className="font-bold text-sm text-ink mt-2">
               {normalizedBankSplitResult.error
-                ? "Needs split review"
-                : hasVariance
-                  ? "Variance required"
-                  : "Ready when selected"}
+                ? "Needs bank split review"
+                : collectionSplitResult.error
+                  ? "Needs collection review"
+                  : hasVariance
+                    ? "Variance required"
+                    : "Ready when selected"}
             </div>
             <div className="text-[11px] text-grey-mid mt-1">
               {selectedCollections.length} collection
@@ -720,10 +850,114 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
           </div>
         </div>
 
-        {(normalizedBankSplitResult.error || formError) && (
+        {selectedCollections.length > 0 && (
+          <div className="border border-ledger rounded-md overflow-hidden">
+            <div className="px-3 py-2 bg-paper border-b border-ledger flex items-center justify-between gap-3">
+              <div>
+                <h5 className="text-[10px] uppercase tracking-wide font-bold text-ink">
+                  Selected Collections
+                </h5>
+                <p className="text-[11px] text-grey-mid mt-0.5">
+                  Adjust the cash and cheque amounts to bank from each open balance.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono text-grey-mid uppercase tracking-wide">
+                {formatCurrency(selectedExpectedTotal)}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left ledger-table">
+                <thead className="bg-white border-b border-ledger">
+                  <tr>
+                    <th className="px-3 py-2 text-xs">Collection</th>
+                    <th className="px-3 py-2 text-xs text-right">Open Cash</th>
+                    <th className="px-3 py-2 text-xs text-right">Bank Cash</th>
+                    <th className="px-3 py-2 text-xs text-right">Open Cheque</th>
+                    <th className="px-3 py-2 text-xs text-right">Bank Cheque</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {selectedCollections.map((collection) => {
+                    const override = collectionSplitOverrides[collection._id];
+                    const cashValue =
+                      override?.cashAmount ?? collection.openCashAmount.toFixed(2);
+                    const chequeValue =
+                      override?.chequeAmount ??
+                      collection.openChequeAmount.toFixed(2);
+
+                    return (
+                      <tr key={collection._id}>
+                        <td className="px-3 py-3 border-b border-slate-100 min-w-[180px]">
+                          <div className="font-bold text-ink text-sm">
+                            {formatDate(collection.weekEndingDate)}
+                          </div>
+                          <div className="text-[10px] text-grey-mid font-mono uppercase tracking-wide">
+                            {statusLabel(collection.cashBankingStatus)}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100 text-right font-mono text-xs text-grey-mid">
+                          {formatCurrency(collection.openCashAmount)}
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            max={collection.openCashAmount}
+                            step="0.01"
+                            value={cashValue}
+                            onChange={(event) =>
+                              updateCollectionSplitAmount(
+                                collection,
+                                "cashAmount",
+                                event.target.value
+                              )
+                            }
+                            className="w-28 px-2 py-1 border border-ledger rounded text-xs font-mono text-right"
+                            aria-label={`Cash amount to bank for ${formatDate(
+                              collection.weekEndingDate
+                            )}`}
+                          />
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100 text-right font-mono text-xs text-grey-mid">
+                          {formatCurrency(collection.openChequeAmount)}
+                        </td>
+                        <td className="px-3 py-3 border-b border-slate-100 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            max={collection.openChequeAmount}
+                            step="0.01"
+                            value={chequeValue}
+                            onChange={(event) =>
+                              updateCollectionSplitAmount(
+                                collection,
+                                "chequeAmount",
+                                event.target.value
+                              )
+                            }
+                            className="w-28 px-2 py-1 border border-ledger rounded text-xs font-mono text-right"
+                            aria-label={`Cheque amount to bank for ${formatDate(
+                              collection.weekEndingDate
+                            )}`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {(collectionSplitResult.error || normalizedBankSplitResult.error || formError) && (
           <div className="flex items-start gap-2 border border-error/30 bg-error-light text-error rounded-md p-3 text-xs">
             <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-            <span>{formError || normalizedBankSplitResult.error}</span>
+            <span>
+              {formError ||
+                collectionSplitResult.error ||
+                normalizedBankSplitResult.error}
+            </span>
           </div>
         )}
 
