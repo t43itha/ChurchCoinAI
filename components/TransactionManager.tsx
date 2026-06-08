@@ -9,6 +9,7 @@ import CashTakingsEntry from './CashTakingsEntry';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
+import CashChequeBanking from './CashChequeBanking';
 
 interface Category {
   _id: string;
@@ -150,7 +151,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson'>('all');
+  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
   const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
 
@@ -1135,6 +1136,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         >
           In-Person Giving
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('cashChequeBanking')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'cashChequeBanking'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          Cash/cheque Banking
+        </button>
       </div>
 
       {activeTransactionTab === 'all' && (
@@ -1603,6 +1615,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
         </div>
         </>
+      )}
+
+      {activeTransactionTab === 'cashChequeBanking' && (
+        <CashChequeBanking funds={funds} currentUser={currentUser} />
       )}
 
       {/* Floating Bulk Actions - Fixed to bottom of viewport */}
