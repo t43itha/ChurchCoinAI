@@ -7,6 +7,7 @@ import {
   type DashboardDonor,
   type DashboardFund,
   type DashboardPledge,
+  type BuildExecutiveDashboardSummaryInput,
   type DashboardTransaction,
 } from "../lib/dashboardKpis";
 
@@ -126,6 +127,17 @@ const transactions: DashboardTransaction[] = [
     paymentMethod: "Cheque",
   },
   {
+    _id: "t-may-bank-deposit",
+    date: "2026-05-15",
+    amount: 1480,
+    type: "Income",
+    category: "Cash Banking Deposit",
+    fundId: "general",
+    isReconciled: true,
+    isGiftAidEligible: true,
+    cashBankingRole: "bank_deposit",
+  },
+  {
     _id: "t-may-restricted",
     date: "2026-05-14",
     amount: 500,
@@ -198,7 +210,7 @@ describe("dashboard KPI helpers", () => {
   });
 
   it("calculates executive health, readiness, trends, funds, and alerts", () => {
-    const summary = buildExecutiveDashboardSummary({
+    const input: BuildExecutiveDashboardSummaryInput = {
       periodKey: "previousMonth",
       now: new Date("2026-06-08T12:00:00Z"),
       funds,
@@ -207,7 +219,8 @@ describe("dashboard KPI helpers", () => {
       pledges,
       cashCollections,
       cashReconciliations,
-    });
+    };
+    const summary = buildExecutiveDashboardSummary(input);
 
     expect(summary.period.label).toBe("May 2026");
     expect(summary.health.operatingPosition).toBe("Healthy");
@@ -216,7 +229,7 @@ describe("dashboard KPI helpers", () => {
     expect(summary.health.generalFundCoverageMonths).toBeCloseTo(19.7, 1);
     expect(summary.health.donorAttentionCount).toBe(3);
 
-    expect(summary.readiness.reconciledPercent).toBe(40);
+    expect(summary.readiness.reconciledPercent).toBe(50);
     expect(summary.readiness.categorizedPercent).toBe(100);
     expect(summary.readiness.cashBankingPendingWeeks).toBe(1);
     expect(summary.readiness.giftAidClaimable).toBe(350);
@@ -234,6 +247,60 @@ describe("dashboard KPI helpers", () => {
     expect(summary.funds.lowBalanceFunds.map((fund) => fund.name)).toContain("Building Fund");
 
     expect(summary.trends.monthlyIncomeExpenditure).toHaveLength(6);
+    expect(summary.trends.monthlyIncomeExpenditure.map((month) => month.month)).toEqual([
+      "2025-12",
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+    ]);
+    expect(summary.trends.monthlyIncomeExpenditure.at(-1)?.income).toBe(1480);
     expect(summary.alerts.map((alert) => alert.title)).toContain("Month-end review needs attention");
+  });
+
+  it("normalizes giving trend for multi-month periods", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "quarter",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions,
+      donors,
+      pledges,
+      cashCollections,
+      cashReconciliations,
+    });
+
+    expect(summary.health.givingTrendPercent).toBeCloseTo(-7, 0);
+    expect(summary.trends.monthlyIncomeExpenditure.map((month) => month.month)).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+    ]);
+  });
+
+  it("ends current-month trends on the current month", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "currentMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions,
+      donors,
+      pledges,
+      cashCollections,
+      cashReconciliations,
+    });
+
+    expect(summary.trends.monthlyIncomeExpenditure.map((month) => month.month)).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+    ]);
   });
 });

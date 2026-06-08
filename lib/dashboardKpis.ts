@@ -62,6 +62,7 @@ export type DashboardTransaction = {
   donorName?: string;
   isGiftAidEligible?: boolean;
   cashCollectionId?: string;
+  cashBankingRole?: "source_giving" | "bank_deposit";
   paymentMethod?: string;
   isVoided?: boolean;
 };
@@ -112,7 +113,7 @@ export type ExecutiveDashboardSummary = {
   }>;
 };
 
-type BuildExecutiveDashboardSummaryInput = {
+export type BuildExecutiveDashboardSummaryInput = {
   periodKey?: DashboardPeriodKey;
   now?: Date;
   funds: DashboardFund[];
@@ -131,12 +132,6 @@ const MISSION_TITHE_CATEGORIES = new Set([
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-const SHORT_MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  month: "short",
   year: "numeric",
   timeZone: "UTC",
 });
@@ -191,15 +186,19 @@ export function buildExecutiveDashboardSummary({
 }: BuildExecutiveDashboardSummaryInput): ExecutiveDashboardSummary {
   const period = getDashboardPeriod(periodKey, now);
   const activeTransactions = filterActiveTransactions(transactions);
+  const reportableTransactions = activeTransactions.filter(isReportableTransaction);
   const periodTransactions = activeTransactions.filter((transaction) =>
+    isWithinPeriod(transaction.date, period)
+  );
+  const reportablePeriodTransactions = reportableTransactions.filter((transaction) =>
     isWithinPeriod(transaction.date, period)
   );
   const unrestrictedFundIds = new Set(
     funds.filter((fund) => fund.type === "Unrestricted").map((fund) => fund._id)
   );
 
-  const periodIncome = sumByType(periodTransactions, "Income");
-  const periodExpenditure = sumByType(periodTransactions, "Expenditure");
+  const periodIncome = sumByType(reportablePeriodTransactions, "Income");
+  const periodExpenditure = sumByType(reportablePeriodTransactions, "Expenditure");
   const netMovement = roundCurrency(periodIncome - periodExpenditure);
   const reconciledPercent = percent(
     periodTransactions.filter((transaction) => transaction.isReconciled === true).length,
@@ -211,14 +210,14 @@ export function buildExecutiveDashboardSummary({
   );
   const giftAidClaimable = roundCurrency(
     sumTransactions(
-      periodTransactions.filter(
+      reportablePeriodTransactions.filter(
         (transaction) => transaction.type === "Income" && transaction.isGiftAidEligible === true
       )
     ) * 0.25
   );
   const missionTitheDue = roundCurrency(
     sumTransactions(
-      periodTransactions.filter(
+      reportablePeriodTransactions.filter(
         (transaction) =>
           transaction.type === "Income" &&
           isUnrestrictedTransaction(transaction, unrestrictedFundIds) &&
@@ -236,10 +235,10 @@ export function buildExecutiveDashboardSummary({
     periodTransactions.filter(
       (transaction) => transaction.type === "Expenditure" && transaction.isReconciled !== true
     ).length + cashBankingPendingWeeks;
-  const trends = buildSixMonthTrend(now, activeTransactions, unrestrictedFundIds);
+  const trends = buildSixMonthTrend(period, reportableTransactions, unrestrictedFundIds);
   const generalFundBalance = roundCurrency(
     sumActiveSigned(
-      activeTransactions.filter((transaction) =>
+      reportableTransactions.filter((transaction) =>
         isUnrestrictedTransaction(transaction, unrestrictedFundIds)
       )
     )
@@ -250,10 +249,10 @@ export function buildExecutiveDashboardSummary({
     averageMonthlyUnrestrictedExpenditure > 0
       ? roundToOneDecimal(generalFundBalance / averageMonthlyUnrestrictedExpenditure)
       : null;
-  const givingTrendPercent = calculateGivingTrendPercent(period, activeTransactions, unrestrictedFundIds);
+  const givingTrendPercent = calculateGivingTrendPercent(period, reportableTransactions, unrestrictedFundIds);
   const donorAttentionCount = countDonorAttention(period, periodTransactions, donors, pledges);
-  const campaignProgress = buildCampaignProgress(funds, activeTransactions);
-  const lowBalanceFunds = buildLowBalanceFunds(funds, activeTransactions);
+  const campaignProgress = buildCampaignProgress(funds, reportableTransactions);
+  const lowBalanceFunds = buildLowBalanceFunds(funds, reportableTransactions);
   const alerts = buildAlerts(reconciledPercent, categorizedPercent);
 
   return {
@@ -305,6 +304,10 @@ function formatDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatMonthKey(date: Date) {
+  return date.toISOString().slice(0, 7);
+}
+
 function isWithinPeriod(date: string, period: DashboardPeriod) {
   return date >= period.startDate && date <= period.endDate;
 }
@@ -315,6 +318,10 @@ function sumByType(transactions: DashboardTransaction[], type: DashboardTransact
 
 function sumTransactions(transactions: DashboardTransaction[]) {
   return transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+}
+
+function isReportableTransaction(transaction: DashboardTransaction) {
+  return transaction.cashBankingRole !== "bank_deposit";
 }
 
 function percent(numerator: number, denominator: number) {
@@ -383,12 +390,13 @@ function countCashBankingPendingWeeks(
 }
 
 function buildSixMonthTrend(
-  now: Date,
+  selectedPeriod: DashboardPeriod,
   transactions: DashboardTransaction[],
   unrestrictedFundIds: Set<string>
 ) {
+  const trendEnd = new Date(`${selectedPeriod.endDate}T00:00:00Z`);
   const months = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (5 - index), 1));
+    const date = new Date(Date.UTC(trendEnd.getUTCFullYear(), trendEnd.getUTCMonth() - (5 - index), 1));
     const period = buildPeriod("currentMonth", date, endOfMonth(date.getUTCFullYear(), date.getUTCMonth()));
     const monthTransactions = transactions.filter(
       (transaction) =>
@@ -399,7 +407,7 @@ function buildSixMonthTrend(
     const expenditure = sumByType(monthTransactions, "Expenditure");
 
     return {
-      month: SHORT_MONTH_FORMATTER.format(date),
+      month: formatMonthKey(date),
       income,
       expenditure,
       net: roundCurrency(income - expenditure),
@@ -423,8 +431,12 @@ function calculateGivingTrendPercent(
         MISSION_TITHE_CATEGORIES.has(transaction.category ?? "")
     )
   );
+  const periodMonthCount = countMonthsInclusive(period.startDate, period.endDate);
+  const currentMonthlyAverage = periodMonthCount > 1 ? currentGiving / periodMonthCount : currentGiving;
   const start = new Date(`${period.startDate}T00:00:00Z`);
-  const comparisonEnd = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 0));
+  const comparisonEnd = periodMonthCount > 1
+    ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 0))
+    : new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 0));
   const comparisonStart = new Date(Date.UTC(comparisonEnd.getUTCFullYear(), comparisonEnd.getUTCMonth() - 2, 1));
   const comparisonPeriod: DashboardPeriod = {
     key: "quarter",
@@ -444,8 +456,20 @@ function calculateGivingTrendPercent(
   const comparisonAverage = comparisonGiving / 3;
 
   return comparisonAverage > 0
-    ? Math.round(((currentGiving - comparisonAverage) / comparisonAverage) * 100)
+    ? Math.round(((currentMonthlyAverage - comparisonAverage) / comparisonAverage) * 100)
     : 0;
+}
+
+function countMonthsInclusive(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+
+  return (
+    (end.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+    end.getUTCMonth() -
+    start.getUTCMonth() +
+    1
+  );
 }
 
 function countDonorAttention(
