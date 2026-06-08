@@ -41,6 +41,7 @@ import type * as lib_transactionValidation from "../lib/transactionValidation.js
 import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as mutations_aiRateLimit from "../mutations/aiRateLimit.js";
 import type * as mutations_bankConnections from "../mutations/bankConnections.js";
+import type * as mutations_cashBankingReconciliations from "../mutations/cashBankingReconciliations.js";
 import type * as mutations_cashCollections from "../mutations/cashCollections.js";
 import type * as mutations_categories from "../mutations/categories.js";
 import type * as mutations_donors from "../mutations/donors.js";
@@ -112,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   "lib/urlValidation": typeof lib_urlValidation;
   "mutations/aiRateLimit": typeof mutations_aiRateLimit;
   "mutations/bankConnections": typeof mutations_bankConnections;
+  "mutations/cashBankingReconciliations": typeof mutations_cashBankingReconciliations;
   "mutations/cashCollections": typeof mutations_cashCollections;
   "mutations/categories": typeof mutations_categories;
   "mutations/donors": typeof mutations_donors;
