@@ -87,6 +87,10 @@ function isServiceTransaction(transaction: GivingTransaction): boolean {
   return transaction.notes?.startsWith(SERVICE_NOTE_PREFIX) === true;
 }
 
+function isNamedDonationTransaction(transaction: GivingTransaction): boolean {
+  return Boolean(transaction.donorId || transaction.donorName?.trim());
+}
+
 function formatDay(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
     weekday: "short",
@@ -138,7 +142,10 @@ export function groupInPersonGivingCollections({
         fundTotalsById.set(transaction.fundId, fundTotal);
         fundNames.add(fundName);
 
-        if (!isServiceTransaction(transaction)) {
+        if (
+          !isServiceTransaction(transaction) &&
+          isNamedDonationTransaction(transaction)
+        ) {
           namedDonations.push({
             id: transaction._id,
             donorName: transaction.donorName ?? "Unknown donor",

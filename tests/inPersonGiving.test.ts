@@ -202,6 +202,52 @@ describe("in-person giving grouping", () => {
     ]);
   });
 
+  it("groups donorless non-service collection income as a generic service row", () => {
+    const ledgers = groupInPersonGivingCollections({
+      collections: [
+        {
+          _id: "collection-1",
+          weekEndingDate: "2026-06-14",
+          collectionDate: "2026-06-14",
+          status: "submitted",
+          recordedAt: 1,
+          recordedBy: "user-1",
+          createdAt: 1,
+        },
+      ],
+      transactions: [
+        {
+          _id: "tx-legacy-cash",
+          date: "2026-06-14",
+          description: "Legacy collection cash",
+          amount: 75,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general-fund",
+          isReconciled: false,
+          paymentMethod: "Cash",
+          cashCollectionId: "collection-1",
+        },
+      ],
+      funds: [{ _id: "general-fund", name: "General Fund" }],
+    });
+
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0].namedDonations).toEqual([]);
+    expect(ledgers[0].rows).toEqual([
+      {
+        id: "collection-1-2026-06-14-Service",
+        day: "Sun",
+        serviceDate: "2026-06-14",
+        serviceNote: "Service",
+        cash: 75,
+        pdq: 0,
+        cheque: 0,
+        total: 75,
+      },
+    ]);
+  });
+
   it("parses service notes from transaction metadata", () => {
     expect(parseServiceNote("service:Midweek Service")).toBe("Midweek Service");
     expect(parseServiceNote("free text")).toBe("Service");
