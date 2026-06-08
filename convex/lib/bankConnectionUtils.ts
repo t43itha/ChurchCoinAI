@@ -29,6 +29,25 @@ export type EnableBankingTransactionLike = {
   additional_information?: string;
 };
 
+export type GoCardlessAmount = {
+  amount?: string | number;
+  currency?: string;
+};
+
+export type GoCardlessTransactionLike = {
+  transactionId?: string;
+  internalTransactionId?: string;
+  entryReference?: string;
+  bookingDate?: string;
+  valueDate?: string;
+  transactionAmount?: GoCardlessAmount;
+  remittanceInformationUnstructured?: string;
+  remittanceInformationUnstructuredArray?: string[];
+  additionalInformation?: string;
+  creditorName?: string;
+  debtorName?: string;
+};
+
 export type CalculateSyncRangeArgs = {
   today: string;
   lastSyncedThrough?: string | null;
@@ -37,6 +56,11 @@ export type CalculateSyncRangeArgs = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const toIsoDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const normalizeDescription = (description?: string) => {
+  const normalized = description?.trim();
+  return normalized || undefined;
+};
 
 export const addDays = (isoDate: string, days: number) => {
   const date = new Date(`${isoDate}T00:00:00.000Z`);
@@ -80,11 +104,6 @@ const getTransactionAmount = (transaction: EnableBankingTransactionLike) => {
 };
 
 const getTransactionDescription = (transaction: EnableBankingTransactionLike) => {
-  const normalizeDescription = (description?: string) => {
-    const normalized = description?.trim();
-    return normalized || undefined;
-  };
-
   const remittance = transaction.remittance_information;
   if (Array.isArray(remittance)) {
     return (
@@ -102,14 +121,14 @@ const getTransactionDescription = (transaction: EnableBankingTransactionLike) =>
   );
 };
 
-const assertValidTransactionDate = (date: string) => {
+const assertValidProviderTransactionDate = (date: string, provider: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error("Enable Banking transaction has an invalid date");
+    throw new Error(`${provider} transaction has an invalid date`);
   }
 
   const parsedDate = new Date(`${date}T00:00:00.000Z`);
   if (Number.isNaN(parsedDate.getTime()) || toIsoDate(parsedDate) !== date) {
-    throw new Error("Enable Banking transaction has an invalid date");
+    throw new Error(`${provider} transaction has an invalid date`);
   }
 };
 
@@ -141,7 +160,7 @@ export const normalizeEnableBankingTransaction = ({
   if (!date) {
     throw new Error("Enable Banking transaction is missing a date");
   }
-  assertValidTransactionDate(date);
+  assertValidProviderTransactionDate(date, "Enable Banking");
 
   const amount = getTransactionAmount(transaction);
   const providerTransactionId =
@@ -155,6 +174,81 @@ export const normalizeEnableBankingTransaction = ({
     description: getTransactionDescription(transaction),
     amount: Math.abs(amount),
     type: getTransactionType(transaction, amount),
+    accountId,
+    accountName,
+    fundId: fundId ?? null,
+    providerTransactionId,
+  };
+};
+
+const getGoCardlessTransactionAmount = (
+  transaction: GoCardlessTransactionLike
+) => {
+  const rawAmount = transaction.transactionAmount?.amount;
+  const numericAmount =
+    typeof rawAmount === "number"
+      ? rawAmount
+      : typeof rawAmount === "string" && rawAmount.trim() !== ""
+        ? Number(rawAmount.trim())
+        : Number.NaN;
+
+  if (!Number.isFinite(numericAmount) || numericAmount === 0) {
+    throw new Error("GoCardless transaction has an invalid amount");
+  }
+
+  return numericAmount;
+};
+
+const getGoCardlessTransactionDescription = (
+  transaction: GoCardlessTransactionLike
+) => {
+  const remittanceArray = transaction.remittanceInformationUnstructuredArray;
+  const joinedRemittance = Array.isArray(remittanceArray)
+    ? remittanceArray.map((part) => part.trim()).filter(Boolean).join(" ")
+    : undefined;
+
+  return (
+    normalizeDescription(transaction.remittanceInformationUnstructured) ||
+    normalizeDescription(joinedRemittance) ||
+    normalizeDescription(transaction.additionalInformation) ||
+    normalizeDescription(transaction.creditorName) ||
+    normalizeDescription(transaction.debtorName) ||
+    "Bank transaction"
+  );
+};
+
+export const normalizeGoCardlessTransaction = ({
+  transaction,
+  accountId,
+  accountName,
+  fundId,
+}: {
+  transaction: GoCardlessTransactionLike;
+  accountId: string;
+  accountName: string;
+  fundId?: string | null;
+}): ChurchCoinPendingBankTransaction => {
+  const date = transaction.bookingDate || transaction.valueDate;
+  if (!date) {
+    throw new Error("GoCardless transaction is missing a date");
+  }
+  assertValidProviderTransactionDate(date, "GoCardless");
+
+  const amount = getGoCardlessTransactionAmount(transaction);
+  const providerTransactionId =
+    normalizeDescription(transaction.transactionId) ||
+    normalizeDescription(transaction.internalTransactionId) ||
+    normalizeDescription(transaction.entryReference);
+
+  if (!providerTransactionId) {
+    throw new Error("GoCardless transaction is missing an identifier");
+  }
+
+  return {
+    date,
+    description: getGoCardlessTransactionDescription(transaction),
+    amount: Math.abs(amount),
+    type: amount > 0 ? "Income" : "Expenditure",
     accountId,
     accountName,
     fundId: fundId ?? null,

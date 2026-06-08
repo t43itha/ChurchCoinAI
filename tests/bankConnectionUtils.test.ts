@@ -3,6 +3,7 @@ import {
   calculateDefaultSyncRange,
   isPendingStateExpired,
   normalizeEnableBankingTransaction,
+  normalizeGoCardlessTransaction,
 } from "../convex/lib/bankConnectionUtils";
 
 describe("bank connection utils", () => {
@@ -177,5 +178,148 @@ describe("bank connection utils", () => {
         fundId: null,
       })
     ).toThrow("Enable Banking transaction has an invalid amount");
+  });
+});
+
+describe("GoCardless transaction normalization", () => {
+  it("normalizes a positive GoCardless amount as income", () => {
+    const normalized = normalizeGoCardlessTransaction({
+      transaction: {
+        transactionId: "gc-income-1",
+        bookingDate: "2026-06-01",
+        transactionAmount: { amount: "125.50", currency: "GBP" },
+        remittanceInformationUnstructured: "Sunday giving",
+      },
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: "fund-1",
+    });
+
+    expect(normalized).toEqual({
+      date: "2026-06-01",
+      description: "Sunday giving",
+      amount: 125.5,
+      type: "Income",
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: "fund-1",
+      providerTransactionId: "gc-income-1",
+    });
+  });
+
+  it("normalizes a negative GoCardless amount as expenditure", () => {
+    const normalized = normalizeGoCardlessTransaction({
+      transaction: {
+        transactionId: "gc-expense-1",
+        valueDate: "2026-06-02",
+        transactionAmount: { amount: "-49.99", currency: "GBP" },
+        remittanceInformationUnstructuredArray: ["Stationery", "Invoice 123"],
+      },
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: null,
+    });
+
+    expect(normalized).toEqual({
+      date: "2026-06-02",
+      description: "Stationery Invoice 123",
+      amount: 49.99,
+      type: "Expenditure",
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: null,
+      providerTransactionId: "gc-expense-1",
+    });
+  });
+
+  it("uses the best available GoCardless description fallback", () => {
+    const normalized = normalizeGoCardlessTransaction({
+      transaction: {
+        entryReference: "gc-description-1",
+        bookingDate: "2026-06-03",
+        transactionAmount: { amount: "10.00", currency: "GBP" },
+        remittanceInformationUnstructured: "   ",
+        additionalInformation: "Gift Aid receipt",
+      },
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: null,
+    });
+
+    expect(normalized.description).toBe("Gift Aid receipt");
+  });
+
+  it("falls back to a default description for blank GoCardless descriptions", () => {
+    const normalized = normalizeGoCardlessTransaction({
+      transaction: {
+        transactionId: "gc-blank-description-1",
+        bookingDate: "2026-06-04",
+        transactionAmount: { amount: "10.00", currency: "GBP" },
+        remittanceInformationUnstructuredArray: [" ", ""],
+      },
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: null,
+    });
+
+    expect(normalized.description).toBe("Bank transaction");
+  });
+
+  it("rejects GoCardless transactions without a usable date", () => {
+    expect(() =>
+      normalizeGoCardlessTransaction({
+        transaction: {
+          transactionId: "gc-missing-date",
+          transactionAmount: { amount: "10.00", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Business Current",
+        fundId: null,
+      })
+    ).toThrow("GoCardless transaction is missing a date");
+  });
+
+  it("rejects GoCardless transactions with malformed dates", () => {
+    expect(() =>
+      normalizeGoCardlessTransaction({
+        transaction: {
+          transactionId: "gc-invalid-date",
+          bookingDate: "01/06/2026",
+          transactionAmount: { amount: "10.00", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Business Current",
+        fundId: null,
+      })
+    ).toThrow("GoCardless transaction has an invalid date");
+  });
+
+  it("rejects GoCardless transactions without identifiers", () => {
+    expect(() =>
+      normalizeGoCardlessTransaction({
+        transaction: {
+          bookingDate: "2026-06-01",
+          transactionAmount: { amount: "10.00", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Business Current",
+        fundId: null,
+      })
+    ).toThrow("GoCardless transaction is missing an identifier");
+  });
+
+  it("rejects GoCardless transactions with malformed amounts", () => {
+    expect(() =>
+      normalizeGoCardlessTransaction({
+        transaction: {
+          transactionId: "gc-malformed-amount",
+          bookingDate: "2026-06-01",
+          transactionAmount: { amount: "12.34GBP", currency: "GBP" },
+        },
+        accountId: "account-1",
+        accountName: "Metro Business Current",
+        fundId: null,
+      })
+    ).toThrow("GoCardless transaction has an invalid amount");
   });
 });
