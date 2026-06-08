@@ -40,6 +40,8 @@ export type GoCardlessTransactionLike = {
   entryReference?: string;
   bookingDate?: string;
   valueDate?: string;
+  bookingDateTime?: string;
+  valueDateTime?: string;
   transactionAmount?: GoCardlessAmount;
   remittanceInformationUnstructured?: string;
   remittanceInformationUnstructuredArray?: string[];
@@ -132,6 +134,27 @@ const assertValidProviderTransactionDate = (date: string, provider: string) => {
   }
 };
 
+const normalizeProviderTransactionDateTime = (
+  dateTime: string,
+  provider: string
+) => {
+  const normalized = dateTime.trim();
+  const date = normalized.slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(normalized)) {
+    throw new Error(`${provider} transaction has an invalid date`);
+  }
+
+  assertValidProviderTransactionDate(date, provider);
+
+  const parsedDateTime = new Date(normalized);
+  if (Number.isNaN(parsedDateTime.getTime())) {
+    throw new Error(`${provider} transaction has an invalid date`);
+  }
+
+  return date;
+};
+
 const getTransactionType = (
   transaction: EnableBankingTransactionLike,
   amount: number
@@ -217,6 +240,34 @@ const getGoCardlessTransactionDescription = (
   );
 };
 
+const getGoCardlessTransactionDate = (transaction: GoCardlessTransactionLike) => {
+  if (transaction.bookingDate) {
+    assertValidProviderTransactionDate(transaction.bookingDate, "GoCardless");
+    return transaction.bookingDate;
+  }
+
+  if (transaction.valueDate) {
+    assertValidProviderTransactionDate(transaction.valueDate, "GoCardless");
+    return transaction.valueDate;
+  }
+
+  if (transaction.bookingDateTime) {
+    return normalizeProviderTransactionDateTime(
+      transaction.bookingDateTime,
+      "GoCardless"
+    );
+  }
+
+  if (transaction.valueDateTime) {
+    return normalizeProviderTransactionDateTime(
+      transaction.valueDateTime,
+      "GoCardless"
+    );
+  }
+
+  return undefined;
+};
+
 export const normalizeGoCardlessTransaction = ({
   transaction,
   accountId,
@@ -228,11 +279,10 @@ export const normalizeGoCardlessTransaction = ({
   accountName: string;
   fundId?: string | null;
 }): ChurchCoinPendingBankTransaction => {
-  const date = transaction.bookingDate || transaction.valueDate;
+  const date = getGoCardlessTransactionDate(transaction);
   if (!date) {
     throw new Error("GoCardless transaction is missing a date");
   }
-  assertValidProviderTransactionDate(date, "GoCardless");
 
   const amount = getGoCardlessTransactionAmount(transaction);
   const providerTransactionId =

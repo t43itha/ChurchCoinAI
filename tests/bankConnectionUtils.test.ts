@@ -232,6 +232,22 @@ describe("GoCardless transaction normalization", () => {
     });
   });
 
+  it("falls back to GoCardless booking date-time when date fields are absent", () => {
+    const normalized = normalizeGoCardlessTransaction({
+      transaction: {
+        transactionId: "gc-datetime-1",
+        bookingDateTime: "2026-06-05T14:30:00.000Z",
+        transactionAmount: { amount: "75.00", currency: "GBP" },
+        remittanceInformationUnstructured: "Standing order",
+      },
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: null,
+    });
+
+    expect(normalized.date).toBe("2026-06-05");
+  });
+
   it("uses the best available GoCardless description fallback", () => {
     const normalized = normalizeGoCardlessTransaction({
       transaction: {
