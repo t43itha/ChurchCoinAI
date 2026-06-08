@@ -3,7 +3,10 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
 import { ALL_INCOME_SUBCATEGORIES } from "../../constants/rciCategories";
-import { filterActiveTransactions } from "../../lib/voidedTransactions";
+import {
+  filterReportableTransactions,
+  isReportableIncomeTransaction,
+} from "../../lib/reportableTransactions";
 
 const MIN_DATE = "0000-01-01";
 const MAX_DATE = "9999-12-31";
@@ -197,12 +200,11 @@ export const listGiftAidEligible = query({
       return boundedTransactions.filter(
         (t) =>
           t.isGiftAidEligible === true &&
-          t.type === "Income" &&
-          t.isVoided !== true
+          isReportableIncomeTransaction(t)
       );
     }
 
-    return await ctx.db
+    const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
@@ -215,6 +217,12 @@ export const listGiftAidEligible = query({
         )
       )
       .collect();
+
+    return transactions.filter(
+      (t) =>
+        t.isGiftAidEligible === true &&
+        isReportableIncomeTransaction(t)
+    );
   },
 });
 
@@ -248,10 +256,10 @@ export const aggregateByCategory = query({
           )
           .collect();
 
-    const activeTransactions = filterActiveTransactions(transactions);
+    const reportableTransactions = filterReportableTransactions(transactions);
     const filtered = args.transactionType
-      ? activeTransactions.filter((t) => t.type === args.transactionType)
-      : activeTransactions;
+      ? reportableTransactions.filter((t) => t.type === args.transactionType)
+      : reportableTransactions;
 
     // Aggregate by category
     const aggregated = filtered.reduce(
@@ -313,7 +321,7 @@ export const monthlySummary = query({
     // Group by month
     const monthly: Record<string, { income: number; expenditure: number }> = {};
 
-    filterActiveTransactions(transactions).forEach((t) => {
+    filterReportableTransactions(transactions).forEach((t) => {
       const month = t.date.substring(0, 7); // YYYY-MM
       if (!monthly[month]) {
         monthly[month] = { income: 0, expenditure: 0 };

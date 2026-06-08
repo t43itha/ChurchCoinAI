@@ -3,6 +3,10 @@ import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireRole } from "../lib/auth";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
+import {
+  filterReportableTransactions,
+  isReportableIncomeTransaction,
+} from "../../lib/reportableTransactions";
 import { resolveReportingMainCategory } from "../intelligence/categorization/categoryResolver";
 
 // Mission Tithe eligible categories (canonical names only)
@@ -368,6 +372,7 @@ export const monthlyReportData = query({
         )
       )
       .collect();
+    const reportableTransactions = filterReportableTransactions(allTransactions);
 
     // Get categories with mainCategory data
     const categories = await ctx.db
@@ -427,8 +432,12 @@ export const monthlyReportData = query({
     };
 
     // Separate income and expenditure
-    const incomeTransactions = allTransactions.filter((t) => t.type === "Income");
-    const expenditureTransactions = allTransactions.filter((t) => t.type === "Expenditure");
+    const incomeTransactions = reportableTransactions.filter(
+      isReportableIncomeTransaction
+    );
+    const expenditureTransactions = reportableTransactions.filter(
+      (t) => t.type === "Expenditure"
+    );
 
     // Group income by mainCategory
     const receiptsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
@@ -476,7 +485,7 @@ export const monthlyReportData = query({
       weekStart.setDate(weekStart.getDate() - 6);
       const weekStartStr = weekStart.toISOString().split("T")[0];
 
-      const weekTransactions = allTransactions.filter(
+      const weekTransactions = reportableTransactions.filter(
         (t) => t.date >= weekStartStr && t.date <= weekEnding
       );
 
@@ -510,7 +519,7 @@ export const monthlyReportData = query({
       dayAfterLastSunday.setDate(dayAfterLastSunday.getDate() + 1);
       const partialStartStr = dayAfterLastSunday.toISOString().split("T")[0];
 
-      const partialWeekTransactions = allTransactions.filter(
+      const partialWeekTransactions = reportableTransactions.filter(
         (t) => t.date >= partialStartStr && t.date <= endDateStr
       );
 
@@ -678,6 +687,7 @@ export const annualReportData = query({
         )
       )
       .collect();
+    const reportableTransactions = filterReportableTransactions(allTransactions);
 
     // Get previous year transactions for comparison
     const prevStartDate = `${args.year - 1}-01-01`;
@@ -696,6 +706,8 @@ export const annualReportData = query({
         )
       )
       .collect();
+    const prevYearReportableTransactions =
+      filterReportableTransactions(prevYearTransactions);
 
     // Get categories with mainCategory data
     const categories = await ctx.db
@@ -721,8 +733,12 @@ export const annualReportData = query({
     }));
 
     // Separate income and expenditure
-    const incomeTransactions = allTransactions.filter((t) => t.type === "Income");
-    const expenditureTransactions = allTransactions.filter((t) => t.type === "Expenditure");
+    const incomeTransactions = reportableTransactions.filter(
+      isReportableIncomeTransaction
+    );
+    const expenditureTransactions = reportableTransactions.filter(
+      (t) => t.type === "Expenditure"
+    );
 
     // Group income by mainCategory
     const incomeByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }> = {};
@@ -783,7 +799,7 @@ export const annualReportData = query({
     // Monthly trend
     const monthlyTrend = Array.from({ length: 12 }, (_, i) => {
       const monthStr = `${args.year}-${String(i + 1).padStart(2, "0")}`;
-      const monthTransactions = allTransactions.filter((t) => t.date.startsWith(monthStr));
+      const monthTransactions = reportableTransactions.filter((t) => t.date.startsWith(monthStr));
 
       const income = monthTransactions
         .filter((t) => t.type === "Income")
@@ -804,15 +820,15 @@ export const annualReportData = query({
     const totalExpenditure = expenditureTransactions.reduce((sum, t) => sum + t.amount, 0);
 
     // Previous year totals for comparison
-    const prevYearIncome = prevYearTransactions
-      .filter((t) => t.type === "Income")
+    const prevYearIncome = prevYearReportableTransactions
+      .filter(isReportableIncomeTransaction)
       .reduce((sum, t) => sum + t.amount, 0);
-    const prevYearExpenditure = prevYearTransactions
+    const prevYearExpenditure = prevYearReportableTransactions
       .filter((t) => t.type === "Expenditure")
       .reduce((sum, t) => sum + t.amount, 0);
 
     // Year over year comparison
-    const yearOverYear = prevYearTransactions.length > 0
+    const yearOverYear = prevYearReportableTransactions.length > 0
       ? {
           current: { income: totalIncome, expenditure: totalExpenditure },
           previous: { income: prevYearIncome, expenditure: prevYearExpenditure },
@@ -834,9 +850,11 @@ export const annualReportData = query({
       )
       .filter((q) => q.neq(q.field("isVoided"), true))
       .collect();
+    const allTimeReportableTransactions =
+      filterReportableTransactions(allTimeTransactions);
 
     const fundBalances = funds.map((fund) => {
-      const fundTransactions = allTimeTransactions.filter((t) => t.fundId === fund._id);
+      const fundTransactions = allTimeReportableTransactions.filter((t) => t.fundId === fund._id);
       const income = fundTransactions
         .filter((t) => t.type === "Income")
         .reduce((sum, t) => sum + t.amount, 0);

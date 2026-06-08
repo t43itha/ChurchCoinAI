@@ -1,9 +1,9 @@
 import { query } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
 import {
-  filterActiveTransactions,
-  sumActiveSigned,
-} from "../../lib/voidedTransactions";
+  filterReportableTransactions,
+  sumReportableSigned,
+} from "../../lib/reportableTransactions";
 
 // Get dashboard summary data (KPIs)
 export const summary = query({
@@ -33,12 +33,12 @@ export const summary = query({
         q.eq("organizationId", user.organizationId).gte("date", yearStart)
       )
       .collect();
-    const activeTransactions = filterActiveTransactions(transactions);
+    const reportableTransactions = filterReportableTransactions(transactions);
 
-    const currentMonthTxns = activeTransactions.filter((t) =>
+    const currentMonthTxns = reportableTransactions.filter((t) =>
       t.date.startsWith(currentMonth)
     );
-    const lastMonthTxns = activeTransactions.filter((t) =>
+    const lastMonthTxns = reportableTransactions.filter((t) =>
       t.date.startsWith(lastMonthStr)
     );
 
@@ -74,10 +74,10 @@ export const summary = query({
       // Find the fund with a target
       const campaignFund = restrictedFunds.find((f) => f.targetAmount);
       if (campaignFund) {
-        const fundTxns = activeTransactions.filter(
+        const fundTxns = reportableTransactions.filter(
           (t) => t.fundId === campaignFund._id
         );
-        const balance = sumActiveSigned(fundTxns);
+        const balance = sumReportableSigned(fundTxns);
 
         primaryCampaignName = campaignFund.name;
         campaignProgress = campaignFund.targetAmount
@@ -89,8 +89,8 @@ export const summary = query({
     // Fund balances
     const fundsWithBalance = await Promise.all(
       funds.map(async (fund) => {
-        const fundTxns = activeTransactions.filter((t) => t.fundId === fund._id);
-        const balance = sumActiveSigned(fundTxns);
+        const fundTxns = reportableTransactions.filter((t) => t.fundId === fund._id);
+        const balance = sumReportableSigned(fundTxns);
         return { ...fund, balance };
       })
     );
@@ -99,7 +99,7 @@ export const summary = query({
     const totalBalance = fundsWithBalance.reduce((sum, f) => sum + f.balance, 0);
 
     // Year to date totals
-    const ytdTxns = activeTransactions.filter((t) => t.date >= yearStart);
+    const ytdTxns = reportableTransactions.filter((t) => t.date >= yearStart);
     const ytdIncome = ytdTxns
       .filter((t) => t.type === "Income")
       .reduce((sum, t) => sum + t.amount, 0);
@@ -119,7 +119,7 @@ export const summary = query({
       ytdIncome,
       ytdExpenditure,
       fundsWithBalance,
-      transactionCount: activeTransactions.length,
+      transactionCount: reportableTransactions.length,
     };
   },
 });
@@ -140,7 +140,7 @@ export const trendData = query({
         q.eq("organizationId", user.organizationId).gte("date", startDate)
       )
       .collect();
-    const activeTransactions = filterActiveTransactions(transactions);
+    const reportableTransactions = filterReportableTransactions(transactions);
 
     // Group by month
     const monthly: Record<string, { income: number; expenditure: number }> = {};
@@ -153,7 +153,7 @@ export const trendData = query({
     }
 
     // Populate with actual data
-    activeTransactions.forEach((t) => {
+    reportableTransactions.forEach((t) => {
       const month = t.date.substring(0, 7);
       if (monthly[month]) {
         if (t.type === "Income") {
