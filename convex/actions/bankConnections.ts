@@ -3,16 +3,17 @@
 import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import {
-  closeSession,
-  EnableBankingApiError,
+  createEndUserAgreement,
+  createRequisition,
+  deleteRequisition,
   getAccountTransactions,
-  getConsentValidUntil,
-  getEnableBankingDefaults,
-  startAuthorization,
-} from "../lib/enableBanking";
+  getGoCardlessDefaults,
+  GoCardlessApiError,
+  isGoCardlessReauthError,
+} from "../lib/gocardless";
 import {
   calculateDefaultSyncRange,
-  normalizeEnableBankingTransaction,
+  normalizeGoCardlessTransaction,
 } from "../lib/bankConnectionUtils";
 
 const requireUser = async (ctx: ActionCtx) => {
@@ -42,7 +43,6 @@ const randomState = () => crypto.randomUUID();
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
 const MAX_SYNC_TRANSACTIONS = 500;
 
 type SyncTransactionsCursor = {
@@ -65,7 +65,7 @@ type SyncedBankTransaction = {
 
 const assertValidAuthorizationUrl = (url: unknown) => {
   if (typeof url !== "string") {
-    throw new Error("Enable Banking returned an invalid authorization URL");
+    throw new Error("GoCardless returned an invalid authorization URL");
   }
 
   const trimmedUrl = url.trim();
@@ -75,7 +75,7 @@ const assertValidAuthorizationUrl = (url: unknown) => {
     if (parsed.protocol !== "https:") throw new Error();
     return trimmedUrl;
   } catch {
-    throw new Error("Enable Banking returned an invalid authorization URL");
+    throw new Error("GoCardless returned an invalid authorization URL");
   }
 };
 
@@ -132,7 +132,7 @@ export const startConnection = action({
     requireFinanceRole(user);
 
     const { internal } = await import("../_generated/api");
-    const defaults = getEnableBankingDefaults();
+    const defaults = getGoCardlessDefaults();
     const state = randomState();
     const expiresAt = Date.now() + 15 * 60 * 1000;
     const existingConnectionId = args.existingConnectionId;
@@ -154,31 +154,44 @@ export const startConnection = action({
     await ctx.runMutation(internal.mutations.bankConnections.createPending, {
       organizationId: user.organizationId,
       createdBy: user._id,
-      provider: "enable_banking",
+      provider: "gocardless",
       state,
-      aspspCountry: defaults.aspspCountry,
-      aspspName: defaults.aspspName,
+      aspspCountry: defaults.country,
+      aspspName: defaults.institutionName,
       existingConnectionId,
       expiresAt,
     });
 
     try {
-      const response = await startAuthorization({
-        state,
-        aspspCountry: defaults.aspspCountry,
-        aspspName: defaults.aspspName,
-        redirectUrl: defaults.redirectUrl,
-        validUntil: getConsentValidUntil(),
+      const agreement = await createEndUserAgreement({
+        institutionId: defaults.institutionId,
+        maxHistoricalDays: 90,
+        accessValidForDays: 90,
       });
 
-      return { authorizationUrl: assertValidAuthorizationUrl(response.url) };
+      const requisition = await createRequisition({
+        redirectUrl: defaults.redirectUrl,
+        institutionId: defaults.institutionId,
+        reference: state,
+        agreementId: agreement.id,
+      });
+
+      await ctx.runMutation(
+        internal.mutations.bankConnections.attachPendingProviderConnection,
+        {
+          state,
+          providerConnectionId: requisition.id,
+        }
+      );
+
+      return { authorizationUrl: assertValidAuthorizationUrl(requisition.link) };
     } catch (error: any) {
       try {
         await ctx.runMutation(internal.mutations.bankConnections.markPendingError, {
           state,
           errorCode: "AUTHORIZATION_START_FAILED",
           errorMessage:
-            error?.message || "Failed to start bank authorization session",
+            error?.message || "Failed to start GoCardless bank authorization",
         });
       } catch {
         // Preserve the original provider or validation error for the caller.
@@ -248,111 +261,62 @@ export const syncTransactions = action({
         accountIndex += 1
       ) {
         const account = mappedAccounts[accountIndex];
-        let continuationKey =
-          accountIndex === cursor?.accountIndex ? cursor.continuationKey : undefined;
-
-        for (let page = 0; page < MAX_TRANSACTION_PAGES_PER_ACCOUNT; page += 1) {
-          const remainingCapacity = MAX_SYNC_TRANSACTIONS - transactions.length;
-          if (remainingCapacity <= 0) {
-            hasMore = true;
-            nextCursor = createSyncCursor({
-              dateFrom,
-              dateTo,
-              accountIndex,
-              continuationKey,
-            });
-            break syncLoop;
-          }
-
-          const response = await getAccountTransactions({
-            accountId: account.accountId,
+        const remainingCapacity = MAX_SYNC_TRANSACTIONS - transactions.length;
+        if (remainingCapacity <= 0) {
+          hasMore = true;
+          nextCursor = createSyncCursor({
             dateFrom,
             dateTo,
-            continuationKey,
+            accountIndex,
           });
+          break syncLoop;
+        }
 
-          if (!Array.isArray(response.transactions)) {
-            throw new Error("Enable Banking transactions response is invalid");
-          }
+        const response = await getAccountTransactions({
+          accountId: account.accountId,
+          dateFrom,
+          dateTo,
+        });
 
-          const responseContinuationKey = response.continuation_key;
-          const hasContinuation = responseContinuationKey != null;
-          if (hasContinuation && typeof responseContinuationKey !== "string") {
-            throw new Error("Enable Banking transactions response is invalid");
-          }
+        const bookedTransactions = response.transactions?.booked;
+        if (!Array.isArray(bookedTransactions)) {
+          throw new Error("GoCardless transactions response is invalid");
+        }
 
-          if (
-            response.transactions.length > remainingCapacity &&
-            transactions.length > 0
-          ) {
-            hasMore = true;
-            nextCursor = createSyncCursor({
-              dateFrom,
-              dateTo,
-              accountIndex,
-              continuationKey,
-            });
-            break syncLoop;
-          }
+        if (bookedTransactions.length > remainingCapacity) {
+          throw new Error(
+            "GoCardless returned more transactions than can be reviewed in one sync. Try again after importing the current review batch or reduce the sync range."
+          );
+        }
 
-          for (const transaction of response.transactions) {
-            transactions.push(
-              normalizeEnableBankingTransaction({
-                transaction: transaction as any,
-                accountId: account.accountId,
-                accountName: account.name,
-                fundId: account.fundId as string,
-              })
-            );
-          }
+        for (const transaction of bookedTransactions) {
+          transactions.push(
+            normalizeGoCardlessTransaction({
+              transaction: transaction as any,
+              accountId: account.accountId,
+              accountName: account.name,
+              fundId: account.fundId as string,
+            })
+          );
+        }
 
-          if (!hasContinuation) {
-            if (
-              transactions.length >= MAX_SYNC_TRANSACTIONS &&
-              accountIndex < mappedAccounts.length - 1
-            ) {
-              hasMore = true;
-              nextCursor = createSyncCursor({
-                dateFrom,
-                dateTo,
-                accountIndex: accountIndex + 1,
-              });
-              break syncLoop;
-            }
-
-            break;
-          }
-
-          if (page === MAX_TRANSACTION_PAGES_PER_ACCOUNT - 1) {
-            hasMore = true;
-            nextCursor = createSyncCursor({
-              dateFrom,
-              dateTo,
-              accountIndex,
-              continuationKey: responseContinuationKey,
-            });
-            break syncLoop;
-          }
-
-          if (transactions.length >= MAX_SYNC_TRANSACTIONS) {
-            hasMore = true;
-            nextCursor = createSyncCursor({
-              dateFrom,
-              dateTo,
-              accountIndex,
-              continuationKey: responseContinuationKey,
-            });
-            break syncLoop;
-          }
-
-          continuationKey = responseContinuationKey;
+        if (
+          transactions.length >= MAX_SYNC_TRANSACTIONS &&
+          accountIndex < mappedAccounts.length - 1
+        ) {
+          hasMore = true;
+          nextCursor = createSyncCursor({
+            dateFrom,
+            dateTo,
+            accountIndex: accountIndex + 1,
+          });
+          break syncLoop;
         }
       }
     } catch (error: any) {
       const message = error?.message || "Failed to sync bank transactions";
       const isAuthorizationError =
-        error instanceof EnableBankingApiError &&
-        (error.status === 401 || error.status === 403);
+        error instanceof GoCardlessApiError && isGoCardlessReauthError(error);
 
       if (isAuthorizationError) {
         await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
@@ -395,14 +359,9 @@ export const removeConnection = action({
     }
 
     try {
-      await closeSession(connection.providerConnectionId);
+      await deleteRequisition(connection.providerConnectionId);
     } catch (error: any) {
-      if (
-        !(
-          error instanceof EnableBankingApiError &&
-          error.status === 404
-        )
-      ) {
+      if (!(error instanceof GoCardlessApiError && error.status === 404)) {
         throw error;
       }
     }
