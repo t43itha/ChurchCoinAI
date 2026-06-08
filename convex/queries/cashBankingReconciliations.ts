@@ -117,9 +117,13 @@ export const getAwaitingBanking = query({
           reconciliations,
           collection._id
         );
-        const openCashAmount = roundMoney(expected.cashAmount - banked.cashAmount);
-        const openChequeAmount = roundMoney(
-          expected.chequeAmount - banked.chequeAmount
+        const openCashAmount = Math.max(
+          0,
+          roundMoney(expected.cashAmount - banked.cashAmount)
+        );
+        const openChequeAmount = Math.max(
+          0,
+          roundMoney(expected.chequeAmount - banked.chequeAmount)
         );
         const openTotal = roundMoney(openCashAmount + openChequeAmount);
 
@@ -141,7 +145,9 @@ export const getAwaitingBanking = query({
         };
       })
       .filter(
-        (collection) => collection.expectedTotal > 0 && collection.openTotal > 0
+        (collection) =>
+          collection.expectedTotal > 0 &&
+          (collection.openCashAmount > 0 || collection.openChequeAmount > 0)
       )
       .sort(
         (a, b) =>
