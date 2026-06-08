@@ -162,6 +162,7 @@ export const getCandidateBankCredits = query({
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
     searchTerm: v.optional(v.string()),
+    includeReconciliationId: v.optional(v.id("cashBankingReconciliations")),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
@@ -204,8 +205,14 @@ export const getCandidateBankCredits = query({
       .filter((transaction) => {
         if (!isActiveTransaction(transaction)) return false;
         if (transaction.type !== "Income") return false;
-        if (transaction.cashBankingRole === "bank_deposit") return false;
-        if (transaction.cashBankingReconciliationId) return false;
+        const isIncludedReconciliationTransaction =
+          args.includeReconciliationId !== undefined &&
+          transaction.cashBankingReconciliationId === args.includeReconciliationId;
+
+        if (!isIncludedReconciliationTransaction) {
+          if (transaction.cashBankingRole === "bank_deposit") return false;
+          if (transaction.cashBankingReconciliationId) return false;
+        }
         if (transaction.cashCollectionId) return false;
 
         if (normalizedSearchTerm) {

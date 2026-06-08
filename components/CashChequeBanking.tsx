@@ -19,7 +19,9 @@ import {
   Loader2,
   Lock,
   ReceiptText,
+  RotateCcw,
   Search,
+  X,
 } from "lucide-react";
 
 type AwaitingCollection = Doc<"cashCollections"> & {
@@ -36,6 +38,7 @@ type AwaitingCollection = Doc<"cashCollections"> & {
 };
 
 type CandidateBankCredit = Doc<"transactions">;
+type ReconciliationRecord = Doc<"cashBankingReconciliations">;
 
 type BankCreditDraftSplit = {
   medium: BankingMedium;
@@ -73,6 +76,15 @@ const formatDate = (date: string) =>
     month: "short",
     year: "numeric",
   });
+
+const formatDateTime = (timestamp?: number) =>
+  timestamp
+    ? new Date(timestamp).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "Not completed";
 
 const parseMoneyInput = (value: string) => {
   if (value.trim() === "") return undefined;
@@ -123,6 +135,14 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   const [varianceNote, setVarianceNote] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [editingReconciliationId, setEditingReconciliationId] = useState<
+    Id<"cashBankingReconciliations"> | null
+  >(null);
+  const [reopenTarget, setReopenTarget] = useState<ReconciliationRecord | null>(
+    null
+  );
+  const [reopenReason, setReopenReason] = useState("");
+  const [isReopening, setIsReopening] = useState(false);
 
   const awaitingCollections = useQuery(
     api.queries.cashBankingReconciliations.getAwaitingBanking,
@@ -130,8 +150,14 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   ) as AwaitingCollection[] | undefined;
   const candidateBankCredits = useQuery(
     api.queries.cashBankingReconciliations.getCandidateBankCredits,
-    {}
+    editingReconciliationId
+      ? { includeReconciliationId: editingReconciliationId }
+      : {}
   ) as CandidateBankCredit[] | undefined;
+  const reconciliationHistory = useQuery(
+    api.queries.cashBankingReconciliations.list,
+    {}
+  ) as ReconciliationRecord[] | undefined;
 
   const createDraft = useMutation(
     api.mutations.cashBankingReconciliations.createDraft
@@ -142,10 +168,20 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   const completeReconciliation = useMutation(
     api.mutations.cashBankingReconciliations.complete
   );
+  const reopenReconciliation = useMutation(
+    api.mutations.cashBankingReconciliations.reopen
+  );
 
   const canComplete = ["Admin", "Finance Team"].includes(currentUser.role);
   const collections = awaitingCollections ?? [];
   const bankCredits = candidateBankCredits ?? [];
+  const history = reconciliationHistory ?? [];
+  const visibleReconciliationHistory = history
+    .filter(
+      (reconciliation) =>
+        reconciliation.status === "completed" || reconciliation.status === "reopened"
+    )
+    .slice(0, 8);
   const visibleBankCredits = useMemo(() => {
     const normalizedSearch = bankSearchTerm.trim().toLowerCase();
     if (!normalizedSearch) return bankCredits;
@@ -430,11 +466,97 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
     });
   };
 
+  const loadReconciliationForEditing = (reconciliation: ReconciliationRecord) => {
+    setEditingReconciliationId(
+      reconciliation._id as Id<"cashBankingReconciliations">
+    );
+    setSelectedCollectionIds(new Set(reconciliation.cashCollectionIds));
+    setSelectedBankCreditIds(new Set(reconciliation.bankTransactionIds));
+    setCollectionSplitOverrides(
+      Object.fromEntries(
+        reconciliation.cashCollectionSplits.map((split) => [
+          split.cashCollectionId,
+          {
+            cashAmount: split.cashAmount.toFixed(2),
+            chequeAmount: split.chequeAmount.toFixed(2),
+          },
+        ])
+      )
+    );
+    setBankCreditSplits(
+      Object.fromEntries(
+        reconciliation.bankTransactionSplits.map((split) => [
+          split.transactionId,
+          {
+            medium: split.medium,
+            cashAmount:
+              split.medium === "cheque" ? "" : split.cashAmount.toFixed(2),
+            chequeAmount:
+              split.medium === "cash" ? "" : split.chequeAmount.toFixed(2),
+          },
+        ])
+      )
+    );
+    setVarianceType(reconciliation.varianceType ?? "");
+    setVarianceNote(reconciliation.varianceNote ?? "");
+    setFormError(null);
+  };
+
+  const handleRequestReopen = (reconciliation: ReconciliationRecord) => {
+    setReopenTarget(reconciliation);
+    setReopenReason("");
+    setFormError(null);
+  };
+
+  const handleContinueReopened = (reconciliation: ReconciliationRecord) => {
+    loadReconciliationForEditing(reconciliation);
+    notify("Reconciliation Loaded", "Review and complete the reopened banking.");
+  };
+
+  const handleReopen = async () => {
+    if (!reopenTarget) return;
+
+    const reason = reopenReason.trim();
+    if (reason.length < 3) {
+      setFormError("Add a reopen reason before continuing.");
+      return;
+    }
+
+    setIsReopening(true);
+    setFormError(null);
+
+    try {
+      await reopenReconciliation({
+        reconciliationId:
+          reopenTarget._id as Id<"cashBankingReconciliations">,
+        reason,
+      });
+      loadReconciliationForEditing({
+        ...reopenTarget,
+        status: "reopened",
+        reopenReason: reason,
+      });
+      setReopenTarget(null);
+      setReopenReason("");
+      notify("Reconciliation Reopened", "Review and complete the correction.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to reopen cash/cheque banking.";
+      setFormError(message);
+      notify("Error", message);
+    } finally {
+      setIsReopening(false);
+    }
+  };
+
   const clearDraftState = () => {
     setSelectedCollectionIds(new Set());
     setSelectedBankCreditIds(new Set());
     setBankCreditSplits({});
     setCollectionSplitOverrides({});
+    setEditingReconciliationId(null);
     setVarianceType("");
     setVarianceNote("");
     setFormError(null);
@@ -466,9 +588,10 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
     setFormError(null);
 
     try {
-      const draft = await createDraft({});
+      const reconciliationId =
+        editingReconciliationId ?? (await createDraft({})).reconciliationId;
       await updateDraft({
-        reconciliationId: draft.reconciliationId,
+        reconciliationId,
         cashCollectionSplits: collectionSplits.map((split) => ({
           cashCollectionId: split.cashCollectionId as Id<"cashCollections">,
           cashAmount: split.cashAmount,
@@ -484,7 +607,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
         varianceType: varianceType || undefined,
         varianceNote: varianceNote.trim() || undefined,
       });
-      await completeReconciliation({ reconciliationId: draft.reconciliationId });
+      await completeReconciliation({ reconciliationId });
       clearDraftState();
       notify("Banking Complete", "Cash/cheque banking has been reconciled.");
     } catch (error) {
@@ -519,6 +642,21 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
           </div>
         )}
       </div>
+
+      {editingReconciliationId && (
+        <div className="flex items-start gap-2 border border-amber/40 bg-amber-light/40 text-amber-dark rounded-md p-3 text-xs">
+          <RotateCcw size={15} className="mt-0.5 shrink-0" />
+          <div>
+            <div className="font-bold uppercase tracking-wide">
+              Editing reopened banking
+            </div>
+            <div className="mt-0.5">
+              Complete the correction to return these deposits to the closed
+              banking history.
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <section className="swiss-card overflow-hidden">
@@ -1024,6 +1162,155 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
           </button>
         </div>
       </section>
+
+      {visibleReconciliationHistory.length > 0 && (
+        <section className="swiss-card overflow-hidden">
+          <div className="p-4 border-b border-ledger bg-paper flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wide text-ink">
+                Banking History
+              </h4>
+              <p className="text-[11px] text-grey-mid mt-1">
+                Reopen a completed banking if the collection or deposit split
+                needs correction.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left ledger-table">
+              <thead className="bg-white border-b border-ledger">
+                <tr>
+                  <th className="px-4 py-3 text-xs">Completed</th>
+                  <th className="px-4 py-3 text-xs text-right">Expected</th>
+                  <th className="px-4 py-3 text-xs text-right">Banked</th>
+                  <th className="px-4 py-3 text-xs text-right">Variance</th>
+                  <th className="px-4 py-3 text-xs">Status</th>
+                  <th className="px-4 py-3 text-xs text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {visibleReconciliationHistory.map((reconciliation) => (
+                  <tr key={reconciliation._id}>
+                    <td className="px-4 py-3 border-b border-slate-100 font-mono text-xs">
+                      {formatDateTime(reconciliation.completedAt)}
+                    </td>
+                    <td className="px-4 py-3 border-b border-slate-100 text-right font-mono text-xs">
+                      {formatCurrency(reconciliation.expectedTotal)}
+                    </td>
+                    <td className="px-4 py-3 border-b border-slate-100 text-right font-mono text-xs">
+                      {formatCurrency(reconciliation.bankedTotal)}
+                    </td>
+                    <td className="px-4 py-3 border-b border-slate-100 text-right font-mono text-xs">
+                      {formatCurrency(reconciliation.varianceAmount)}
+                    </td>
+                    <td className="px-4 py-3 border-b border-slate-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                        {reconciliation.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 border-b border-slate-100 text-right">
+                      {canComplete && reconciliation.status === "completed" && (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestReopen(reconciliation)}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-1.5 border border-ledger rounded-md text-xs font-bold uppercase tracking-wide text-grey-dark hover:text-ink hover:border-slate-300"
+                        >
+                          <RotateCcw size={13} />
+                          Reopen
+                        </button>
+                      )}
+                      {canComplete && reconciliation.status === "reopened" && (
+                        <button
+                          type="button"
+                          onClick={() => handleContinueReopened(reconciliation)}
+                          className="inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-ink text-white rounded-md text-xs font-bold uppercase tracking-wide disabled:opacity-40"
+                          disabled={editingReconciliationId === reconciliation._id}
+                        >
+                          <RotateCcw size={13} />
+                          Continue
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {reopenTarget && (
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-ledger animate-enter">
+            <div className="p-4 border-b border-ledger bg-paper rounded-t-lg flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
+                  Reopen Banking
+                </h3>
+                <p className="text-xs text-grey-mid mt-1">
+                  This opens the reconciliation for correction and keeps linked
+                  deposits excluded until it is completed again.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReopenTarget(null)}
+                className="text-grey-mid hover:text-ink"
+                disabled={isReopening}
+                aria-label="Close reopen dialog"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="rounded border border-ledger bg-paper p-3">
+                <div className="text-xs font-bold text-ink">
+                  {formatCurrency(reopenTarget.bankedTotal)} banked
+                </div>
+                <div className="text-[11px] text-grey-mid font-mono mt-1">
+                  Completed {formatDateTime(reopenTarget.completedAt)}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">
+                  Reopen Reason
+                </label>
+                <textarea
+                  value={reopenReason}
+                  onChange={(event) => setReopenReason(event.target.value)}
+                  rows={3}
+                  className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none resize-none"
+                  placeholder="e.g. Bank split needs correcting"
+                  disabled={isReopening}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReopenTarget(null)}
+                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+                  disabled={isReopening}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReopen}
+                  disabled={isReopening}
+                  className="px-4 py-2 bg-ink text-white rounded font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
+                >
+                  {isReopening ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <RotateCcw size={14} />
+                  )}
+                  Reopen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

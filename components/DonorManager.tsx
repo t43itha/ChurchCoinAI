@@ -5,7 +5,7 @@ import { Id } from '../convex/_generated/dataModel';
 import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
 import { notify } from '../lib/notifications';
-import { filterActiveTransactions, sumActiveIncome } from '../lib/voidedTransactions';
+import { filterReportableTransactions, sumReportableIncome } from '../lib/reportableTransactions';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -144,20 +144,20 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const selectedDonor = donors.find(d => d._id === selectedDonorId);
   const donorTransactions = transactions.filter(t => t.donorId === selectedDonorId || t.donorName === selectedDonor?.name)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const activeDonorTransactions = filterActiveTransactions(donorTransactions);
+  const reportableDonorTransactions = filterReportableTransactions(donorTransactions);
     
-  const lifetimeValue = sumActiveIncome(donorTransactions);
+  const lifetimeValue = sumReportableIncome(donorTransactions);
   const donorPledges = pledges.filter(p => p.donorId === selectedDonorId || p.donorName === selectedDonor?.name);
   const activePledges = donorPledges.filter(p => p.status === 'Active');
 
-  const chartData = activeDonorTransactions.filter(t => t.type === 'Income').slice(0, 10).map(t => ({
+  const chartData = reportableDonorTransactions.filter(t => t.type === 'Income').slice(0, 10).map(t => ({
       date: new Date(t.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       amount: t.amount
   })).reverse();
 
   // Calculate year total for End of Year template
   const currentYear = new Date().getFullYear();
-  const yearTotal = activeDonorTransactions
+  const yearTotal = reportableDonorTransactions
     .filter(t => t.type === 'Income' && new Date(t.date).getFullYear() === currentYear)
     .reduce((acc, t) => acc + t.amount, 0);
 
@@ -1284,7 +1284,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
                     {/* Compact Report Type Selection */}
                     {(() => {
-                        const incomeTransactions = activeDonorTransactions.filter(t => t.type === 'Income');
+                        const incomeTransactions = reportableDonorTransactions.filter(t => t.type === 'Income');
                         const unrestrictedFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
                         const titheTransactions = incomeTransactions.filter(t => unrestrictedFundIds.includes(t.fundId));
                         const hasAllTransactions = incomeTransactions.length > 0;

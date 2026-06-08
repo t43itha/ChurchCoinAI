@@ -5,7 +5,7 @@ import { api } from '../convex/_generated/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search } from 'lucide-react';
 import { notify } from '../lib/notifications';
-import { sumActiveIncome } from '../lib/voidedTransactions';
+import { sumReportableIncome } from '../lib/reportableTransactions';
 
 interface CampaignsProps {
     funds: Fund[];
@@ -107,7 +107,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     );
 
     const totalPledged = campaignPledges.reduce((acc, p) => acc + p.amount, 0);
-    const totalCollected = sumActiveIncome(
+    const totalCollected = sumReportableIncome(
         transactions.filter(t => t.fundId === currentFundId)
     );
     const target = selectedFund.targetAmount || totalPledged * 1.2;

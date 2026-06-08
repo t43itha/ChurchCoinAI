@@ -10,7 +10,7 @@ import {
 } from "../lib/transactionValidation";
 import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
-import { sumActiveIncome } from "../../lib/voidedTransactions";
+import { sumReportableIncome } from "../../lib/reportableTransactions";
 
 const upsertAcceptedCategorizationMemory = makeFunctionReference<
   "mutation",
@@ -81,7 +81,7 @@ async function checkPledgeCompletion(
     .withIndex("by_pledge", (q: any) => q.eq("pledgeId", pledgeId))
     .collect();
 
-  const totalReceived = sumActiveIncome(linkedTransactions);
+  const totalReceived = sumReportableIncome(linkedTransactions);
 
   if (totalReceived >= pledge.amount) {
     await ctx.db.patch(pledgeId, { status: "Completed" });
@@ -111,7 +111,7 @@ async function refreshPledgeStatus(
     .withIndex("by_pledge", (q: any) => q.eq("pledgeId", pledgeId))
     .collect();
 
-  const totalReceived = sumActiveIncome(linkedTransactions);
+  const totalReceived = sumReportableIncome(linkedTransactions);
   const nextStatus = totalReceived >= pledge.amount ? "Completed" : "Active";
   const statusChanged =
     (pledge.status === "Active" || pledge.status === "Completed") &&
@@ -323,7 +323,7 @@ export const update = mutation({
           .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
           .collect();
 
-        const totalReceived = sumActiveIncome(linkedTransactions);
+        const totalReceived = sumReportableIncome(linkedTransactions);
 
         if (totalReceived < oldPledge.amount) {
           await ctx.db.patch(oldPledgeId, { status: "Active" });
@@ -669,7 +669,7 @@ export const unlinkFromPledge = mutation({
         .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
         .collect();
 
-      const totalReceived = sumActiveIncome(linkedTransactions);
+      const totalReceived = sumReportableIncome(linkedTransactions);
 
       if (totalReceived < oldPledge.amount) {
         await ctx.db.patch(oldPledgeId, { status: "Active" });
@@ -711,7 +711,7 @@ export const remove = mutation({
           .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
           .collect();
 
-        const totalReceived = sumActiveIncome(linkedTransactions);
+        const totalReceived = sumReportableIncome(linkedTransactions);
 
         if (totalReceived < pledge.amount) {
           await ctx.db.patch(pledgeId, { status: "Active" });
