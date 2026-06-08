@@ -189,8 +189,14 @@ export function groupInPersonGivingCollections({
       const rows = Array.from(rowsByKey.values()).sort((a, b) =>
         a.serviceDate.localeCompare(b.serviceDate)
       );
-      const sortedNamedDonations = namedDonations.sort((a, b) =>
-        a.donorName.localeCompare(b.donorName)
+      const sortedNamedDonations = namedDonations.sort(
+        (a, b) =>
+          a.donorName.localeCompare(b.donorName) ||
+          a.category.localeCompare(b.category) ||
+          a.fundName.localeCompare(b.fundName) ||
+          a.amount - b.amount ||
+          (a.paymentMethod ?? "").localeCompare(b.paymentMethod ?? "") ||
+          a.id.localeCompare(b.id)
       );
 
       return {
