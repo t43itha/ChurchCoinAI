@@ -151,6 +151,16 @@ export default defineSchema({
       v.literal("Online")
     )),
     cashCollectionId: v.optional(v.id("cashCollections")),
+    cashBankingReconciliationId: v.optional(v.id("cashBankingReconciliations")),
+    cashBankingRole: v.optional(v.union(
+      v.literal("source_giving"),
+      v.literal("bank_deposit")
+    )),
+    bankingMedium: v.optional(v.union(
+      v.literal("cash"),
+      v.literal("cheque"),
+      v.literal("mixed")
+    )),
     isVoided: v.optional(v.boolean()),
     voidReason: v.optional(v.string()),
     voidedAt: v.optional(v.number()),
@@ -164,7 +174,9 @@ export default defineSchema({
     .index("by_organization_date", ["organizationId", "date"])
     .index("by_pledge", ["pledgeId"])
     .index("by_donor", ["donorId"])
-    .index("by_cashCollection", ["cashCollectionId"]),
+    .index("by_cashCollection", ["cashCollectionId"])
+    .index("by_cashBankingReconciliation", ["cashBankingReconciliationId"])
+    .index("by_organization_cashBankingRole", ["organizationId", "cashBankingRole"]),
 
   // Cash Collections (batch entry for weekly cash takings)
   cashCollections: defineTable({
@@ -180,10 +192,68 @@ export default defineSchema({
       v.literal("banked")
     ),
     bankedDate: v.optional(v.string()),
+    cashBankingLastReconciliationId: v.optional(v.id("cashBankingReconciliations")),
+    cashBankingStatus: v.optional(v.union(
+      v.literal("not_started"),
+      v.literal("partially_banked"),
+      v.literal("banked")
+    )),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_weekEnding", ["organizationId", "weekEndingDate"])
+    .index("by_organization_status", ["organizationId", "status"]),
+
+  // Cash Banking Reconciliations (cash/cheque collection to bank deposit matching)
+  cashBankingReconciliations: defineTable({
+    organizationId: v.id("organizations"),
+    cashCollectionIds: v.array(v.id("cashCollections")),
+    cashCollectionSplits: v.array(v.object({
+      cashCollectionId: v.id("cashCollections"),
+      cashAmount: v.number(),
+      chequeAmount: v.number(),
+    })),
+    bankTransactionIds: v.array(v.id("transactions")),
+    bankTransactionSplits: v.array(v.object({
+      transactionId: v.id("transactions"),
+      medium: v.union(
+        v.literal("cash"),
+        v.literal("cheque"),
+        v.literal("mixed")
+      ),
+      cashAmount: v.number(),
+      chequeAmount: v.number(),
+    })),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("completed"),
+      v.literal("reopened")
+    ),
+    expectedCashAmount: v.number(),
+    expectedChequeAmount: v.number(),
+    expectedTotal: v.number(),
+    bankedCashAmount: v.number(),
+    bankedChequeAmount: v.number(),
+    bankedTotal: v.number(),
+    varianceAmount: v.number(),
+    varianceType: v.optional(v.union(
+      v.literal("partial_banking"),
+      v.literal("petty_cash_retained_or_spent"),
+      v.literal("bank_counting_difference"),
+      v.literal("cheque_timing"),
+      v.literal("other")
+    )),
+    varianceNote: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id("users")),
+    reopenedAt: v.optional(v.number()),
+    reopenedBy: v.optional(v.id("users")),
+    reopenReason: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
     .index("by_organization_status", ["organizationId", "status"]),
 
   // Categories (per organization) - RCI hierarchical structure
