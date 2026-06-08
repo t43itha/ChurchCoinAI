@@ -217,6 +217,7 @@ describe("in-person giving grouping", () => {
         fundNames: [],
         fundTotals: [],
         rows: [],
+        namedDonations: [],
         total: 100,
       },
       {
@@ -226,6 +227,7 @@ describe("in-person giving grouping", () => {
         fundNames: [],
         fundTotals: [],
         rows: [],
+        namedDonations: [],
         total: 200,
       },
     ];
