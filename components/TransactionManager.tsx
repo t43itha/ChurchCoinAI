@@ -8,7 +8,7 @@ import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calend
 import CashTakingsEntry from './CashTakingsEntry';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
-import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections } from '../lib/inPersonGiving';
+import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 
 interface Category {
   _id: string;
@@ -152,6 +152,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson'>('all');
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
+  const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1429,7 +1430,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   <th className="px-6 py-3 text-xs">Week Ending</th>
                   <th className="px-6 py-3 text-xs">Fund / Status</th>
                   <th className="px-6 py-3 text-xs text-right">Total</th>
-                  <th className="px-6 py-3 w-12"></th>
+                  <th className="px-6 py-3 w-24"></th>
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -1446,6 +1447,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     const cashTotal = ledger.rows.reduce((sum, row) => sum + row.cash, 0);
                     const pdqTotal = ledger.rows.reduce((sum, row) => sum + row.pdq, 0);
                     const chequeTotal = ledger.rows.reduce((sum, row) => sum + row.cheque, 0);
+                    const serviceTotal = ledger.rows.reduce((sum, row) => sum + row.total, 0);
+                    const namedDonationTotal = ledger.namedDonations.reduce((sum, donation) => sum + donation.amount, 0);
 
                     return (
                       <React.Fragment key={ledger.collectionId}>
@@ -1471,19 +1474,37 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             £{ledger.total.toFixed(2)}
                           </td>
                           <td className="px-6 py-4 border-b border-slate-100 text-right">
-                            <button
-                              type="button"
-                              onClick={() => toggleGivingExpanded(ledger.collectionId)}
-                              className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
-                              aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
-                            >
-                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingGivingLedger(ledger)}
+                                  className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                  aria-label="Edit in-person giving"
+                                >
+                                  <Edit2 size={15} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleGivingExpanded(ledger.collectionId)}
+                                className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
+                              >
+                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && (
                           <tr>
                             <td colSpan={4} className="p-4 bg-paper border-b border-ledger">
+                              <div className="space-y-4">
+                                {ledger.rows.length > 0 && (
+                                  <div>
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                                      Service Totals
+                                    </div>
                               <div className="overflow-x-auto border border-ledger bg-white">
                                 <table className="w-full border-collapse text-xs">
                                   <thead className="bg-grey-light">
@@ -1514,10 +1535,54 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                       <td className="border border-ledger px-3 py-2 text-right font-mono">£{cashTotal.toFixed(2)}</td>
                                       <td className="border border-ledger px-3 py-2 text-right font-mono">£{pdqTotal.toFixed(2)}</td>
                                       <td className="border border-ledger px-3 py-2 text-right font-mono">£{chequeTotal.toFixed(2)}</td>
-                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{ledger.total.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{serviceTotal.toFixed(2)}</td>
                                     </tr>
                                   </tbody>
                                 </table>
+                              </div>
+                                  </div>
+                                )}
+                                {ledger.namedDonations.length > 0 && (
+                                  <div>
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                                      Named Donations
+                                    </div>
+                                    <div className="overflow-x-auto border border-ledger bg-white">
+                                      <table className="w-full border-collapse text-xs">
+                                        <thead className="bg-grey-light">
+                                          <tr>
+                                            <th className="border border-ledger px-3 py-2 text-left">Donor</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Category</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Fund</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Method</th>
+                                            <th className="border border-ledger px-3 py-2 text-center">Gift Aid</th>
+                                            <th className="border border-ledger px-3 py-2 text-right">Amount</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {ledger.namedDonations.map((donation) => (
+                                            <tr key={donation.id}>
+                                              <td className="border border-ledger px-3 py-2 font-medium text-ink">{donation.donorName}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.category}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.fundName}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.paymentMethod ?? "-"}</td>
+                                              <td className="border border-ledger px-3 py-2 text-center">{donation.isGiftAidEligible ? "Yes" : "No"}</td>
+                                              <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{donation.amount.toFixed(2)}</td>
+                                            </tr>
+                                          ))}
+                                          <tr className="bg-grey-light font-bold">
+                                            <td colSpan={5} className="border border-ledger px-3 py-2">TOTAL</td>
+                                            <td className="border border-ledger px-3 py-2 text-right font-mono">£{namedDonationTotal.toFixed(2)}</td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between border border-ledger bg-white px-3 py-2 text-xs font-bold">
+                                  <span>COLLECTION TOTAL</span>
+                                  <span className="font-mono">£{ledger.total.toFixed(2)}</span>
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -2380,6 +2445,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           onClose={() => setShowCashTakingsModal(false)}
           onSuccess={(result) => {
             console.log(`Cash collection created: ${result.transactionCount} transactions`);
+          }}
+        />
+      )}
+
+      {editingGivingLedger && canEdit && (
+        <CashTakingsEntry
+          funds={funds}
+          categories={categories}
+          initialCollection={editingGivingLedger}
+          onClose={() => setEditingGivingLedger(null)}
+          onSuccess={(result) => {
+            console.log(`Cash collection updated: ${result.transactionCount} transactions`);
+            setEditingGivingLedger(null);
           }}
         />
       )}

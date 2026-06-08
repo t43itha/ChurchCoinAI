@@ -22,6 +22,9 @@ interface GivingTransaction {
   fundId: string;
   isReconciled: boolean;
   notes?: string;
+  donorName?: string;
+  donorId?: string;
+  isGiftAidEligible?: boolean;
   paymentMethod?: PaymentMethod;
   cashCollectionId?: string;
   isVoided?: boolean;
@@ -37,10 +40,24 @@ export interface InPersonGivingLedgerRow {
   day: string;
   serviceDate: string;
   serviceNote: string;
+  fundId: string;
+  fundName: string;
   cash: number;
   pdq: number;
   cheque: number;
   total: number;
+}
+
+export interface InPersonGivingNamedDonation {
+  id: string;
+  donorId?: string;
+  donorName: string;
+  category: string;
+  fundId: string;
+  fundName: string;
+  paymentMethod?: PaymentMethod;
+  isGiftAidEligible: boolean;
+  amount: number;
 }
 
 export interface InPersonGivingLedger {
@@ -55,6 +72,7 @@ export interface InPersonGivingLedger {
     total: number;
   }>;
   rows: InPersonGivingLedgerRow[];
+  namedDonations: InPersonGivingNamedDonation[];
   total: number;
 }
 
@@ -68,14 +86,27 @@ export function parseServiceNote(notes: string | undefined): string {
   return notes.slice(SERVICE_NOTE_PREFIX.length).trim() || "Service";
 }
 
+function isServiceTransaction(transaction: GivingTransaction): boolean {
+  return transaction.notes?.startsWith(SERVICE_NOTE_PREFIX) === true;
+}
+
+function isNamedDonationTransaction(transaction: GivingTransaction): boolean {
+  return Boolean(transaction.donorId || transaction.donorName?.trim());
+}
+
 function formatDay(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
     weekday: "short",
   });
 }
 
-function rowId(collectionId: string, serviceDate: string, serviceNote: string) {
-  return `${collectionId}-${serviceDate}-${serviceNote}`;
+function rowId(
+  collectionId: string,
+  serviceDate: string,
+  serviceNote: string,
+  fundId: string
+) {
+  return `${collectionId}-${serviceDate}-${serviceNote}-${fundId}`;
 }
 
 export function groupInPersonGivingCollections({
@@ -104,10 +135,46 @@ export function groupInPersonGivingCollections({
         string,
         { fundId: string; fundName: string; total: number }
       >();
+      const namedDonations: InPersonGivingNamedDonation[] = [];
 
       for (const transaction of collectionTransactions) {
+        const fundName =
+          fundNamesById.get(transaction.fundId) ?? "Unassigned fund";
+
+        const fundTotal = fundTotalsById.get(transaction.fundId) ?? {
+          fundId: transaction.fundId,
+          fundName,
+          total: 0,
+        };
+        fundTotal.total += transaction.amount;
+        fundTotalsById.set(transaction.fundId, fundTotal);
+        fundNames.add(fundName);
+
+        if (
+          !isServiceTransaction(transaction) &&
+          isNamedDonationTransaction(transaction)
+        ) {
+          namedDonations.push({
+            id: transaction._id,
+            donorId: transaction.donorId,
+            donorName: transaction.donorName ?? "Unknown donor",
+            category: transaction.category,
+            fundId: transaction.fundId,
+            fundName,
+            paymentMethod: transaction.paymentMethod,
+            isGiftAidEligible: transaction.isGiftAidEligible === true,
+            amount: transaction.amount,
+          });
+          continue;
+        }
+
         const serviceNote = parseServiceNote(transaction.notes);
-        const key = rowId(collection._id, transaction.date, serviceNote);
+        const key = rowId(
+          collection._id,
+          transaction.date,
+          serviceNote,
+          transaction.fundId
+        );
         const existing =
           rowsByKey.get(key) ??
           ({
@@ -115,6 +182,8 @@ export function groupInPersonGivingCollections({
             day: formatDay(transaction.date),
             serviceDate: transaction.date,
             serviceNote,
+            fundId: transaction.fundId,
+            fundName,
             cash: 0,
             pdq: 0,
             cheque: 0,
@@ -131,22 +200,19 @@ export function groupInPersonGivingCollections({
 
         existing.total += transaction.amount;
         rowsByKey.set(key, existing);
-
-        const fundName = fundNamesById.get(transaction.fundId);
-        if (fundName) {
-          fundNames.add(fundName);
-          const fundTotal = fundTotalsById.get(transaction.fundId) ?? {
-            fundId: transaction.fundId,
-            fundName,
-            total: 0,
-          };
-          fundTotal.total += transaction.amount;
-          fundTotalsById.set(transaction.fundId, fundTotal);
-        }
       }
 
       const rows = Array.from(rowsByKey.values()).sort((a, b) =>
         a.serviceDate.localeCompare(b.serviceDate)
+      );
+      const sortedNamedDonations = namedDonations.sort(
+        (a, b) =>
+          a.donorName.localeCompare(b.donorName) ||
+          a.category.localeCompare(b.category) ||
+          a.fundName.localeCompare(b.fundName) ||
+          a.amount - b.amount ||
+          (a.paymentMethod ?? "").localeCompare(b.paymentMethod ?? "") ||
+          a.id.localeCompare(b.id)
       );
 
       return {
@@ -159,10 +225,18 @@ export function groupInPersonGivingCollections({
           a.fundName.localeCompare(b.fundName)
         ),
         rows,
-        total: rows.reduce((sum, row) => sum + row.total, 0),
+        namedDonations: sortedNamedDonations,
+        total:
+          rows.reduce((sum, row) => sum + row.total, 0) +
+          sortedNamedDonations.reduce(
+            (sum, donation) => sum + donation.amount,
+            0
+          ),
       };
     })
-    .filter((ledger) => ledger.rows.length > 0)
+    .filter(
+      (ledger) => ledger.rows.length > 0 || ledger.namedDonations.length > 0
+    )
     .sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
 }
 
@@ -176,16 +250,23 @@ export function filterInPersonGivingLedgersByMonth(
   }
 
   return ledgers.filter((ledger) => {
-    const weekEndingDate = new Date(`${ledger.weekEndingDate}T00:00:00`);
+    const candidateDates =
+      ledger.rows.length > 0
+        ? ledger.rows.map((row) => row.serviceDate)
+        : [ledger.weekEndingDate];
 
-    if (year !== null && weekEndingDate.getFullYear() !== year) {
-      return false;
-    }
+    return candidateDates.some((candidateDate) => {
+      const date = new Date(`${candidateDate}T00:00:00`);
 
-    if (month !== null && weekEndingDate.getMonth() !== month) {
-      return false;
-    }
+      if (year !== null && date.getFullYear() !== year) {
+        return false;
+      }
 
-    return true;
+      if (month !== null && date.getMonth() !== month) {
+        return false;
+      }
+
+      return true;
+    });
   });
 }
