@@ -83,6 +83,125 @@ describe("in-person giving grouping", () => {
     ]);
   });
 
+  it("keeps service rows and named donations separate in one collection", () => {
+    const ledgers = groupInPersonGivingCollections({
+      collections: [
+        {
+          _id: "collection-1",
+          weekEndingDate: "2026-06-14",
+          collectionDate: "2026-06-14",
+          status: "submitted",
+          recordedAt: 1,
+          recordedBy: "user-1",
+          createdAt: 1,
+        },
+      ],
+      transactions: [
+        {
+          _id: "tx-service-cash",
+          date: "2026-06-08",
+          description: "Sunday Service - Cash",
+          amount: 420,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general-fund",
+          isReconciled: false,
+          paymentMethod: "Cash",
+          cashCollectionId: "collection-1",
+          notes: "service:Sunday Service",
+        },
+        {
+          _id: "tx-service-card",
+          date: "2026-06-08",
+          description: "Sunday Service - PDQ",
+          amount: 180,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general-fund",
+          isReconciled: false,
+          paymentMethod: "Card",
+          cashCollectionId: "collection-1",
+          notes: "service:Sunday Service",
+        },
+        {
+          _id: "tx-named-building",
+          date: "2026-06-14",
+          description: "Donation - Jane Smith",
+          amount: 250,
+          type: "Income",
+          category: "Donation",
+          fundId: "building-fund",
+          isReconciled: false,
+          paymentMethod: "Cash",
+          cashCollectionId: "collection-1",
+          donorName: "Jane Smith",
+          donorId: "donor-1",
+          isGiftAidEligible: true,
+        },
+        {
+          _id: "tx-named-tithe",
+          date: "2026-06-14",
+          description: "Tithes & First Fruits - Kwame Mensah",
+          amount: 100,
+          type: "Income",
+          category: "Tithes & First Fruits",
+          fundId: "general-fund",
+          isReconciled: false,
+          paymentMethod: "Cheque",
+          cashCollectionId: "collection-1",
+          donorName: "Kwame Mensah",
+          donorId: "donor-2",
+          isGiftAidEligible: false,
+        },
+      ],
+      funds: [
+        { _id: "general-fund", name: "General Fund" },
+        { _id: "building-fund", name: "Building Fund" },
+      ],
+    });
+
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0].total).toBe(950);
+    expect(ledgers[0].fundTotals).toEqual([
+      { fundId: "building-fund", fundName: "Building Fund", total: 250 },
+      { fundId: "general-fund", fundName: "General Fund", total: 700 },
+    ]);
+    expect(ledgers[0].rows).toEqual([
+      {
+        id: "collection-1-2026-06-08-Sunday Service",
+        day: "Mon",
+        serviceDate: "2026-06-08",
+        serviceNote: "Sunday Service",
+        cash: 420,
+        pdq: 180,
+        cheque: 0,
+        total: 600,
+      },
+    ]);
+    expect(ledgers[0].namedDonations).toEqual([
+      {
+        id: "tx-named-building",
+        donorName: "Jane Smith",
+        category: "Donation",
+        fundId: "building-fund",
+        fundName: "Building Fund",
+        paymentMethod: "Cash",
+        isGiftAidEligible: true,
+        amount: 250,
+      },
+      {
+        id: "tx-named-tithe",
+        donorName: "Kwame Mensah",
+        category: "Tithes & First Fruits",
+        fundId: "general-fund",
+        fundName: "General Fund",
+        paymentMethod: "Cheque",
+        isGiftAidEligible: false,
+        amount: 100,
+      },
+    ]);
+  });
+
   it("parses service notes from transaction metadata", () => {
     expect(parseServiceNote("service:Midweek Service")).toBe("Midweek Service");
     expect(parseServiceNote("free text")).toBe("Service");
