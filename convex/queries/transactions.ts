@@ -90,7 +90,7 @@ export const byDonor = query({
       .order("desc")
       .collect();
 
-    return transactions;
+    return filterReportableTransactions(transactions);
   },
 });
 
@@ -295,7 +295,9 @@ export const listUnlinkedIncome = query({
       .order("desc")
       .collect();
 
-    return transactions.filter((t) => t.pledgeId == null && t.isVoided !== true);
+    return transactions.filter(
+      (t) => t.pledgeId == null && isReportableIncomeTransaction(t)
+    );
   },
 });
 

@@ -1,7 +1,10 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
-import { isReportableIncomeTransaction } from "../../lib/reportableTransactions";
+import {
+  filterReportableTransactions,
+  isReportableIncomeTransaction,
+} from "../../lib/reportableTransactions";
 
 // List all donors
 export const list = query({
@@ -76,15 +79,17 @@ export const getWithHistory = query({
       .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
       .collect();
 
+    const reportableTransactions = filterReportableTransactions(transactions);
+
     // Calculate total giving
-    const totalGiving = transactions
+    const totalGiving = reportableTransactions
       .filter(isReportableIncomeTransaction)
       .reduce((sum, t) => sum + t.amount, 0);
 
     return {
       ...donor,
       pledges,
-      transactions,
+      transactions: reportableTransactions,
       totalGiving,
     };
   },
