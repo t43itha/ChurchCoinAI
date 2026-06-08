@@ -3,6 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
 import {
+  calculateCollectionBankingTotals,
   calculateReconciliationSummary,
   normalizeBankTransactionSplits,
 } from "../../lib/cashChequeBanking";
@@ -37,6 +38,8 @@ type BankTransactionSplit = {
   chequeAmount: number;
 };
 
+type CashBankingReconciliation = Doc<"cashBankingReconciliations">;
+
 export const varianceTypeValidator = v.union(
   v.literal("partial_banking"),
   v.literal("petty_cash_retained_or_spent"),
@@ -59,9 +62,33 @@ export const bankTransactionSplitInputValidator = v.object({
   chequeAmount: v.optional(v.number()),
 });
 
+const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+
 function assertNonNegativeAmount(amount: number, label: string) {
   if (!Number.isFinite(amount) || amount < 0) {
     throw new Error(`${label} cannot be negative`);
+  }
+}
+
+function assertUniqueCollectionSplits(collectionSplits: CollectionSplit[]) {
+  const seen = new Set<string>();
+  for (const split of collectionSplits) {
+    if (seen.has(split.cashCollectionId)) {
+      throw new Error("A cash collection can only appear once in a reconciliation");
+    }
+    seen.add(split.cashCollectionId);
+  }
+}
+
+function assertUniqueBankTransactionSplits(
+  bankTransactionSplits: BankTransactionSplitInput[] | BankTransactionSplit[]
+) {
+  const seen = new Set<string>();
+  for (const split of bankTransactionSplits) {
+    if (seen.has(split.transactionId)) {
+      throw new Error("A bank transaction can only appear once in a reconciliation");
+    }
+    seen.add(split.transactionId);
   }
 }
 
@@ -94,7 +121,8 @@ async function assertCollectionsBelongToOrganization(
 async function getAndValidateBankTransactions(
   ctx: MutationCtx,
   organizationId: Id<"organizations">,
-  bankTransactionSplits: BankTransactionSplitInput[]
+  bankTransactionSplits: BankTransactionSplitInput[],
+  currentReconciliationId?: Id<"cashBankingReconciliations">
 ) {
   const transactions: Doc<"transactions">[] = [];
 
@@ -112,9 +140,13 @@ async function getAndValidateBankTransactions(
       throw new Error("Only income transactions can be used as bank deposits");
     }
 
+    const isLinkedToCurrentReconciliation =
+      currentReconciliationId !== undefined &&
+      transaction.cashBankingReconciliationId === currentReconciliationId;
     if (
-      transaction.cashBankingRole === "bank_deposit" ||
-      transaction.cashBankingReconciliationId
+      (transaction.cashBankingRole === "bank_deposit" ||
+        transaction.cashBankingReconciliationId) &&
+      !isLinkedToCurrentReconciliation
     ) {
       throw new Error("Bank transaction is already linked to a cash banking deposit");
     }
@@ -129,6 +161,135 @@ async function getAndValidateBankTransactions(
   }
 
   return transactions;
+}
+
+async function getCompletedReconciliations(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  excludedReconciliationId?: Id<"cashBankingReconciliations">
+) {
+  const reconciliations = await ctx.db
+    .query("cashBankingReconciliations")
+    .withIndex("by_organization_status", (q) =>
+      q.eq("organizationId", organizationId).eq("status", "completed")
+    )
+    .collect();
+
+  return reconciliations.filter(
+    (reconciliation) => reconciliation._id !== excludedReconciliationId
+  );
+}
+
+function sumCollectionSplits(
+  reconciliations: CashBankingReconciliation[],
+  cashCollectionId: Id<"cashCollections">
+) {
+  return reconciliations
+    .flatMap((reconciliation) => reconciliation.cashCollectionSplits)
+    .filter((split) => split.cashCollectionId === cashCollectionId)
+    .reduce(
+      (acc, split) => {
+        acc.cashAmount += split.cashAmount;
+        acc.chequeAmount += split.chequeAmount;
+        return acc;
+      },
+      { cashAmount: 0, chequeAmount: 0 }
+    );
+}
+
+async function getCollectionSourceTransactions(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  cashCollectionId: Id<"cashCollections">
+) {
+  const transactions = await ctx.db
+    .query("transactions")
+    .withIndex("by_cashCollection", (q) =>
+      q.eq("cashCollectionId", cashCollectionId)
+    )
+    .collect();
+
+  return transactions.filter(
+    (transaction) => transaction.organizationId === organizationId
+  );
+}
+
+async function calculateCollectionBankingState(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  cashCollectionId: Id<"cashCollections">,
+  completedReconciliations: CashBankingReconciliation[],
+  pendingSplit?: CollectionSplit
+) {
+  const sourceTransactions = await getCollectionSourceTransactions(
+    ctx,
+    organizationId,
+    cashCollectionId
+  );
+  const expected = calculateCollectionBankingTotals(
+    cashCollectionId,
+    sourceTransactions
+  );
+  const banked = sumCollectionSplits(
+    completedReconciliations,
+    cashCollectionId
+  );
+
+  const bankedCashAmount = roundMoney(
+    banked.cashAmount + (pendingSplit?.cashAmount ?? 0)
+  );
+  const bankedChequeAmount = roundMoney(
+    banked.chequeAmount + (pendingSplit?.chequeAmount ?? 0)
+  );
+  const remainingCashAmount = roundMoney(expected.cashAmount - bankedCashAmount);
+  const remainingChequeAmount = roundMoney(
+    expected.chequeAmount - bankedChequeAmount
+  );
+
+  return {
+    expectedCashAmount: expected.cashAmount,
+    expectedChequeAmount: expected.chequeAmount,
+    bankedCashAmount,
+    bankedChequeAmount,
+    remainingCashAmount,
+    remainingChequeAmount,
+  };
+}
+
+async function assertCollectionSplitsWithinOpenBalances(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  collectionSplits: CollectionSplit[],
+  currentReconciliationId: Id<"cashBankingReconciliations">
+) {
+  const completedReconciliations = await getCompletedReconciliations(
+    ctx,
+    organizationId,
+    currentReconciliationId
+  );
+
+  for (const split of collectionSplits) {
+    const state = await calculateCollectionBankingState(
+      ctx,
+      organizationId,
+      split.cashCollectionId,
+      completedReconciliations
+    );
+    const remainingCashAmount = Math.max(0, state.remainingCashAmount);
+    const remainingChequeAmount = Math.max(0, state.remainingChequeAmount);
+
+    if (remainingCashAmount === 0 && remainingChequeAmount === 0) {
+      throw new Error("Cash collection has no remaining balance to reconcile");
+    }
+
+    if (roundMoney(split.cashAmount) > remainingCashAmount) {
+      throw new Error("Collection cash split exceeds remaining cash balance");
+    }
+
+    if (roundMoney(split.chequeAmount) > remainingChequeAmount) {
+      throw new Error("Collection cheque split exceeds remaining cheque balance");
+    }
+  }
 }
 
 function normalizeBankSplitsFromTransactions(
@@ -153,6 +314,29 @@ function normalizeBankSplitsFromTransactions(
     cashAmount: split.cashAmount,
     chequeAmount: split.chequeAmount,
   }));
+}
+
+function assertBankSplitsMatchStored(
+  normalizedBankSplits: BankTransactionSplit[],
+  storedBankSplits: BankTransactionSplit[]
+) {
+  if (normalizedBankSplits.length !== storedBankSplits.length) {
+    throw new Error("Bank transaction splits are stale; update the draft first");
+  }
+
+  for (let index = 0; index < storedBankSplits.length; index += 1) {
+    const normalized = normalizedBankSplits[index];
+    const stored = storedBankSplits[index];
+
+    if (
+      normalized.transactionId !== stored.transactionId ||
+      normalized.medium !== stored.medium ||
+      roundMoney(normalized.cashAmount) !== roundMoney(stored.cashAmount) ||
+      roundMoney(normalized.chequeAmount) !== roundMoney(stored.chequeAmount)
+    ) {
+      throw new Error("Bank transaction splits are stale; update the draft first");
+    }
+  }
 }
 
 function assertVarianceDetails(
@@ -222,15 +406,24 @@ export const updateDraft = mutation({
       throw new Error("Completed reconciliations cannot be updated");
     }
 
+    assertUniqueCollectionSplits(args.cashCollectionSplits);
+    assertUniqueBankTransactionSplits(args.bankTransactionSplits);
     await assertCollectionsBelongToOrganization(
       ctx,
       user.organizationId,
       args.cashCollectionSplits
     );
+    await assertCollectionSplitsWithinOpenBalances(
+      ctx,
+      user.organizationId,
+      args.cashCollectionSplits,
+      args.reconciliationId
+    );
     const bankTransactions = await getAndValidateBankTransactions(
       ctx,
       user.organizationId,
-      args.bankTransactionSplits
+      args.bankTransactionSplits,
+      args.reconciliationId
     );
     const bankTransactionSplits = normalizeBankSplitsFromTransactions(
       args.bankTransactionSplits,
@@ -244,6 +437,8 @@ export const updateDraft = mutation({
 
     assertVarianceDetails(summary.varianceAmount, args.varianceType, varianceNote);
 
+    // Reopened bank deposits removed from the draft stay linked so reporting does not
+    // expose overwritten deposit credits while the reconciliation is being edited.
     await ctx.db.patch(args.reconciliationId, {
       cashCollectionIds: args.cashCollectionSplits.map(
         (split) => split.cashCollectionId
@@ -297,12 +492,20 @@ export const complete = mutation({
       reconciliation.varianceNote
     );
 
+    assertUniqueCollectionSplits(reconciliation.cashCollectionSplits);
+    assertUniqueBankTransactionSplits(reconciliation.bankTransactionSplits);
     await assertCollectionsBelongToOrganization(
       ctx,
       user.organizationId,
       reconciliation.cashCollectionSplits
     );
-    await getAndValidateBankTransactions(
+    await assertCollectionSplitsWithinOpenBalances(
+      ctx,
+      user.organizationId,
+      reconciliation.cashCollectionSplits,
+      args.reconciliationId
+    );
+    const bankTransactions = await getAndValidateBankTransactions(
       ctx,
       user.organizationId,
       reconciliation.bankTransactionSplits.map((split) => ({
@@ -311,7 +514,22 @@ export const complete = mutation({
         medium: split.medium,
         cashAmount: split.cashAmount,
         chequeAmount: split.chequeAmount,
-      }))
+      })),
+      args.reconciliationId
+    );
+    const normalizedBankSplits = normalizeBankSplitsFromTransactions(
+      reconciliation.bankTransactionSplits.map((split) => ({
+        transactionId: split.transactionId,
+        transactionAmount: split.cashAmount + split.chequeAmount,
+        medium: split.medium,
+        cashAmount: split.cashAmount,
+        chequeAmount: split.chequeAmount,
+      })),
+      bankTransactions
+    );
+    assertBankSplitsMatchStored(
+      normalizedBankSplits,
+      reconciliation.bankTransactionSplits
     );
 
     for (const split of reconciliation.bankTransactionSplits) {
@@ -323,6 +541,12 @@ export const complete = mutation({
         isReconciled: true,
       });
     }
+
+    const completedReconciliations = await getCompletedReconciliations(
+      ctx,
+      user.organizationId,
+      args.reconciliationId
+    );
 
     for (const cashCollectionId of reconciliation.cashCollectionIds) {
       const sourceTransactions = await ctx.db
@@ -347,10 +571,24 @@ export const complete = mutation({
         }
       }
 
+      const currentSplit = reconciliation.cashCollectionSplits.find(
+        (split) => split.cashCollectionId === cashCollectionId
+      );
+      const state = await calculateCollectionBankingState(
+        ctx,
+        user.organizationId,
+        cashCollectionId,
+        completedReconciliations,
+        currentSplit
+      );
+
       await ctx.db.patch(cashCollectionId, {
         cashBankingLastReconciliationId: args.reconciliationId,
         cashBankingStatus:
-          reconciliation.varianceAmount === 0 ? "banked" : "partially_banked",
+          Math.max(0, state.remainingCashAmount) === 0 &&
+          Math.max(0, state.remainingChequeAmount) === 0
+            ? "banked"
+            : "partially_banked",
       });
     }
 
@@ -388,16 +626,66 @@ export const reopen = mutation({
       throw new Error("Only completed reconciliations can be reopened");
     }
 
-    for (const transactionId of reconciliation.bankTransactionIds) {
-      const transaction = await ctx.db.get(transactionId);
-      if (transaction && transaction.organizationId === user.organizationId) {
-        await ctx.db.patch(transactionId, {
-          cashBankingReconciliationId: undefined,
-          cashBankingRole: undefined,
-          bankingMedium: undefined,
-          isReconciled: false,
-        });
+    const completedReconciliations = await getCompletedReconciliations(
+      ctx,
+      user.organizationId,
+      args.reconciliationId
+    );
+
+    for (const cashCollectionId of reconciliation.cashCollectionIds) {
+      const sourceTransactions = await getCollectionSourceTransactions(
+        ctx,
+        user.organizationId,
+        cashCollectionId
+      );
+
+      for (const transaction of sourceTransactions) {
+        if (
+          transaction.cashBankingReconciliationId === args.reconciliationId &&
+          transaction.cashBankingRole === "source_giving" &&
+          isActiveTransaction(transaction) &&
+          transaction.type === "Income" &&
+          (transaction.paymentMethod === "Cash" ||
+            transaction.paymentMethod === "Cheque")
+        ) {
+          await ctx.db.patch(transaction._id, {
+            cashBankingReconciliationId: undefined,
+            cashBankingRole: undefined,
+          });
+        }
       }
+
+      const state = await calculateCollectionBankingState(
+        ctx,
+        user.organizationId,
+        cashCollectionId,
+        completedReconciliations
+      );
+      const remainingCashAmount = Math.max(0, state.remainingCashAmount);
+      const remainingChequeAmount = Math.max(0, state.remainingChequeAmount);
+      const bankedTotal = roundMoney(
+        state.bankedCashAmount + state.bankedChequeAmount
+      );
+      const latestCompletedReconciliation = completedReconciliations
+        .filter((completedReconciliation) =>
+          completedReconciliation.cashCollectionSplits.some(
+            (split) => split.cashCollectionId === cashCollectionId
+          )
+        )
+        .sort(
+          (a, b) =>
+            (b.completedAt ?? b.updatedAt) - (a.completedAt ?? a.updatedAt)
+        )[0];
+
+      await ctx.db.patch(cashCollectionId, {
+        cashBankingLastReconciliationId: latestCompletedReconciliation?._id,
+        cashBankingStatus:
+          bankedTotal <= 0
+            ? "not_started"
+            : remainingCashAmount === 0 && remainingChequeAmount === 0
+              ? "banked"
+              : "partially_banked",
+      });
     }
 
     const now = Date.now();
