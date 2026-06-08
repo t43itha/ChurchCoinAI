@@ -1446,6 +1446,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     const cashTotal = ledger.rows.reduce((sum, row) => sum + row.cash, 0);
                     const pdqTotal = ledger.rows.reduce((sum, row) => sum + row.pdq, 0);
                     const chequeTotal = ledger.rows.reduce((sum, row) => sum + row.cheque, 0);
+                    const serviceTotal = ledger.rows.reduce((sum, row) => sum + row.total, 0);
+                    const namedDonationTotal = ledger.namedDonations.reduce((sum, donation) => sum + donation.amount, 0);
 
                     return (
                       <React.Fragment key={ledger.collectionId}>
@@ -1484,6 +1486,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         {isExpanded && (
                           <tr>
                             <td colSpan={4} className="p-4 bg-paper border-b border-ledger">
+                              <div className="space-y-4">
+                                {ledger.rows.length > 0 && (
+                                  <div>
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                                      Service Totals
+                                    </div>
                               <div className="overflow-x-auto border border-ledger bg-white">
                                 <table className="w-full border-collapse text-xs">
                                   <thead className="bg-grey-light">
@@ -1514,10 +1522,54 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                       <td className="border border-ledger px-3 py-2 text-right font-mono">£{cashTotal.toFixed(2)}</td>
                                       <td className="border border-ledger px-3 py-2 text-right font-mono">£{pdqTotal.toFixed(2)}</td>
                                       <td className="border border-ledger px-3 py-2 text-right font-mono">£{chequeTotal.toFixed(2)}</td>
-                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{ledger.total.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{serviceTotal.toFixed(2)}</td>
                                     </tr>
                                   </tbody>
                                 </table>
+                              </div>
+                                  </div>
+                                )}
+                                {ledger.namedDonations.length > 0 && (
+                                  <div>
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                                      Named Donations
+                                    </div>
+                                    <div className="overflow-x-auto border border-ledger bg-white">
+                                      <table className="w-full border-collapse text-xs">
+                                        <thead className="bg-grey-light">
+                                          <tr>
+                                            <th className="border border-ledger px-3 py-2 text-left">Donor</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Category</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Fund</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Method</th>
+                                            <th className="border border-ledger px-3 py-2 text-center">Gift Aid</th>
+                                            <th className="border border-ledger px-3 py-2 text-right">Amount</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {ledger.namedDonations.map((donation) => (
+                                            <tr key={donation.id}>
+                                              <td className="border border-ledger px-3 py-2 font-medium text-ink">{donation.donorName}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.category}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.fundName}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.paymentMethod ?? "-"}</td>
+                                              <td className="border border-ledger px-3 py-2 text-center">{donation.isGiftAidEligible ? "Yes" : "No"}</td>
+                                              <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{donation.amount.toFixed(2)}</td>
+                                            </tr>
+                                          ))}
+                                          <tr className="bg-grey-light font-bold">
+                                            <td colSpan={5} className="border border-ledger px-3 py-2">TOTAL</td>
+                                            <td className="border border-ledger px-3 py-2 text-right font-mono">£{namedDonationTotal.toFixed(2)}</td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between border border-ledger bg-white px-3 py-2 text-xs font-bold">
+                                  <span>COLLECTION TOTAL</span>
+                                  <span className="font-mono">£{ledger.total.toFixed(2)}</span>
+                                </div>
                               </div>
                             </td>
                           </tr>
