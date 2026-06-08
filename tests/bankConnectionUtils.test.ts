@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateDefaultSyncRange,
+  type GoCardlessTransactionLike,
   isPendingStateExpired,
   normalizeEnableBankingTransaction,
   normalizeGoCardlessTransaction,
@@ -182,6 +183,18 @@ describe("bank connection utils", () => {
 });
 
 describe("GoCardless transaction normalization", () => {
+  const normalizeGoCardlessDate = (transaction: GoCardlessTransactionLike) =>
+    normalizeGoCardlessTransaction({
+      transaction: {
+        transactionId: "gc-date-test",
+        transactionAmount: { amount: "10.00", currency: "GBP" },
+        ...transaction,
+      },
+      accountId: "account-1",
+      accountName: "Metro Business Current",
+      fundId: null,
+    }).date;
+
   it("normalizes a positive GoCardless amount as income", () => {
     const normalized = normalizeGoCardlessTransaction({
       transaction: {
@@ -248,6 +261,43 @@ describe("GoCardless transaction normalization", () => {
     expect(normalized.date).toBe("2026-06-05");
   });
 
+  it("falls back to GoCardless value date-time when date fields are absent", () => {
+    expect(
+      normalizeGoCardlessDate({
+        valueDateTime: "2026-06-06T08:15:00.000Z",
+      })
+    ).toBe("2026-06-06");
+  });
+
+  it("uses GoCardless dates in provider priority order", () => {
+    const dateFields = {
+      bookingDate: "2026-06-10",
+      valueDate: "2026-06-11",
+      bookingDateTime: "2026-06-12T10:00:00.000Z",
+      valueDateTime: "2026-06-13T10:00:00.000Z",
+    };
+
+    expect(normalizeGoCardlessDate(dateFields)).toBe("2026-06-10");
+    expect(
+      normalizeGoCardlessDate({
+        valueDate: dateFields.valueDate,
+        bookingDateTime: dateFields.bookingDateTime,
+        valueDateTime: dateFields.valueDateTime,
+      })
+    ).toBe("2026-06-11");
+    expect(
+      normalizeGoCardlessDate({
+        bookingDateTime: dateFields.bookingDateTime,
+        valueDateTime: dateFields.valueDateTime,
+      })
+    ).toBe("2026-06-12");
+    expect(
+      normalizeGoCardlessDate({
+        valueDateTime: dateFields.valueDateTime,
+      })
+    ).toBe("2026-06-13");
+  });
+
   it("uses the best available GoCardless description fallback", () => {
     const normalized = normalizeGoCardlessTransaction({
       transaction: {
@@ -308,6 +358,14 @@ describe("GoCardless transaction normalization", () => {
         fundId: null,
       })
     ).toThrow("GoCardless transaction has an invalid date");
+  });
+
+  it("rejects GoCardless transactions with malformed date-times", () => {
+    expect(() =>
+      normalizeGoCardlessDate({
+        bookingDateTime: "2026-06-01Tnot-a-time",
+      })
+    ).toThrow(/^GoCardless transaction has an invalid date$/);
   });
 
   it("rejects GoCardless transactions without identifiers", () => {
