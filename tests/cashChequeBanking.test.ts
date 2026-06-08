@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   calculateCollectionBankingTotals,
   calculateReconciliationSummary,
+  type CollectionBankingTransaction,
   getCollectionBankingStatus,
   normalizeBankTransactionSplits,
 } from "../lib/cashChequeBanking";
 
-const givingTransactions = [
+const givingTransactions: CollectionBankingTransaction[] = [
   { _id: "c1-cash", cashCollectionId: "collection-1", paymentMethod: "Cash" as const, amount: 100, type: "Income" as const },
   { _id: "c1-cheque", cashCollectionId: "collection-1", paymentMethod: "Cheque" as const, amount: 40, type: "Income" as const },
   { _id: "c1-card", cashCollectionId: "collection-1", paymentMethod: "Card" as const, amount: 25, type: "Income" as const },
+  { _id: "c1-pdq", cashCollectionId: "collection-1", paymentMethod: "PDQ" as const, amount: 30, type: "Income" as const },
   { _id: "c2-cash", cashCollectionId: "collection-2", paymentMethod: "Cash" as const, amount: 60, type: "Income" as const },
   { _id: "c2-void", cashCollectionId: "collection-2", paymentMethod: "Cash" as const, amount: 10, type: "Income" as const, isVoided: true },
   { _id: "expense", cashCollectionId: "collection-1", paymentMethod: "Cash" as const, amount: 5, type: "Expenditure" as const },

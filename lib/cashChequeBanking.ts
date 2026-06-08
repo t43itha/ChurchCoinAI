@@ -8,7 +8,7 @@ export type CashBankingStatus = "not_started" | "partially_banked" | "banked";
 export type CollectionBankingTransaction = {
   _id: string;
   cashCollectionId?: string;
-  paymentMethod?: "Cash" | "Cheque" | "Bank" | "Card" | "Online";
+  paymentMethod?: "Cash" | "Cheque" | "Bank" | "Card" | "Online" | "PDQ";
   amount: number;
   type: "Income" | "Expenditure";
   isVoided?: boolean;
