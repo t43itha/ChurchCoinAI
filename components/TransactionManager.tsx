@@ -8,7 +8,7 @@ import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calend
 import CashTakingsEntry from './CashTakingsEntry';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
-import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections } from '../lib/inPersonGiving';
+import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 
 interface Category {
   _id: string;
@@ -152,6 +152,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson'>('all');
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
+  const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1429,7 +1430,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   <th className="px-6 py-3 text-xs">Week Ending</th>
                   <th className="px-6 py-3 text-xs">Fund / Status</th>
                   <th className="px-6 py-3 text-xs text-right">Total</th>
-                  <th className="px-6 py-3 w-12"></th>
+                  <th className="px-6 py-3 w-24"></th>
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -1473,14 +1474,26 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             £{ledger.total.toFixed(2)}
                           </td>
                           <td className="px-6 py-4 border-b border-slate-100 text-right">
-                            <button
-                              type="button"
-                              onClick={() => toggleGivingExpanded(ledger.collectionId)}
-                              className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
-                              aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
-                            >
-                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingGivingLedger(ledger)}
+                                  className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                  aria-label="Edit in-person giving"
+                                >
+                                  <Edit2 size={15} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleGivingExpanded(ledger.collectionId)}
+                                className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
+                              >
+                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {isExpanded && (
@@ -2432,6 +2445,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           onClose={() => setShowCashTakingsModal(false)}
           onSuccess={(result) => {
             console.log(`Cash collection created: ${result.transactionCount} transactions`);
+          }}
+        />
+      )}
+
+      {editingGivingLedger && canEdit && (
+        <CashTakingsEntry
+          funds={funds}
+          categories={categories}
+          initialCollection={editingGivingLedger}
+          onClose={() => setEditingGivingLedger(null)}
+          onSuccess={(result) => {
+            console.log(`Cash collection updated: ${result.transactionCount} transactions`);
+            setEditingGivingLedger(null);
           }}
         />
       )}

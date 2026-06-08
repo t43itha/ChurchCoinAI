@@ -71,10 +71,12 @@ describe("in-person giving grouping", () => {
     ]);
     expect(ledgers[0].rows).toEqual([
       {
-        id: "collection-1-2026-05-17-Sunday Service",
+        id: "collection-1-2026-05-17-Sunday Service-building-fund",
         day: "Sun",
         serviceDate: "2026-05-17",
         serviceNote: "Sunday Service",
+        fundId: "building-fund",
+        fundName: "Building Fund",
         cash: 780,
         pdq: 284.5,
         cheque: 220,
@@ -168,10 +170,12 @@ describe("in-person giving grouping", () => {
     ]);
     expect(ledgers[0].rows).toEqual([
       {
-        id: "collection-1-2026-06-08-Sunday Service",
+        id: "collection-1-2026-06-08-Sunday Service-general-fund",
         day: "Mon",
         serviceDate: "2026-06-08",
         serviceNote: "Sunday Service",
+        fundId: "general-fund",
+        fundName: "General Fund",
         cash: 420,
         pdq: 180,
         cheque: 0,
@@ -181,6 +185,7 @@ describe("in-person giving grouping", () => {
     expect(ledgers[0].namedDonations).toEqual([
       {
         id: "tx-named-building",
+        donorId: "donor-1",
         donorName: "Jane Smith",
         category: "Donation",
         fundId: "building-fund",
@@ -191,6 +196,7 @@ describe("in-person giving grouping", () => {
       },
       {
         id: "tx-named-tithe",
+        donorId: "donor-2",
         donorName: "Kwame Mensah",
         category: "Tithes & First Fruits",
         fundId: "general-fund",
@@ -236,10 +242,12 @@ describe("in-person giving grouping", () => {
     expect(ledgers[0].namedDonations).toEqual([]);
     expect(ledgers[0].rows).toEqual([
       {
-        id: "collection-1-2026-06-14-Service",
+        id: "collection-1-2026-06-14-Service-general-fund",
         day: "Sun",
         serviceDate: "2026-06-14",
         serviceNote: "Service",
+        fundId: "general-fund",
+        fundName: "General Fund",
         cash: 75,
         pdq: 0,
         cheque: 0,
@@ -254,15 +262,28 @@ describe("in-person giving grouping", () => {
     expect(parseServiceNote(undefined)).toBe("Service");
   });
 
-  it("filters ledgers by week-ending month and year", () => {
+  it("filters ledgers by service-row month and year", () => {
     const ledgers = [
       {
         collectionId: "may",
-        weekEndingDate: "2026-05-31",
+        weekEndingDate: "2026-06-14",
         status: "submitted" as const,
         fundNames: [],
         fundTotals: [],
-        rows: [],
+        rows: [
+          {
+            id: "may-row",
+            day: "Sun",
+            serviceDate: "2026-05-10",
+            serviceNote: "Sunday Service",
+            fundId: "general-fund",
+            fundName: "General Fund",
+            cash: 100,
+            pdq: 0,
+            cheque: 0,
+            total: 100,
+          },
+        ],
         namedDonations: [],
         total: 100,
       },
@@ -272,7 +293,20 @@ describe("in-person giving grouping", () => {
         status: "submitted" as const,
         fundNames: [],
         fundTotals: [],
-        rows: [],
+        rows: [
+          {
+            id: "june-row",
+            day: "Sun",
+            serviceDate: "2026-06-07",
+            serviceNote: "Sunday Service",
+            fundId: "general-fund",
+            fundName: "General Fund",
+            cash: 200,
+            pdq: 0,
+            cheque: 0,
+            total: 200,
+          },
+        ],
         namedDonations: [],
         total: 200,
       },

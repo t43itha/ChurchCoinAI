@@ -40,6 +40,8 @@ export interface InPersonGivingLedgerRow {
   day: string;
   serviceDate: string;
   serviceNote: string;
+  fundId: string;
+  fundName: string;
   cash: number;
   pdq: number;
   cheque: number;
@@ -48,6 +50,7 @@ export interface InPersonGivingLedgerRow {
 
 export interface InPersonGivingNamedDonation {
   id: string;
+  donorId?: string;
   donorName: string;
   category: string;
   fundId: string;
@@ -97,8 +100,13 @@ function formatDay(date: string): string {
   });
 }
 
-function rowId(collectionId: string, serviceDate: string, serviceNote: string) {
-  return `${collectionId}-${serviceDate}-${serviceNote}`;
+function rowId(
+  collectionId: string,
+  serviceDate: string,
+  serviceNote: string,
+  fundId: string
+) {
+  return `${collectionId}-${serviceDate}-${serviceNote}-${fundId}`;
 }
 
 export function groupInPersonGivingCollections({
@@ -148,6 +156,7 @@ export function groupInPersonGivingCollections({
         ) {
           namedDonations.push({
             id: transaction._id,
+            donorId: transaction.donorId,
             donorName: transaction.donorName ?? "Unknown donor",
             category: transaction.category,
             fundId: transaction.fundId,
@@ -160,7 +169,12 @@ export function groupInPersonGivingCollections({
         }
 
         const serviceNote = parseServiceNote(transaction.notes);
-        const key = rowId(collection._id, transaction.date, serviceNote);
+        const key = rowId(
+          collection._id,
+          transaction.date,
+          serviceNote,
+          transaction.fundId
+        );
         const existing =
           rowsByKey.get(key) ??
           ({
@@ -168,6 +182,8 @@ export function groupInPersonGivingCollections({
             day: formatDay(transaction.date),
             serviceDate: transaction.date,
             serviceNote,
+            fundId: transaction.fundId,
+            fundName,
             cash: 0,
             pdq: 0,
             cheque: 0,
@@ -234,16 +250,23 @@ export function filterInPersonGivingLedgersByMonth(
   }
 
   return ledgers.filter((ledger) => {
-    const weekEndingDate = new Date(`${ledger.weekEndingDate}T00:00:00`);
+    const candidateDates =
+      ledger.rows.length > 0
+        ? ledger.rows.map((row) => row.serviceDate)
+        : [ledger.weekEndingDate];
 
-    if (year !== null && weekEndingDate.getFullYear() !== year) {
-      return false;
-    }
+    return candidateDates.some((candidateDate) => {
+      const date = new Date(`${candidateDate}T00:00:00`);
 
-    if (month !== null && weekEndingDate.getMonth() !== month) {
-      return false;
-    }
+      if (year !== null && date.getFullYear() !== year) {
+        return false;
+      }
 
-    return true;
+      if (month !== null && date.getMonth() !== month) {
+        return false;
+      }
+
+      return true;
+    });
   });
 }

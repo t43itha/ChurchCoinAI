@@ -5,6 +5,8 @@ import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { Fund } from "../types";
 import DonorSearchInput from "./DonorSearchInput";
+import { InPersonGivingLedger } from "../lib/inPersonGiving";
+import { formatLocalDateInputValue, getWeekEndingSunday } from "../lib/dateUtils";
 import {
   AlertCircle,
   Banknote,
@@ -48,16 +50,9 @@ interface NamedDonationEntry {
 interface CashTakingsEntryProps {
   funds: Fund[];
   categories: Category[];
+  initialCollection?: InPersonGivingLedger;
   onClose: () => void;
   onSuccess?: (result: { cashCollectionId: string; transactionCount: number }) => void;
-}
-
-function getWeekEndingDate(date: Date): string {
-  const dayOfWeek = date.getDay();
-  const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-  const sunday = new Date(date);
-  sunday.setDate(date.getDate() + daysUntilSunday);
-  return sunday.toISOString().split("T")[0];
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -93,33 +88,67 @@ type EntryTab = "serviceTotals" | "namedDonations";
 const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   funds,
   categories,
+  initialCollection,
   onClose,
   onSuccess,
 }) => {
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatLocalDateInputValue(new Date());
   const unrestrictedFund = funds.find((fund) => fund.type === "Unrestricted");
   const defaultFundId = unrestrictedFund?._id || funds[0]?._id || "";
   const defaultNamedDonationCategory = getDefaultDonationCategory(categories);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [weekEndingDate, setWeekEndingDate] = useState(getWeekEndingDate(new Date()));
+  const [weekEndingDate, setWeekEndingDate] = useState(
+    initialCollection?.weekEndingDate ?? getWeekEndingSunday(new Date())
+  );
   const [notes, setNotes] = useState("");
   const [activeEntryTab, setActiveEntryTab] = useState<EntryTab>("serviceTotals");
-  const [namedDonations, setNamedDonations] = useState<NamedDonationEntry[]>([]);
-  const [serviceRows, setServiceRows] = useState<ServiceRowEntry[]>([
-    {
-      id: generateId(),
-      serviceDate: today,
-      serviceNote: "Sunday Service",
-      fundId: defaultFundId,
-      cash: "",
-      pdq: "",
-      cheque: "",
-    },
-  ]);
+  const [namedDonations, setNamedDonations] = useState<NamedDonationEntry[]>(
+    () =>
+      initialCollection?.namedDonations.map((donation) => ({
+        id: donation.id,
+        donorName: donation.donorName,
+        donorId: donation.donorId as Id<"donors"> | undefined,
+        category: donation.category,
+        fundId: donation.fundId,
+        paymentMethod:
+          donation.paymentMethod === "Cheque" || donation.paymentMethod === "Card"
+            ? donation.paymentMethod
+            : "Cash",
+        amount: donation.amount.toFixed(2),
+        isGiftAidEligible: donation.isGiftAidEligible,
+      })) ?? []
+  );
+  const [serviceRows, setServiceRows] = useState<ServiceRowEntry[]>(() => {
+    const initialRows =
+      initialCollection?.rows.map((row) => ({
+        id: row.id,
+        serviceDate: row.serviceDate,
+        serviceNote: row.serviceNote,
+        fundId: row.fundId,
+        cash: row.cash > 0 ? row.cash.toFixed(2) : "",
+        pdq: row.pdq > 0 ? row.pdq.toFixed(2) : "",
+        cheque: row.cheque > 0 ? row.cheque.toFixed(2) : "",
+      })) ?? [];
+
+    return initialRows.length > 0
+      ? initialRows
+      : [
+          {
+            id: generateId(),
+            serviceDate: today,
+            serviceNote: "Sunday Service",
+            fundId: defaultFundId,
+            cash: "",
+            pdq: "",
+            cheque: "",
+          },
+        ];
+  });
 
   const submitCollection = useMutation(api.mutations.cashCollections.submitCollection);
+  const replaceCollectionEntries = useMutation(api.mutations.cashCollections.replaceCollectionEntries);
 
   const totals = useMemo(() => {
     const rows = serviceRows.map((row) => ({
@@ -163,6 +192,10 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   };
 
   const updateServiceRow = (id: string, updates: Partial<ServiceRowEntry>) => {
+    if (updates.serviceDate && serviceRows[0]?.id === id) {
+      setWeekEndingDate(getWeekEndingSunday(updates.serviceDate));
+    }
+
     setServiceRows((rows) =>
       rows.map((row) => (row.id === id ? { ...row, ...updates } : row))
     );
@@ -241,14 +274,21 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         throw new Error("Please add at least one service row or named donation with an amount.");
       }
 
-      const result = await submitCollection({
+      const payload = {
         weekEndingDate,
         collectionDate: validRows[0]?.serviceDate || weekEndingDate,
         notes: notes || undefined,
-        status: asDraft ? "draft" : "submitted",
+        status: (asDraft ? "draft" : "submitted") as "draft" | "submitted",
         serviceRows: validRows,
         namedDonations: validNamedDonations,
-      });
+      };
+
+      const result = initialCollection
+        ? await replaceCollectionEntries({
+            cashCollectionId: initialCollection.collectionId as Id<"cashCollections">,
+            ...payload,
+          })
+        : await submitCollection(payload);
 
       onSuccess?.({
         cashCollectionId: result.cashCollectionId,
@@ -271,8 +311,14 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               <Banknote className="h-5 w-5 text-sage-700" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold">Record In-Person Giving</h2>
-              <p className="text-sm text-gray-500">Enter weekly service totals for cash, PDQ, and cheques.</p>
+              <h2 className="text-lg font-bold">
+                {initialCollection ? "Edit In-Person Giving" : "Record In-Person Giving"}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {initialCollection
+                  ? "Correct weekly service totals, named donations, and dates."
+                  : "Enter weekly service totals for cash, PDQ, and cheques."}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="shrink-0 p-2 hover:bg-gray-100 rounded-md transition-colors">
@@ -879,7 +925,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                 ) : (
                   <Send className="h-3.5 w-3.5" />
                 )}
-                Submit
+                {initialCollection ? "Save Changes" : "Submit"}
               </button>
             </div>
           </div>
