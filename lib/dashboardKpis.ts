@@ -520,8 +520,8 @@ function isPledgeSatisfiedByTransaction(
     return false;
   }
 
-  if (transaction.pledgeId === pledge._id) {
-    return true;
+  if (transaction.pledgeId) {
+    return transaction.pledgeId === pledge._id;
   }
 
   if (transaction.donorId && pledge.donorId && transaction.donorId === pledge.donorId) {

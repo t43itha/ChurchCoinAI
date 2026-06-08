@@ -467,4 +467,145 @@ describe("dashboard KPI helpers", () => {
 
     expect(summary.health.donorAttentionCount).toBe(0);
   });
+
+  it("does not let one explicit pledge payment satisfy another pledge for the same donor", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "pledge-one-income",
+          pledgeId: "pledge-one",
+          donorId: "shared-donor",
+          donorName: "Shared Donor",
+          date: "2026-05-12",
+          amount: 50,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general",
+          isGiftAidEligible: true,
+          isReconciled: true,
+        },
+      ],
+      donors: [
+        {
+          _id: "shared-donor",
+          name: "Shared Donor",
+          type: "Individual",
+          isGiftAidActive: true,
+        },
+      ],
+      pledges: [
+        {
+          _id: "pledge-one",
+          donorId: "shared-donor",
+          donorName: "Shared Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+        {
+          _id: "pledge-two",
+          donorId: "shared-donor",
+          donorName: "Shared Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+      ],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.donorAttentionCount).toBe(1);
+  });
+
+  it("does not let one explicit donorless pledge payment satisfy another pledge with the same donor name", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "pledge-one-income",
+          pledgeId: "pledge-one",
+          donorName: "Imported Shared Donor",
+          date: "2026-05-12",
+          amount: 50,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general",
+          isGiftAidEligible: true,
+          isReconciled: true,
+        },
+      ],
+      donors: [],
+      pledges: [
+        {
+          _id: "pledge-one",
+          donorName: "Imported Shared Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+        {
+          _id: "pledge-two",
+          donorName: "Imported Shared Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+      ],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.donorAttentionCount).toBe(1);
+  });
+
+  it("uses donor details as a fallback for unlinked pledge payments", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "unlinked-pledge-income",
+          donorName: "Imported Fallback Donor",
+          date: "2026-05-12",
+          amount: 50,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general",
+          isGiftAidEligible: true,
+          isReconciled: true,
+        },
+      ],
+      donors: [],
+      pledges: [
+        {
+          _id: "fallback-pledge",
+          donorName: "Imported Fallback Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+      ],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.donorAttentionCount).toBe(0);
+  });
 });
