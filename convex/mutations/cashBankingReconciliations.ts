@@ -214,6 +214,24 @@ async function getCollectionSourceTransactions(
   );
 }
 
+async function getCurrentReconciliationBankDeposits(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  reconciliationId: Id<"cashBankingReconciliations">
+) {
+  const bankDeposits = await ctx.db
+    .query("transactions")
+    .withIndex("by_organization_cashBankingRole", (q) =>
+      q.eq("organizationId", organizationId).eq("cashBankingRole", "bank_deposit")
+    )
+    .collect();
+
+  return bankDeposits.filter(
+    (transaction) =>
+      transaction.cashBankingReconciliationId === reconciliationId
+  );
+}
+
 async function calculateCollectionBankingState(
   ctx: MutationCtx,
   organizationId: Id<"organizations">,
@@ -532,6 +550,26 @@ export const complete = mutation({
       reconciliation.bankTransactionSplits
     );
 
+    const finalBankTransactionIds = new Set(
+      reconciliation.bankTransactionSplits.map((split) => split.transactionId)
+    );
+    const currentBankDeposits = await getCurrentReconciliationBankDeposits(
+      ctx,
+      user.organizationId,
+      args.reconciliationId
+    );
+
+    for (const transaction of currentBankDeposits) {
+      if (!finalBankTransactionIds.has(transaction._id)) {
+        await ctx.db.patch(transaction._id, {
+          cashBankingReconciliationId: undefined,
+          cashBankingRole: undefined,
+          bankingMedium: undefined,
+          isReconciled: false,
+        });
+      }
+    }
+
     for (const split of reconciliation.bankTransactionSplits) {
       await ctx.db.patch(split.transactionId, {
         category: "Cash/cheque banking",
@@ -642,11 +680,7 @@ export const reopen = mutation({
       for (const transaction of sourceTransactions) {
         if (
           transaction.cashBankingReconciliationId === args.reconciliationId &&
-          transaction.cashBankingRole === "source_giving" &&
-          isActiveTransaction(transaction) &&
-          transaction.type === "Income" &&
-          (transaction.paymentMethod === "Cash" ||
-            transaction.paymentMethod === "Cheque")
+          transaction.cashBankingRole === "source_giving"
         ) {
           await ctx.db.patch(transaction._id, {
             cashBankingReconciliationId: undefined,
