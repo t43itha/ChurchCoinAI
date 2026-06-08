@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Transaction, Fund, Pledge, ChurchDetails, CategoryGroup, WeeklyBreakdownItem, TitheBreakdownItem, MissionTitheItem } from '../types';
@@ -31,7 +31,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { filterActiveTransactions } from '../lib/voidedTransactions';
+import { filterReportableTransactions } from '../lib/reportableTransactions';
 
 // ============ TYPE DEFINITIONS ============
 
@@ -1112,7 +1112,7 @@ interface AIReportsContentProps {
 }
 
 const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds, pledges, churchDetails }) => {
-  const activeTransactions = filterActiveTransactions(transactions);
+  const activeTransactions = useMemo(() => filterReportableTransactions(transactions), [transactions]);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
   const [isGenerating, setIsGenerating] = useState(false);

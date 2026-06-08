@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Info, ArrowUpRight, Sparkles, Activity, Users, Target, ArrowRight, Banknote } from 'lucide-react';
 import SmartSuggestionsPanel from './intelligence/SmartSuggestionsPanel';
 import CashTakingsEntry from './CashTakingsEntry';
-import { filterActiveTransactions } from '../lib/voidedTransactions';
+import { filterReportableTransactions } from '../lib/reportableTransactions';
 
 interface Category {
   _id: string;
@@ -24,7 +24,7 @@ const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, currentUser }) => {
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
-  const activeTransactions = useMemo(() => filterActiveTransactions(transactions), [transactions]);
+  const activeTransactions = useMemo(() => filterReportableTransactions(transactions), [transactions]);
   // --- Calculations ---
 
   // 1. Cash Flow Health (Previous Month - has complete data)
