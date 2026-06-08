@@ -102,8 +102,22 @@ export function normalizeBankTransactionSplits(
       };
     }
 
-    const cashAmount = roundMoney(split.cashAmount ?? 0);
-    const chequeAmount = roundMoney(split.chequeAmount ?? 0);
+    const cashAmountInput = split.cashAmount;
+    const chequeAmountInput = split.chequeAmount;
+
+    if (
+      typeof cashAmountInput !== "number" ||
+      !Number.isFinite(cashAmountInput) ||
+      cashAmountInput <= 0 ||
+      typeof chequeAmountInput !== "number" ||
+      !Number.isFinite(chequeAmountInput) ||
+      chequeAmountInput <= 0
+    ) {
+      throw new Error("Mixed bank split amounts must be positive");
+    }
+
+    const cashAmount = roundMoney(cashAmountInput);
+    const chequeAmount = roundMoney(chequeAmountInput);
     const splitTotal = roundMoney(cashAmount + chequeAmount);
 
     if (splitTotal !== roundMoney(split.transactionAmount)) {

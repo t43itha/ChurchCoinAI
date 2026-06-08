@@ -68,6 +68,32 @@ describe("cash/cheque banking helpers", () => {
     ).toThrow("Mixed bank split must equal the transaction amount");
   });
 
+  it("rejects mixed split components that are not positive money amounts", () => {
+    expect(() =>
+      normalizeBankTransactionSplits([
+        {
+          transactionId: "bank-mixed-negative",
+          transactionAmount: 100,
+          medium: "mixed",
+          cashAmount: -50,
+          chequeAmount: 150,
+        },
+      ])
+    ).toThrow("Mixed bank split amounts must be positive");
+
+    expect(() =>
+      normalizeBankTransactionSplits([
+        {
+          transactionId: "bank-mixed-zero",
+          transactionAmount: 100,
+          medium: "mixed",
+          cashAmount: 0,
+          chequeAmount: 100,
+        },
+      ])
+    ).toThrow("Mixed bank split amounts must be positive");
+  });
+
   it("calculates zero variance for one collection to many deposits", () => {
     const summary = calculateReconciliationSummary({
       collectionSplits: [{ cashCollectionId: "collection-1", cashAmount: 100, chequeAmount: 40 }],
