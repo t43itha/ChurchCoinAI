@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { Fund } from "../types";
+import DonorSearchInput from "./DonorSearchInput";
 import {
   AlertCircle,
   Banknote,
@@ -87,6 +88,8 @@ const dayLabel = (date: string) =>
     weekday: "short",
   });
 
+type EntryTab = "serviceTotals" | "namedDonations";
+
 const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   funds,
   categories,
@@ -102,6 +105,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [weekEndingDate, setWeekEndingDate] = useState(getWeekEndingDate(new Date()));
   const [notes, setNotes] = useState("");
+  const [activeEntryTab, setActiveEntryTab] = useState<EntryTab>("serviceTotals");
   const [namedDonations, setNamedDonations] = useState<NamedDonationEntry[]>([]);
   const [serviceRows, setServiceRows] = useState<ServiceRowEntry[]>([
     {
@@ -293,8 +297,33 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
-          <div className="max-w-full overflow-x-auto">
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          <div className="px-4 sm:px-6 pt-4 border-b border-gray-200">
+            <div className="flex items-center gap-1">
+              {[
+                { id: "serviceTotals" as const, label: "Service Totals" },
+                { id: "namedDonations" as const, label: "Named Donations" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveEntryTab(tab.id)}
+                  className={`px-3 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+                    activeEntryTab === tab.id
+                      ? "border-black text-black"
+                      : "border-transparent text-gray-500 hover:text-black"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-w-0 p-4 sm:p-6">
+            {activeEntryTab === "serviceTotals" && (
+              <>
+          <div className="hidden md:block max-w-full overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-gray-100 text-xs uppercase tracking-wide text-gray-600">
@@ -404,6 +433,114 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             </table>
           </div>
 
+          <div className="md:hidden space-y-3">
+            {serviceRows.map((row, index) => {
+              const rowTotal =
+                parseMoney(row.cash) +
+                parseMoney(row.pdq) +
+                parseMoney(row.cheque);
+
+              return (
+                <div key={row.id} className="border border-gray-300 rounded-md p-3 space-y-3 bg-white">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                        Service Row {index + 1}
+                      </div>
+                      <div className="text-xs font-mono text-gray-500">
+                        {dayLabel(row.serviceDate)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeServiceRow(row.id)}
+                      disabled={serviceRows.length === 1}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Remove row"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Service Date</label>
+                      <input
+                        type="date"
+                        value={row.serviceDate}
+                        onChange={(e) => updateServiceRow(row.id, { serviceDate: e.target.value })}
+                        className="block w-full min-w-0 h-10 px-3 border border-gray-300 rounded-md font-mono text-[16px] focus:outline-none focus:ring-2 focus:ring-black/10 appearance-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Service / Note</label>
+                      <input
+                        type="text"
+                        value={row.serviceNote}
+                        onChange={(e) => updateServiceRow(row.id, { serviceNote: e.target.value })}
+                        placeholder="e.g., Sunday Service"
+                        className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Fund</label>
+                      <select
+                        value={row.fundId}
+                        onChange={(e) => updateServiceRow(row.id, { fundId: e.target.value })}
+                        className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                      >
+                        <option value="">Select fund...</option>
+                        {funds.map((fund) => (
+                          <option key={fund._id} value={fund._id}>
+                            {fund.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["cash", "pdq", "cheque"] as const).map((field) => (
+                        <div key={field}>
+                          <label className="block text-xs font-medium capitalize text-gray-600 mb-1">
+                            {field}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={row[field]}
+                            onChange={(e) => updateServiceRow(row.id, { [field]: e.target.value })}
+                            placeholder="0.00"
+                            className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-sm">
+                    <span className="font-bold text-gray-600">Total</span>
+                    <span className="font-mono font-bold">{formatCurrency(rowTotal)}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="border border-gray-300 bg-gray-100 rounded-md p-3 space-y-2 font-bold">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <span>Cash</span>
+                <span className="text-right font-mono">{formatCurrency(totals.cash)}</span>
+                <span>PDQ</span>
+                <span className="text-right font-mono">{formatCurrency(totals.pdq)}</span>
+                <span>Cheque</span>
+                <span className="text-right font-mono">{formatCurrency(totals.cheque)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-gray-300 pt-2">
+                <span>Total</span>
+                <span className="font-mono">{formatCurrency(totals.total)}</span>
+              </div>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={addServiceRow}
@@ -412,6 +549,278 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             <Plus className="h-4 w-4" />
             Add Service Row
           </button>
+              </>
+            )}
+
+            {activeEntryTab === "namedDonations" && (
+              <div className="space-y-4">
+                {namedDonations.length === 0 ? (
+                  <div className="border border-dashed border-gray-300 rounded-md p-6 text-center">
+                    <button
+                      type="button"
+                      onClick={addNamedDonation}
+                      className="mx-auto py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Donation
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="hidden lg:block max-w-full overflow-visible">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="bg-gray-100 text-xs uppercase tracking-wide text-gray-600">
+                            <th className="border border-gray-300 px-3 py-2 text-left min-w-56">Donor</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left min-w-44">Category</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left min-w-44">Fund</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left w-32">Method</th>
+                            <th className="border border-gray-300 px-3 py-2 text-right w-32">Amount</th>
+                            <th className="border border-gray-300 px-3 py-2 text-center w-24">Gift Aid</th>
+                            <th className="border border-gray-300 px-3 py-2 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {namedDonations.map((row) => (
+                            <tr key={row.id}>
+                              <td className="border border-gray-300 px-3 py-2 align-top">
+                                <DonorSearchInput
+                                  value={row.donorName}
+                                  onChange={(donorName) =>
+                                    updateNamedDonation(row.id, { donorName, donorId: undefined })
+                                  }
+                                  onDonorSelect={(donor) =>
+                                    updateNamedDonation(row.id, {
+                                      donorId: donor.donorId ?? undefined,
+                                      donorName: donor.donorName,
+                                      isGiftAidEligible: donor.isGiftAidActive,
+                                    })
+                                  }
+                                  placeholder="Search or add donor..."
+                                />
+                              </td>
+                              <td className="border border-gray-300 px-3 py-2 align-top">
+                                <select
+                                  value={row.category}
+                                  onChange={(e) => updateNamedDonation(row.id, { category: e.target.value })}
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                >
+                                  {categories.length === 0 && <option value="Donation">Donation</option>}
+                                  {categories.map((category) => (
+                                    <option key={category._id} value={category.name}>
+                                      {category.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="border border-gray-300 px-3 py-2 align-top">
+                                <select
+                                  value={row.fundId}
+                                  onChange={(e) => updateNamedDonation(row.id, { fundId: e.target.value })}
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                >
+                                  <option value="">Select fund...</option>
+                                  {funds.map((fund) => (
+                                    <option key={fund._id} value={fund._id}>
+                                      {fund.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="border border-gray-300 px-3 py-2 align-top">
+                                <select
+                                  value={row.paymentMethod}
+                                  onChange={(e) =>
+                                    updateNamedDonation(row.id, {
+                                      paymentMethod: e.target.value as NamedDonationPaymentMethod,
+                                    })
+                                  }
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                >
+                                  <option value="Cash">Cash</option>
+                                  <option value="Cheque">Cheque</option>
+                                  <option value="Card">Card</option>
+                                </select>
+                              </td>
+                              <td className="border border-gray-300 px-3 py-2 align-top">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={row.amount}
+                                  onChange={(e) => updateNamedDonation(row.id, { amount: e.target.value })}
+                                  placeholder="0.00"
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                                />
+                              </td>
+                              <td className="border border-gray-300 px-3 py-2 text-center align-top">
+                                <input
+                                  type="checkbox"
+                                  checked={row.isGiftAidEligible}
+                                  onChange={(e) =>
+                                    updateNamedDonation(row.id, {
+                                      isGiftAidEligible: e.target.checked,
+                                    })
+                                  }
+                                  className="mt-3 h-4 w-4 rounded border-gray-300"
+                                />
+                              </td>
+                              <td className="border border-gray-300 px-2 py-2 text-center align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => removeNamedDonation(row.id)}
+                                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                                  title="Remove donation"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="bg-gray-100 font-bold">
+                            <td className="border border-gray-300 px-3 py-2" colSpan={4}>
+                              TOTAL
+                            </td>
+                            <td className="border border-gray-300 px-3 py-2 text-right font-mono">
+                              {formatCurrency(totals.namedDonationTotal)}
+                            </td>
+                            <td className="border border-gray-300" colSpan={2}></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="lg:hidden space-y-3">
+                      {namedDonations.map((row, index) => (
+                        <div key={row.id} className="border border-gray-300 rounded-md p-3 space-y-3 bg-white">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                              Donation {index + 1}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeNamedDonation(row.id)}
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                              title="Remove donation"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Donor</label>
+                              <DonorSearchInput
+                                value={row.donorName}
+                                onChange={(donorName) =>
+                                  updateNamedDonation(row.id, { donorName, donorId: undefined })
+                                }
+                                onDonorSelect={(donor) =>
+                                  updateNamedDonation(row.id, {
+                                    donorId: donor.donorId ?? undefined,
+                                    donorName: donor.donorName,
+                                    isGiftAidEligible: donor.isGiftAidActive,
+                                  })
+                                }
+                                placeholder="Search or add donor..."
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                                <select
+                                  value={row.category}
+                                  onChange={(e) => updateNamedDonation(row.id, { category: e.target.value })}
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                >
+                                  {categories.length === 0 && <option value="Donation">Donation</option>}
+                                  {categories.map((category) => (
+                                    <option key={category._id} value={category.name}>
+                                      {category.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Fund</label>
+                                <select
+                                  value={row.fundId}
+                                  onChange={(e) => updateNamedDonation(row.id, { fundId: e.target.value })}
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                >
+                                  <option value="">Select fund...</option>
+                                  {funds.map((fund) => (
+                                    <option key={fund._id} value={fund._id}>
+                                      {fund.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Method</label>
+                                <select
+                                  value={row.paymentMethod}
+                                  onChange={(e) =>
+                                    updateNamedDonation(row.id, {
+                                      paymentMethod: e.target.value as NamedDonationPaymentMethod,
+                                    })
+                                  }
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                >
+                                  <option value="Cash">Cash</option>
+                                  <option value="Cheque">Cheque</option>
+                                  <option value="Card">Card</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={row.amount}
+                                  onChange={(e) => updateNamedDonation(row.id, { amount: e.target.value })}
+                                  placeholder="0.00"
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                                />
+                              </div>
+                            </div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={row.isGiftAidEligible}
+                                onChange={(e) =>
+                                  updateNamedDonation(row.id, {
+                                    isGiftAidEligible: e.target.checked,
+                                  })
+                                }
+                                className="h-4 w-4 rounded border-gray-300"
+                              />
+                              Gift Aid Eligible
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between border border-gray-300 bg-gray-100 rounded-md p-3 font-bold">
+                        <span>Total</span>
+                        <span className="font-mono">{formatCurrency(totals.namedDonationTotal)}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addNamedDonation}
+                      className="w-full py-2 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-sage-400 hover:text-sage-700 hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Donation
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -423,6 +832,20 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
         <div className="px-4 py-3 border-t border-gray-200">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="grid grid-cols-3 gap-3 text-[11px] sm:text-xs">
+              <div>
+                <div className="text-gray-500">Services</div>
+                <div className="font-mono font-bold">{formatCurrency(totals.total)}</div>
+              </div>
+              <div>
+                <div className="text-gray-500">Named</div>
+                <div className="font-mono font-bold">{formatCurrency(totals.namedDonationTotal)}</div>
+              </div>
+              <div>
+                <div className="text-gray-500">Total</div>
+                <div className="font-mono font-bold">{formatCurrency(totals.combinedTotal)}</div>
+              </div>
+            </div>
             <input
               type="text"
               value={notes}
