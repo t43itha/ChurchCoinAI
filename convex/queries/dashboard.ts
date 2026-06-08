@@ -7,6 +7,7 @@ import {
 } from "../../lib/reportableTransactions";
 import {
   buildExecutiveDashboardSummary,
+  type BuildExecutiveDashboardSummaryInput,
   type DashboardPeriodKey,
 } from "../../lib/dashboardKpis";
 
@@ -275,21 +276,17 @@ export const executiveSummary = query({
         type: donor.type,
         isGiftAidActive: donor.isGiftAidActive,
       })),
-      pledges: pledges.flatMap((pledge) =>
-        pledge.donorId
-          ? [
-              {
-                _id: String(pledge._id),
-                donorId: String(pledge.donorId),
-                fundId: String(pledge.fundId),
-                amount: pledge.amount,
-                frequency: pledge.frequency,
-                startDate: pledge.startDate,
-                status: pledge.status,
-              },
-            ]
-          : []
-      ),
+      // Convex permits imported pledges without donorId; preserve that runtime shape here.
+      pledges: pledges.map((pledge) => ({
+        _id: String(pledge._id),
+        donorId: pledge.donorId ? String(pledge.donorId) : undefined,
+        donorName: pledge.donorName,
+        fundId: String(pledge.fundId),
+        amount: pledge.amount,
+        frequency: pledge.frequency,
+        startDate: pledge.startDate,
+        status: pledge.status,
+      })) as BuildExecutiveDashboardSummaryInput["pledges"],
       cashCollections: cashCollections.map((collection) => ({
         _id: String(collection._id),
         weekEndingDate: collection.weekEndingDate,
