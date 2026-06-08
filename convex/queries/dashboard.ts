@@ -1,9 +1,14 @@
 import { query } from "../_generated/server";
+import { v } from "convex/values";
 import { requireAuth } from "../lib/auth";
 import {
   filterReportableTransactions,
   sumReportableSigned,
 } from "../../lib/reportableTransactions";
+import {
+  buildExecutiveDashboardSummary,
+  type DashboardPeriodKey,
+} from "../../lib/dashboardKpis";
 
 // Get dashboard summary data (KPIs)
 export const summary = query({
@@ -174,5 +179,131 @@ export const trendData = query({
         ...data,
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
+  },
+});
+
+export const executiveSummary = query({
+  args: {
+    periodKey: v.optional(
+      v.union(
+        v.literal("currentMonth"),
+        v.literal("previousMonth"),
+        v.literal("quarter"),
+        v.literal("ytd")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const periodKey: DashboardPeriodKey | undefined = args.periodKey;
+
+    const [
+      funds,
+      transactions,
+      donors,
+      pledges,
+      cashCollections,
+      cashReconciliations,
+    ] = await Promise.all([
+      ctx.db
+        .query("funds")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("transactions")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("donors")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("pledges")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("cashCollections")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("cashBankingReconciliations")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+    ]);
+
+    return buildExecutiveDashboardSummary({
+      periodKey,
+      funds: funds.map((fund) => ({
+        _id: String(fund._id),
+        name: fund.name,
+        type: fund.type,
+        targetAmount: fund.targetAmount,
+      })),
+      transactions: transactions.map((transaction) => ({
+        _id: String(transaction._id),
+        date: transaction.date,
+        amount: transaction.amount,
+        type: transaction.type,
+        category: transaction.category,
+        fundId: String(transaction.fundId),
+        isReconciled: transaction.isReconciled,
+        donorId: transaction.donorId ? String(transaction.donorId) : undefined,
+        donorName: transaction.donorName,
+        isGiftAidEligible: transaction.isGiftAidEligible,
+        cashCollectionId: transaction.cashCollectionId
+          ? String(transaction.cashCollectionId)
+          : undefined,
+        cashBankingRole: transaction.cashBankingRole,
+        paymentMethod: transaction.paymentMethod,
+        isVoided: transaction.isVoided,
+      })),
+      donors: donors.map((donor) => ({
+        _id: String(donor._id),
+        name: donor.name,
+        type: donor.type,
+        isGiftAidActive: donor.isGiftAidActive,
+      })),
+      pledges: pledges.flatMap((pledge) =>
+        pledge.donorId
+          ? [
+              {
+                _id: String(pledge._id),
+                donorId: String(pledge.donorId),
+                fundId: String(pledge.fundId),
+                amount: pledge.amount,
+                frequency: pledge.frequency,
+                startDate: pledge.startDate,
+                status: pledge.status,
+              },
+            ]
+          : []
+      ),
+      cashCollections: cashCollections.map((collection) => ({
+        _id: String(collection._id),
+        weekEndingDate: collection.weekEndingDate,
+        status: collection.status,
+      })),
+      cashReconciliations: cashReconciliations.map((reconciliation) => ({
+        _id: String(reconciliation._id),
+        status: reconciliation.status,
+        cashCollectionSplits: reconciliation.cashCollectionSplits.map((split) => ({
+          cashCollectionId: String(split.cashCollectionId),
+          cashAmount: split.cashAmount,
+          chequeAmount: split.chequeAmount,
+        })),
+      })),
+    });
   },
 });
