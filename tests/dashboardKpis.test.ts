@@ -303,4 +303,63 @@ describe("dashboard KPI helpers", () => {
       "2026-06",
     ]);
   });
+
+  it("counts legacy giving category aliases toward mission tithe", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "alias-tithe",
+          date: "2026-05-05",
+          amount: 200,
+          type: "Income",
+          category: "Tithe",
+          fundId: "general",
+          isReconciled: true,
+        },
+        {
+          _id: "alias-offering",
+          date: "2026-05-12",
+          amount: 100,
+          type: "Income",
+          category: "Offering",
+          fundId: "general",
+          isReconciled: true,
+        },
+      ],
+      donors: [],
+      pledges: [],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.readiness.missionTitheDue).toBe(30);
+  });
+
+  it("returns null general fund coverage when unrestricted expenditure average is zero", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "income-only",
+          date: "2026-05-05",
+          amount: 500,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general",
+          isReconciled: true,
+        },
+      ],
+      donors: [],
+      pledges: [],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.generalFundCoverageMonths).toBeNull();
+  });
 });

@@ -1,3 +1,5 @@
+import { CATEGORY_ALIASES, RCI_INCOME_CATEGORIES } from "../constants/rciCategories";
+import { filterReportableTransactions } from "./reportableTransactions";
 import { filterActiveTransactions, sumActiveSigned } from "./voidedTransactions";
 
 export type DashboardPeriodKey = "currentMonth" | "previousMonth" | "quarter" | "ytd";
@@ -124,11 +126,7 @@ export type BuildExecutiveDashboardSummaryInput = {
   cashReconciliations: DashboardCashReconciliation[];
 };
 
-const MISSION_TITHE_CATEGORIES = new Set([
-  "Offerings",
-  "Tithes & First Fruits",
-  "Thanksgiving",
-]);
+const MISSION_TITHE_CATEGORIES = new Set(RCI_INCOME_CATEGORIES["Donations"] ?? []);
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   month: "long",
@@ -186,7 +184,7 @@ export function buildExecutiveDashboardSummary({
 }: BuildExecutiveDashboardSummaryInput): ExecutiveDashboardSummary {
   const period = getDashboardPeriod(periodKey, now);
   const activeTransactions = filterActiveTransactions(transactions);
-  const reportableTransactions = activeTransactions.filter(isReportableTransaction);
+  const reportableTransactions = filterReportableTransactions(transactions);
   const periodTransactions = activeTransactions.filter((transaction) =>
     isWithinPeriod(transaction.date, period)
   );
@@ -221,7 +219,7 @@ export function buildExecutiveDashboardSummary({
         (transaction) =>
           transaction.type === "Income" &&
           isUnrestrictedTransaction(transaction, unrestrictedFundIds) &&
-          MISSION_TITHE_CATEGORIES.has(transaction.category ?? "")
+          isMissionTitheCategory(transaction.category)
       )
     ) * 0.1
   );
@@ -320,10 +318,6 @@ function sumTransactions(transactions: DashboardTransaction[]) {
   return transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
 }
 
-function isReportableTransaction(transaction: DashboardTransaction) {
-  return transaction.cashBankingRole !== "bank_deposit";
-}
-
 function percent(numerator: number, denominator: number) {
   return denominator === 0 ? 100 : Math.round((numerator / denominator) * 100);
 }
@@ -344,6 +338,14 @@ function average(values: number[]) {
 
 function isUnrestrictedTransaction(transaction: DashboardTransaction, unrestrictedFundIds: Set<string>) {
   return transaction.fundId ? unrestrictedFundIds.has(transaction.fundId) : false;
+}
+
+function resolveRciCategory(category?: string) {
+  return category ? CATEGORY_ALIASES[category] ?? category : "";
+}
+
+function isMissionTitheCategory(category?: string) {
+  return MISSION_TITHE_CATEGORIES.has(resolveRciCategory(category));
 }
 
 function isCashOrCheque(transaction: DashboardTransaction) {
@@ -428,7 +430,7 @@ function calculateGivingTrendPercent(
         transaction.type === "Income" &&
         isWithinPeriod(transaction.date, period) &&
         isUnrestrictedTransaction(transaction, unrestrictedFundIds) &&
-        MISSION_TITHE_CATEGORIES.has(transaction.category ?? "")
+        isMissionTitheCategory(transaction.category)
     )
   );
   const periodMonthCount = countMonthsInclusive(period.startDate, period.endDate);
@@ -450,7 +452,7 @@ function calculateGivingTrendPercent(
         transaction.type === "Income" &&
         isWithinPeriod(transaction.date, comparisonPeriod) &&
         isUnrestrictedTransaction(transaction, unrestrictedFundIds) &&
-        MISSION_TITHE_CATEGORIES.has(transaction.category ?? "")
+        isMissionTitheCategory(transaction.category)
     )
   );
   const comparisonAverage = comparisonGiving / 3;
