@@ -176,47 +176,47 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="relative w-full max-w-5xl max-h-[90vh] bg-white rounded-lg border-2 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b-2 border-black">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-sage-100 rounded-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50">
+      <div className="relative w-full max-w-5xl max-w-[calc(100vw-1rem)] max-h-[90vh] min-w-0 overflow-hidden bg-white rounded-lg border-2 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b-2 border-black">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="shrink-0 p-2 bg-sage-100 rounded-lg">
               <Banknote className="h-5 w-5 text-sage-700" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-lg font-bold">Record In-Person Giving</h2>
               <p className="text-sm text-gray-500">Enter weekly service totals for cash, PDQ, and cheques.</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-md transition-colors">
+          <button onClick={onClose} className="shrink-0 p-2 hover:bg-gray-100 rounded-md transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/50">
-          <div className="max-w-xs">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gray-50/50">
+          <div className="w-full max-w-xs min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Week Ending (Sunday)
             </label>
-            <div className="relative">
+            <div className="relative max-w-full">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="date"
                 value={weekEndingDate}
                 onChange={(e) => setWeekEndingDate(e.target.value)}
-                className="w-full h-10 pl-9 pr-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono"
+                className="block w-full min-w-0 max-w-full h-10 pl-9 pr-2 sm:pr-3 text-[16px] sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono appearance-none"
               />
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="overflow-x-auto">
+        <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
+          <div className="max-w-full overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-gray-100 text-xs uppercase tracking-wide text-gray-600">
                   <th className="border border-gray-300 px-3 py-2 text-left w-20">Day</th>
-                  <th className="border border-gray-300 px-3 py-2 text-left w-40">Service Date</th>
+                  <th className="border border-gray-300 px-3 py-2 text-left min-w-36 sm:w-40">Service Date</th>
                   <th className="border border-gray-300 px-3 py-2 text-left min-w-44">Service / Note</th>
                   <th className="border border-gray-300 px-3 py-2 text-left min-w-44">Fund</th>
                   <th className="border border-gray-300 px-3 py-2 text-right w-28">Cash</th>
@@ -240,7 +240,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                           type="date"
                           value={row.serviceDate}
                           onChange={(e) => updateServiceRow(row.id, { serviceDate: e.target.value })}
-                          className="w-full h-9 px-2 border border-gray-300 rounded-md font-mono text-xs focus:outline-none focus:ring-2 focus:ring-black/10"
+                          className="block w-full min-w-0 max-w-full h-9 px-2 border border-gray-300 rounded-md font-mono text-[16px] sm:text-xs focus:outline-none focus:ring-2 focus:ring-black/10 appearance-none"
                         />
                       </td>
                       <td className="border border-gray-300 px-3 py-2">
