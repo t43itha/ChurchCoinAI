@@ -7,7 +7,6 @@ import {
 } from "../../lib/reportableTransactions";
 import {
   buildExecutiveDashboardSummary,
-  type BuildExecutiveDashboardSummaryInput,
   type DashboardPeriodKey,
 } from "../../lib/dashboardKpis";
 
@@ -212,6 +211,7 @@ export const executiveSummary = query({
           q.eq("organizationId", user.organizationId)
         )
         .collect(),
+      // All-time transactions are currently required for fund balances and helper-built trends.
       ctx.db
         .query("transactions")
         .withIndex("by_organization", (q) =>
@@ -262,6 +262,7 @@ export const executiveSummary = query({
         isReconciled: transaction.isReconciled,
         donorId: transaction.donorId ? String(transaction.donorId) : undefined,
         donorName: transaction.donorName,
+        pledgeId: transaction.pledgeId ? String(transaction.pledgeId) : undefined,
         isGiftAidEligible: transaction.isGiftAidEligible,
         cashCollectionId: transaction.cashCollectionId
           ? String(transaction.cashCollectionId)
@@ -276,7 +277,6 @@ export const executiveSummary = query({
         type: donor.type,
         isGiftAidActive: donor.isGiftAidActive,
       })),
-      // Convex permits imported pledges without donorId; preserve that runtime shape here.
       pledges: pledges.map((pledge) => ({
         _id: String(pledge._id),
         donorId: pledge.donorId ? String(pledge.donorId) : undefined,
@@ -286,7 +286,7 @@ export const executiveSummary = query({
         frequency: pledge.frequency,
         startDate: pledge.startDate,
         status: pledge.status,
-      })) as BuildExecutiveDashboardSummaryInput["pledges"],
+      })),
       cashCollections: cashCollections.map((collection) => ({
         _id: String(collection._id),
         weekEndingDate: collection.weekEndingDate,

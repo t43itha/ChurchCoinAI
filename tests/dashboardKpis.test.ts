@@ -362,4 +362,109 @@ describe("dashboard KPI helpers", () => {
 
     expect(summary.health.generalFundCoverageMonths).toBeNull();
   });
+
+  it("counts donorless missed pledges independently by pledge id", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [],
+      donors: [],
+      pledges: [
+        {
+          _id: "donorless-pledge-1",
+          donorName: "Imported Donor One",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+        {
+          _id: "donorless-pledge-2",
+          donorName: "Imported Donor Two",
+          fundId: "general",
+          amount: 75,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+      ],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.donorAttentionCount).toBe(2);
+  });
+
+  it("does not satisfy donorless pledges with unrelated anonymous income", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "anonymous-income",
+          date: "2026-05-12",
+          amount: 25,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general",
+          isReconciled: true,
+        },
+      ],
+      donors: [],
+      pledges: [
+        {
+          _id: "donorless-pledge",
+          donorName: "Imported Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+      ],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.donorAttentionCount).toBe(1);
+  });
+
+  it("satisfies a donorless pledge with a matching pledge id transaction", () => {
+    const summary = buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-06-08T12:00:00Z"),
+      funds,
+      transactions: [
+        {
+          _id: "pledged-income",
+          pledgeId: "donorless-pledge",
+          date: "2026-05-12",
+          amount: 50,
+          type: "Income",
+          category: "Offerings",
+          fundId: "general",
+          isReconciled: true,
+        },
+      ],
+      donors: [],
+      pledges: [
+        {
+          _id: "donorless-pledge",
+          donorName: "Imported Donor",
+          fundId: "general",
+          amount: 50,
+          frequency: "Monthly",
+          startDate: "2026-01-01",
+          status: "Active",
+        },
+      ],
+      cashCollections: [],
+      cashReconciliations: [],
+    });
+
+    expect(summary.health.donorAttentionCount).toBe(0);
+  });
 });

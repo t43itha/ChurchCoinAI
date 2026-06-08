@@ -27,7 +27,7 @@ export type DashboardDonor = {
 
 export type DashboardPledge = {
   _id: string;
-  donorId: string;
+  donorId?: string;
   donorName?: string;
   fundId: string;
   amount: number;
@@ -62,6 +62,7 @@ export type DashboardTransaction = {
   isReconciled?: boolean;
   donorId?: string;
   donorName?: string;
+  pledgeId?: string;
   isGiftAidEligible?: boolean;
   cashCollectionId?: string;
   cashBankingRole?: "source_giving" | "bank_deposit";
@@ -480,11 +481,11 @@ function countDonorAttention(
   donors: DashboardDonor[],
   pledges: DashboardPledge[]
 ) {
-  const attentionDonorIds = new Set<string>();
+  const attentionKeys = new Set<string>();
 
   transactions.forEach((transaction) => {
     if (transaction.donorId && transaction.type === "Income" && transaction.isGiftAidEligible !== true) {
-      attentionDonorIds.add(transaction.donorId);
+      attentionKeys.add(`donor:${transaction.donorId}`);
     }
   });
 
@@ -492,7 +493,7 @@ function countDonorAttention(
     if (transaction.donorId && transaction.type === "Income") {
       const donor = donors.find((candidate) => candidate._id === transaction.donorId);
       if (donor?.type === "Individual" && donor.isGiftAidActive !== true) {
-        attentionDonorIds.add(transaction.donorId);
+        attentionKeys.add(`donor:${transaction.donorId}`);
       }
     }
   });
@@ -500,15 +501,38 @@ function countDonorAttention(
   pledges
     .filter((pledge) => pledge.status === "Active" && pledge.startDate <= period.endDate)
     .forEach((pledge) => {
-      const hasPeriodGiving = transactions.some(
-        (transaction) => transaction.donorId === pledge.donorId && transaction.type === "Income"
+      const hasPeriodGiving = transactions.some((transaction) =>
+        isPledgeSatisfiedByTransaction(pledge, transaction)
       );
       if (!hasPeriodGiving) {
-        attentionDonorIds.add(pledge.donorId);
+        attentionKeys.add(`pledge:${pledge._id}`);
       }
     });
 
-  return attentionDonorIds.size;
+  return attentionKeys.size;
+}
+
+function isPledgeSatisfiedByTransaction(
+  pledge: DashboardPledge,
+  transaction: DashboardTransaction
+) {
+  if (transaction.type !== "Income") {
+    return false;
+  }
+
+  if (transaction.pledgeId === pledge._id) {
+    return true;
+  }
+
+  if (transaction.donorId && pledge.donorId && transaction.donorId === pledge.donorId) {
+    return true;
+  }
+
+  return Boolean(
+    transaction.donorName &&
+      pledge.donorName &&
+      transaction.donorName === pledge.donorName
+  );
 }
 
 function buildCampaignProgress(funds: DashboardFund[], transactions: DashboardTransaction[]) {
