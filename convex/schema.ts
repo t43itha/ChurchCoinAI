@@ -325,7 +325,7 @@ export default defineSchema({
   // Provider-neutral bank connections
   bankConnections: defineTable({
     organizationId: v.id("organizations"),
-    provider: v.union(v.literal("enable_banking")),
+    provider: v.union(v.literal("gocardless"), v.literal("enable_banking")),
     providerConnectionId: v.string(),
     institutionName: v.string(),
     institutionCountry: v.string(),
@@ -364,8 +364,9 @@ export default defineSchema({
   pendingBankConnections: defineTable({
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
-    provider: v.union(v.literal("enable_banking")),
+    provider: v.union(v.literal("gocardless"), v.literal("enable_banking")),
     state: v.string(),
+    providerConnectionId: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
       v.literal("completed"),

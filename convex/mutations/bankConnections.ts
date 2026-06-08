@@ -4,7 +4,10 @@ import { requireRole } from "../lib/auth";
 import { isPendingStateExpired } from "../lib/bankConnectionUtils";
 import { assertValidTransactionDate } from "../lib/transactionValidation";
 
-const providerSchema = v.literal("enable_banking");
+const providerSchema = v.union(
+  v.literal("gocardless"),
+  v.literal("enable_banking")
+);
 
 const statusSchema = v.union(
   v.literal("pending"),
@@ -62,6 +65,30 @@ export const createPending = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+export const attachPendingProviderConnection = internalMutation({
+  args: {
+    state: v.string(),
+    providerConnectionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const pending = await ctx.db
+      .query("pendingBankConnections")
+      .withIndex("by_state", (q) => q.eq("state", args.state))
+      .first();
+
+    if (!pending || pending.status !== "pending") {
+      return null;
+    }
+
+    await ctx.db.patch(pending._id, {
+      providerConnectionId: args.providerConnectionId,
+      updatedAt: Date.now(),
+    });
+
+    return pending._id;
   },
 });
 
