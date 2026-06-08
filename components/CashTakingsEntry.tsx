@@ -31,6 +31,19 @@ interface ServiceRowEntry {
   cheque: string;
 }
 
+type NamedDonationPaymentMethod = "Cash" | "Cheque" | "Card";
+
+interface NamedDonationEntry {
+  id: string;
+  donorName: string;
+  donorId?: Id<"donors">;
+  category: string;
+  fundId: string;
+  paymentMethod: NamedDonationPaymentMethod;
+  amount: string;
+  isGiftAidEligible: boolean;
+}
+
 interface CashTakingsEntryProps {
   funds: Fund[];
   categories: Category[];
@@ -59,6 +72,16 @@ const parseMoney = (value: string) => {
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 };
 
+const getDefaultDonationCategory = (categories: Category[]) => {
+  const preferredCategory = categories.find((category) =>
+    /\b(donation|donations|tithe|tithes|offering|offerings|giving)\b/i.test(
+      category.name
+    )
+  );
+
+  return preferredCategory?.name || categories[0]?.name || "Donation";
+};
+
 const dayLabel = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
     weekday: "short",
@@ -66,17 +89,20 @@ const dayLabel = (date: string) =>
 
 const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   funds,
+  categories,
   onClose,
   onSuccess,
 }) => {
   const today = new Date().toISOString().split("T")[0];
   const unrestrictedFund = funds.find((fund) => fund.type === "Unrestricted");
   const defaultFundId = unrestrictedFund?._id || funds[0]?._id || "";
+  const defaultNamedDonationCategory = getDefaultDonationCategory(categories);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weekEndingDate, setWeekEndingDate] = useState(getWeekEndingDate(new Date()));
   const [notes, setNotes] = useState("");
+  const [namedDonations, setNamedDonations] = useState<NamedDonationEntry[]>([]);
   const [serviceRows, setServiceRows] = useState<ServiceRowEntry[]>([
     {
       id: generateId(),
@@ -101,14 +127,21 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
     const cash = rows.reduce((sum, row) => sum + row.cash, 0);
     const pdq = rows.reduce((sum, row) => sum + row.pdq, 0);
     const cheque = rows.reduce((sum, row) => sum + row.cheque, 0);
+    const namedDonationTotal = namedDonations.reduce(
+      (sum, row) => sum + parseMoney(row.amount),
+      0
+    );
+    const serviceTotal = cash + pdq + cheque;
 
     return {
       cash,
       pdq,
       cheque,
-      total: cash + pdq + cheque,
+      total: serviceTotal,
+      namedDonationTotal,
+      combinedTotal: serviceTotal + namedDonationTotal,
     };
-  }, [serviceRows]);
+  }, [serviceRows, namedDonations]);
 
   const addServiceRow = () => {
     setServiceRows((rows) => [
@@ -135,6 +168,34 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
     setServiceRows((rows) => rows.filter((row) => row.id !== id));
   };
 
+  const addNamedDonation = () => {
+    setNamedDonations((rows) => [
+      ...rows,
+      {
+        id: generateId(),
+        donorName: "",
+        category: defaultNamedDonationCategory,
+        fundId: defaultFundId,
+        paymentMethod: "Cash",
+        amount: "",
+        isGiftAidEligible: false,
+      },
+    ]);
+  };
+
+  const updateNamedDonation = (
+    id: string,
+    updates: Partial<NamedDonationEntry>
+  ) => {
+    setNamedDonations((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...updates } : row))
+    );
+  };
+
+  const removeNamedDonation = (id: string) => {
+    setNamedDonations((rows) => rows.filter((row) => row.id !== id));
+  };
+
   const handleSubmit = async (asDraft: boolean) => {
     setError(null);
     setIsSubmitting(true);
@@ -151,16 +212,38 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         }))
         .filter((row) => row.fundId && row.serviceDate && row.cash + row.pdq + row.cheque > 0);
 
-      if (validRows.length === 0) {
-        throw new Error("Please add at least one service row with a cash, PDQ, or cheque amount.");
+      const validNamedDonations = namedDonations
+        .map((row) => {
+          const donation = {
+            donorName: row.donorName.trim(),
+            category: row.category.trim(),
+            fundId: row.fundId as Id<"funds">,
+            paymentMethod: row.paymentMethod,
+            amount: parseMoney(row.amount),
+            isGiftAidEligible: row.isGiftAidEligible,
+          };
+
+          return row.donorId ? { ...donation, donorId: row.donorId } : donation;
+        })
+        .filter(
+          (row) =>
+            row.donorName.length >= 2 &&
+            row.category &&
+            row.fundId &&
+            row.amount > 0
+        );
+
+      if (validRows.length === 0 && validNamedDonations.length === 0) {
+        throw new Error("Please add at least one service row or named donation with an amount.");
       }
 
       const result = await submitCollection({
         weekEndingDate,
-        collectionDate: validRows[0].serviceDate,
+        collectionDate: validRows[0]?.serviceDate || weekEndingDate,
         notes: notes || undefined,
         status: asDraft ? "draft" : "submitted",
         serviceRows: validRows,
+        namedDonations: validNamedDonations,
       });
 
       onSuccess?.({
@@ -357,7 +440,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               </button>
               <button
                 onClick={() => handleSubmit(true)}
-                disabled={isSubmitting || totals.total === 0}
+                disabled={isSubmitting || totals.combinedTotal === 0}
                 className="px-3 py-2 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="h-3.5 w-3.5" />
@@ -365,7 +448,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               </button>
               <button
                 onClick={() => handleSubmit(false)}
-                disabled={isSubmitting || totals.total === 0}
+                disabled={isSubmitting || totals.combinedTotal === 0}
                 className="px-3 py-2 text-xs font-medium text-white bg-black hover:bg-gray-800 rounded-md transition-colors shadow-[2px_2px_0px_rgba(0,0,0,0.1)] flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
