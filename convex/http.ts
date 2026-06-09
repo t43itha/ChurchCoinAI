@@ -3,33 +3,17 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
-import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
+import {
+  getAccountDetails,
+  getGoCardlessConsentExpiry,
+  getRequisition,
+  mapGoCardlessAccountDetails,
+} from "./lib/gocardless";
 import { isPendingStateExpired } from "./lib/bankConnectionUtils";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 
 const http = httpRouter();
-
-type EnableBankingCallbackAccount = {
-  uid?: unknown;
-  identification_hash?: unknown;
-  identification_hashes?: unknown;
-  name?: unknown;
-  details?: {
-    name?: unknown;
-    currency?: unknown;
-    product?: unknown;
-    cash_account_type?: unknown;
-    iban?: unknown;
-    bban?: unknown;
-  };
-};
-
-const nonEmptyString = (value: unknown) => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-};
 
 const trimCallbackValue = (value: string | null) => {
   const trimmed = value?.trim();
@@ -79,7 +63,7 @@ const redirectToBankSettings = (
   try {
     location = settingsBankUrl(request, result);
   } catch (error: any) {
-    console.error("Enable Banking callback redirect is not configured:", error?.message);
+    console.error("Bank callback redirect is not configured:", error?.message);
     return new Response("APP_BASE_URL not configured", { status: 500 });
   }
 
@@ -89,49 +73,6 @@ const redirectToBankSettings = (
       Location: location,
     },
   });
-};
-
-const getAccountMask = (account: EnableBankingCallbackAccount) => {
-  const identifier =
-    nonEmptyString(account.details?.iban) || nonEmptyString(account.details?.bban);
-  if (!identifier) return undefined;
-  const compactIdentifier = identifier.replace(/\s+/g, "");
-  return compactIdentifier.slice(-4) || undefined;
-};
-
-const mapEnableBankingAccount = (account: EnableBankingCallbackAccount) => {
-  const accountId = nonEmptyString(account.uid);
-  if (!accountId) {
-    throw new Error("Enable Banking account is missing uid");
-  }
-
-  const identificationHashes = Array.isArray(account.identification_hashes)
-    ? account.identification_hashes
-        .map(nonEmptyString)
-        .filter((hash): hash is string => Boolean(hash))
-    : undefined;
-
-  const name =
-    nonEmptyString(account.name) ||
-    nonEmptyString(account.details?.name) ||
-    nonEmptyString(account.details?.product) ||
-    nonEmptyString(account.details?.iban) ||
-    nonEmptyString(account.details?.bban) ||
-    "Bank account";
-
-  return {
-    accountId,
-    providerAccountHash: nonEmptyString(account.identification_hash),
-    providerAccountHashes: identificationHashes?.length
-      ? identificationHashes
-      : undefined,
-    name,
-    mask: getAccountMask(account),
-    type:
-      nonEmptyString(account.details?.cash_account_type) ||
-      nonEmptyString(account.details?.product),
-    currency: nonEmptyString(account.details?.currency),
-  };
 };
 
 const bytesToHex = (bytes: Uint8Array) =>
@@ -470,21 +411,20 @@ http.route({
   }),
 });
 
-// Enable Banking callback endpoint
+// GoCardless callback endpoint
 http.route({
-  path: "/enable-banking/callback",
+  path: "/gocardless/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
-    const code = trimCallbackValue(url.searchParams.get("code"));
-    const state = trimCallbackValue(url.searchParams.get("state"));
+    const state = trimCallbackValue(url.searchParams.get("ref"));
     const providerError = trimCallbackValue(url.searchParams.get("error"));
     const providerErrorDescription = trimCallbackValue(
       url.searchParams.get("error_description")
     );
 
     if (!state) {
-      return new Response("Enable Banking callback endpoint is ready.", {
+      return new Response("GoCardless callback endpoint is ready.", {
         status: 200,
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
@@ -528,44 +468,86 @@ http.route({
       return redirectToBankSettings(request, "error");
     }
 
-    if (!code) {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          state,
-          errorCode: "MISSING_CODE",
-          errorMessage: "Bank authorization callback did not include a code",
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
-
     try {
-      const session = await authorizeSession(code);
-      const consentExpiresAt = new Date(getConsentValidUntil()).getTime();
+      if (!pending.providerConnectionId) {
+        await ctx.runMutation(
+          internal.mutations.bankConnections.markPendingError,
+          {
+            state,
+            errorCode: "MISSING_REQUISITION_ID",
+            errorMessage: "Bank authorization session is missing a requisition ID",
+          }
+        );
+        return redirectToBankSettings(request, "error");
+      }
+
+      const requisition = await getRequisition(pending.providerConnectionId);
+      if (
+        !Array.isArray(requisition.accounts) ||
+        requisition.accounts.length === 0
+      ) {
+        await ctx.runMutation(
+          internal.mutations.bankConnections.markPendingError,
+          {
+            state,
+            errorCode: "NO_ACCOUNTS",
+            errorMessage: "Bank authorization did not return any accounts",
+          }
+        );
+        return redirectToBankSettings(request, "error");
+      }
+
+      const accounts = await Promise.all(
+        requisition.accounts.map(async (accountId) =>
+          mapGoCardlessAccountDetails(
+            accountId,
+            await getAccountDetails(accountId)
+          )
+        )
+      );
 
       await ctx.runMutation(
         internal.mutations.bankConnections.completePending,
         {
           state,
-          providerConnectionId: session.session_id,
-          accounts: session.accounts.map(mapEnableBankingAccount),
-          consentExpiresAt,
+          providerConnectionId: requisition.id,
+          accounts,
+          consentExpiresAt: getGoCardlessConsentExpiry({
+            accessValidForDays: 90,
+          }),
         }
       );
 
       return redirectToBankSettings(request, "success");
-    } catch {
+    } catch (error: any) {
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
           state,
-          errorCode: "SESSION_EXCHANGE_FAILED",
-          errorMessage: "Failed to authorize bank session",
+          errorCode: "REQUISITION_EXCHANGE_FAILED",
+          errorMessage:
+            error?.message || "Failed to complete GoCardless bank authorization",
         }
       );
       return redirectToBankSettings(request, "error");
     }
+  }),
+});
+
+// Legacy Enable Banking callback endpoint retained as a validator-friendly health route.
+http.route({
+  path: "/enable-banking/callback",
+  method: "GET",
+  handler: httpAction(async () => {
+    return new Response(
+      "Enable Banking is no longer the active ChurchCoinAI bank provider.",
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      }
+    );
   }),
 });
 
