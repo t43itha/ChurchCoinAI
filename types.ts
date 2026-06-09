@@ -33,6 +33,30 @@ export const CashCollectionStatus = {
 
 export type CashCollectionStatus = (typeof CashCollectionStatus)[keyof typeof CashCollectionStatus];
 
+export const CashBankingStatus = {
+  NOT_STARTED: "not_started",
+  PARTIALLY_BANKED: "partially_banked",
+  BANKED: "banked",
+} as const;
+
+export type CashBankingStatus = (typeof CashBankingStatus)[keyof typeof CashBankingStatus];
+
+export const CashBankingRole = {
+  SOURCE_GIVING: "source_giving",
+  BANK_DEPOSIT: "bank_deposit",
+} as const;
+
+export type CashBankingRole = (typeof CashBankingRole)[keyof typeof CashBankingRole];
+
+export type BankingMedium = "cash" | "cheque" | "mixed";
+
+export type CashBankingVarianceType =
+  | "partial_banking"
+  | "petty_cash_retained_or_spent"
+  | "bank_counting_difference"
+  | "cheque_timing"
+  | "other";
+
 export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
 
 export type InvitationStatus = 'pending' | 'accepted' | 'expired';
@@ -130,6 +154,9 @@ export interface Transaction {
   pledgeId?: string | null;
   paymentMethod?: PaymentMethod;
   cashCollectionId?: string;
+  cashBankingReconciliationId?: string;
+  cashBankingRole?: CashBankingRole;
+  bankingMedium?: BankingMedium;
   isVoided?: boolean;
   voidReason?: string;
   voidedAt?: number;
@@ -150,7 +177,45 @@ export interface CashCollection {
   notes?: string;
   status: CashCollectionStatus;
   bankedDate?: string;
+  cashBankingLastReconciliationId?: string;
+  cashBankingStatus?: CashBankingStatus;
   createdAt: number;
+}
+
+export interface CashBankingReconciliation {
+  _id: string;
+  organizationId: string;
+  cashCollectionIds: string[];
+  cashCollectionSplits: {
+    cashCollectionId: string;
+    cashAmount: number;
+    chequeAmount: number;
+  }[];
+  bankTransactionIds: string[];
+  bankTransactionSplits: {
+    transactionId: string;
+    medium: BankingMedium;
+    cashAmount: number;
+    chequeAmount: number;
+  }[];
+  status: "draft" | "completed" | "reopened";
+  expectedCashAmount: number;
+  expectedChequeAmount: number;
+  expectedTotal: number;
+  bankedCashAmount: number;
+  bankedChequeAmount: number;
+  bankedTotal: number;
+  varianceAmount: number;
+  varianceType?: CashBankingVarianceType;
+  varianceNote?: string;
+  completedAt?: number;
+  completedBy?: string;
+  reopenedAt?: number;
+  reopenedBy?: string;
+  reopenReason?: string;
+  createdAt: number;
+  createdBy: string;
+  updatedAt: number;
 }
 
 export type CashCollectionCreateInput = Omit<CashCollection, "_id" | "createdAt" | "recordedAt">;

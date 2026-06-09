@@ -41,6 +41,7 @@ import type * as lib_transactionValidation from "../lib/transactionValidation.js
 import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as mutations_aiRateLimit from "../mutations/aiRateLimit.js";
 import type * as mutations_bankConnections from "../mutations/bankConnections.js";
+import type * as mutations_cashBankingReconciliations from "../mutations/cashBankingReconciliations.js";
 import type * as mutations_cashCollections from "../mutations/cashCollections.js";
 import type * as mutations_categories from "../mutations/categories.js";
 import type * as mutations_donors from "../mutations/donors.js";
@@ -56,6 +57,7 @@ import type * as mutations_transactions from "../mutations/transactions.js";
 import type * as mutations_users from "../mutations/users.js";
 import type * as queries_aiContext from "../queries/aiContext.js";
 import type * as queries_bankConnections from "../queries/bankConnections.js";
+import type * as queries_cashBankingReconciliations from "../queries/cashBankingReconciliations.js";
 import type * as queries_cashCollections from "../queries/cashCollections.js";
 import type * as queries_categories from "../queries/categories.js";
 import type * as queries_dashboard from "../queries/dashboard.js";
@@ -111,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   "lib/urlValidation": typeof lib_urlValidation;
   "mutations/aiRateLimit": typeof mutations_aiRateLimit;
   "mutations/bankConnections": typeof mutations_bankConnections;
+  "mutations/cashBankingReconciliations": typeof mutations_cashBankingReconciliations;
   "mutations/cashCollections": typeof mutations_cashCollections;
   "mutations/categories": typeof mutations_categories;
   "mutations/donors": typeof mutations_donors;
@@ -126,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "mutations/users": typeof mutations_users;
   "queries/aiContext": typeof queries_aiContext;
   "queries/bankConnections": typeof queries_bankConnections;
+  "queries/cashBankingReconciliations": typeof queries_cashBankingReconciliations;
   "queries/cashCollections": typeof queries_cashCollections;
   "queries/categories": typeof queries_categories;
   "queries/dashboard": typeof queries_dashboard;
