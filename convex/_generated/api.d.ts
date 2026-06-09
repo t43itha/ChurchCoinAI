@@ -56,6 +56,7 @@ import type * as queries_invitations from "../queries/invitations.js";
 import type * as queries_organizations from "../queries/organizations.js";
 import type * as queries_plaid from "../queries/plaid.js";
 import type * as queries_pledges from "../queries/pledges.js";
+import type * as queries_reconciliationSessions from "../queries/reconciliationSessions.js";
 import type * as queries_reports from "../queries/reports.js";
 import type * as queries_subscriptions from "../queries/subscriptions.js";
 import type * as queries_transactions from "../queries/transactions.js";
@@ -116,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   "queries/organizations": typeof queries_organizations;
   "queries/plaid": typeof queries_plaid;
   "queries/pledges": typeof queries_pledges;
+  "queries/reconciliationSessions": typeof queries_reconciliationSessions;
   "queries/reports": typeof queries_reports;
   "queries/subscriptions": typeof queries_subscriptions;
   "queries/transactions": typeof queries_transactions;
