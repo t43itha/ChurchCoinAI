@@ -194,7 +194,9 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </div>
             <div>
               <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Connected Banks</h3>
-              <p className="text-[10px] text-grey-mid">Connect your UK bank accounts via Open Banking.</p>
+              <p className="text-[10px] text-grey-mid">
+                Connect UK bank accounts via GoCardless Open Banking.
+              </p>
             </div>
           </div>
           <button
@@ -211,6 +213,14 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
           </button>
         </div>
 
+        <div className="px-6 py-3 border-b border-ledger bg-blue-50">
+          <p className="text-[11px] leading-relaxed text-blue-900">
+            Metro Bank users: when the bank login opens, select the business
+            account or profile you want ChurchCoinAI to read. Personal accounts
+            can appear in the same Metro Bank flow.
+          </p>
+        </div>
+
         {connectionError && (
           <div className="p-4 bg-error-light border-b border-error/30">
             <p className="text-xs text-error">{connectionError}</p>
@@ -224,7 +234,8 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </div>
             <h4 className="font-bold text-ink text-sm mb-2">No Banks Connected</h4>
             <p className="text-xs text-grey-mid max-w-sm mx-auto mb-6">
-              Connect your UK bank accounts to sync transactions directly. This uses secure Open Banking technology.
+              Connect a UK bank account through GoCardless, map it to a fund,
+              then manually sync transactions for review before import.
             </p>
             <button
               onClick={handleConnectBank}
@@ -339,7 +350,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
       <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg">
         <p className="text-xs text-blue-900 leading-relaxed">
-          <strong>UK Open Banking:</strong> Bank connections require consent renewal every 90 days.
+          <strong>GoCardless Open Banking:</strong> Connections are read-only and require consent renewal every 90 days.
           You'll be notified before consent expires and can re-authenticate without losing your transaction history.
         </p>
       </div>
