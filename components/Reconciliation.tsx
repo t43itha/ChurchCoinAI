@@ -343,7 +343,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
     );
   }, [workspace]);
 
-  const isBalanced = differencePence === 0;
+  const isBalanced = differencePence !== null && canCompleteSession(differencePence);
 
   if (workspace === undefined) {
     return (
