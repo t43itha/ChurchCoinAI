@@ -11,26 +11,34 @@ import type { DashboardSummaryProps, ExecutiveDashboardSummary } from "./types";
 
 type Tone = "healthy" | "watch" | "critical" | "neutral";
 
-const toneClasses: Record<Tone, { icon: string; badge: string; value: string }> = {
+const toneClasses: Record<Tone, { icon: string; badge: string; value: string; rail: string; wash: string }> = {
   healthy: {
     icon: "bg-sage-light border-sage text-sage",
     badge: "badge-success",
     value: "text-ink",
+    rail: "bg-sage",
+    wash: "bg-sage-light/40",
   },
   watch: {
     icon: "bg-amber-light border-amber text-amber",
     badge: "badge-warning",
     value: "text-ink",
+    rail: "bg-amber",
+    wash: "bg-amber-light/50",
   },
   critical: {
     icon: "bg-error-light border-error text-error",
     badge: "badge-error",
     value: "text-error",
+    rail: "bg-error",
+    wash: "bg-error-light/50",
   },
   neutral: {
     icon: "bg-grey-light border-ledger text-grey-mid",
     badge: "bg-grey-light text-grey-mid border border-ledger",
     value: "text-ink",
+    rail: "bg-ledger",
+    wash: "bg-paper",
   },
 };
 
@@ -48,29 +56,32 @@ export default function DashboardHealthCards({ summary }: DashboardSummaryProps)
         return (
           <article
             key={title}
-            className="swiss-card bg-white p-5 min-w-0 min-h-40 flex flex-col justify-between gap-4"
+            className="swiss-card bg-white overflow-hidden min-w-0 min-h-44 flex flex-col"
           >
-            <div className="flex items-start justify-between gap-3 min-w-0">
-              <div className={`p-2 rounded-lg border shrink-0 ${classes.icon}`}>
-                <Icon size={20} aria-hidden="true" />
+            <div className={`h-1.5 ${classes.rail}`} />
+            <div className="p-5 flex flex-col justify-between gap-5 flex-1">
+              <div className="flex items-start justify-between gap-3 min-w-0">
+                <div className={`p-2 rounded-md border shrink-0 ${classes.icon}`}>
+                  <Icon size={20} aria-hidden="true" />
+                </div>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide text-right leading-tight ${classes.badge}`}
+                >
+                  {badge}
+                </span>
               </div>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide text-right leading-tight ${classes.badge}`}
-              >
-                {badge}
-              </span>
-            </div>
 
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">
-                {title}
-              </p>
-              <p className={`mt-1 text-2xl font-bold tracking-tight break-words ${classes.value}`}>
-                {value}
-              </p>
-              <p className="mt-2 text-xs text-grey-mid font-medium leading-snug break-words">
-                {detail}
-              </p>
+              <div className={`min-w-0 rounded-md border border-ledger ${classes.wash} px-3 py-3`}>
+                <p className="text-[11px] font-bold text-grey-mid uppercase tracking-wide">
+                  {title}
+                </p>
+                <p className={`mt-1 text-2xl 2xl:text-3xl font-bold font-mono tabular-nums tracking-tight break-words ${classes.value}`}>
+                  {value}
+                </p>
+                <p className="mt-2 text-xs text-grey-mid font-medium leading-snug break-words">
+                  {detail}
+                </p>
+              </div>
             </div>
           </article>
         );

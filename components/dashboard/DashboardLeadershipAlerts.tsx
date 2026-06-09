@@ -29,8 +29,8 @@ export default function DashboardLeadershipAlerts({ summary }: DashboardSummaryP
       </div>
 
       {alerts.length === 0 ? (
-        <div className="p-6 flex items-start gap-3">
-          <div className="p-2 rounded-lg border bg-sage-light border-sage text-sage shrink-0">
+        <div className="p-6 flex items-start gap-3 bg-sage-light/30">
+          <div className="p-2 rounded-md border bg-sage-light border-sage text-sage shrink-0">
             <CheckCircle2 size={18} aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -47,9 +47,9 @@ export default function DashboardLeadershipAlerts({ summary }: DashboardSummaryP
             const Icon = alert.severity === "info" ? Info : AlertTriangle;
 
             return (
-              <li key={`${alert.severity}-${alert.title}`} className="p-5 min-w-0">
+              <li key={`${alert.severity}-${alert.title}`} className="p-5 min-w-0 bg-white">
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className={`p-2 rounded-lg border shrink-0 ${classes.icon}`}>
+                  <div className={`p-2 rounded-md border shrink-0 ${classes.icon}`}>
                     <Icon size={18} aria-hidden="true" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -63,6 +63,9 @@ export default function DashboardLeadershipAlerts({ summary }: DashboardSummaryP
                         {alert.severity}
                       </span>
                     </div>
+                    <p className="mt-2 text-xs text-grey-mid font-medium leading-snug">
+                      Review this before sharing the month-end position with trustees or ministry leads.
+                    </p>
                   </div>
                 </div>
               </li>

@@ -21,10 +21,11 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
     Expenditure: entry.expenditure,
     Net: entry.net,
   }));
+  const latest = chartData[chartData.length - 1];
 
   return (
-    <section className="swiss-card bg-white p-5 md:p-6 min-w-0" aria-label="Six-month financial trend">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+    <section className="swiss-card bg-white overflow-hidden min-w-0" aria-label="Six-month financial trend">
+      <div className="p-5 md:p-6 border-b border-ledger bg-white flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 min-w-0">
             <BarChart3 size={18} className="text-grey-mid shrink-0" aria-hidden="true" />
@@ -36,12 +37,18 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
             Six-month unrestricted movement ending {summary.period.label}
           </p>
         </div>
+        {latest ? (
+          <div className="bg-paper border border-ledger rounded-md px-3 py-2 w-fit">
+            <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Latest net</p>
+            <p className="text-sm font-bold text-ink font-mono tabular-nums">{formatCurrency(latest.Net)}</p>
+          </div>
+        ) : null}
       </div>
 
-      <div className="h-72 min-w-0">
+      <div className="h-72 min-w-0 p-3 md:p-5">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
+            <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e5e5e5" />
             <XAxis
               dataKey="label"
               axisLine={false}
@@ -65,7 +72,7 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
                 borderRadius: "8px",
                 border: "1px solid #000000",
                 boxShadow: "4px 4px 0px rgba(0,0,0,1)",
-                fontFamily: "JetBrains Mono",
+                fontFamily: "DM Sans, system-ui, sans-serif",
                 fontSize: "12px",
               }}
             />

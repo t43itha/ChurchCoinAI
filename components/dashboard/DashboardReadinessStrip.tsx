@@ -78,10 +78,11 @@ export default function DashboardReadinessStrip({ summary }: DashboardSummaryPro
     tone: ReadinessTone;
     icon: typeof CheckCircle2;
   }>;
+  const attentionCount = items.filter((item) => item.tone === "attention").length;
 
   return (
     <section className="swiss-card bg-white overflow-hidden" aria-label="Month-end readiness">
-      <div className="px-5 py-4 border-b border-ledger bg-paper flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div className="px-5 py-4 border-b border-ledger bg-paper flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
             Month-End Readiness
@@ -90,23 +91,30 @@ export default function DashboardReadinessStrip({ summary }: DashboardSummaryPro
             {summary.period.label} control checks
           </p>
         </div>
+        <span
+          className={`w-fit text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide ${
+            attentionCount === 0 ? "badge-success" : "badge-warning"
+          }`}
+        >
+          {attentionCount === 0 ? "Ready to review" : `${attentionCount} to review`}
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-px bg-ledger">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-px bg-ledger">
         {items.map(({ label, value, status, tone, icon: Icon }) => {
           const classes = toneClasses[tone];
 
           return (
-            <div key={label} className="p-4 min-w-0 bg-white">
+            <div key={label} className="p-4 md:p-5 min-w-0 bg-white">
               <div className="flex items-start gap-3 min-w-0">
-                <div className={`p-2 rounded-lg border shrink-0 ${classes.icon}`}>
+                <div className={`p-2 rounded-md border shrink-0 ${classes.icon}`}>
                   <Icon size={16} aria-hidden="true" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide break-words">
                     {label}
                   </p>
-                  <p className="mt-1 text-lg font-bold text-ink font-mono break-words">
+                  <p className="mt-1 text-xl font-bold text-ink font-mono tabular-nums break-words">
                     {value}
                   </p>
                   <p
