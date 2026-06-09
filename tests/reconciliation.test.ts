@@ -38,7 +38,7 @@ describe("computeDifferencePence", () => {
   });
   it("is positive when ledger has more than statement", () => {
     const cleared = [tx(500, "Income")];
-    expect(computeDifferencePence(1000, 1400, cleared)).toBe(10000); // £100 over
+    expect(computeDifferencePence(1000, 1400, cleared)).toBe(10000); // ledger shows £100 more than statement closing balance
   });
   it("is negative when items are missing from ledger", () => {
     expect(computeDifferencePence(1000, 1100, [])).toBe(-10000);

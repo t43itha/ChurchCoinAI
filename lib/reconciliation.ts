@@ -19,6 +19,12 @@ export function computeClearedTotalPence(
   );
 }
 
+/**
+ * Difference between the ledger and the statement, in integer pence.
+ * Positive: cleared ledger movement exceeds the statement closing balance.
+ * Negative: the statement shows movement not yet cleared in the ledger.
+ * Zero: the session balances and may be completed.
+ */
 export function computeDifferencePence(
   statementOpeningBalance: number,
   statementClosingBalance: number,
