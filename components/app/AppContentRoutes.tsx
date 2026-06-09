@@ -89,7 +89,6 @@ const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
           element={
             <Dashboard
               funds={props.funds}
-              transactions={props.transactions}
               categories={props.categories}
               currentUser={props.currentUser}
             />
