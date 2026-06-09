@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { ArrowLeft, Check, Lock, Unlock, Plus, Trash2 } from "lucide-react";
-import { computeDifferencePence, canCompleteSession } from "../lib/reconciliation";
+import { computeDifferencePence, canCompleteSession, computeClearedTotalPence } from "../lib/reconciliation";
 
 const gbp = (n: number) =>
   n.toLocaleString("en-GB", { style: "currency", currency: "GBP" });
@@ -77,7 +77,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
     try {
       await removeSession({ sessionId: id });
     } catch (err) {
-      // silently surface in future; for now no-op
+      setFormError(err instanceof Error ? err.message : "Failed to delete reconciliation.");
     }
   };
 
@@ -298,6 +298,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                         onClick={(e) => handleDelete(e, s._id)}
                         className="p-1.5 text-grey-mid hover:text-red-500 transition-colors rounded"
                         title="Delete"
+                        aria-label="Delete reconciliation"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -332,6 +333,8 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
   const reopenSession = useMutation(api.mutations.reconciliationSessions.reopen);
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showReopenForm, setShowReopenForm] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
 
   const differencePence = useMemo(() => {
     if (!workspace) return null;
@@ -365,10 +368,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
   const { session, cleared, candidates } = workspace;
   const isCompleted = session.status === "completed";
 
-  const clearedSum = cleared.reduce(
-    (sum, t) => sum + (t.type === "Income" ? t.amount : -t.amount),
-    0
-  );
+  const clearedSumPence = computeClearedTotalPence(cleared);
 
   const handleToggleCleared = async (
     transactionId: Id<"transactions">,
@@ -376,8 +376,9 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
   ) => {
     try {
       await setCleared({ sessionId, transactionId, cleared: checked });
+      setActionError(null);
     } catch (err) {
-      // Mutations errors surface via Convex reactivity; silently ignore for now
+      setActionError(err instanceof Error ? err.message : "Could not update cleared status.");
     }
   };
 
@@ -392,12 +393,12 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
     }
   };
 
-  const handleReopen = async () => {
-    const reason = window.prompt("Reason for reopening this reconciliation:");
-    if (!reason || !reason.trim()) return;
+  const handleReopenConfirm = async () => {
     setActionError(null);
     try {
-      await reopenSession({ sessionId, reason: reason.trim() });
+      await reopenSession({ sessionId, reason: reopenReason.trim() });
+      setShowReopenForm(false);
+      setReopenReason("");
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : "Could not reopen session."
@@ -450,8 +451,8 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
               Cleared Items ({cleared.length})
             </p>
             <p className="text-sm font-mono font-bold text-ink">
-              {clearedSum >= 0 ? "+" : ""}
-              {gbp(clearedSum)}
+              {clearedSumPence >= 0 ? "+" : ""}
+              {gbp(clearedSumPence / 100)}
             </p>
           </div>
 
@@ -484,7 +485,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
           <div>
             {isCompleted ? (
               <button
-                onClick={handleReopen}
+                onClick={() => setShowReopenForm((v) => !v)}
                 className="btn-secondary px-4 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2"
               >
                 <Unlock size={14} /> Reopen
@@ -500,6 +501,30 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
             )}
           </div>
         </div>
+        {showReopenForm && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ledger pt-3">
+            <input
+              type="text"
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+              placeholder="Reason for reopening (required)"
+              className="flex-1 min-w-0 border border-ledger rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-ink"
+            />
+            <button
+              onClick={handleReopenConfirm}
+              disabled={!reopenReason.trim()}
+              className="btn-primary px-4 py-1.5 font-bold uppercase text-xs tracking-wide flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Check size={12} /> Confirm
+            </button>
+            <button
+              onClick={() => { setShowReopenForm(false); setReopenReason(""); }}
+              className="btn-secondary px-4 py-1.5 font-bold uppercase text-xs tracking-wide"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Two-column transaction grid */}
