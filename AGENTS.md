@@ -25,7 +25,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - **Backend:** Convex (serverless BaaS with real-time reactivity)
 - **Auth:** Clerk (JWT-based, bridged to Convex via `ConvexProviderWithClerk`)
 - **AI:** Google Gemini 2.5 Flash + Convex RAG for transaction categorization
-- **Banking:** Provider-neutral bank connections, with Enable Banking as the active provider for manual UK Open Banking transaction sync
+- **Banking:** Provider-neutral bank connections, with GoCardless Bank Account Data as the active provider for manual UK Open Banking transaction sync
 - **Payments:** Stripe (subscription billing with webhook handling)
 - **Styling:** Tailwind CSS via CDN with custom "Swiss Ledger" design system defined in `index.html`
 - **Exports:** html2canvas + jsPDF for PDF, XLSX for Excel
@@ -45,7 +45,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `mutations/` — Data modifications with role validation
 - `actions/` — Server-side async operations (AI calls, Stripe, bank connection flows)
 - `intelligence/` — AI insight generation and RAG indexing
-- `http.ts` — HTTP routes for Stripe webhooks, active Enable Banking callbacks, and preserved Plaid webhook compatibility
+- `http.ts` — HTTP routes for Stripe webhooks, active GoCardless callbacks, preserved Plaid webhook compatibility, and legacy Enable Banking callback health
 - `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireRole()`, `canEdit()`
 
 ### Data Patterns
@@ -81,18 +81,18 @@ The "Swiss Ledger" design system is defined via Tailwind config in `index.html` 
 
 **Backend** (set via Convex Dashboard or `npx convex env set`):
 - `GEMINI_API_KEY`, `CLERK_JWT_ISSUER_DOMAIN`
-- `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`, `APP_BASE_URL`
-- `ENABLE_BANKING_DEFAULT_COUNTRY`, `ENABLE_BANKING_DEFAULT_ASPSP`, optional `ENABLE_BANKING_API_BASE_URL`
+- `GOCARDLESS_SECRET_ID`, `GOCARDLESS_SECRET_KEY`, `GOCARDLESS_REDIRECT_URL`, `APP_BASE_URL`
+- `GOCARDLESS_INSTITUTION_ID`, `GOCARDLESS_COUNTRY`, `GOCARDLESS_INSTITUTION_NAME`, optional `GOCARDLESS_API_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).
-`APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to Convex; set it for deployed environments.
+`APP_BASE_URL` is the public frontend origin used after GoCardless redirects back to Convex; set it for deployed environments.
 
 ## Key Conventions
 
 - Path alias: `@/*` maps to project root (configured in `tsconfig.json` and `vite.config.ts`)
 - Convex auto-generates types in `convex/_generated/` — never edit these files
-- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, active Enable Banking callback at `/enable-banking/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
+- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, active GoCardless callback at `/gocardless/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility, and legacy Enable Banking callback health at `/enable-banking/callback`)
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
 - Reuse existing Convex queries and mutations rather than creating duplicates

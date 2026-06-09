@@ -89,26 +89,34 @@ Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
 
-## Enable Banking
+## GoCardless Bank Account Data
 
 Bank connection secrets are backend-only Convex environment variables:
 
-- `ENABLE_BANKING_APPLICATION_ID`
-- `ENABLE_BANKING_PRIVATE_KEY`
-- `ENABLE_BANKING_REDIRECT_URL`
 - `APP_BASE_URL`
-- `ENABLE_BANKING_DEFAULT_COUNTRY`
-- `ENABLE_BANKING_DEFAULT_ASPSP`
-- Optional `ENABLE_BANKING_API_BASE_URL`
+- `GOCARDLESS_SECRET_ID`
+- `GOCARDLESS_SECRET_KEY`
+- `GOCARDLESS_REDIRECT_URL`
+- `GOCARDLESS_INSTITUTION_ID`
+- `GOCARDLESS_COUNTRY`
+- `GOCARDLESS_INSTITUTION_NAME`
+- Optional `GOCARDLESS_API_BASE_URL`
 
 Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables.
-`APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to the Convex callback. It is required outside local development.
+`APP_BASE_URL` is the public frontend origin used after GoCardless redirects back to the Convex callback. It is required outside local development.
 
-The active v1 flow is manual sync:
+Sandbox defaults:
+
+- `GOCARDLESS_INSTITUTION_ID=SANDBOXFINANCE_SFIN0000`
+- `GOCARDLESS_COUNTRY=GB`
+- `GOCARDLESS_INSTITUTION_NAME=GoCardless Sandbox`
+- `GOCARDLESS_REDIRECT_URL=https://<deployment>.convex.site/gocardless/callback`
+
+The active flow is manual sync:
 
 1. Admin or Finance Team starts a connection from Settings > Bank Connections.
-2. Enable Banking redirects back to `/enable-banking/callback`.
-3. The returned account is mapped to a fund.
+2. GoCardless redirects back to `/gocardless/callback`.
+3. Returned accounts are mapped to funds.
 4. Transactions are fetched on demand from the Transactions screen and reviewed before import.
 
-The first rollout is for internal validation with the linked Metro Bank account. Tenant-wide availability requires a separate commercial/compliance decision.
+Before live Metro Bank rollout, confirm the live Metro Bank institution ID from the GoCardless institution list or dashboard.
