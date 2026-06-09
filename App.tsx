@@ -238,6 +238,11 @@ function App() {
             categories={categories ?? []}
             users={users ?? []}
             pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
+            isTransactionsLoading={transactions === undefined}
+            isPledgesLoading={pledges === undefined}
+            isDonorsLoading={donors === undefined}
+            isUsersLoading={users === undefined}
+            isInvitationsLoading={pendingInvitations === undefined}
             onViewFundLedger={handleViewFundLedger}
             onPledgeCompleted={handlePledgeCompleted}
             onAddDonor={handleAddDonor}
