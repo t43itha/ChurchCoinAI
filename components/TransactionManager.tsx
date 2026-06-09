@@ -282,7 +282,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               updates: {
                   category: updates.category,
                   fundId: updates.fundId as Id<"funds"> | undefined,
-                  isReconciled: updates.isReconciled,
+                  // TODO(task 7): remove control — isReconciled is now derived from reconciliation sessions
               }
           });
           setSelectedIds(new Set());
@@ -864,7 +864,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 type: newTransaction.type! as 'Income' | 'Expenditure',
                 category: newTransaction.category || categoryNames[0],
                 fundId: newTransaction.fundId as Id<"funds">,
-                isReconciled: newTransaction.isReconciled || false,
                 isGiftAidEligible: newTransaction.isGiftAidEligible,
                 donorName: newTransaction.donorName,
                 pledgeId: newTransaction.pledgeId as Id<"pledges"> | undefined
@@ -1597,7 +1596,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type: editingTransaction.type,
                                 category: editingTransaction.category,
                                 fundId: editingTransaction.fundId as Id<"funds">,
-                                isReconciled: editingTransaction.isReconciled,
                                 isGiftAidEligible: editingTransaction.isGiftAidEligible,
                                 donorName: editingTransaction.donorName,
                                 ...(editingTransaction.donorId
