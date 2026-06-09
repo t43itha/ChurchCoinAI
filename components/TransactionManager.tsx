@@ -950,7 +950,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </button>
                 <button
                     onClick={() => setShowReconciliation(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm btn-secondary"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
                 >
                     <Scale size={14} />
                     Reconcile
