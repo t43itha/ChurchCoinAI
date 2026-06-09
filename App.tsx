@@ -165,13 +165,13 @@ function App() {
 
   const currentOrganization = organization;
 
-  // Show loading while remaining data loads
+  // Show loading while financial setup data loads. Ledger-heavy routes receive
+  // safe empty arrays until their own queries resolve.
   if (
     funds === undefined ||
-    transactions === undefined ||
-    pledges === undefined
+    categories === undefined
   ) {
-    return <LoadingSpinner message="Loading financial data..." />;
+    return <LoadingSpinner message="Loading financial setup..." />;
   }
 
   // Navigate to transaction ledger filtered by fund
@@ -238,6 +238,11 @@ function App() {
             categories={categories ?? []}
             users={users ?? []}
             pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
+            isTransactionsLoading={transactions === undefined}
+            isPledgesLoading={pledges === undefined}
+            isDonorsLoading={donors === undefined}
+            isUsersLoading={users === undefined}
+            isInvitationsLoading={pendingInvitations === undefined}
             onViewFundLedger={handleViewFundLedger}
             onPledgeCompleted={handlePledgeCompleted}
             onAddDonor={handleAddDonor}
