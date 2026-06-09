@@ -1568,17 +1568,17 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
   const [activeTab, setActiveTab] = useState<ReportTab>('monthly');
 
   return (
-    <div className="space-y-6 animate-enter max-w-6xl mx-auto">
+    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
       {/* Header */}
-      <header className="border-b border-ledger pb-6">
-        <h2 className="text-3xl font-bold text-ink font-mono tracking-tight">Reports</h2>
-        <p className="text-grey-mid mt-1 text-sm font-medium">
+      <header className="swiss-card-static p-6 md:p-[26px]">
+        <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Reports</h2>
+        <p className="text-grey-mid mt-2 text-[15px] font-medium">
           Financial reports, analytics, and AI-generated documents.
         </p>
       </header>
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-grey-light/50 rounded-lg w-fit">
+      <div className="flex gap-1 p-1 bg-white border border-ledger rounded-xl w-fit overflow-x-auto max-w-full">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1586,10 +1586,10 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                 isActive
-                  ? 'bg-white text-ink shadow-sm'
-                  : 'text-grey-mid hover:text-ink hover:bg-white/50'
+                  ? 'bg-amber-light text-amber'
+                  : 'text-grey-mid hover:text-ink hover:bg-grey-light'
               }`}
             >
               <Icon size={16} className={isActive ? 'text-amber' : ''} />

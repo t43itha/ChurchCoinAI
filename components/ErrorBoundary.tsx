@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component<
 
     return (
       <div className="min-h-screen bg-paper text-ink flex items-center justify-center p-6">
-        <div className="max-w-lg w-full bg-white border border-ledger rounded-lg shadow-hard-sm p-6">
+        <div className="max-w-lg w-full bg-white border border-ledger rounded-xl shadow-soft-md p-6">
           <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
           <p className="text-sm text-grey-dark mb-4">
             The app hit an unexpected error and could not continue rendering.

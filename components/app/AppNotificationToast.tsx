@@ -22,7 +22,7 @@ const AppNotificationToast: React.FC<AppNotificationToastProps> = ({
 
   return (
     <div
-      className="fixed top-4 right-4 z-[100] bg-charcoal text-white shadow-hard-md rounded-lg p-4 flex items-start gap-3 animate-enter max-w-sm border border-ink"
+      className="fixed top-4 right-4 z-[100] bg-charcoal text-white shadow-soft-lg rounded-xl p-4 flex items-start gap-3 animate-enter max-w-sm border border-ink"
       role="status"
       aria-live="polite"
       aria-atomic="true"

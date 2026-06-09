@@ -694,35 +694,35 @@ ${churchDetails?.name || 'Church'} Finance Team
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] animate-enter gap-0 swiss-card overflow-hidden relative">
+    <div className="flex h-[calc(100vh-7.5rem)] animate-enter gap-0 swiss-card overflow-hidden relative max-w-7xl mx-auto">
       {/* Sidebar - Directory */}
-      <div className={`${mobileView === 'detail' ? 'hidden' : 'w-full'} md:block md:w-80 border-r border-ledger bg-white flex flex-col shrink-0`}>
-        <div className="p-4 border-b border-ledger space-y-3">
+      <div className={`${mobileView === 'detail' ? 'hidden' : 'w-full'} md:block md:w-[340px] border-r border-ledger bg-white flex flex-col shrink-0`}>
+        <div className="p-4 border-b border-ledger space-y-3 bg-[#fcfbf9]">
           <div className="flex justify-between items-center">
-              <h3 className="font-bold text-ink text-sm font-mono">Directory</h3>
+              <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Donor Directory</h3>
               <div className="flex gap-1">
                 {canEdit && !manualMergeMode && (
                   <button
                     onClick={() => setManualMergeMode(true)}
-                    className="p-1.5 bg-amber-50 hover:bg-amber-100 rounded text-amber-700 transition-colors shadow-sm"
+                    className="p-1.5 bg-amber-light hover:bg-[#fcf7f0] rounded-lg text-amber transition-colors border border-[#ecd8bd]"
                     title="Select donors to merge"
                   >
                     <Merge size={14} />
                   </button>
                 )}
-                {canEdit && !manualMergeMode && <button onClick={() => setShowAddDonorModal(true)} className="p-1.5 bg-grey-light hover:bg-ledger rounded text-grey-dark transition-colors shadow-sm" title="Add New Donor"><Plus size={14} /></button>}
+                {canEdit && !manualMergeMode && <button onClick={() => setShowAddDonorModal(true)} className="p-1.5 bg-white hover:bg-grey-light rounded-lg text-grey-dark transition-colors border border-ledger" title="Add New Donor"><Plus size={14} /></button>}
               </div>
           </div>
           {/* Manual merge mode banner */}
           {manualMergeMode && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+            <div className="bg-amber-light border border-[#ecd8bd] rounded-xl p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-800">Select donors to merge</span>
-                <button onClick={cancelManualMerge} className="text-amber-600 hover:text-amber-800">
+                <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-amber">Select donors to merge</span>
+                <button onClick={cancelManualMerge} className="text-amber hover:text-amber-dark">
                   <X size={14} />
                 </button>
               </div>
-              <p className="text-[10px] text-amber-700">
+              <p className="text-[11px] text-amber-dark">
                 {selectedForMerge.size === 0 && "Click donors below to select them"}
                 {selectedForMerge.size === 1 && "Select at least one more donor"}
                 {selectedForMerge.size >= 2 && !manualPrimaryId && "Now click 'Keep' on the donor to keep as primary"}
@@ -732,7 +732,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                 <button
                   onClick={handleManualMerge}
                   disabled={isMerging}
-                  className="w-full py-2 bg-amber-500 text-white rounded text-xs font-bold uppercase hover:bg-amber-600 disabled:opacity-50"
+                  className="w-full py-2 bg-amber text-white rounded-lg text-xs font-bold uppercase hover:bg-amber-dark disabled:opacity-50"
                 >
                   {isMerging ? 'Merging...' : `Merge ${selectedForMerge.size} Donors`}
                 </button>
@@ -741,7 +741,7 @@ ${churchDetails?.name || 'Church'} Finance Team
           )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" size={14} />
-            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-md focus:outline-none focus:ring-1 focus:ring-ink bg-paper focus:bg-white transition-colors" />
+            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-lg focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink bg-white transition-colors" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -752,12 +752,12 @@ ${churchDetails?.name || 'Church'} Finance Team
             return (
               <div
                 key={donor._id}
-                className={`w-full text-left px-4 py-3 border-b border-grey-light transition-colors flex items-center gap-3 ${
+                className={`w-full text-left px-4 py-3 border-b border-ledger transition-colors flex items-center gap-3 ${
                   manualMergeMode && isSelectedForMerge
-                    ? 'bg-amber-50 border-l-4 border-l-amber-500'
+                    ? 'bg-amber-light border-l-4 border-l-amber'
                     : selectedDonorId === donor._id
-                    ? 'bg-paper border-l-4 border-l-ink'
-                    : 'hover:bg-paper border-l-4 border-l-transparent'
+                    ? 'bg-amber-light border-l-4 border-l-amber'
+                    : 'hover:bg-grey-light border-l-4 border-l-transparent'
                 }`}
               >
                 {/* Merge mode checkbox */}
@@ -790,17 +790,17 @@ ${churchDetails?.name || 'Church'} Finance Team
                   }}
                   className="flex items-center gap-3 flex-1 min-w-0 text-left"
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                    isPrimary ? 'bg-amber-500 text-white' : 'bg-ledger text-grey-dark'
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    isPrimary ? 'bg-amber text-white' : selectedDonorId === donor._id ? 'bg-white text-amber ring-1 ring-[#ecd8bd]' : 'bg-grey-light text-grey-dark'
                   }`}>
                     {donor.name.charAt(0)}
                   </div>
                   <div className="min-w-0 flex-1 text-left">
-                    <div className={`text-sm font-bold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>
+                    <div className={`text-sm font-semibold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>
                       {donor.name}
                       {isPrimary && <span className="ml-1 text-[10px] text-amber-600">(Primary)</span>}
                     </div>
-                    <div className="text-[10px] text-grey-mid truncate">{donor.email || donor.type}</div>
+                    <div className="text-[11px] text-grey-mid truncate">{donor.email || donor.type}</div>
                   </div>
                 </button>
 
@@ -824,7 +824,7 @@ ${churchDetails?.name || 'Church'} Finance Team
       <div className={`${mobileView === 'list' ? 'hidden' : 'flex-1'} md:flex md:flex-1 flex-col bg-paper overflow-hidden`}>
         {selectedDonor ? (
           <>
-            <div className="bg-white border-b border-ledger px-4 md:px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
+            <div className="bg-white border-b border-ledger px-4 md:px-7 py-6 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
                <div className="flex items-center gap-4">
                   {/* Back button for mobile */}
                   <button
@@ -833,48 +833,48 @@ ${churchDetails?.name || 'Church'} Finance Team
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                   </button>
-                  <div className="w-12 h-12 bg-ink rounded-lg flex items-center justify-center text-white text-xl font-bold font-mono shadow-sm">{selectedDonor.name.charAt(0)}</div>
+                  <div className="w-12 h-12 bg-ink rounded-xl flex items-center justify-center text-white text-xl font-bold font-mono">{selectedDonor.name.charAt(0)}</div>
                   <div>
-                      <h1 className="text-xl font-bold text-ink font-mono leading-tight">{selectedDonor.name}</h1>
+                      <h1 className="text-2xl font-bold text-ink leading-tight tracking-tight">{selectedDonor.name}</h1>
                       <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-grey-mid font-medium">{selectedDonor.type}</span>
-                          {selectedDonor.isGiftAidActive && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-sage-light text-sage-dark border border-sage/30"><Gift size={10} /> Gift Aid</span>}
+                          {selectedDonor.isGiftAidActive && <span className="font-mono inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] bg-sage-light text-sage-dark"><Gift size={10} /> Gift Aid</span>}
                       </div>
                   </div>
                </div>
                <div className="flex items-center gap-6">
-                   <div className="text-right hidden sm:block"><p className="text-[10px] font-bold text-grey-mid uppercase tracking-widest font-mono">LTV</p><p className="text-xl font-bold text-ink font-mono tracking-tight">£{lifetimeValue.toLocaleString()}</p></div>
+                   <div className="text-right hidden sm:block"><p className="font-mono text-[10.5px] font-semibold text-grey-mid uppercase tracking-[0.1em]">Lifetime Value</p><p className="text-xl font-bold text-ink font-mono tracking-tight">£{lifetimeValue.toLocaleString()}</p></div>
                    <div className="h-8 w-px bg-grey-light hidden sm:block"></div>
                    <div className="flex gap-2">
-                       {canEdit && <button onClick={handleEditClick} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Edit2 size={14} /> <span className="hidden lg:inline">Edit</span></button>}
-                       <button onClick={() => { setSelectedReportType('all'); setSelectedCampaignId(undefined); setShowExportModal(true); }} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded text-xs font-bold text-grey-dark hover:border-grey-mid transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
+                       {canEdit && <button onClick={handleEditClick} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded-lg text-xs font-bold text-grey-dark hover:border-[#c9c5be] transition-colors"><Edit2 size={14} /> <span className="hidden lg:inline">Edit</span></button>}
+                        <button onClick={() => { setSelectedReportType('all'); setSelectedCampaignId(undefined); setShowExportModal(true); }} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded-lg text-xs font-bold text-grey-dark hover:border-[#c9c5be] transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
                    </div>
                </div>
             </div>
-            <div className="bg-white border-b border-ledger px-4 sm:px-6 flex items-center gap-4 sm:gap-6 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
+            <div className="bg-white border-b border-ledger px-4 sm:px-7 flex items-center gap-4 sm:gap-6 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
                 {[
                     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
                     { id: 'history', label: 'History', icon: History },
                     { id: 'profile', label: 'Profile', icon: UserCog },
                     { id: 'communicate', label: 'Communicate', icon: MessageSquare },
                 ].map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab.id ? 'border-amber text-amber-dark' : 'border-transparent text-grey-mid hover:text-ink'}`}>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab.id ? 'border-amber text-amber' : 'border-transparent text-grey-mid hover:text-ink'}`}>
                         <tab.icon size={14} /> {tab.label}
                     </button>
                 ))}
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-5 md:p-7">
                 {activeTab === 'overview' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-5 max-w-6xl">
                         <div className="swiss-card p-6 bg-white">
                              <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Calendar size={16}/> Giving Schedules</h3>
-                                {canEdit && <button onClick={() => setShowAddPledgeModal(true)} className="text-xs bg-ink text-white px-3 py-1.5 rounded-md font-bold uppercase tracking-wide hover:bg-charcoal transition-colors">+ New</button>}
+                                <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><Calendar size={16}/> Giving Schedules</h3>
+                                {canEdit && <button onClick={() => setShowAddPledgeModal(true)} className="btn-primary text-xs px-3 py-1.5 font-bold uppercase">+ New</button>}
                              </div>
                              {donorPledges.length === 0 ? <div className="p-8 text-center bg-paper rounded-lg border border-dashed border-ledger"><p className="text-sm text-grey-mid font-medium">No active pledges.</p></div> : (
                                 <div className="space-y-3">
                                 {donorPledges.map(p => (
-                                    <div key={p._id} className="flex justify-between items-center p-3 border border-ledger rounded-lg hover:bg-paper transition-colors">
+                                    <div key={p._id} className="flex justify-between items-center p-3 border border-ledger rounded-xl hover:bg-[#fcfbf9] transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div className={`p-2 rounded-md ${p.status === 'Active' ? 'bg-sage-light text-sage' : 'bg-grey-light text-grey-mid'}`}><Wallet size={16} /></div>
                                             <div><div className="font-bold text-ink text-sm">{funds.find(f => f._id === p.fundId)?.name}</div><div className="text-xs text-grey-mid font-medium">{p.frequency}</div></div>
@@ -886,13 +886,13 @@ ${churchDetails?.name || 'Church'} Finance Team
                              )}
                         </div>
                         <div className="swiss-card p-6 bg-white">
-                            <h3 className="font-bold text-ink mb-6 text-sm uppercase tracking-wide">Giving Trend (Last 10)</h3>
+                            <h3 className="font-mono font-semibold text-grey-mid mb-6 text-[11px] uppercase tracking-[0.1em]">Giving Trend (Last 10)</h3>
                              <div className="h-60">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={chartData}>
-                                        <XAxis dataKey="date" tick={{fontSize: 10, fill: '#94a3b8'}} tickLine={false} axisLine={false} dy={10}/>
-                                        <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '4px', fontSize: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'}} />
-                                        <Bar dataKey="amount" fill="#292524" radius={[4, 4, 0, 0]} barSize={30} />
+                                        <XAxis dataKey="date" tick={{fontSize: 10, fill: '#78716c'}} tickLine={false} axisLine={false} dy={10}/>
+                                        <Tooltip cursor={{fill: '#faf9f7'}} contentStyle={{borderRadius: '12px', fontSize: '12px', border: '1px solid #e7e5e1', boxShadow: '0 16px 40px -16px rgba(28,25,23,.28)', fontFamily: 'JetBrains Mono'}} />
+                                        <Bar dataKey="amount" fill="#1c1917" radius={[4, 4, 0, 0]} barSize={30} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -901,7 +901,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                 )}
                 {activeTab === 'history' && (
                     <div className="swiss-card p-0 bg-white overflow-hidden max-w-5xl">
-                         <div className="p-4 border-b border-ledger bg-paper/50 flex justify-between items-center"><div className="text-sm font-bold text-grey-dark">Transaction Ledger</div><div className="text-xs font-mono text-grey-mid">{donorTransactions.length} RECORDS</div></div>
+                         <div className="p-4 border-b border-ledger bg-[#fcfbf9] flex justify-between items-center"><div className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Transaction Ledger</div><div className="text-xs font-mono text-grey-mid">{donorTransactions.length} RECORDS</div></div>
                          {donorTransactions.length === 0 ? <div className="p-12 text-center text-grey-mid"><History size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No transaction history found.</p></div> : (
                             <>
                               {/* Mobile List View */}
@@ -982,10 +982,10 @@ ${churchDetails?.name || 'Church'} Finance Team
                 {activeTab === 'profile' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
                         <div className="swiss-card p-6 bg-white">
-                             <h3 className="font-bold text-ink mb-4 text-sm uppercase tracking-wide flex items-center gap-2"><User size={16} /> Contact Details</h3>
+                             <h3 className="font-mono font-semibold text-grey-mid mb-4 text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><User size={16} /> Contact Details</h3>
                              <div className="space-y-4">
-                                 <div className="flex items-center gap-3 p-3 bg-paper rounded-lg border border-ledger"><Mail size={16} className="text-grey-mid"/><span className="text-sm font-medium text-grey-dark">{selectedDonor.email || 'No email provided'}</span></div>
-                                 <div className="flex items-center justify-between p-3 bg-paper rounded-lg border border-ledger">
+                                 <div className="flex items-center gap-3 p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><Mail size={16} className="text-grey-mid"/><span className="text-sm font-medium text-grey-dark">{selectedDonor.email || 'No email provided'}</span></div>
+                                 <div className="flex items-center justify-between p-3 bg-[#fcfbf9] rounded-xl border border-ledger">
                                      <div className="flex items-center gap-3">
                                          <Phone size={16} className="text-grey-mid"/>
                                          <span className="text-sm font-medium text-grey-dark">{selectedDonor.phone || 'No phone number'}</span>
@@ -996,7 +996,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                          </button>
                                      )}
                                  </div>
-                                 <div className="flex items-start gap-3 p-3 bg-paper rounded-lg border border-ledger">
+                                 <div className="flex items-start gap-3 p-3 bg-[#fcfbf9] rounded-xl border border-ledger">
                                      <MapPin size={16} className="text-grey-mid mt-0.5 shrink-0"/>
                                      <div className="flex-1">
                                         <span className="text-sm font-medium text-grey-dark block whitespace-pre-wrap">{selectedDonor.address || 'No address on file'}</span>
@@ -1006,18 +1006,18 @@ ${churchDetails?.name || 'Church'} Finance Team
                              </div>
                         </div>
                         <div className="swiss-card p-6 bg-white">
-                             <h3 className="font-bold text-ink mb-4 text-sm uppercase tracking-wide flex items-center gap-2"><FileText size={16} /> Notes & Settings</h3>
-                             <div className="bg-amber-light p-4 rounded-lg border border-amber/30 mb-4"><p className="text-xs text-amber-dark italic min-h-[60px]">{selectedDonor.notes || 'No private notes added.'}</p></div>
+                             <h3 className="font-mono font-semibold text-grey-mid mb-4 text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><FileText size={16} /> Notes & Settings</h3>
+                             <div className="bg-amber-light p-4 rounded-xl border border-[#ecd8bd] mb-4"><p className="text-xs text-amber-dark italic min-h-[60px]">{selectedDonor.notes || 'No private notes added.'}</p></div>
                              <div className="space-y-2">
-                                <div className="flex justify-between items-center p-3 bg-paper rounded-lg border border-ledger"><span className="text-sm font-bold text-grey-dark">Donor Type</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.type}</span></div>
-                                <div className="flex justify-between items-center p-3 bg-paper rounded-lg border border-ledger"><span className="text-sm font-bold text-grey-dark">Comm. Pref</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.communicationPreference || 'Email'}</span></div>
+                                <div className="flex justify-between items-center p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><span className="text-sm font-bold text-grey-dark">Donor Type</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.type}</span></div>
+                                <div className="flex justify-between items-center p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><span className="text-sm font-bold text-grey-dark">Comm. Pref</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.communicationPreference || 'Email'}</span></div>
                              </div>
                         </div>
                     </div>
                 )}
                 {activeTab === 'communicate' && (
                     <div className="swiss-card p-6 bg-white max-w-4xl">
-                        <h3 className="font-bold text-ink flex items-center gap-2 text-sm uppercase tracking-wide mb-4">
+                        <h3 className="font-mono font-semibold text-grey-mid flex items-center gap-2 text-[11px] uppercase tracking-[0.1em] mb-4">
                             <MessageSquare size={16} /> Message Templates
                         </h3>
 
@@ -1152,8 +1152,8 @@ ${churchDetails?.name || 'Church'} Finance Team
 
       {showAddDonorModal && canEdit && (
           <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
-              <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-ledger animate-enter my-auto sm:my-8">
-                  <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg z-10"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Donor Profile</h3><button onClick={() => setShowAddDonorModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
+              <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter my-auto sm:my-8 overflow-hidden">
+                  <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9] z-10"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">New Donor Profile</h3><button onClick={() => setShowAddDonorModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                   <form onSubmit={handleAddDonorSubmit} className="p-4 sm:p-6 space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name *</label><input type="text" value={newDonorData.name || ''} onChange={e => setNewDonorData({...newDonorData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required placeholder="e.g. John Doe"/></div>
@@ -1173,7 +1173,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                           <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
                       </div>
                       <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={newDonorData.notes || ''} onChange={e => setNewDonorData({...newDonorData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none h-16 resize-none"/></div>
-                      <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setShowAddDonorModal(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded">Cancel</button><button type="submit" className="px-6 py-2 bg-ink text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-charcoal flex items-center gap-2"><Plus size={14} /> Create Profile</button></div>
+                      <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setShowAddDonorModal(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Plus size={14} /> Create Profile</button></div>
                   </form>
               </div>
           </div>
@@ -1181,8 +1181,8 @@ ${churchDetails?.name || 'Church'} Finance Team
 
       {isEditing && canEdit && (
           <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
-              <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-ledger animate-enter my-auto sm:my-8">
-                  <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg z-10"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">Edit Donor Profile</h3><button onClick={() => setIsEditing(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
+              <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter my-auto sm:my-8 overflow-hidden">
+                  <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9] z-10"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Edit Donor Profile</h3><button onClick={() => setIsEditing(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                   <form onSubmit={handleSaveEdit} className="p-4 sm:p-6 space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name</label><input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required/></div>
@@ -1202,7 +1202,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                           <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
                       </div>
                       <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none h-16 resize-none"/></div>
-                      <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded">Cancel</button><button type="submit" className="px-6 py-2 bg-ink text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-charcoal flex items-center gap-2"><Save size={14} /> Save Changes</button></div>
+                      <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Save size={14} /> Save Changes</button></div>
                   </form>
               </div>
           </div>
@@ -1210,8 +1210,8 @@ ${churchDetails?.name || 'Church'} Finance Team
 
       {showAddPledgeModal && canEdit && (
         <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
-                <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg"><h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Schedule</h3><button onClick={() => setShowAddPledgeModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
+            <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter overflow-hidden">
+                <div className="p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">New Schedule</h3><button onClick={() => setShowAddPledgeModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
                 <form onSubmit={handleAddPledgeSubmit} className="p-6 space-y-4">
                     <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f._id} value={f._id}>{f.name}</option>))}</select></div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1230,10 +1230,10 @@ ${churchDetails?.name || 'Church'} Finance Team
 
       {showExportModal && selectedDonor && (
         <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter">
+            <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter overflow-hidden">
                 {/* Compact Header */}
-                <div className="px-4 py-3 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
-                    <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
+                <div className="px-4 py-3 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
+                    <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2">
                         <Printer size={16} /> Export for {selectedDonor.name}
                     </h3>
                     <button onClick={() => setShowExportModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
@@ -1408,9 +1408,9 @@ ${churchDetails?.name || 'Church'} Finance Team
       {/* Merge Duplicates Modal */}
       {showMergeModal && canEdit && (
         <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-lg shadow-2xl border border-ledger animate-enter max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
-              <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
+          <div className="bg-white w-full max-w-2xl rounded-xl shadow-soft-lg border border-ledger animate-enter max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
+              <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2">
                 <Users size={16} /> Merge Duplicate Donors
               </h3>
               <button onClick={() => setShowMergeModal(false)} className="text-grey-mid hover:text-grey-dark">

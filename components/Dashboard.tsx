@@ -19,7 +19,7 @@ interface DashboardProps {
   currentUser: AppUser;
 }
 
-const COLORS = ['#000000', '#d4a574', '#e5e5e5'];
+const COLORS = ['#1c1917', '#a9743f', '#e7e5e1'];
 
 const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, currentUser }) => {
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
@@ -84,35 +84,36 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
     .slice(0, 5);
 
   return (
-    <div className="space-y-8 animate-enter max-w-6xl mx-auto pb-12">
-      <header className="flex items-end justify-between border-b border-ledger pb-6">
+    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
+      <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-            <h2 className="text-3xl font-bold text-ink tracking-tight">Overview</h2>
-            <p className="text-grey-mid mt-1 text-sm font-medium">Finance & Donor Health Status</p>
+            <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Overview</h2>
+            <p className="text-grey-mid mt-2 text-[15px] font-medium">Finance & donor health status</p>
         </div>
         <div className="flex gap-2">
-             <span className="text-[10px] uppercase bg-grey-light px-2 py-1 rounded text-grey-mid font-bold tracking-wider">
+             <span className="font-mono text-[10.5px] uppercase bg-amber-light text-amber px-3 py-1.5 rounded-full font-semibold tracking-[0.12em]">
                  {defaultDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
              </span>
         </div>
       </header>
 
       {/* Strategic KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 xl:gap-5">
         {/* Cash Flow Health */}
-        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group">
+        <div className="swiss-card p-[22px] bg-white flex flex-col justify-between min-h-[178px] group relative overflow-hidden">
+            <span className={`absolute left-0 top-4 bottom-4 w-[3px] rounded-full ${netCashFlow >= 0 ? 'bg-sage' : 'bg-error'}`} />
             <div className="flex justify-between items-start">
-                <div className={`p-2 rounded-lg border ${netCashFlow >= 0 ? 'bg-sage-light border-sage text-sage' : 'bg-error-light border-error text-error'}`}>
+                <div className={`p-2.5 rounded-lg ${netCashFlow >= 0 ? 'bg-sage-light text-sage' : 'bg-error-light text-error'}`}>
                     <Activity size={20} />
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${netCashFlow >= 0 ? 'bg-sage-light text-sage-dark border-sage' : 'bg-error-light text-error border-error'}`}>
+                <span className={`font-mono text-[10.5px] font-bold px-2.5 py-1 rounded-full uppercase tracking-[0.1em] ${netCashFlow >= 0 ? 'bg-sage-light text-sage-dark' : 'bg-error-light text-error'}`}>
                     {netCashFlow >= 0 ? 'Positive' : 'Deficit'}
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">Net Monthly Movement</p>
+                <p className="font-mono text-[11px] font-semibold text-grey-mid uppercase tracking-[0.08em]">Net Monthly Movement</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                    <h3 className={`text-2xl font-bold tracking-tighter ${netCashFlow >= 0 ? 'text-ink' : 'text-error'}`}>
+                    <h3 className={`font-mono text-[30px] font-bold tracking-tight ${netCashFlow >= 0 ? 'text-ink' : 'text-error'}`}>
                         {netCashFlow >= 0 ? '+' : ''}£{Math.abs(netCashFlow).toLocaleString()}
                     </h3>
                 </div>
@@ -120,36 +121,38 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
         </div>
 
         {/* Donor Momentum */}
-        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group">
+        <div className="swiss-card p-[22px] bg-white flex flex-col justify-between min-h-[178px] group relative overflow-hidden">
+            <span className="absolute left-0 top-4 bottom-4 w-[3px] rounded-full bg-sage" />
             <div className="flex justify-between items-start">
-                <div className="p-2 bg-sage-light rounded-lg border border-sage text-sage">
+                <div className="p-2.5 bg-sage-light rounded-lg text-sage">
                     <Users size={20} />
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${donorGrowth >= 0 ? 'bg-sage-light text-sage-dark border-sage' : 'bg-grey-light text-grey-mid border-ledger'}`}>
+                <span className={`font-mono text-[10.5px] font-bold px-2.5 py-1 rounded-full uppercase tracking-[0.1em] ${donorGrowth >= 0 ? 'bg-sage-light text-sage-dark' : 'bg-grey-light text-grey-mid'}`}>
                     {donorGrowth > 0 ? `+${donorGrowth} New` : donorGrowth === 0 ? 'Stable' : `${donorGrowth} Loss`}
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">Active Donors</p>
+                <p className="font-mono text-[11px] font-semibold text-grey-mid uppercase tracking-[0.08em]">Active Donors</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                    <h3 className="text-2xl font-bold text-ink tracking-tighter">{activeDonorsCurrent}</h3>
+                    <h3 className="font-mono text-[30px] font-bold text-ink tracking-tight">{activeDonorsCurrent}</h3>
                     <span className="text-xs text-grey-mid font-medium">vs {activeDonorsPrev} last month</span>
                 </div>
             </div>
         </div>
 
         {/* Campaign Velocity */}
-        <div className="swiss-card p-6 bg-white flex flex-col justify-between h-40 group">
+        <div className="swiss-card p-[22px] bg-white flex flex-col justify-between min-h-[178px] group relative overflow-hidden">
+            <span className="absolute left-0 top-4 bottom-4 w-[3px] rounded-full bg-amber" />
             <div className="flex justify-between items-start">
-                <div className="p-2 bg-amber-light rounded-lg border border-amber text-amber">
+                <div className="p-2.5 bg-amber-light rounded-lg text-amber">
                     <Target size={20} />
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border bg-amber-light text-amber-dark border-amber">
+                <span className="font-mono text-[10.5px] font-bold px-2.5 py-1 rounded-full uppercase tracking-[0.1em] bg-amber-light text-amber">
                     Velocity
                 </span>
             </div>
             <div>
-                <p className="text-xs font-bold text-grey-mid uppercase tracking-wide truncate">{campaignFund?.name || 'No Active Campaign'}</p>
+                <p className="font-mono text-[11px] font-semibold text-grey-mid uppercase tracking-[0.08em] truncate">{campaignFund?.name || 'No Active Campaign'}</p>
                 {campaignFund ? (
                     <div className="mt-2">
                         <div className="flex justify-between text-xs font-bold text-ink mb-1">
@@ -167,15 +170,15 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-5">
         {/* Main Chart: Income vs Expense Trend */}
-        <div className="lg:col-span-2 swiss-card p-8">
+        <div className="lg:col-span-2 swiss-card p-6 md:p-8">
           <div className="flex justify-between items-center mb-8">
             <div>
                 <h3 className="font-bold text-ink text-lg">Financial Trend</h3>
                 <p className="text-xs text-grey-mid font-medium">6 Month Income vs Expenditure</p>
             </div>
-            <div className="flex gap-4 text-xs font-bold uppercase tracking-wide">
+            <div className="flex gap-4 font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em]">
                 <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-ink"></div> Income</div>
                 <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber"></div> Expense</div>
             </div>
@@ -183,15 +186,15 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#666666'}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#666666'}} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7e5e1" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#78716c'}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#78716c'}} />
                 <Tooltip
                     cursor={{fill: '#fafaf9'}}
-                    contentStyle={{ borderRadius: '8px', border: '1px solid #000000', boxShadow: '4px 4px 0px rgba(0,0,0,1)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e7e5e1', boxShadow: '0 16px 40px -16px rgba(28,25,23,.28)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}
                 />
-                <Bar dataKey="Income" barSize={32} fill="#000000" radius={[4, 4, 0, 0]} />
-                <Line type="monotone" dataKey="Expenditure" stroke="#d4a574" strokeWidth={3} dot={{r: 4, fill: '#d4a574', strokeWidth: 2, stroke: '#fff'}} />
+                <Bar dataKey="Income" barSize={32} fill="#1c1917" radius={[4, 4, 0, 0]} />
+                <Line type="monotone" dataKey="Expenditure" stroke="#a9743f" strokeWidth={3} dot={{r: 4, fill: '#a9743f', strokeWidth: 2, stroke: '#fff'}} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -199,8 +202,8 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
 
         {/* Priority Fund List */}
         <div className="swiss-card overflow-hidden flex flex-col">
-           <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper">
-                <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Priority Funds</h3>
+           <div className="p-6 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
+                <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Priority Funds</h3>
                 <ArrowRight size={14} className="text-grey-mid" />
            </div>
            <div className="flex-1 overflow-y-auto">
@@ -213,12 +216,12 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, transactions, categories, 
                                <tr key={f._id} className="border-b border-ledger last:border-0 hover:bg-amber-light transition-colors">
                                    <td className="px-6 py-4">
                                        <div className="font-bold text-ink text-sm">{f.name}</div>
-                                       <div className="text-[10px] text-grey-mid uppercase tracking-wide mt-0.5">{f.type}</div>
+                                       <div className="font-mono text-[10px] text-grey-mid uppercase tracking-[0.1em] mt-0.5">{f.type}</div>
                                    </td>
                                    <td className="px-6 py-4 text-right">
                                        <div className="font-bold text-ink text-sm">£{f.balance.toLocaleString()}</div>
                                        {f.targetAmount && (
-                                           <div className="text-[10px] text-amber font-medium mt-0.5">
+                                           <div className="font-mono text-[10px] text-amber font-medium mt-0.5">
                                                {Math.round((f.balance / f.targetAmount)*100)}% of Goal
                                            </div>
                                        )}

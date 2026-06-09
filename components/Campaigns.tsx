@@ -452,14 +452,14 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
     return (
         <>
-        <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
-            <header className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-ledger pb-6">
+        <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+            <header className="swiss-card-static p-6 md:p-[26px] flex flex-col md:flex-row justify-between md:items-start gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold text-ink font-mono tracking-tight">Campaigns</h2>
-                    <p className="text-grey-mid mt-1 text-sm font-medium">Capital projects and pledged giving.</p>
+                    <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Campaigns</h2>
+                    <p className="text-grey-mid mt-2 text-[15px] font-medium">Capital projects and pledged giving.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="bg-white border border-ledger rounded-md px-3 py-2 flex items-center gap-2 shadow-sm">
+                    <div className="bg-white border border-ledger rounded-lg px-3 py-2 flex items-center gap-2">
                         <Target size={14} className="text-grey-mid"/>
                         <select
                             className="text-sm font-bold text-grey-dark outline-none bg-transparent cursor-pointer min-w-[150px]"
@@ -474,24 +474,24 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-5">
                 <div className="lg:col-span-2 swiss-card p-6 md:p-8">
                     <div className="flex justify-between items-start mb-8">
                         <div>
-                            <h3 className="text-2xl font-bold text-ink font-mono">{selectedFund?.name}</h3>
+                            <h3 className="text-2xl font-bold text-ink">{selectedFund?.name}</h3>
                             <p className="text-grey-mid text-sm mt-1 max-w-md">{selectedFund?.description}</p>
                         </div>
-                        <span className="bg-sage-light text-sage-dark px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-sage/30">Active</span>
+                        <span className="font-mono bg-sage-light text-sage-dark px-3 py-1 rounded-full text-[10.5px] font-bold uppercase tracking-[0.1em]">Active</span>
                     </div>
 
                     <div className="space-y-8">
                         <div>
-                            <div className="flex justify-between text-xs font-bold text-grey-mid mb-2 uppercase tracking-wide">
+                            <div className="flex justify-between font-mono text-[10.5px] font-semibold text-grey-mid mb-2 uppercase tracking-[0.1em]">
                                 <span>Collection Progress</span>
                                 <span>{percentComplete.toFixed(1)}%</span>
                             </div>
                             <div className="w-full h-2 bg-grey-light rounded-full overflow-hidden">
-                                <div className="h-full bg-sage-light0 rounded-full transition-all duration-1000 ease-out" style={{ width: `${percentComplete}%` }}></div>
+                                <div className="h-full bg-sage rounded-full transition-all duration-1000 ease-out" style={{ width: `${percentComplete}%` }}></div>
                             </div>
                         </div>
 
@@ -529,9 +529,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-5">
                 <div className="lg:col-span-2 swiss-card overflow-hidden flex flex-col">
-                    <div className="p-4 border-b border-ledger flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-paper/50">
+                    <div className="p-4 border-b border-ledger flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-[#fcfbf9]">
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
                             <div className="flex items-center gap-3">
                                 <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
@@ -726,8 +726,8 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     <h3 className="font-bold text-ink mb-6 flex items-center gap-2 font-mono text-sm uppercase tracking-wide"><Calendar size={16} /> Campaign Timeline</h3>
                     <div className="space-y-8 pl-2">
                         {[
-                            { date: 'OCT 2023', title: 'Launch', color: 'bg-sage-light0' },
-                            { date: 'DEC 2023', title: 'Milestone 1', color: 'bg-sage-light0' },
+                            { date: 'OCT 2023', title: 'Launch', color: 'bg-sage' },
+                            { date: 'DEC 2023', title: 'Milestone 1', color: 'bg-sage' },
                             { date: 'JUN 2024', title: 'Construction', color: 'bg-grey-mid' }
                         ].map((item, i) => (
                             <div key={i} className="relative pl-6 border-l border-ledger last:border-0 pb-2">

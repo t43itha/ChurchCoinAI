@@ -91,23 +91,23 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-8rem)] bg-white rounded-lg shadow-hard-sm border border-ledger overflow-hidden max-w-4xl mx-auto animate-enter">
-            <header className="p-4 border-b border-ledger flex items-center gap-3 bg-paper">
-                <div className="w-8 h-8 bg-ink rounded-lg flex items-center justify-center text-white">
+        <div className="flex flex-col h-[calc(100vh-7.5rem)] bg-white rounded-xl border border-ledger overflow-hidden max-w-5xl mx-auto animate-enter shadow-soft-sm">
+            <header className="p-5 border-b border-ledger flex items-center gap-3 bg-[#fcfbf9]">
+                <div className="w-10 h-10 bg-ink rounded-lg flex items-center justify-center text-white">
                     <Bot size={18} />
                 </div>
                 <div>
-                    <h2 className="font-bold text-ink text-sm">Steward Assistant</h2>
-                    <p className="text-[10px] text-grey-mid font-mono uppercase tracking-wide">Gemini 2.5 Flash Connected</p>
+                    <h2 className="font-bold text-ink text-lg">Ask Ward</h2>
+                    <p className="text-[10.5px] text-grey-mid font-mono uppercase tracking-[0.1em]">Gemini 2.5 Flash Connected</p>
                 </div>
             </header>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-paper">
                 {messages.map((msg) => (
                     <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                        <div className={`max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed ${
                             msg.sender === 'user' 
-                                ? 'bg-ink text-white rounded-br-none' 
+                                ? 'bg-ink text-white rounded-br-none shadow-[0_8px_18px_-10px_rgba(28,25,23,.65)]' 
                                 : 'bg-white text-grey-dark border border-ledger rounded-bl-none'
                         }`}>
                             {msg.sender === 'ai' && <Sparkles size={12} className="text-sage mb-2" />}
@@ -134,9 +134,9 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                         placeholder="Ask about your finances..."
-                        className="flex-1 bg-paper border border-ledger rounded-md px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-ink transition-all"
+                        className="flex-1 bg-paper border border-ledger rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink transition-all"
                     />
-                    <button onClick={handleSend} disabled={!inputValue.trim() || isThinking} className="bg-sage text-white rounded-md px-4 hover:bg-sage-dark disabled:opacity-50 transition-colors">
+                    <button onClick={handleSend} disabled={!inputValue.trim() || isThinking} className="btn-primary px-4 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
                         <Send size={18} />
                     </button>
                 </div>
