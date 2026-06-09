@@ -1,11 +1,6 @@
 import { PiggyBank, Target, WalletCards } from "lucide-react";
+import { formatCurrency } from "./formatters";
 import type { DashboardSummaryProps } from "./types";
-
-const currencyFormatter = new Intl.NumberFormat("en-GB", {
-  style: "currency",
-  currency: "GBP",
-  maximumFractionDigits: 0,
-});
 
 export default function DashboardFundHealth({ summary }: DashboardSummaryProps) {
   const { funds } = summary;
@@ -32,7 +27,7 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
               General Fund Balance
             </p>
             <p className="mt-1 text-2xl font-bold text-ink font-mono break-words">
-              {currencyFormatter.format(funds.generalFundBalance)}
+              {formatCurrency(funds.generalFundBalance)}
             </p>
           </div>
         </div>
@@ -63,10 +58,10 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
                 <div className="mt-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs font-bold text-grey-mid">
                     <span className="break-words">
-                      {currencyFormatter.format(campaign.balance)} raised
+                      {formatCurrency(campaign.balance)} raised
                     </span>
                     <span className="break-words">
-                      Target {currencyFormatter.format(campaign.targetAmount)}
+                      Target {formatCurrency(campaign.targetAmount)}
                     </span>
                   </div>
                   <div className="mt-2 h-2 bg-grey-light rounded-full overflow-hidden border border-ledger">
@@ -111,7 +106,7 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
                     {fund.name}
                   </span>
                   <span className="font-mono text-sm font-bold text-amber-dark shrink-0">
-                    {currencyFormatter.format(fund.balance)}
+                    {formatCurrency(fund.balance)}
                   </span>
                 </div>
               ))}

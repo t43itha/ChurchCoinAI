@@ -6,6 +6,7 @@ import {
   TrendingUp,
   UsersRound,
 } from "lucide-react";
+import { formatCurrency } from "./formatters";
 import type { DashboardSummaryProps, ExecutiveDashboardSummary } from "./types";
 
 type Tone = "healthy" | "watch" | "critical" | "neutral";
@@ -32,12 +33,6 @@ const toneClasses: Record<Tone, { icon: string; badge: string; value: string }> 
     value: "text-ink",
   },
 };
-
-const currencyFormatter = new Intl.NumberFormat("en-GB", {
-  style: "currency",
-  currency: "GBP",
-  maximumFractionDigits: 0,
-});
 
 export default function DashboardHealthCards({ summary }: DashboardSummaryProps) {
   const cards = buildHealthCards(summary);
@@ -175,7 +170,7 @@ function coverageBadge(months: number) {
 
 function signedCurrency(amount: number) {
   const prefix = amount > 0 ? "+" : amount < 0 ? "-" : "";
-  return `${prefix}${currencyFormatter.format(Math.abs(amount))}`;
+  return `${prefix}${formatCurrency(Math.abs(amount))}`;
 }
 
 function signedPercent(value: number) {

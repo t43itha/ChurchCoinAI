@@ -10,13 +10,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { formatCompactCurrency, formatCurrency } from "./formatters";
 import type { DashboardSummaryProps } from "./types";
-
-const currencyFormatter = new Intl.NumberFormat("en-GB", {
-  style: "currency",
-  currency: "GBP",
-  maximumFractionDigits: 0,
-});
 
 export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) {
   const chartData = summary.trends.monthlyIncomeExpenditure.map((entry) => ({
@@ -59,12 +54,12 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
               axisLine={false}
               tickLine={false}
               tick={{ fontSize: 11, fill: "#666666" }}
-              tickFormatter={(value) => compactCurrency(Number(value))}
+              tickFormatter={(value) => formatCompactCurrency(Number(value))}
               width={56}
             />
             <Tooltip
               cursor={{ fill: "#fafaf9" }}
-              formatter={(value, name) => [currencyFormatter.format(Number(value)), name]}
+              formatter={(value, name) => [formatCurrency(Number(value)), name]}
               labelFormatter={(label) => `Month: ${label}`}
               contentStyle={{
                 borderRadius: "8px",
@@ -109,14 +104,4 @@ function formatMonthLabel(month: string) {
     month: "short",
     timeZone: "UTC",
   }).format(date);
-}
-
-function compactCurrency(value: number) {
-  const absolute = Math.abs(value);
-
-  if (absolute >= 1000) {
-    return `£${Math.round(value / 1000)}k`;
-  }
-
-  return `£${value}`;
 }

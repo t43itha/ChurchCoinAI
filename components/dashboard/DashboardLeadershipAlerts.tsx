@@ -45,7 +45,6 @@ export default function DashboardLeadershipAlerts({ summary }: DashboardSummaryP
           {alerts.map((alert, index) => {
             const classes = getSeverityClasses(alert.severity);
             const Icon = alert.severity === "info" ? Info : AlertTriangle;
-            const description = getOptionalText(alert, "description");
 
             return (
               <li key={`${alert.severity}-${alert.title}`} className="p-5 min-w-0">
@@ -64,11 +63,6 @@ export default function DashboardLeadershipAlerts({ summary }: DashboardSummaryP
                         {alert.severity}
                       </span>
                     </div>
-                    {description ? (
-                      <p className="text-xs text-grey-mid mt-2 leading-snug break-words">
-                        {description}
-                      </p>
-                    ) : null}
                   </div>
                 </div>
               </li>
@@ -99,18 +93,4 @@ function getSeverityClasses(severity: ExecutiveDashboardSummary["alerts"][number
     icon: "bg-grey-light border-ledger text-grey-mid",
     badge: "bg-grey-light text-grey-mid border border-ledger",
   };
-}
-
-function getOptionalText(
-  alert: ExecutiveDashboardSummary["alerts"][number],
-  key: "description" | "actionUrl"
-) {
-  const candidate = alert as ExecutiveDashboardSummary["alerts"][number] &
-    Partial<Record<typeof key, unknown>>;
-
-  if (typeof candidate[key] === "string") {
-    return candidate[key];
-  }
-
-  return undefined;
 }
