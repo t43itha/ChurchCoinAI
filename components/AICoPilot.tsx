@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Loader2, Sparkles } from 'lucide-react';
+import { Send, Loader2, Sparkles, RotateCcw, MessageSquare } from 'lucide-react';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
@@ -15,15 +15,24 @@ interface Message {
     timestamp: Date;
 }
 
+const welcomeMessage: Message = {
+    id: 'welcome',
+    sender: 'ai',
+    text: "Hello. I'm Ward, your AI finance copilot. I can read the live ledger context and answer questions about giving, funds, donors, campaigns, Gift Aid, and monthly performance.",
+    timestamp: new Date()
+};
+
+const starterPrompts = [
+    'Who are our top donors?',
+    'Which month was best for giving?',
+    'How is the Building Fund appeal doing?',
+    'What Gift Aid can we claim?',
+    'Summarise May 2026',
+    'Which donors need follow-up?'
+];
+
 const AICoPilot: React.FC<AICoPilotProps> = () => {
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            id: 'welcome',
-            sender: 'ai',
-            text: "Hello. I'm Steward, your AI finance assistant. I can see your complete financial history and answer questions like 'Which month was best for donations?' or 'Who are our top donors?'",
-            timestamp: new Date()
-        }
-    ]);
+    const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -38,10 +47,17 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
 
     useEffect(scrollToBottom, [messages]);
 
-    const handleSend = async () => {
-        if (!inputValue.trim()) return;
+    const resetChat = () => {
+        setMessages([{ ...welcomeMessage, timestamp: new Date() }]);
+        setInputValue('');
+        setIsThinking(false);
+    };
 
-        const userMsg: Message = { id: Date.now().toString(), sender: 'user', text: inputValue, timestamp: new Date() };
+    const handleSend = async (messageOverride?: string) => {
+        const messageText = (messageOverride ?? inputValue).trim();
+        if (!messageText || isThinking) return;
+
+        const userMsg: Message = { id: Date.now().toString(), sender: 'user', text: messageText, timestamp: new Date() };
         setMessages(prev => [...prev, userMsg]);
         setInputValue('');
         setIsThinking(true);
@@ -90,57 +106,105 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
         }
     };
 
+    const showStarterPrompts = messages.length === 1 && messages[0].id === 'welcome' && !isThinking;
+
     return (
-        <div className="flex flex-col h-[calc(100vh-8rem)] bg-white rounded-lg shadow-hard-sm border border-ledger overflow-hidden max-w-4xl mx-auto animate-enter">
-            <header className="p-4 border-b border-ledger flex items-center gap-3 bg-paper">
-                <div className="w-8 h-8 bg-ink rounded-lg flex items-center justify-center text-white">
-                    <Bot size={18} />
+        <div className="space-y-[22px] max-w-7xl mx-auto pb-10 animate-enter">
+            <header className="swiss-card-static p-6 md:p-[26px] flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0">
+                        <Sparkles size={19} />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-grey-mid mb-2">Gemini 2.5 Flash Connected</p>
+                        <h2 className="font-heading text-[32px] md:text-[40px] leading-none text-ink tracking-normal">Ask Ward</h2>
+                        <p className="mt-3 text-[15px] text-grey-mid max-w-2xl">Your AI finance copilot, grounded in the live ledger.</p>
+                    </div>
                 </div>
-                <div>
-                    <h2 className="font-bold text-ink text-sm">Steward Assistant</h2>
-                    <p className="text-[10px] text-grey-mid font-mono uppercase tracking-wide">Gemini 2.5 Flash Connected</p>
-                </div>
+                <button
+                    type="button"
+                    onClick={resetChat}
+                    className="btn-secondary h-11 px-4 inline-flex items-center justify-center gap-2 self-start md:self-auto"
+                >
+                    <RotateCcw size={16} />
+                    <span>New chat</span>
+                </button>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-paper">
-                {messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
-                            msg.sender === 'user' 
-                                ? 'bg-ink text-white rounded-br-none' 
-                                : 'bg-white text-grey-dark border border-ledger rounded-bl-none'
-                        }`}>
-                            {msg.sender === 'ai' && <Sparkles size={12} className="text-sage mb-2" />}
-                            <p>{msg.text}</p>
+            <section className="swiss-card bg-white overflow-hidden flex flex-col min-h-[540px] h-[calc(100vh-13rem)]">
+                <div className="flex-1 overflow-y-auto bg-[#fcfbf9] p-5 md:p-6 space-y-5">
+                    {messages.map((msg) => (
+                        <div key={msg.id} className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            {msg.sender === 'ai' && (
+                                <div className="w-9 h-9 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0 mt-1">
+                                    <Sparkles size={15} />
+                                </div>
+                            )}
+                            <div className={`max-w-[86%] md:max-w-[74%] p-4 md:p-[18px] text-sm md:text-[15px] leading-relaxed shadow-soft-xs ${
+                                msg.sender === 'user'
+                                    ? 'bg-ink text-white rounded-2xl rounded-br-md'
+                                    : 'bg-white text-grey-dark border border-ledger rounded-2xl rounded-tl-md'
+                            }`}>
+                                <p className="whitespace-pre-wrap">{msg.text}</p>
+                            </div>
                         </div>
-                    </div>
-                ))}
-                {isThinking && (
-                    <div className="flex justify-start">
-                         <div className="bg-white border border-ledger rounded-2xl rounded-bl-none p-4 shadow-sm flex items-center gap-2">
-                            <Loader2 size={14} className="animate-spin text-grey-mid" />
-                            <span className="text-xs text-grey-mid font-medium">Analyzing Ledger...</span>
-                        </div>
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
+                    ))}
 
-            <div className="p-4 bg-white border-t border-ledger">
-                <div className="flex gap-3">
-                    <input 
-                        type="text"
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Ask about your finances..."
-                        className="flex-1 bg-paper border border-ledger rounded-md px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-ink transition-all"
-                    />
-                    <button onClick={handleSend} disabled={!inputValue.trim() || isThinking} className="bg-sage text-white rounded-md px-4 hover:bg-sage-dark disabled:opacity-50 transition-colors">
-                        <Send size={18} />
-                    </button>
+                    {showStarterPrompts && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:ml-12 max-w-3xl">
+                            {starterPrompts.map((prompt) => (
+                                <button
+                                    key={prompt}
+                                    type="button"
+                                    onClick={() => handleSend(prompt)}
+                                    className="group min-h-[54px] text-left bg-white border border-ledger rounded-xl px-4 py-3 text-[13px] font-semibold text-grey-dark hover:border-ink hover:shadow-soft-sm transition-all flex items-center gap-3"
+                                >
+                                    <MessageSquare size={15} className="text-grey-mid group-hover:text-ink shrink-0" />
+                                    <span>{prompt}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {isThinking && (
+                        <div className="flex justify-start gap-3">
+                            <div className="w-9 h-9 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0 mt-1">
+                                <Loader2 size={15} className="animate-spin" />
+                            </div>
+                            <div className="bg-white border border-ledger rounded-2xl rounded-tl-md p-4 shadow-soft-xs flex items-center gap-2">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse [animation-delay:120ms]" />
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse [animation-delay:240ms]" />
+                                <span className="ml-2 text-xs text-grey-mid font-medium">Analyzing ledger</span>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
                 </div>
-            </div>
+
+                <div className="p-4 bg-white border-t border-ledger">
+                    <div className="flex gap-3">
+                        <input
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            placeholder="Ask about your finances..."
+                            className="flex-1 h-12 bg-paper border border-ledger rounded-xl px-4 text-sm focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink transition-all"
+                        />
+                        <button
+                            type="button"
+                            aria-label="Send message"
+                            onClick={() => handleSend()}
+                            disabled={!inputValue.trim() || isThinking}
+                            className="btn-primary h-12 w-12 px-0 flex items-center justify-center rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Send size={18} />
+                        </button>
+                    </div>
+                    <p className="mt-3 text-[11px] text-grey-mid font-mono uppercase tracking-[0.08em]">Ward references your live financial data. Always review figures before filing or sharing.</p>
+                </div>
+            </section>
         </div>
     );
 };

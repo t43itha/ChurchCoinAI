@@ -6,112 +6,146 @@ interface AuthPageProps {
   onBack?: () => void;
 }
 
-// Swiss Ledger design system appearance for Clerk components
+// Refined Ledger design system appearance for Clerk components
 const clerkAppearance = {
   variables: {
-    colorPrimary: "#000000",
-    colorBackground: "#fafaf9",
-    colorText: "#000000",
-    colorTextSecondary: "#666666",
+    colorPrimary: "#1c1917",
+    colorBackground: "#ffffff",
+    colorText: "#1c1917",
+    colorTextSecondary: "#78716c",
     colorInputBackground: "#ffffff",
-    colorInputText: "#000000",
-    colorDanger: "#c64545",
+    colorInputText: "#1c1917",
+    colorSuccess: "#557555",
+    colorDanger: "#b53d3d",
+    colorTextOnPrimaryBackground: "#ffffff",
     borderRadius: "8px",
-    fontFamily: '"DM Sans", sans-serif',
+    fontFamily: '"DM Sans", system-ui, sans-serif',
+    fontFamilyButtons: '"DM Sans", system-ui, sans-serif',
+    fontSize: "14.5px",
   },
   elements: {
     rootBox: {
       width: "100%",
     },
     card: {
-      backgroundColor: "#fafaf9",
-      border: "2px solid #000000",
-      borderRadius: "8px",
-      boxShadow: "none",
+      backgroundColor: "#ffffff",
+      border: "1px solid #e7e5e1",
+      borderRadius: "12px",
+      boxShadow:
+        "0 1px 2px rgba(28,25,23,.04), 0 18px 40px -28px rgba(28,25,23,.25)",
     },
     headerTitle: {
-      fontFamily: '"JetBrains Mono", monospace',
+      fontFamily: '"DM Sans", sans-serif',
       fontWeight: 700,
-      color: "#000000",
+      letterSpacing: "-0.02em",
+      color: "#1c1917",
     },
     headerSubtitle: {
-      color: "#666666",
+      color: "#78716c",
     },
     formButtonPrimary: {
-      backgroundColor: "#000000",
+      backgroundColor: "#1c1917",
       color: "#ffffff",
       fontWeight: 600,
+      textTransform: "none",
       border: "none",
       borderRadius: "8px",
-      transition: "all 0.2s ease",
+      boxShadow: "none",
+      transition:
+        "transform .15s ease, box-shadow .15s ease, background .15s ease",
       "&:hover": {
-        backgroundColor: "#1a1a1a",
-        boxShadow: "4px 4px 0px 0px #d4a574",
-        transform: "translate(-2px, -2px)",
+        backgroundColor: "#2a2522",
+        boxShadow: "0 8px 18px -10px rgba(28,25,23,.65)",
+        transform: "translateY(-1px)",
       },
+      "&:active": { transform: "translateY(0)", boxShadow: "none" },
     },
     formFieldInput: {
       backgroundColor: "#ffffff",
-      border: "1px solid #e5e5e5",
-      borderRadius: "6px",
+      border: "1px solid #e7e5e1",
+      borderRadius: "8px",
+      color: "#1c1917",
       "&:focus": {
-        borderColor: "#000000",
-        boxShadow: "0 0 0 1px #000000",
+        borderColor: "#1c1917",
+        boxShadow: "0 0 0 3px rgba(28,25,23,.08)",
       },
+      "&::placeholder": { color: "#a8a29e" },
     },
     formFieldLabel: {
-      color: "#000000",
+      color: "#78716c",
+      fontFamily: '"JetBrains Mono", monospace',
+      fontSize: "10.5px",
       fontWeight: 500,
+      letterSpacing: "0.14em",
+      textTransform: "uppercase",
     },
     footerActionLink: {
-      color: "#000000",
-      fontWeight: 500,
+      color: "#a9743f",
+      fontWeight: 600,
       "&:hover": {
-        color: "#44403c",
+        color: "#8c5d31",
       },
     },
     socialButtonsBlockButton: {
       backgroundColor: "#ffffff",
-      border: "1px solid #e5e5e5",
+      border: "1px solid #e7e5e1",
       borderRadius: "8px",
+      color: "#1c1917",
       "&:hover": {
-        backgroundColor: "#f5f5f5",
-        borderColor: "#000000",
+        backgroundColor: "#fcfbfa",
+        borderColor: "#c9c5be",
       },
     },
+    socialButtonsBlockButtonText: { fontWeight: 500, color: "#1c1917" },
     dividerLine: {
-      backgroundColor: "#e5e5e5",
+      backgroundColor: "#e7e5e1",
     },
     dividerText: {
-      color: "#666666",
+      color: "#a8a29e",
+      fontFamily: '"JetBrains Mono", monospace',
+      fontSize: "10px",
+      letterSpacing: "0.18em",
+      textTransform: "uppercase",
     },
     identityPreview: {
-      backgroundColor: "#f5f5f5",
-      border: "1px solid #e5e5e5",
+      backgroundColor: "#faf9f7",
+      border: "1px solid #e7e5e1",
       borderRadius: "8px",
     },
     identityPreviewText: {
-      color: "#000000",
+      color: "#1c1917",
     },
     identityPreviewEditButton: {
-      color: "#000000",
+      color: "#a9743f",
       "&:hover": {
-        color: "#44403c",
+        color: "#8c5d31",
       },
     },
     formResendCodeLink: {
-      color: "#000000",
+      color: "#a9743f",
       "&:hover": {
-        color: "#44403c",
+        color: "#8c5d31",
       },
     },
     otpCodeFieldInput: {
-      border: "1px solid #e5e5e5",
-      borderRadius: "6px",
+      border: "1px solid #e7e5e1",
+      borderRadius: "8px",
+      color: "#1c1917",
       "&:focus": {
-        borderColor: "#000000",
-        boxShadow: "0 0 0 1px #000000",
+        borderColor: "#1c1917",
+        boxShadow: "0 0 0 3px rgba(28,25,23,.08)",
       },
+    },
+    avatarBox: { borderRadius: "999px" },
+    userButtonAvatarBox: {
+      width: "38px",
+      height: "38px",
+      boxShadow: "0 0 0 3px #fff, 0 0 0 4px #cfe0cf",
+    },
+    userButtonPopoverCard: {
+      borderRadius: "12px",
+      border: "1px solid #e7e5e1",
+      boxShadow: "0 16px 40px -16px rgba(28,25,23,.28)",
     },
   },
 };
@@ -133,6 +167,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
       )}
 
       <div className="w-full max-w-md">
+        <div className="mb-8 flex justify-center">
+          <img
+            src="/churchcoin-logo-lg.png"
+            alt="ChurchCoin"
+            className="h-16 w-auto"
+          />
+        </div>
         {mode === "signin" ? (
           <SignIn
             appearance={clerkAppearance}

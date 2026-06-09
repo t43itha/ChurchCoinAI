@@ -36,6 +36,11 @@ interface AppContentRoutesProps {
   categories: Category[];
   users: AppUser[];
   pendingInvitations: Invitation[];
+  isTransactionsLoading: boolean;
+  isPledgesLoading: boolean;
+  isDonorsLoading: boolean;
+  isUsersLoading: boolean;
+  isInvitationsLoading: boolean;
   onViewFundLedger: (fundId: string) => void;
   onPledgeCompleted: (donorName: string, amount: number) => void;
   onAddDonor: (donor: DonorCreateInput) => Promise<string | undefined>;
@@ -81,6 +86,8 @@ const TransactionsRoute: React.FC<{
 };
 
 const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
+  const financialDataLoader = <LoadingSpinner message="Loading financial data..." />;
+
   return (
     <Suspense fallback={<LoadingSpinner message="Loading page..." />}>
       <Routes>
@@ -89,7 +96,6 @@ const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
           element={
             <Dashboard
               funds={props.funds}
-              transactions={props.transactions}
               categories={props.categories}
               currentUser={props.currentUser}
             />
@@ -98,93 +104,121 @@ const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
         <Route
           path="/transactions"
           element={
-            <TransactionsRoute
-              funds={props.funds}
-              pledges={props.pledges}
-              categories={props.categories}
-              currentUser={props.currentUser}
-              onPledgeCompleted={props.onPledgeCompleted}
-            />
+            props.isPledgesLoading ? (
+              financialDataLoader
+            ) : (
+              <TransactionsRoute
+                funds={props.funds}
+                pledges={props.pledges}
+                categories={props.categories}
+                currentUser={props.currentUser}
+                onPledgeCompleted={props.onPledgeCompleted}
+              />
+            )
           }
         />
         <Route
           path="/funds"
           element={
-            <FundManager
-              funds={props.funds}
-              transactions={props.transactions}
-              onViewLedger={props.onViewFundLedger}
-            />
+            props.isTransactionsLoading ? (
+              financialDataLoader
+            ) : (
+              <FundManager
+                funds={props.funds}
+                transactions={props.transactions}
+                onViewLedger={props.onViewFundLedger}
+              />
+            )
           }
         />
         <Route
           path="/donors"
           element={
-            <DonorManager
-              donors={props.donors}
-              transactions={props.transactions}
-              pledges={props.pledges}
-              funds={props.funds}
-              onAddDonor={props.onAddDonor}
-              onUpdateDonor={props.onUpdateDonor}
-              onAddPledge={props.onAddPledge}
-              onUpdatePledge={props.onUpdatePledge}
-              onUpdateTransaction={props.onUpdateTransaction}
-              currentUser={props.currentUser}
-              churchDetails={props.churchDetails}
-            />
+            props.isDonorsLoading ||
+            props.isTransactionsLoading ||
+            props.isPledgesLoading ? (
+              financialDataLoader
+            ) : (
+              <DonorManager
+                donors={props.donors}
+                transactions={props.transactions}
+                pledges={props.pledges}
+                funds={props.funds}
+                onAddDonor={props.onAddDonor}
+                onUpdateDonor={props.onUpdateDonor}
+                onAddPledge={props.onAddPledge}
+                onUpdatePledge={props.onUpdatePledge}
+                onUpdateTransaction={props.onUpdateTransaction}
+                currentUser={props.currentUser}
+                churchDetails={props.churchDetails}
+              />
+            )
           }
         />
         <Route
           path="/campaigns"
           element={
-            <Campaigns
-              funds={props.funds}
-              pledges={props.pledges}
-              transactions={props.transactions}
-              donors={props.donors}
-              onAddPledge={props.onAddPledge}
-              onUpdatePledge={props.onUpdatePledge}
-              onBulkAddPledges={props.onBulkAddPledges}
-              onBulkAddDonors={props.onBulkAddDonors}
-              onUpdateTransaction={props.onUpdateTransaction}
-              currentUser={props.currentUser}
-              onPledgeCompleted={props.onPledgeCompleted}
-            />
+            props.isPledgesLoading ||
+            props.isTransactionsLoading ||
+            props.isDonorsLoading ? (
+              financialDataLoader
+            ) : (
+              <Campaigns
+                funds={props.funds}
+                pledges={props.pledges}
+                transactions={props.transactions}
+                donors={props.donors}
+                onAddPledge={props.onAddPledge}
+                onUpdatePledge={props.onUpdatePledge}
+                onBulkAddPledges={props.onBulkAddPledges}
+                onBulkAddDonors={props.onBulkAddDonors}
+                onUpdateTransaction={props.onUpdateTransaction}
+                currentUser={props.currentUser}
+                onPledgeCompleted={props.onPledgeCompleted}
+              />
+            )
           }
         />
         <Route
           path="/reports"
           element={
-            <Reports
-              transactions={props.transactions}
-              funds={props.funds}
-              pledges={props.pledges}
-              churchDetails={props.churchDetails}
-            />
+            props.isTransactionsLoading || props.isPledgesLoading ? (
+              financialDataLoader
+            ) : (
+              <Reports
+                transactions={props.transactions}
+                funds={props.funds}
+                pledges={props.pledges}
+                churchDetails={props.churchDetails}
+              />
+            )
           }
         />
         <Route path="/copilot" element={<AICoPilot />} />
         <Route
           path="/settings"
           element={
-            <Settings
-              currentUser={props.currentUser}
-              users={props.users}
-              categories={props.categories.map((category) => category.name)}
-              funds={props.funds}
-              churchDetails={props.churchDetails}
-              pendingInvitations={props.pendingInvitations}
-              onUpdateUserRole={props.onUpdateUserRole}
-              onAddCategory={props.onAddCategory}
-              onRemoveCategory={props.onRemoveCategory}
-              onInviteUser={props.onInviteUser}
-              onCancelInvitation={props.onCancelInvitation}
-              onUpdateChurchDetails={props.onUpdateChurchDetails}
-              onAddFund={props.onAddFund}
-              onUpdateFund={props.onUpdateFund}
-              onRemoveFund={props.onRemoveFund}
-            />
+            props.isUsersLoading || props.isInvitationsLoading ? (
+              <LoadingSpinner message="Loading settings data..." />
+            ) : (
+              <Settings
+                currentUser={props.currentUser}
+                users={props.users}
+                categories={props.categories.map((category) => category.name)}
+                funds={props.funds}
+                churchDetails={props.churchDetails}
+                pendingInvitations={props.pendingInvitations}
+                onUpdateUserRole={props.onUpdateUserRole}
+                onAddCategory={props.onAddCategory}
+                onRemoveCategory={props.onRemoveCategory}
+                onInviteUser={props.onInviteUser}
+                onCancelInvitation={props.onCancelInvitation}
+                onUpdateChurchDetails={props.onUpdateChurchDetails}
+                onAddFund={props.onAddFund}
+                onUpdateFund={props.onUpdateFund}
+                onRemoveFund={props.onRemoveFund}
+              />
+            )
           }
         />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

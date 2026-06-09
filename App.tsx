@@ -165,13 +165,13 @@ function App() {
 
   const currentOrganization = organization;
 
-  // Show loading while remaining data loads
+  // Show loading while financial setup data loads. Ledger-heavy routes receive
+  // safe empty arrays until their own queries resolve.
   if (
     funds === undefined ||
-    transactions === undefined ||
-    pledges === undefined
+    categories === undefined
   ) {
-    return <LoadingSpinner message="Loading financial data..." />;
+    return <LoadingSpinner message="Loading financial setup..." />;
   }
 
   // Navigate to transaction ledger filtered by fund
@@ -209,12 +209,12 @@ function App() {
         onClose={() => setIsMobileMenuOpen(false)}
       />
 
-      <main className="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden">
+      <main className="flex-1 md:ml-[248px] flex flex-col h-screen overflow-hidden">
         <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-sm sticky top-0 z-10">
           <img
-            src="/ChurchCoin-Variation 01-transparent-s.png"
+            src="/churchcoin-logo.png"
             alt="ChurchCoin Finance Platform"
-            className="h-10"
+            className="h-10 w-auto"
           />
           <div className="flex items-center gap-2">
             <UserButton afterSignOutUrl="/" />
@@ -227,7 +227,7 @@ function App() {
             </button>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="flex-1 overflow-y-auto p-4 md:p-[30px]">
           <AppContentRoutes
             currentUser={currentUser}
             churchDetails={churchDetails}
@@ -238,6 +238,11 @@ function App() {
             categories={categories ?? []}
             users={users ?? []}
             pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
+            isTransactionsLoading={transactions === undefined}
+            isPledgesLoading={pledges === undefined}
+            isDonorsLoading={donors === undefined}
+            isUsersLoading={users === undefined}
+            isInvitationsLoading={pendingInvitations === undefined}
             onViewFundLedger={handleViewFundLedger}
             onPledgeCompleted={handlePledgeCompleted}
             onAddDonor={handleAddDonor}

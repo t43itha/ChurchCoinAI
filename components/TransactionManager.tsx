@@ -4,11 +4,13 @@ import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, Scale } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
+import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
+import CashChequeBanking from './CashChequeBanking';
 
 interface Category {
   _id: string;
@@ -40,6 +42,43 @@ type PendingReviewTransaction = Partial<Transaction> & {
   bankConnectionId?: Id<"bankConnections">;
 };
 
+type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'rag' | 'none';
+
+type OriginalPrediction = {
+  category: string;
+  fundId?: string;
+  isGiftAidEligible?: boolean;
+  donorName?: string | null;
+  confidence: string;
+  confidenceScore?: number;
+  predictionSource: PipelinePredictionSource;
+  ragScore?: number;
+};
+
+const reindexSetAfterRemoval = (values: Set<number>, removedIndex: number): Set<number> => {
+  const reindexed = new Set<number>();
+  values.forEach((value) => {
+    if (value < removedIndex) {
+      reindexed.add(value);
+    } else if (value > removedIndex) {
+      reindexed.add(value - 1);
+    }
+  });
+  return reindexed;
+};
+
+const reindexMapAfterRemoval = <T,>(values: Map<number, T>, removedIndex: number): Map<number, T> => {
+  const reindexed = new Map<number, T>();
+  values.forEach((value, index) => {
+    if (index < removedIndex) {
+      reindexed.set(index, value);
+    } else if (index > removedIndex) {
+      reindexed.set(index - 1, value);
+    }
+  });
+  return reindexed;
+};
+
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -56,8 +95,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 }) => {
   // Fetch all transactions - virtualization handles rendering performance
   const allTransactions = useQuery(api.queries.transactions.list, {});
+  const cashCollectionsResult = useQuery(api.queries.cashCollections.list, {});
   const isLoading = allTransactions === undefined;
   const transactions = allTransactions ?? [];
+  const cashCollections = cashCollectionsResult ?? [];
 
   // Convex mutations and actions
   const createTransaction = useMutation(api.mutations.transactions.create);
@@ -66,9 +107,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
   const batchUpdateTransactions = useMutation(api.mutations.transactions.batchUpdate);
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
-  const categorizeWithRAG = useAction(api.actions.ai.categorizeWithRAG);
+  const categorizeWithPipeline = useAction(api.actions.ai.categorizeWithPipelinePreview);
   const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
-  const toggleVoided = useMutation(api.mutations.transactions.toggleVoided);
+  const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
+  const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
 
   // Bank sync
@@ -85,12 +127,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Track original AI predictions for correction learning
-  const [originalPredictions, setOriginalPredictions] = useState<Map<number, {
-    category: string;
-    confidence: string;
-    predictionSource: 'gemini' | 'rag' | 'none';
-    ragScore?: number;
-  }>>(new Map());
+  const [originalPredictions, setOriginalPredictions] = useState<Map<number, OriginalPrediction>>(new Map());
   
   // Smart Link State
   const [isReconciling, setIsReconciling] = useState(false);
@@ -116,10 +153,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
+  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
+  const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
+  const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [isVoiding, setIsVoiding] = useState(false);
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
       type: 'Income' as TransactionType,
       date: new Date().toISOString().split('T')[0],
@@ -184,6 +227,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (filterFund && t.fundId !== filterFund) return false;
 
       // Status
+      if (filterStatus === 'active' && t.isVoided) return false;
+      if (filterStatus === 'voided' && !t.isVoided) return false;
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
@@ -193,12 +238,82 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
+  const handleOpenVoidModal = (transaction: Transaction) => {
+    setVoidTarget(transaction);
+    setVoidReason('');
+  };
+
+  const handleVoidTransaction = async () => {
+    if (!voidTarget) return;
+    const reason = voidReason.trim();
+    if (reason.length < 3) {
+      notify("Reason Required", "Add a short reason before voiding this transaction.");
+      return;
+    }
+
+    setIsVoiding(true);
+    try {
+      await voidTransaction({
+        transactionId: voidTarget._id as Id<"transactions">,
+        reason,
+      });
+      notify("Transaction Voided", "The transaction has been excluded from financial calculations.");
+      setVoidTarget(null);
+      setVoidReason('');
+    } catch (error) {
+      console.error("Failed to void transaction:", error);
+      notify("Error", "Failed to void transaction.");
+    } finally {
+      setIsVoiding(false);
+    }
+  };
+
+  const handleUnvoidTransaction = async (transaction: Transaction) => {
+    try {
+      await unvoidTransaction({
+        transactionId: transaction._id as Id<"transactions">,
+      });
+      notify("Transaction Restored", "The transaction is included in financial calculations again.");
+    } catch (error) {
+      console.error("Failed to restore transaction:", error);
+      notify("Error", "Failed to restore transaction.");
+    }
+  };
+
   // Limit displayed transactions for performance
   const displayedTransactions = useMemo(() => {
     return filteredTransactions.slice(0, displayLimit);
   }, [filteredTransactions, displayLimit]);
 
   const hasMore = filteredTransactions.length > displayLimit;
+
+  const inPersonGivingLedgers = useMemo(
+    () =>
+      groupInPersonGivingCollections({
+        collections: cashCollections,
+        transactions,
+        funds,
+      }),
+    [cashCollections, transactions, funds]
+  );
+  const filteredInPersonGivingLedgers = useMemo(
+    () => filterInPersonGivingLedgersByMonth(inPersonGivingLedgers, filterMonth, filterYear),
+    [inPersonGivingLedgers, filterMonth, filterYear]
+  );
+
+  const isInPersonGivingLoading = cashCollectionsResult === undefined || isLoading;
+
+  const toggleGivingExpanded = (collectionId: string) => {
+    setExpandedGivingIds((current) => {
+      const next = new Set(current);
+      if (next.has(collectionId)) {
+        next.delete(collectionId);
+      } else {
+        next.add(collectionId);
+      }
+      return next;
+    });
+  };
 
   const relevantPledges = useMemo(() => {
       // Always include the currently linked pledge so it shows in the dropdown, even if name filter doesn't match
@@ -547,6 +662,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setOriginalPredictions(new Map());
   };
 
+  const removePendingTransactionAt = useCallback((removedIndex: number) => {
+    setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
+    setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
+    setOriginalPredictions((current) => reindexMapAfterRemoval(current, removedIndex));
+  }, []);
+
   const handleSyncedBankTransactions = (
     syncedTransactions: Array<{
       date: string;
@@ -669,56 +790,79 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     await handleSyncFromBank(nextBankSyncConnectionId, nextBankSyncCursor, { append: true });
   };
 
+  const getPipelineConfidenceLabel = (suggestion: {
+    confidenceLabel?: string;
+    confidence?: string | number;
+  }): string => {
+    const confidence = suggestion.confidenceLabel ?? suggestion.confidence;
+    if (typeof confidence === 'number') return String(confidence);
+    return confidence || 'Low';
+  };
+
+  const getPipelineSourceLabel = (predictionSource: PipelinePredictionSource, ragScore?: number): string => {
+    switch (predictionSource) {
+      case 'memory':
+        return 'Memory Match';
+      case 'rule':
+        return 'Rule Match';
+      case 'rag':
+        return typeof ragScore === 'number'
+          ? `RAG Match (${Math.round(ragScore * 100)}%)`
+          : 'RAG Match';
+      case 'gemini':
+        return 'Gemini AI';
+      case 'none':
+      default:
+        return 'No AI suggestion';
+    }
+  };
+
   const handleApplyAI = async () => {
     setIsProcessingAI(true);
     try {
-        // Use RAG-enhanced categorization - learns from existing transactions
+        // Use the categorization pipeline, with Gemini only for unresolved transactions.
         const transactionsForAI = pendingTransactions.map(t => ({
             description: t.description || '',
             amount: t.amount || 0,
             type: (t.type || 'Income') as 'Income' | 'Expenditure',
         }));
 
-        const suggestions = await categorizeWithRAG({
+        const suggestions = await categorizeWithPipeline({
             transactions: transactionsForAI,
             fundNames: funds.map(f => f.name),
             categories: categoryNames
         });
 
         // Track original AI predictions for correction learning
-        const predictions = new Map<number, {
-            category: string;
-            confidence: string;
-            predictionSource: 'gemini' | 'rag' | 'none';
-            ragScore?: number;
-        }>();
+        const predictions = new Map<number, OriginalPrediction>();
 
         const updatedPending = pendingTransactions.map((t, idx) => {
             const suggestion = suggestions[idx];
             if (!suggestion) return t;
-            const suggestedFund = funds.find(f => f.name === suggestion.fundName);
+            const confidence = getPipelineConfidenceLabel(suggestion);
+            const confidenceScore = typeof suggestion.confidence === 'number' ? suggestion.confidence : undefined;
+            const predictionSource = suggestion.predictionSource || 'none';
+            const ragScore = typeof suggestion.ragScore === 'number' ? suggestion.ragScore : undefined;
 
             // Store original prediction for later comparison
             predictions.set(idx, {
                 category: suggestion.category || '',
-                confidence: suggestion.confidence || 'Low',
-                predictionSource: suggestion.predictionSource || 'none',
-                ragScore: suggestion.ragScore,
+                fundId: suggestion.fundId,
+                isGiftAidEligible: suggestion.isGiftAidEligible,
+                donorName: suggestion.donorName,
+                confidence,
+                confidenceScore,
+                predictionSource,
+                ragScore,
             });
-
-            const sourceLabel = suggestion.predictionSource === 'rag'
-                ? `RAG Match (${Math.round((suggestion.ragScore || 0) * 100)}%)`
-                : suggestion.predictionSource === 'gemini'
-                    ? 'Gemini AI'
-                    : 'Manual';
 
             return {
                 ...t,
-                category: suggestion.category,
-                fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
+                category: suggestion.category || t.category,
+                ...(suggestion.fundId ? { fundId: suggestion.fundId } : {}),
                 isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.extractedDonorName || undefined,
-                notes: `${sourceLabel} | Confidence: ${suggestion.confidence}`,
+                donorName: suggestion.donorName || undefined,
+                notes: `${getPipelineSourceLabel(predictionSource, ragScore)} | Confidence: ${confidence}`,
             };
         });
 
@@ -812,6 +956,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 .map((pt, idx) => {
                     const prediction = originalPredictions.get(idx);
                     if (!prediction || !result.ids[idx]) return null;
+                    if (prediction.predictionSource === 'rule') return null;
 
                     return {
                         transactionId: result.ids[idx] as Id<"transactions">,
@@ -821,6 +966,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         predictionSource: prediction.predictionSource,
                         ragScore: prediction.ragScore,
                         finalCategory: pt.category || categoryNames[0] || 'Donation',
+                        aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,
+                        aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
+                        aiPredictedDonorName: prediction.donorName || undefined,
+                        aiConfidenceScore: prediction.confidenceScore,
+                        finalFundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+                        finalGiftAidEligible: pt.isGiftAidEligible || false,
+                        finalDonorName: pt.donorName || undefined,
                     };
                 })
                 .filter((c): c is NonNullable<typeof c> => c !== null);
@@ -898,11 +1050,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }
 
   return (
-    <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-ledger pb-6">
+    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+      <header className="swiss-card-static p-6 md:p-[26px] flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-ink tracking-tight">Ledger</h2>
-          <p className="text-grey-mid mt-1 text-sm font-medium">Recorded transactions and reconciliations.</p>
+          <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Transactions</h2>
+          <p className="text-grey-mid mt-2 text-[15px] font-medium">Every gift, payment, and transfer, categorized and reconciled.</p>
         </div>
         <div className="flex flex-wrap gap-2">
             {!canEdit && (
@@ -915,7 +1067,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <button
                     onClick={handleSmartLinkPledges}
                     disabled={isReconciling}
-                    className="flex items-center gap-2 px-4 py-2 bg-sage-light border border-sage/30 rounded-md text-sage-dark hover:text-ink hover:border-sage transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-sage-light border border-[#cfe0cf] rounded-lg text-sage-dark hover:text-ink hover:border-sage transition-all font-semibold text-xs uppercase tracking-wide"
                 >
                     {isReconciling ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14} />}
                     Smart Link
@@ -924,7 +1076,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <button
                     onClick={handleSyncBank}
                     disabled={isUploading}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-lg text-grey-dark hover:text-ink hover:border-[#c9c5be] transition-all font-semibold text-xs uppercase tracking-wide"
                 >
                     {isUploading ? <Loader2 size={14} className="animate-spin"/> : <Building2 size={14} />}
                     Sync Bank
@@ -936,7 +1088,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </button>
                 <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-lg text-grey-dark hover:text-ink hover:border-[#c9c5be] transition-all font-semibold text-xs uppercase tracking-wide"
                 >
                     <FileSpreadsheet size={14}/>
                     Import CSV
@@ -967,6 +1119,44 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         </div>
       </header>
 
+      <div className="flex items-center gap-2 border-b border-ledger">
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('all')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'all'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          All Transactions
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('inPerson')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'inPerson'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          In-Person Giving
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('cashChequeBanking')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'cashChequeBanking'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          Cash/cheque Banking
+        </button>
+      </div>
+
+      {activeTransactionTab === 'all' && (
+      <>
       {/* Filter Bar */}
       <div className="bg-white p-3 rounded-lg border border-ledger shadow-sm flex flex-col lg:flex-row gap-3">
           {/* Global Search */}
@@ -1027,6 +1217,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               <div className="relative group h-[34px]">
                   <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-full pl-3 pr-8 py-0 border border-ledger text-xs font-medium text-grey-dark bg-white hover:border-slate-300 rounded-md focus:ring-1 focus:ring-slate-900 outline-none appearance-none cursor-pointer w-32">
                       <option value="all">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="voided">Voided</option>
                       <option value="reconciled">Reconciled</option>
                       <option value="unreconciled">Pending</option>
                       <option value="unlinked">Unlinked Income</option>
@@ -1096,7 +1288,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
 
                   return (
-                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''} ${t.isVoided ? 'opacity-50 line-through' : ''}`}>
+                    <tr key={t._id} className={`hover:bg-paper transition-colors group ${isSelected ? 'bg-amber-light/30' : ''} ${t.isVoided ? 'opacity-60 bg-error-light/20' : ''}`}>
                       <td className="px-4 py-3 border-b border-slate-100">
                           {canEdit && (
                                <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer" />
@@ -1107,6 +1299,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           <div className="flex items-center gap-2">
                              <div className="font-medium text-ink text-sm truncate max-w-[200px]">{t.description}</div>
                              {t.pledgeId && <LinkIcon size={12} className="text-sage" />}
+                             {t.isVoided && (
+                              <span
+                                className="px-1.5 py-0.5 rounded border border-error/30 bg-error-light text-[9px] font-bold text-error uppercase tracking-wide"
+                                title={t.voidReason ? `Void reason: ${t.voidReason}` : "Voided transaction"}
+                              >
+                                Voided
+                              </span>
+                             )}
                           </div>
                           {t.donorName && <div className="text-[10px] text-grey-mid font-mono mt-0.5 uppercase tracking-wide">Ref: {t.donorName}</div>}
                           {linkedPledge && <div className="text-[9px] text-sage font-mono mt-0.5 uppercase tracking-wide">Linked to {funds.find(f=>f._id===linkedPledge.fundId)?.name}</div>}
@@ -1125,13 +1325,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       </td>
                       <td className="px-6 py-3 border-b border-slate-100 text-center">
                           {canEdit ? (
-                            <input
-                              type="checkbox"
-                              checked={t.isVoided || false}
-                              onChange={() => toggleVoided({ transactionId: t._id })}
-                              className="w-4 h-4 text-red-500 rounded border-slate-300 focus:ring-0 cursor-pointer"
-                              title={t.isVoided ? "Unvoid transaction" : "Void transaction (exclude from reports)"}
-                            />
+                            t.isVoided ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUnvoidTransaction(t)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded border border-ledger text-grey-mid hover:text-sage hover:border-sage transition-colors"
+                                title="Restore transaction to financial calculations"
+                              >
+                                <RotateCcw size={14} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenVoidModal(t)}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded border border-ledger text-grey-mid hover:text-error hover:border-error transition-colors"
+                                title="Void transaction and exclude it from financial calculations"
+                              >
+                                <X size={14} />
+                              </button>
+                            )
                           ) : (
                             t.isVoided && <X size={14} className="mx-auto text-red-400" />
                           )}
@@ -1177,9 +1389,246 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {activeTransactionTab === 'inPerson' && (
+        <>
+        <div className="bg-white p-3 rounded-lg border border-ledger shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center bg-white border border-ledger rounded-md h-[34px]">
+            <button
+              onClick={handlePreviousMonth}
+              disabled={filterMonth === null || filterYear === null}
+              className="px-2 h-full hover:bg-grey-light transition-colors rounded-l-md disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowLeft size={14} />
+            </button>
+            <div className="flex items-center gap-2 px-2">
+              <Calendar size={14} className="text-grey-mid shrink-0" />
+              <select
+                value={filterMonth ?? ''}
+                onChange={(e) => setFilterMonth(e.target.value === '' ? null : Number(e.target.value))}
+                className="text-xs font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+              >
+                <option value="">All Months</option>
+                {monthOptions.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                value={filterYear ?? ''}
+                onChange={(e) => setFilterYear(e.target.value === '' ? null : Number(e.target.value))}
+                className="text-xs font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+              >
+                <option value="">All Years</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handleNextMonth}
+              disabled={filterMonth === null || filterYear === null}
+              className="px-2 h-full hover:bg-grey-light transition-colors rounded-r-md disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowRight size={14} />
+            </button>
+          </div>
+          {(filterMonth !== null || filterYear !== null) && (
+            <button onClick={() => { setFilterMonth(null); setFilterYear(null); }} className="h-[34px] px-3 text-xs text-error font-bold uppercase tracking-wide hover:bg-error-light rounded-md flex items-center gap-1 transition-colors">
+              <RotateCcw size={12} />
+            </button>
+          )}
+        </div>
+        <div className="swiss-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left ledger-table">
+              <thead className="bg-paper border-b border-ledger">
+                <tr>
+                  <th className="px-6 py-3 text-xs">Week Ending</th>
+                  <th className="px-6 py-3 text-xs">Fund / Status</th>
+                  <th className="px-6 py-3 text-xs text-right">Total</th>
+                  <th className="px-6 py-3 w-24"></th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {isInPersonGivingLoading ? (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-grey-mid">
+                      <Loader2 size={32} className="mx-auto mb-2 animate-spin opacity-40" />
+                      <p className="text-sm">Loading in-person giving...</p>
+                    </td>
+                  </tr>
+                ) : filteredInPersonGivingLedgers.length > 0 ? (
+                  filteredInPersonGivingLedgers.map((ledger) => {
+                    const isExpanded = expandedGivingIds.has(ledger.collectionId);
+                    const cashTotal = ledger.rows.reduce((sum, row) => sum + row.cash, 0);
+                    const pdqTotal = ledger.rows.reduce((sum, row) => sum + row.pdq, 0);
+                    const chequeTotal = ledger.rows.reduce((sum, row) => sum + row.cheque, 0);
+                    const serviceTotal = ledger.rows.reduce((sum, row) => sum + row.total, 0);
+                    const namedDonationTotal = ledger.namedDonations.reduce((sum, donation) => sum + donation.amount, 0);
+
+                    return (
+                      <React.Fragment key={ledger.collectionId}>
+                        <tr className="hover:bg-paper transition-colors">
+                          <td className="px-6 py-4 border-b border-slate-100">
+                            <div className="font-bold text-ink text-sm">{formatDateUK(ledger.weekEndingDate)}</div>
+                          </td>
+                          <td className="px-6 py-4 border-b border-slate-100">
+                            <div className="space-y-1">
+                              {ledger.fundTotals.length > 0 ? (
+                                ledger.fundTotals.map((fundTotal) => (
+                                  <div key={fundTotal.fundId} className="flex items-center justify-between gap-4 text-sm text-ink font-medium">
+                                    <span>{fundTotal.fundName}</span>
+                                    <span className="font-mono">£{fundTotal.total.toFixed(2)}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-sm text-ink font-medium">Unassigned fund</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 border-b border-slate-100 text-right font-mono text-sm font-bold text-sage">
+                            £{ledger.total.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 border-b border-slate-100 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingGivingLedger(ledger)}
+                                  className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                  aria-label="Edit in-person giving"
+                                >
+                                  <Edit2 size={15} />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => toggleGivingExpanded(ledger.collectionId)}
+                                className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
+                              >
+                                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={4} className="p-4 bg-paper border-b border-ledger">
+                              <div className="space-y-4">
+                                {ledger.rows.length > 0 && (
+                                  <div>
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                                      Service Totals
+                                    </div>
+                              <div className="overflow-x-auto border border-ledger bg-white">
+                                <table className="w-full border-collapse text-xs">
+                                  <thead className="bg-grey-light">
+                                    <tr>
+                                      <th className="border border-ledger px-3 py-2 text-left">Day</th>
+                                      <th className="border border-ledger px-3 py-2 text-left">Service Date</th>
+                                      <th className="border border-ledger px-3 py-2 text-left">Service / Note</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">Cash</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">PDQ</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">Cheque</th>
+                                      <th className="border border-ledger px-3 py-2 text-right">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {ledger.rows.map((row) => (
+                                      <tr key={row.id}>
+                                        <td className="border border-ledger px-3 py-2 font-mono text-grey-mid">{row.day}</td>
+                                        <td className="border border-ledger px-3 py-2 font-mono">{formatDateUK(row.serviceDate)}</td>
+                                        <td className="border border-ledger px-3 py-2 font-medium text-ink">{row.serviceNote}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.cash.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.pdq.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.cheque.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{row.total.toFixed(2)}</td>
+                                      </tr>
+                                    ))}
+                                    <tr className="bg-grey-light font-bold">
+                                      <td colSpan={3} className="border border-ledger px-3 py-2">TOTAL</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{cashTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{pdqTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{chequeTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{serviceTotal.toFixed(2)}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                                  </div>
+                                )}
+                                {ledger.namedDonations.length > 0 && (
+                                  <div>
+                                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
+                                      Named Donations
+                                    </div>
+                                    <div className="overflow-x-auto border border-ledger bg-white">
+                                      <table className="w-full border-collapse text-xs">
+                                        <thead className="bg-grey-light">
+                                          <tr>
+                                            <th className="border border-ledger px-3 py-2 text-left">Donor</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Category</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Fund</th>
+                                            <th className="border border-ledger px-3 py-2 text-left">Method</th>
+                                            <th className="border border-ledger px-3 py-2 text-center">Gift Aid</th>
+                                            <th className="border border-ledger px-3 py-2 text-right">Amount</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {ledger.namedDonations.map((donation) => (
+                                            <tr key={donation.id}>
+                                              <td className="border border-ledger px-3 py-2 font-medium text-ink">{donation.donorName}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.category}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.fundName}</td>
+                                              <td className="border border-ledger px-3 py-2">{donation.paymentMethod ?? "-"}</td>
+                                              <td className="border border-ledger px-3 py-2 text-center">{donation.isGiftAidEligible ? "Yes" : "No"}</td>
+                                              <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{donation.amount.toFixed(2)}</td>
+                                            </tr>
+                                          ))}
+                                          <tr className="bg-grey-light font-bold">
+                                            <td colSpan={5} className="border border-ledger px-3 py-2">TOTAL</td>
+                                            <td className="border border-ledger px-3 py-2 text-right font-mono">£{namedDonationTotal.toFixed(2)}</td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between border border-ledger bg-white px-3 py-2 text-xs font-bold">
+                                  <span>COLLECTION TOTAL</span>
+                                  <span className="font-mono">£{ledger.total.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-grey-mid">
+                      <Banknote size={32} className="mx-auto mb-2 opacity-20" />
+                      <p className="text-sm">No in-person giving matches this period.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </>
+      )}
+
+      {activeTransactionTab === 'cashChequeBanking' && (
+        <CashChequeBanking funds={funds} currentUser={currentUser} />
+      )}
 
       {/* Floating Bulk Actions - Fixed to bottom of viewport */}
-      {selectedIds.size > 0 && canEdit && createPortal(
+      {activeTransactionTab === 'all' && selectedIds.size > 0 && canEdit && createPortal(
           <div
             className="fixed bottom-0 left-0 right-0 bg-ink text-white px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex items-center gap-4 md:gap-6 z-50 border-t border-slate-700 justify-between md:justify-center pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
             style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
@@ -1596,7 +2045,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                   ? { donorId: editingTransaction.donorId as Id<"donors"> }
                                   : {}),
                                 pledgeId: editingTransaction.pledgeId ? (editingTransaction.pledgeId as Id<"pledges">) : null,
-                                isVoided: editingTransaction.isVoided || false,
                             });
                             // Check if pledge was completed
                             if (result?.pledgeCompleted && onPledgeCompleted) {
@@ -1741,15 +2189,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
 
-                         <label className="flex items-center gap-2 cursor-pointer group">
-                             <input
-                                type="checkbox"
-                                checked={editingTransaction.isVoided || false}
-                                onChange={(e) => setEditingTransaction({...editingTransaction, isVoided: e.target.checked})}
-                                className="rounded border-red-300 text-red-500 focus:ring-0 w-4 h-4"
-                            />
-                            <span className="text-sm text-red-400 group-hover:text-red-600">Void</span>
-                        </label>
+                        {editingTransaction.isVoided && (
+                          <div className="flex items-center gap-2 text-sm text-error">
+                            <X size={14} />
+                            <span>
+                              Voided{editingTransaction.voidReason ? `: ${editingTransaction.voidReason}` : ''}
+                            </span>
+                          </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-4">
@@ -1760,6 +2207,70 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                 </form>
             </div>
+        </div>,
+        document.body
+      )}
+
+      {voidTarget && canEdit && createPortal(
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-ledger animate-enter">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-paper rounded-t-lg">
+              <div>
+                <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Void Transaction</h3>
+                <p className="text-xs text-grey-mid mt-1">
+                  This excludes the transaction from reports, totals, pledge progress, and AI summaries.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoidTarget(null)}
+                className="text-grey-mid hover:text-grey-dark"
+                disabled={isVoiding}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="rounded border border-ledger bg-paper p-3">
+                <div className="text-xs font-bold text-ink truncate">{voidTarget.description}</div>
+                <div className="text-xs text-grey-mid font-mono mt-1">
+                  {formatDateUK(voidTarget.date)} - {voidTarget.type === 'Income' ? '+' : '-'}£{voidTarget.amount.toFixed(2)}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">
+                  Reason
+                </label>
+                <textarea
+                  value={voidReason}
+                  onChange={(event) => setVoidReason(event.target.value)}
+                  rows={3}
+                  className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none resize-none"
+                  placeholder="e.g. Duplicate bank import"
+                  disabled={isVoiding}
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setVoidTarget(null)}
+                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+                  disabled={isVoiding}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVoidTransaction}
+                  disabled={isVoiding}
+                  className="px-4 py-2 bg-error text-white rounded font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
+                >
+                  {isVoiding ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                  Void
+                </button>
+              </div>
+            </div>
+          </div>
         </div>,
         document.body
       )}
@@ -1838,19 +2349,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
                                         <button
-                                          onClick={() => {
-                                            const newPending = pendingTransactions.filter((_, idx) => idx !== i);
-                                            setPendingTransactions(newPending);
-                                            const newWarnings = new Set(duplicateWarnings);
-                                            newWarnings.delete(i);
-                                            // Reindex warnings
-                                            const reindexed = new Set<number>();
-                                            newWarnings.forEach(w => {
-                                              if (w > i) reindexed.add(w - 1);
-                                              else reindexed.add(w);
-                                            });
-                                            setDuplicateWarnings(reindexed);
-                                          }}
+                                          onClick={() => removePendingTransactionAt(i)}
                                           className="text-error hover:text-error-dark text-xs font-bold"
                                           title="Remove duplicate"
                                         >
@@ -1944,6 +2443,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           onClose={() => setShowCashTakingsModal(false)}
           onSuccess={(result) => {
             console.log(`Cash collection created: ${result.transactionCount} transactions`);
+          }}
+        />
+      )}
+
+      {editingGivingLedger && canEdit && (
+        <CashTakingsEntry
+          funds={funds}
+          categories={categories}
+          initialCollection={editingGivingLedger}
+          onClose={() => setEditingGivingLedger(null)}
+          onSuccess={(result) => {
+            console.log(`Cash collection updated: ${result.transactionCount} transactions`);
+            setEditingGivingLedger(null);
           }}
         />
       )}

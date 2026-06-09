@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
+import { isReportableIncomeTransaction } from "../../lib/reportableTransactions";
 
 // List all pledges
 export const list = query({
@@ -140,6 +141,8 @@ export const getUnlinkedIncomeForMatching = query({
       .filter((q) => q.eq(q.field("type"), "Income"))
       .collect();
 
-    return unlinkedIncome.filter((t) => t.pledgeId == null);
+    return unlinkedIncome.filter(
+      (t) => t.pledgeId == null && isReportableIncomeTransaction(t)
+    );
   },
 });

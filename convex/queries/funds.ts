@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../lib/auth";
+import { sumReportableSigned } from "../../lib/reportableTransactions";
 
 // Get all funds with computed balances
 export const list = query({
@@ -24,9 +25,7 @@ export const list = query({
           .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
 
-        const balance = transactions.reduce((sum, t) => {
-          return t.type === "Income" ? sum + t.amount : sum - t.amount;
-        }, 0);
+        const balance = sumReportableSigned(transactions);
 
         return { ...fund, balance };
       })
@@ -53,9 +52,7 @@ export const getById = query({
       .withIndex("by_fund", (q) => q.eq("fundId", fund._id))
       .collect();
 
-    const balance = transactions.reduce((sum, t) => {
-      return t.type === "Income" ? sum + t.amount : sum - t.amount;
-    }, 0);
+    const balance = sumReportableSigned(transactions);
 
     return { ...fund, balance };
   },
@@ -83,9 +80,7 @@ export const listPriority = query({
           .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
 
-        const balance = transactions.reduce((sum, t) => {
-          return t.type === "Income" ? sum + t.amount : sum - t.amount;
-        }, 0);
+        const balance = sumReportableSigned(transactions);
 
         return { ...fund, balance };
       })
@@ -134,9 +129,7 @@ export const listByType = query({
           .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
 
-        const balance = transactions.reduce((sum, t) => {
-          return t.type === "Income" ? sum + t.amount : sum - t.amount;
-        }, 0);
+        const balance = sumReportableSigned(transactions);
 
         return { ...fund, balance };
       })

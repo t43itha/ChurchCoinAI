@@ -47,17 +47,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
 
       {/* Sidebar Container */}
       <aside className={`
-        fixed left-0 top-0 h-full w-64 bg-paper border-r border-ledger
+        fixed left-0 top-0 h-full w-[248px] bg-white border-r border-ledger
         flex flex-col z-30 transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         md:translate-x-0
       `}>
         {/* Brand Header */}
-        <div className="p-6 flex flex-col items-center">
+        <div className="px-[18px] pt-[30px] pb-[26px] flex flex-col items-center">
           <img
-            src="/ChurchCoin-Variation 01-transparent-s.png"
+            src="/churchcoin-logo.png"
             alt="ChurchCoin Finance Platform"
-            className="h-16"
+            className="w-[132px] h-auto"
           />
           <button
             onClick={onClose}
@@ -69,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
         </div>
         
         {/* Navigation */}
-        <nav className="flex-1 px-4 space-y-1 mt-2 overflow-y-auto">
+        <nav className="flex-1 px-[18px] space-y-[3px] overflow-y-auto">
           {menuItems.filter(item => !item.hidden).map((item) => {
             const Icon = item.icon;
             const isWard = item.path === '/copilot';
@@ -80,10 +80,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
                 to={item.path}
                 onClick={onClose}
                 className={({ isActive }) =>
-                  `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative ${
+                  `w-full flex items-center gap-[13px] px-3.5 py-[11px] rounded-[11px] text-[14.5px] font-medium transition-all duration-200 group relative ${
                     isActive
-                      ? 'bg-amber-light text-ink border border-amber'
-                      : 'text-grey-mid hover:text-ink hover:bg-white'
+                      ? 'bg-amber-light text-amber border border-transparent'
+                      : 'text-stone-600 hover:text-ink hover:bg-grey-light'
                   }`
                 }
               >
@@ -102,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
                         </span>
                       )}
                     </div>
-                    <span className={isActive ? 'font-bold' : 'font-medium'}>{item.label}</span>
+                    <span className={isActive ? 'font-semibold' : 'font-medium'}>{item.label}</span>
                   </>
                 )}
               </NavLink>
@@ -111,20 +111,21 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
         </nav>
 
         {/* User Section */}
-        <div className="p-4 border-t border-ledger mx-4 mb-4 mt-auto">
-          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-grey-light/50">
+        <div className="px-[18px] pt-[22px] pb-5 border-t border-ledger mx-[18px] mt-auto">
+          <div className="flex items-center gap-3">
             <UserButton
               afterSignOutUrl="/"
               appearance={{
                 elements: {
-                  avatarBox: "w-8 h-8",
-                  userButtonPopoverCard: "shadow-xl",
+                  avatarBox: "w-[38px] h-[38px]",
+                  userButtonAvatarBox: "w-[38px] h-[38px] shadow-[0_0_0_3px_#fff,0_0_0_4px_#cfe0cf]",
+                  userButtonPopoverCard: "rounded-xl border border-ledger shadow-soft-lg",
                 }
               }}
             />
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-xs font-bold text-ink truncate">{currentUser.name}</p>
-              <p className="text-[10px] text-grey-mid truncate">{currentUser.role}</p>
+              <p className="text-sm font-semibold text-ink truncate">{currentUser.name}</p>
+              <p className="text-xs text-grey-mid truncate">{currentUser.role}</p>
             </div>
           </div>
         </div>

@@ -152,7 +152,22 @@ export default defineSchema({
     )),
     cashCollectionId: v.optional(v.id("cashCollections")),
     reconciliationSessionId: v.optional(v.id("reconciliationSessions")),
+    cashBankingReconciliationId: v.optional(v.id("cashBankingReconciliations")),
+    cashBankingRole: v.optional(v.union(
+      v.literal("source_giving"),
+      v.literal("bank_deposit")
+    )),
+    bankingMedium: v.optional(v.union(
+      v.literal("cash"),
+      v.literal("cheque"),
+      v.literal("mixed")
+    )),
     isVoided: v.optional(v.boolean()),
+    voidReason: v.optional(v.string()),
+    voidedAt: v.optional(v.number()),
+    voidedBy: v.optional(v.id("users")),
+    unvoidedAt: v.optional(v.number()),
+    unvoidedBy: v.optional(v.id("users")),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
@@ -161,7 +176,9 @@ export default defineSchema({
     .index("by_pledge", ["pledgeId"])
     .index("by_donor", ["donorId"])
     .index("by_cashCollection", ["cashCollectionId"])
-    .index("by_reconciliationSession", ["reconciliationSessionId"]),
+    .index("by_reconciliationSession", ["reconciliationSessionId"])
+    .index("by_cashBankingReconciliation", ["cashBankingReconciliationId"])
+    .index("by_organization_cashBankingRole", ["organizationId", "cashBankingRole"]),
 
   // Cash Collections (batch entry for weekly cash takings)
   cashCollections: defineTable({
@@ -177,6 +194,12 @@ export default defineSchema({
       v.literal("banked")
     ),
     bankedDate: v.optional(v.string()),
+    cashBankingLastReconciliationId: v.optional(v.id("cashBankingReconciliations")),
+    cashBankingStatus: v.optional(v.union(
+      v.literal("not_started"),
+      v.literal("partially_banked"),
+      v.literal("banked")
+    )),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
@@ -206,6 +229,58 @@ export default defineSchema({
     .index("by_organization_fund", ["organizationId", "fundId"])
     .index("by_organization_status", ["organizationId", "status"])
     .index("by_organization_fund_status", ["organizationId", "fundId", "status"]),
+
+  // Cash Banking Reconciliations (cash/cheque collection to bank deposit matching)
+  cashBankingReconciliations: defineTable({
+    organizationId: v.id("organizations"),
+    cashCollectionIds: v.array(v.id("cashCollections")),
+    cashCollectionSplits: v.array(v.object({
+      cashCollectionId: v.id("cashCollections"),
+      cashAmount: v.number(),
+      chequeAmount: v.number(),
+    })),
+    bankTransactionIds: v.array(v.id("transactions")),
+    bankTransactionSplits: v.array(v.object({
+      transactionId: v.id("transactions"),
+      medium: v.union(
+        v.literal("cash"),
+        v.literal("cheque"),
+        v.literal("mixed")
+      ),
+      cashAmount: v.number(),
+      chequeAmount: v.number(),
+    })),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("completed"),
+      v.literal("reopened")
+    ),
+    expectedCashAmount: v.number(),
+    expectedChequeAmount: v.number(),
+    expectedTotal: v.number(),
+    bankedCashAmount: v.number(),
+    bankedChequeAmount: v.number(),
+    bankedTotal: v.number(),
+    varianceAmount: v.number(),
+    varianceType: v.optional(v.union(
+      v.literal("partial_banking"),
+      v.literal("petty_cash_retained_or_spent"),
+      v.literal("bank_counting_difference"),
+      v.literal("cheque_timing"),
+      v.literal("other")
+    )),
+    varianceNote: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id("users")),
+    reopenedAt: v.optional(v.number()),
+    reopenedBy: v.optional(v.id("users")),
+    reopenReason: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_status", ["organizationId", "status"]),
 
   // Categories (per organization) - RCI hierarchical structure
   categories: defineTable({
@@ -415,6 +490,7 @@ export default defineSchema({
     predictionSource: v.union(
       v.literal("gemini"),
       v.literal("rag"),
+      v.literal("memory"),
       v.literal("none")
     ),
     ragScore: v.optional(v.number()),
@@ -425,4 +501,57 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_accuracy", ["organizationId", "wasCorrect"])
     .index("by_transaction", ["transactionId"]),
+
+  transactionCategorizationMemory: defineTable({
+    organizationId: v.id("organizations"),
+    signature: v.string(),
+    descriptionExample: v.string(),
+    transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
+    category: v.string(),
+    fundId: v.id("funds"),
+    isGiftAidEligible: v.optional(v.boolean()),
+    donorName: v.optional(v.string()),
+    sourceTransactionId: v.optional(v.id("transactions")),
+    acceptedSourceTransactionIds: v.optional(v.array(v.id("transactions"))),
+    acceptedCount: v.number(),
+    correctedCount: v.number(),
+    lastAcceptedAt: v.number(),
+    lastCorrectedAt: v.optional(v.number()),
+    confidence: v.number(),
+  })
+    .index("by_organization_signature", ["organizationId", "signature"])
+    .index("by_organization_type", ["organizationId", "transactionType"])
+    .index("by_organization_lastAccepted", ["organizationId", "lastAcceptedAt"]),
+
+  categorizationFeedbackEvents: defineTable({
+    organizationId: v.id("organizations"),
+    transactionId: v.id("transactions"),
+    signature: v.string(),
+    transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
+    source: v.union(
+      v.literal("memory"),
+      v.literal("rule"),
+      v.literal("rag"),
+      v.literal("gemini"),
+      v.literal("none")
+    ),
+    confidence: v.number(),
+    originalCategory: v.optional(v.string()),
+    finalCategory: v.string(),
+    categoryChanged: v.boolean(),
+    originalFundId: v.optional(v.id("funds")),
+    finalFundId: v.id("funds"),
+    fundChanged: v.boolean(),
+    originalGiftAidEligible: v.optional(v.boolean()),
+    finalGiftAidEligible: v.optional(v.boolean()),
+    giftAidChanged: v.boolean(),
+    originalDonorName: v.optional(v.string()),
+    finalDonorName: v.optional(v.string()),
+    donorNameChanged: v.boolean(),
+    learned: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_transaction", ["transactionId"])
+    .index("by_organization_source", ["organizationId", "source"]),
 });

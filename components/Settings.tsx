@@ -226,14 +226,14 @@ ${currentUser.name}`;
   };
 
   return (
-    <div className="space-y-6 animate-enter max-w-5xl mx-auto pb-20">
-      <header className="border-b border-ledger pb-6">
-        <h2 className="text-3xl font-bold text-ink font-mono tracking-tight">Settings</h2>
-        <p className="text-grey-mid mt-1 text-sm font-medium">System configuration and access control.</p>
+    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+      <header className="swiss-card-static p-6 md:p-[26px]">
+        <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Settings</h2>
+        <p className="text-grey-mid mt-2 text-[15px] font-medium">System configuration and access control.</p>
       </header>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-ledger px-2 flex items-center gap-4 md:gap-8 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
+      <div className="bg-white border border-ledger rounded-xl px-2 flex items-center gap-4 md:gap-8 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
         {[
             { id: 'general', label: 'Organization', icon: Building2 },
             { id: 'funds', label: 'Funds & Campaigns', icon: Wallet },
@@ -244,7 +244,7 @@ ${currentUser.name}`;
             <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 py-4 text-xs font-bold uppercase tracking-wide border-b-2 transition-all duration-200 ${
+                className={`flex items-center gap-2 py-4 font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] border-b-2 transition-all duration-200 ${
                     activeTab === tab.id 
                     ? 'border-ink text-ink' 
                     : 'border-transparent text-grey-mid hover:text-grey-dark'
@@ -259,14 +259,14 @@ ${currentUser.name}`;
         
         {/* GENERAL TAB */}
         {activeTab === 'general' && (
-             <div className="swiss-card max-w-4xl">
-                <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper/50">
+             <div className="swiss-card max-w-5xl">
+                <div className="p-6 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-white border border-ledger rounded-lg flex items-center justify-center text-grey-dark">
                             <Building2 size={16} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Organization Profile</h3>
+                            <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Organization Profile</h3>
                             <p className="text-[10px] text-grey-mid">Legal and contact details for reports.</p>
                         </div>
                     </div>
@@ -509,7 +509,7 @@ ${currentUser.name}`;
                                             <span className="font-mono">Target: £{fund.targetAmount.toLocaleString()}</span>
                                         </div>
                                         <div className="h-2 w-full bg-grey-light rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-sage-light0' : 'bg-amber-500'}`} style={{ width: `${progress}%` }}></div>
+                                            <div className={`h-full rounded-full ${progress >= 100 ? 'bg-sage' : 'bg-amber'}`} style={{ width: `${progress}%` }}></div>
                                         </div>
                                     </div>
                                 )}
@@ -565,7 +565,7 @@ ${currentUser.name}`;
                                                     </div>
                                                     <div className="h-1.5 w-full bg-grey-light rounded-full overflow-hidden">
                                                         <div
-                                                            className={`h-full rounded-full ${progress >= 100 ? 'bg-sage-light0' : 'bg-amber-500'}`}
+                                                            className={`h-full rounded-full ${progress >= 100 ? 'bg-sage' : 'bg-amber'}`}
                                                             style={{ width: `${progress}%` }}
                                                         ></div>
                                                     </div>

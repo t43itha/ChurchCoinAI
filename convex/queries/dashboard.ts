@@ -1,5 +1,14 @@
 import { query } from "../_generated/server";
+import { v } from "convex/values";
 import { requireAuth } from "../lib/auth";
+import {
+  filterReportableTransactions,
+  sumReportableSigned,
+} from "../../lib/reportableTransactions";
+import {
+  buildExecutiveDashboardSummary,
+  type DashboardPeriodKey,
+} from "../../lib/dashboardKpis";
 
 // Get dashboard summary data (KPIs)
 export const summary = query({
@@ -29,11 +38,12 @@ export const summary = query({
         q.eq("organizationId", user.organizationId).gte("date", yearStart)
       )
       .collect();
+    const reportableTransactions = filterReportableTransactions(transactions);
 
-    const currentMonthTxns = transactions.filter((t) =>
+    const currentMonthTxns = reportableTransactions.filter((t) =>
       t.date.startsWith(currentMonth)
     );
-    const lastMonthTxns = transactions.filter((t) =>
+    const lastMonthTxns = reportableTransactions.filter((t) =>
       t.date.startsWith(lastMonthStr)
     );
 
@@ -69,12 +79,10 @@ export const summary = query({
       // Find the fund with a target
       const campaignFund = restrictedFunds.find((f) => f.targetAmount);
       if (campaignFund) {
-        const fundTxns = transactions.filter(
+        const fundTxns = reportableTransactions.filter(
           (t) => t.fundId === campaignFund._id
         );
-        const balance = fundTxns.reduce((sum, t) => {
-          return t.type === "Income" ? sum + t.amount : sum - t.amount;
-        }, 0);
+        const balance = sumReportableSigned(fundTxns);
 
         primaryCampaignName = campaignFund.name;
         campaignProgress = campaignFund.targetAmount
@@ -86,10 +94,8 @@ export const summary = query({
     // Fund balances
     const fundsWithBalance = await Promise.all(
       funds.map(async (fund) => {
-        const fundTxns = transactions.filter((t) => t.fundId === fund._id);
-        const balance = fundTxns.reduce((sum, t) => {
-          return t.type === "Income" ? sum + t.amount : sum - t.amount;
-        }, 0);
+        const fundTxns = reportableTransactions.filter((t) => t.fundId === fund._id);
+        const balance = sumReportableSigned(fundTxns);
         return { ...fund, balance };
       })
     );
@@ -98,7 +104,7 @@ export const summary = query({
     const totalBalance = fundsWithBalance.reduce((sum, f) => sum + f.balance, 0);
 
     // Year to date totals
-    const ytdTxns = transactions.filter((t) => t.date >= yearStart);
+    const ytdTxns = reportableTransactions.filter((t) => t.date >= yearStart);
     const ytdIncome = ytdTxns
       .filter((t) => t.type === "Income")
       .reduce((sum, t) => sum + t.amount, 0);
@@ -118,7 +124,7 @@ export const summary = query({
       ytdIncome,
       ytdExpenditure,
       fundsWithBalance,
-      transactionCount: transactions.length,
+      transactionCount: reportableTransactions.length,
     };
   },
 });
@@ -139,6 +145,7 @@ export const trendData = query({
         q.eq("organizationId", user.organizationId).gte("date", startDate)
       )
       .collect();
+    const reportableTransactions = filterReportableTransactions(transactions);
 
     // Group by month
     const monthly: Record<string, { income: number; expenditure: number }> = {};
@@ -151,7 +158,7 @@ export const trendData = query({
     }
 
     // Populate with actual data
-    transactions.forEach((t) => {
+    reportableTransactions.forEach((t) => {
       const month = t.date.substring(0, 7);
       if (monthly[month]) {
         if (t.type === "Income") {
@@ -172,5 +179,128 @@ export const trendData = query({
         ...data,
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
+  },
+});
+
+export const executiveSummary = query({
+  args: {
+    periodKey: v.optional(
+      v.union(
+        v.literal("currentMonth"),
+        v.literal("previousMonth"),
+        v.literal("quarter"),
+        v.literal("ytd")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    const periodKey: DashboardPeriodKey | undefined = args.periodKey;
+
+    const [
+      funds,
+      transactions,
+      donors,
+      pledges,
+      cashCollections,
+      cashReconciliations,
+    ] = await Promise.all([
+      ctx.db
+        .query("funds")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      // All-time transactions are currently required for fund balances and helper-built trends.
+      ctx.db
+        .query("transactions")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("donors")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("pledges")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("cashCollections")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+      ctx.db
+        .query("cashBankingReconciliations")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .collect(),
+    ]);
+
+    return buildExecutiveDashboardSummary({
+      periodKey,
+      funds: funds.map((fund) => ({
+        _id: String(fund._id),
+        name: fund.name,
+        type: fund.type,
+        targetAmount: fund.targetAmount,
+      })),
+      transactions: transactions.map((transaction) => ({
+        _id: String(transaction._id),
+        date: transaction.date,
+        amount: transaction.amount,
+        type: transaction.type,
+        category: transaction.category,
+        fundId: String(transaction.fundId),
+        isReconciled: transaction.isReconciled,
+        donorId: transaction.donorId ? String(transaction.donorId) : undefined,
+        donorName: transaction.donorName,
+        pledgeId: transaction.pledgeId ? String(transaction.pledgeId) : undefined,
+        isGiftAidEligible: transaction.isGiftAidEligible,
+        cashCollectionId: transaction.cashCollectionId
+          ? String(transaction.cashCollectionId)
+          : undefined,
+        cashBankingRole: transaction.cashBankingRole,
+        paymentMethod: transaction.paymentMethod,
+        isVoided: transaction.isVoided,
+      })),
+      donors: donors.map((donor) => ({
+        _id: String(donor._id),
+        name: donor.name,
+        type: donor.type,
+        isGiftAidActive: donor.isGiftAidActive,
+      })),
+      pledges: pledges.map((pledge) => ({
+        _id: String(pledge._id),
+        donorId: pledge.donorId ? String(pledge.donorId) : undefined,
+        donorName: pledge.donorName,
+        fundId: String(pledge.fundId),
+        amount: pledge.amount,
+        frequency: pledge.frequency,
+        startDate: pledge.startDate,
+        status: pledge.status,
+      })),
+      cashCollections: cashCollections.map((collection) => ({
+        _id: String(collection._id),
+        weekEndingDate: collection.weekEndingDate,
+        status: collection.status,
+      })),
+      cashReconciliations: cashReconciliations.map((reconciliation) => ({
+        _id: String(reconciliation._id),
+        status: reconciliation.status,
+        cashCollectionSplits: reconciliation.cashCollectionSplits.map((split) => ({
+          cashCollectionId: String(split.cashCollectionId),
+          cashAmount: split.cashAmount,
+          chequeAmount: split.chequeAmount,
+        })),
+      })),
+    });
   },
 });
