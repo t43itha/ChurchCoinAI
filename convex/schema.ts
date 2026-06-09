@@ -188,7 +188,7 @@ export default defineSchema({
     organizationId: v.id("organizations"),
     fundId: v.id("funds"), // bank accounts map to funds
     periodStart: v.string(), // ISO date YYYY-MM-DD
-    periodEnd: v.string(),
+    periodEnd: v.string(), // ISO date YYYY-MM-DD
     statementOpeningBalance: v.number(), // pounds, as printed on the statement
     statementClosingBalance: v.number(),
     status: v.union(
@@ -204,7 +204,8 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_fund", ["organizationId", "fundId"])
-    .index("by_organization_status", ["organizationId", "status"]),
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_organization_fund_status", ["organizationId", "fundId", "status"]),
 
   // Categories (per organization) - RCI hierarchical structure
   categories: defineTable({
