@@ -85,6 +85,11 @@ export const updateBalances = mutation({
     if (session.status === "completed") {
       throw new Error("Reopen the session before editing it");
     }
+    const newStart = args.periodStart ?? session.periodStart;
+    const newEnd = args.periodEnd ?? session.periodEnd;
+    if (newEnd < newStart) {
+      throw new Error("Period end must be on or after period start");
+    }
     const updates: Record<string, any> = {};
     if (args.statementOpeningBalance !== undefined)
       updates.statementOpeningBalance = args.statementOpeningBalance;
@@ -156,12 +161,25 @@ export const complete = mutation({
       throw new Error("Session is already completed");
     }
 
+    const fund = await ctx.db.get(session.fundId);
+    if (!fund) throw new Error("The fund for this session no longer exists");
+
     const cleared = await ctx.db
       .query("transactions")
       .withIndex("by_reconciliationSession", (q) =>
         q.eq("reconciliationSessionId", args.sessionId)
       )
       .collect();
+
+    const invalid = cleared.filter(
+      (t) => t.isVoided || t.fundId !== session.fundId
+    );
+    if (invalid.length > 0) {
+      throw new Error(
+        "Some cleared transactions were voided or moved to another fund since being matched. " +
+          "Untick them and try again."
+      );
+    }
 
     const differencePence = computeDifferencePence(
       session.statementOpeningBalance,
@@ -218,6 +236,8 @@ export const reopen = mutation({
     await ctx.db.patch(args.sessionId, {
       status: "reopened",
       reopenedReason: args.reason.trim(),
+      completedAt: undefined,
+      completedBy: undefined,
     });
     return args.sessionId;
   },
