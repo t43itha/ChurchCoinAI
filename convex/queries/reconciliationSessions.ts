@@ -1,13 +1,13 @@
 // convex/queries/reconciliationSessions.ts
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../lib/auth";
+import { requireRole } from "../lib/auth";
 
 // All sessions for the organization, newest first, with fund names
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
     const sessions = await ctx.db
       .query("reconciliationSessions")
       .withIndex("by_organization", (q) =>
@@ -16,12 +16,15 @@ export const list = query({
       .order("desc")
       .collect();
 
-    return await Promise.all(
-      sessions.map(async (s) => {
-        const fund = await ctx.db.get(s.fundId);
-        return { ...s, fundName: fund?.name ?? "Unknown fund" };
-      })
+    const fundIds = [...new Set(sessions.map((s) => s.fundId))];
+    const funds = await Promise.all(fundIds.map((id) => ctx.db.get(id)));
+    const fundMap = new Map(
+      funds.filter((f) => f !== null).map((f) => [f!._id, f!.name])
     );
+    return sessions.map((s) => ({
+      ...s,
+      fundName: fundMap.get(s.fundId) ?? "Unknown fund",
+    }));
   },
 });
 
@@ -30,7 +33,7 @@ export const list = query({
 export const workspace = query({
   args: { sessionId: v.id("reconciliationSessions") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       return null;
@@ -47,18 +50,14 @@ export const workspace = query({
     // not voided and not attached to any session. Items BEFORE periodStart
     // are included deliberately — they are uncleared stragglers from earlier
     // periods (e.g. deposits in transit) that may clear in this statement.
-    const inWindow = await ctx.db
+    const fundTransactions = await ctx.db
       .query("transactions")
-      .withIndex("by_organization_date", (q) =>
-        q
-          .eq("organizationId", user.organizationId)
-          .lte("date", session.periodEnd)
-      )
+      .withIndex("by_fund", (q) => q.eq("fundId", session.fundId))
       .collect();
 
-    const candidates = inWindow.filter(
+    const candidates = fundTransactions.filter(
       (t) =>
-        t.fundId === session.fundId &&
+        t.date <= session.periodEnd &&
         !t.isVoided &&
         t.reconciliationSessionId == null
     );
