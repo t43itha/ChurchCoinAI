@@ -445,6 +445,7 @@ export const bulkUpdate = mutation({
     for (const transactionId of args.transactionIds) {
       const transaction = await ctx.db.get(transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
+        await assertNotLockedByReconciliation(ctx, transaction);
         const updates: Record<string, any> = {};
         if (args.updates.category !== undefined)
           updates.category = args.updates.category;
@@ -487,6 +488,7 @@ export const batchUpdate = mutation({
     for (const update of args.updates) {
       const transaction = await ctx.db.get(update.transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
+        await assertNotLockedByReconciliation(ctx, transaction);
         const changes: Record<string, any> = {};
 
         if (update.changes.category !== undefined)
