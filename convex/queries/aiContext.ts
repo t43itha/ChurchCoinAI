@@ -3,7 +3,6 @@ import { requireAuth } from "../lib/auth";
 import { filterReportableTransactions } from "../../lib/reportableTransactions";
 
 const AI_CONTEXT_MONTH_WINDOW = 24;
-const AI_CONTEXT_PAGE_SIZE = 500;
 const AI_CONTEXT_MAX_TRANSACTIONS = 5000;
 
 // Pre-computed context for AI chat - comprehensive summaries
@@ -36,53 +35,30 @@ export const getAIContext = query({
       description: string;
     }> = [];
 
-    let cursor: string | null = null;
-    let isTruncated = false;
+    const rawTransactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_organization_date", (q) =>
+        q.eq("organizationId", user.organizationId).gte("date", analysisPeriodStart)
+      )
+      .take(AI_CONTEXT_MAX_TRANSACTIONS + 1);
 
-    while (true) {
-      const page = await ctx.db
-        .query("transactions")
-        .withIndex("by_organization_date", (q) =>
-          q.eq("organizationId", user.organizationId).gte("date", analysisPeriodStart)
-        )
-        .paginate({
-          cursor,
-          numItems: AI_CONTEXT_PAGE_SIZE,
-        });
+    const isTruncated = rawTransactions.length > AI_CONTEXT_MAX_TRANSACTIONS;
 
-      const remaining = AI_CONTEXT_MAX_TRANSACTIONS - transactions.length;
-      if (remaining <= 0) {
-        isTruncated = true;
-        break;
-      }
-
-      const pageItems = filterReportableTransactions(page.page)
-        .slice(0, remaining)
+    transactions.push(
+      ...filterReportableTransactions(rawTransactions)
+        .slice(0, AI_CONTEXT_MAX_TRANSACTIONS)
         .map((transaction) => ({
-        date: transaction.date,
-        amount: transaction.amount,
-        type: transaction.type,
-        category: transaction.category,
-        fundId: transaction.fundId as string,
-        donorId: transaction.donorId ? (transaction.donorId as string) : undefined,
-        donorName: transaction.donorName ?? undefined,
-        isReconciled: transaction.isReconciled,
-        description: transaction.description,
-      }));
-
-      transactions.push(...pageItems);
-
-      if (page.page.length > remaining) {
-        isTruncated = true;
-        break;
-      }
-
-      if (page.isDone) {
-        break;
-      }
-
-      cursor = page.continueCursor;
-    }
+          date: transaction.date,
+          amount: transaction.amount,
+          type: transaction.type,
+          category: transaction.category,
+          fundId: transaction.fundId as string,
+          donorId: transaction.donorId ? (transaction.donorId as string) : undefined,
+          donorName: transaction.donorName ?? undefined,
+          isReconciled: transaction.isReconciled,
+          description: transaction.description,
+        }))
+    );
 
     const funds = await ctx.db
       .query("funds")
