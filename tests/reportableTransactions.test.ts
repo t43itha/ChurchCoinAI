@@ -3,6 +3,7 @@ import {
   filterReportableTransactions,
   isCashBankingDeposit,
   isReportableIncomeTransaction,
+  sumReportableIncome,
   sumReportableSigned,
 } from "../lib/reportableTransactions";
 
@@ -46,6 +47,7 @@ describe("reportable transaction helpers", () => {
   });
 
   it("sums reportable income and expenditure without double-counting banking deposits", () => {
+    expect(sumReportableIncome(transactions)).toBe(175);
     expect(sumReportableSigned(transactions)).toBe(155);
   });
 });

@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { DONOR_RULES, DonorRuleContext } from "./rules/donorRules";
 import { OPERATIONS_RULES, OperationsRuleContext } from "./rules/operationsRules";
-import { filterActiveTransactions } from "../../lib/voidedTransactions";
+import { filterReportableTransactions } from "../../lib/reportableTransactions";
 
 // Internal query to gather context for rules evaluation
 export const gatherInsightContext = internalQuery({
@@ -16,7 +16,7 @@ export const gatherInsightContext = internalQuery({
         q.eq("organizationId", args.organizationId)
       )
       .collect();
-    const transactions = filterActiveTransactions(allTransactions);
+    const transactions = filterReportableTransactions(allTransactions);
 
     // Get all donors
     const donors = await ctx.db

@@ -7,6 +7,7 @@ import {
   calculateReconciliationSummary,
   normalizeBankTransactionSplits,
 } from "../../lib/cashChequeBanking";
+import { sumReportableIncome } from "../../lib/reportableTransactions";
 import { isActiveTransaction } from "../../lib/voidedTransactions";
 
 type BankingMedium = "cash" | "cheque" | "mixed";
@@ -230,6 +231,32 @@ async function getCurrentReconciliationBankDeposits(
     (transaction) =>
       transaction.cashBankingReconciliationId === reconciliationId
   );
+}
+
+async function refreshPledgeStatus(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  pledgeId: Id<"pledges">
+) {
+  const pledge = await ctx.db.get(pledgeId);
+  if (
+    !pledge ||
+    pledge.organizationId !== organizationId ||
+    (pledge.status !== "Active" && pledge.status !== "Completed")
+  ) {
+    return;
+  }
+
+  const linkedTransactions = await ctx.db
+    .query("transactions")
+    .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
+    .collect();
+  const totalReceived = sumReportableIncome(linkedTransactions);
+  const nextStatus = totalReceived >= pledge.amount ? "Completed" : "Active";
+
+  if (pledge.status !== nextStatus) {
+    await ctx.db.patch(pledgeId, { status: nextStatus });
+  }
 }
 
 async function calculateCollectionBankingState(
@@ -570,14 +597,29 @@ export const complete = mutation({
       }
     }
 
+    const affectedPledgeIds = new Set<Id<"pledges">>();
+    for (const transaction of bankTransactions) {
+      if (transaction.pledgeId) {
+        affectedPledgeIds.add(transaction.pledgeId);
+      }
+    }
+
     for (const split of reconciliation.bankTransactionSplits) {
       await ctx.db.patch(split.transactionId, {
         category: "Cash/cheque banking",
         cashBankingReconciliationId: args.reconciliationId,
         cashBankingRole: "bank_deposit",
         bankingMedium: split.medium,
+        donorId: undefined,
+        donorName: undefined,
+        pledgeId: null,
+        isGiftAidEligible: false,
         isReconciled: true,
       });
+    }
+
+    for (const pledgeId of affectedPledgeIds) {
+      await refreshPledgeStatus(ctx, user.organizationId, pledgeId);
     }
 
     const completedReconciliations = await getCompletedReconciliations(

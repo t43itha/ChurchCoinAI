@@ -9,6 +9,7 @@ import CashTakingsEntry from './CashTakingsEntry';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
+import CashChequeBanking from './CashChequeBanking';
 
 interface Category {
   _id: string;
@@ -150,7 +151,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson'>('all');
+  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
   const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
 
@@ -1050,11 +1051,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-enter max-w-6xl mx-auto pb-20">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-ledger pb-6">
+    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+      <header className="swiss-card-static p-6 md:p-[26px] flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-ink tracking-tight">Ledger</h2>
-          <p className="text-grey-mid mt-1 text-sm font-medium">Recorded transactions and reconciliations.</p>
+          <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Transactions</h2>
+          <p className="text-grey-mid mt-2 text-[15px] font-medium">Every gift, payment, and transfer, categorized and reconciled.</p>
         </div>
         <div className="flex flex-wrap gap-2">
             {!canEdit && (
@@ -1067,7 +1068,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <button
                     onClick={handleSmartLinkPledges}
                     disabled={isReconciling}
-                    className="flex items-center gap-2 px-4 py-2 bg-sage-light border border-sage/30 rounded-md text-sage-dark hover:text-ink hover:border-sage transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-sage-light border border-[#cfe0cf] rounded-lg text-sage-dark hover:text-ink hover:border-sage transition-all font-semibold text-xs uppercase tracking-wide"
                 >
                     {isReconciling ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14} />}
                     Smart Link
@@ -1076,7 +1077,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <button
                     onClick={handleSyncBank}
                     disabled={isUploading}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-lg text-grey-dark hover:text-ink hover:border-[#c9c5be] transition-all font-semibold text-xs uppercase tracking-wide"
                 >
                     {isUploading ? <Loader2 size={14} className="animate-spin"/> : <Building2 size={14} />}
                     Sync Bank
@@ -1088,7 +1089,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </button>
                 <button 
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-lg text-grey-dark hover:text-ink hover:border-[#c9c5be] transition-all font-semibold text-xs uppercase tracking-wide"
                 >
                     <FileSpreadsheet size={14}/>
                     Import CSV
@@ -1134,6 +1135,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           }`}
         >
           In-Person Giving
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTransactionTab('cashChequeBanking')}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors ${
+            activeTransactionTab === 'cashChequeBanking'
+              ? 'border-ink text-ink'
+              : 'border-transparent text-grey-mid hover:text-ink'
+          }`}
+        >
+          Cash/cheque Banking
         </button>
       </div>
 
@@ -1603,6 +1615,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           </div>
         </div>
         </>
+      )}
+
+      {activeTransactionTab === 'cashChequeBanking' && (
+        <CashChequeBanking funds={funds} currentUser={currentUser} />
       )}
 
       {/* Floating Bulk Actions - Fixed to bottom of viewport */}
