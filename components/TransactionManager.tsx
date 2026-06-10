@@ -238,6 +238,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
+  // Summary strip totals for the current filtered view (voided excluded)
+  const stripTotals = useMemo(() => {
+    let totalIn = 0;
+    let totalOut = 0;
+    let needsReview = 0;
+    for (const t of filteredTransactions) {
+      if (t.isVoided) continue;
+      if (t.type === 'Income') totalIn += t.amount;
+      else totalOut += t.amount;
+      if (!t.isReconciled || !t.category) needsReview++;
+    }
+    return { totalIn, totalOut, net: totalIn - totalOut, needsReview };
+  }, [filteredTransactions]);
+
+  const stripPeriodLabel =
+    filterMonth !== null && filterYear !== null
+      ? new Date(filterYear, filterMonth, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+      : 'Filtered view';
+
   const handleOpenVoidModal = (transaction: Transaction) => {
     setVoidTarget(transaction);
     setVoidReason('');
@@ -1118,6 +1137,22 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             )}
         </div>
       </header>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Money in', value: `+£${stripTotals.totalIn.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: stripPeriodLabel, edge: 'border-l-[3px] border-l-sage', valueClass: 'text-sage-dark' },
+          { label: 'Money out', value: `−£${stripTotals.totalOut.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: stripPeriodLabel, edge: '', valueClass: 'text-ink' },
+          { label: 'Net movement', value: `${stripTotals.net < 0 ? '−' : '+'}£${Math.abs(stripTotals.net).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'This period', edge: stripTotals.net >= 0 ? 'border-l-[3px] border-l-sage' : 'border-l-[3px] border-l-error', valueClass: stripTotals.net >= 0 ? 'text-sage-dark' : 'text-error' },
+          { label: 'Needs review', value: String(stripTotals.needsReview), sub: 'Unreconciled or uncategorized', edge: 'border-l-[3px] border-l-amber', valueClass: 'text-amber' },
+        ].map((s) => (
+          <div key={s.label} className={`bg-white border border-ledger rounded-xl px-5 py-4 ${s.edge}`}>
+            <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-grey-mid whitespace-nowrap">{s.label}</div>
+            <div className={`font-mono text-[22px] font-bold tracking-tight mt-1.5 whitespace-nowrap ${s.valueClass}`}>{s.value}</div>
+            <div className="text-[12px] text-grey-mid mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{s.sub}</div>
+          </div>
+        ))}
+      </div>
 
       <div className="flex items-center gap-2 border-b border-ledger">
         <button

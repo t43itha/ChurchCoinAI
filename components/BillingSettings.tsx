@@ -230,9 +230,9 @@ const BillingSettings: React.FC = () => {
               return (
                 <div
                   key={plan.id}
-                  className={`relative p-6 border-2 rounded-lg transition-all ${
+                  className={`relative p-6 border rounded-xl transition-all ${
                     plan.popular
-                      ? 'border-ink bg-paper shadow-[4px_4px_0px_#1a1a1a]'
+                      ? 'border-ink bg-white shadow-soft-lg'
                       : isCurrent
                       ? 'border-sage bg-sage-light/30'
                       : 'border-ledger bg-white hover:border-grey-mid'

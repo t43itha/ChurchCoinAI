@@ -238,7 +238,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           id={listboxId}
           ref={dropdownRef}
           role="listbox"
-          className="absolute z-50 w-full mt-1 bg-white border border-black rounded-md shadow-[2px_2px_0px_rgba(0,0,0,0.1)] max-h-64 overflow-y-auto"
+          className="absolute z-50 w-full mt-1 bg-white border border-ledger rounded-md shadow-soft-lg max-h-64 overflow-y-auto"
         >
           {/* Loading state */}
           {debouncedSearch !== value && value.length >= 2 && (

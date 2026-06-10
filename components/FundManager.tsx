@@ -38,13 +38,38 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
        <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Funds</h2>
-          <p className="text-grey-mid mt-2 text-[15px] font-medium">Restricted and unrestricted balances.</p>
+          <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Funds & Balances</h2>
+          <p className="text-grey-mid mt-2 text-[15px] font-medium">Restricted, designated, and unrestricted balances.</p>
         </div>
         <span className="font-mono text-[10.5px] uppercase bg-amber-light text-amber px-3 py-1.5 rounded-full font-semibold tracking-[0.12em] self-start">
           {funds.length} funds
         </span>
       </header>
+
+      {/* Summary strip */}
+      {(() => {
+        const sumBy = (type?: string) =>
+          funds.filter(f => !type || f.type === type).reduce((acc, f) => acc + f.balance, 0);
+        const k = (n: number) => `£${n.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
+        const unrestricted = sumBy('Unrestricted');
+        const items = [
+          { label: 'Total funds', value: k(sumBy()), sub: `Across ${funds.length} funds`, edge: '', valueClass: 'text-ink' },
+          { label: 'Unrestricted', value: k(unrestricted), sub: 'General use', edge: unrestricted < 0 ? 'border-l-[3px] border-l-error' : '', valueClass: unrestricted < 0 ? 'text-error' : 'text-ink' },
+          { label: 'Restricted', value: k(sumBy('Restricted')), sub: 'Purpose-bound giving', edge: '', valueClass: 'text-ink' },
+          { label: 'Designated', value: k(sumBy('Designated')), sub: 'Board-allocated', edge: '', valueClass: 'text-ink' },
+        ];
+        return (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {items.map((s) => (
+              <div key={s.label} className={`bg-white border border-ledger rounded-xl px-5 py-4 ${s.edge}`}>
+                <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-grey-mid whitespace-nowrap">{s.label}</div>
+                <div className={`font-mono text-[22px] font-bold tracking-tight mt-1.5 whitespace-nowrap ${s.valueClass}`}>{s.value}</div>
+                <div className="text-[12px] text-grey-mid mt-0.5 whitespace-nowrap">{s.sub}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-5">
         <div className="space-y-4">

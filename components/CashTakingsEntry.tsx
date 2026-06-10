@@ -304,8 +304,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50">
-      <div className="relative w-full max-w-5xl max-w-[calc(100vw-1rem)] max-h-[90vh] min-w-0 overflow-hidden bg-white rounded-lg border-2 border-black shadow-[4px_4px_0px_rgba(0,0,0,1)] flex flex-col">
-        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b-2 border-black">
+      <div className="relative w-full max-w-5xl max-w-[calc(100vw-1rem)] max-h-[90vh] min-w-0 overflow-hidden bg-white rounded-xl border border-ledger shadow-soft-lg flex flex-col">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-ledger">
           <div className="flex min-w-0 items-center gap-3">
             <div className="shrink-0 p-2 bg-sage-100 rounded-lg">
               <Banknote className="h-5 w-5 text-sage-700" />
@@ -918,7 +918,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={isSubmitting || totals.combinedTotal === 0}
-                className="px-3 py-2 text-xs font-medium text-white bg-black hover:bg-gray-800 rounded-md transition-colors shadow-[2px_2px_0px_rgba(0,0,0,0.1)] flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 text-xs font-medium text-white bg-ink hover:bg-charcoal rounded-md transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
