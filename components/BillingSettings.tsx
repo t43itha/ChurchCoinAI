@@ -124,19 +124,19 @@ const BillingSettings: React.FC = () => {
     <div className="space-y-6">
       {/* Current Subscription Status */}
       {subscription && (
-        <div className={`swiss-card overflow-hidden ${isPastDue ? 'border-amber-300' : ''}`}>
-          <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper/50">
+        <div className={`swiss-card-static overflow-hidden ${isPastDue ? 'border-[#ecd8bd]' : ''}`}>
+          <div className="flex items-center justify-between gap-4 px-6 py-[18px] border-b border-grey-light bg-[#fcfbf9]">
             <div className="flex items-center gap-3">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                isPastDue ? 'bg-amber-100 text-amber-600' : 'bg-sage-light text-sage-dark'
+              <span className={`inline-flex items-center justify-center w-[34px] h-[34px] rounded-[9px] border border-ledger shrink-0 ${
+                isPastDue ? 'bg-amber-light text-amber' : 'bg-white text-grey-dark'
               }`}>
-                {isPastDue ? <AlertTriangle size={16} /> : <Crown size={16} />}
-              </div>
+                {isPastDue ? <AlertTriangle size={16} strokeWidth={1.9} /> : <Crown size={16} strokeWidth={1.9} />}
+              </span>
               <div>
-                <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Current Plan</h3>
-                <p className="text-[10px] text-grey-mid">
+                <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">Current Plan</h3>
+                <p className="text-[11.5px] text-grey-mid mt-0.5">
                   {PLANS.find(p => p.id === currentTier)?.name || 'No active plan'} • {' '}
-                  <span className={`font-bold ${isActive ? 'text-sage-dark' : isPastDue ? 'text-amber-600' : 'text-grey-mid'}`}>
+                  <span className={`font-bold ${isActive ? 'text-sage-dark' : isPastDue ? 'text-amber' : 'text-grey-mid'}`}>
                     {status.replace('_', ' ').toUpperCase()}
                   </span>
                 </p>
@@ -146,7 +146,7 @@ const BillingSettings: React.FC = () => {
               <button
                 onClick={handleManageBilling}
                 disabled={loading === 'portal'}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger text-grey-dark hover:border-grey-mid hover:text-ink rounded text-xs font-bold uppercase tracking-wide transition-colors shadow-sm"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-white border border-ledger text-grey-dark text-xs font-bold uppercase tracking-[0.04em] hover:border-grey-mid hover:text-ink transition-colors disabled:opacity-50"
               >
                 {loading === 'portal' ? (
                   <Loader2 className="animate-spin" size={12} />
@@ -161,11 +161,11 @@ const BillingSettings: React.FC = () => {
 
           <div className="p-6">
             {isPastDue && (
-              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-                <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+              <div className="mb-4 px-3.5 py-3 bg-error-light border border-[#eccaca] rounded-[10px] flex items-start gap-3">
+                <AlertTriangle size={16} className="text-error mt-0.5 shrink-0" strokeWidth={1.9} />
                 <div>
-                  <p className="text-sm font-bold text-amber-900">Payment Failed</p>
-                  <p className="text-xs text-amber-700 mt-1">
+                  <p className="text-sm font-bold text-error">Payment Failed</p>
+                  <p className="text-xs text-[#8a3434] mt-1">
                     Please update your payment method to continue using premium features.
                   </p>
                 </div>
@@ -173,8 +173,8 @@ const BillingSettings: React.FC = () => {
             )}
 
             {subscription.cancelAtPeriodEnd && (
-              <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                <p className="text-xs text-orange-900">
+              <div className="mb-4 bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
+                <p className="text-xs text-[#7a5a30] leading-relaxed">
                   <strong>Cancellation scheduled:</strong> Your subscription will end on{' '}
                   {new Date(subscription.currentPeriodEnd).toLocaleDateString('en-GB', {
                     day: 'numeric',
@@ -187,15 +187,15 @@ const BillingSettings: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Monthly Price</p>
-                <p className="text-2xl font-bold text-ink font-mono">
+                <p className="text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-1.5">Monthly Price</p>
+                <p className="text-2xl font-bold text-ink font-mono tracking-tight">
                   £{PLANS.find(p => p.id === currentTier)?.price || 0}
                   <span className="text-sm text-grey-mid font-normal">/month</span>
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Next Billing Date</p>
-                <p className="text-sm font-medium text-grey-dark">
+                <p className="text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-1.5">Next Billing Date</p>
+                <p className="text-[14.5px] font-medium text-ink">
                   {new Date(subscription.currentPeriodEnd).toLocaleDateString('en-GB', {
                     day: 'numeric',
                     month: 'long',
@@ -209,12 +209,12 @@ const BillingSettings: React.FC = () => {
       )}
 
       {/* Plan Selection */}
-      <div className="swiss-card overflow-hidden">
-        <div className="p-6 border-b border-ledger bg-paper/50">
-          <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
+      <div className="swiss-card-static overflow-hidden">
+        <div className="px-6 py-[18px] border-b border-grey-light bg-[#fcfbf9]">
+          <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">
             {subscription ? 'Change Plan' : 'Choose a Plan'}
           </h3>
-          <p className="text-[10px] text-grey-mid mt-1">
+          <p className="text-[11.5px] text-grey-mid mt-0.5">
             {subscription
               ? 'Upgrade or downgrade your subscription at any time.'
               : 'Select a plan to get started with ChurchCoin.'}
@@ -240,14 +240,14 @@ const BillingSettings: React.FC = () => {
                 >
                   {/* Popular badge */}
                   {plan.popular && (
-                    <div className="absolute -top-3 left-4 bg-ink text-white px-3 py-1 text-[10px] uppercase tracking-wide font-bold flex items-center gap-1">
+                    <div className="absolute -top-3 left-4 bg-ink text-white px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.05em] font-bold flex items-center gap-1">
                       <Sparkles size={10} /> Most Popular
                     </div>
                   )}
 
                   {/* Current badge */}
                   {isCurrent && (
-                    <div className="absolute -top-3 right-4 bg-sage text-white px-3 py-1 text-[10px] uppercase tracking-wide font-bold">
+                    <div className="absolute -top-3 right-4 bg-sage text-white px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.05em] font-bold">
                       Current
                     </div>
                   )}

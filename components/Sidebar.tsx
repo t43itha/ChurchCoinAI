@@ -2,7 +2,7 @@ import React from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
-import { clerkAppearance } from './AuthPage';
+import { clerkAppearance } from '@/lib/clerkAppearance';
 
 // Type for Convex user from database
 interface ConvexUser {

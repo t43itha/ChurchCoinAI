@@ -4,7 +4,7 @@ import { api } from '../convex/_generated/api';
 import { UserButton } from '@clerk/clerk-react';
 import { Check, Loader2, Sparkles, Crown, ArrowRight } from 'lucide-react';
 import { notify } from '../lib/notifications';
-import { clerkAppearance } from './AuthPage';
+import { clerkAppearance } from '@/lib/clerkAppearance';
 
 interface PlanConfig {
   id: 'starter' | 'growing' | 'thriving';

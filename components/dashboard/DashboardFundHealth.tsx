@@ -8,27 +8,27 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
 
   return (
     <section className="swiss-card bg-white overflow-hidden" aria-label="Fund health">
-      <div className="p-5 border-b border-ledger bg-paper flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div className="px-6 py-[18px] border-b border-[#efeee9] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
+          <h3 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em]">
             Fund Health
           </h3>
-          <p className="text-xs text-grey-mid font-medium mt-1">
+          <p className="text-[13.5px] text-grey-mid font-medium mt-1">
             General fund, campaign progress, and low-balance funds
           </p>
         </div>
-        <span className="bg-white border border-ledger rounded-full px-2 py-0.5 text-[10px] font-mono font-bold text-grey-mid w-fit">
+        <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-grey-mid w-fit">
           {funds.lowBalanceFunds.length} low
         </span>
       </div>
 
-      <div className="divide-y divide-ledger">
-        <div className="p-5 flex items-start gap-4 min-w-0">
-          <div className="p-2 rounded-md border bg-sage-light border-sage text-sage shrink-0">
-            <WalletCards size={20} aria-hidden="true" />
-          </div>
+      <div className="divide-y divide-[#efeee9]">
+        <div className="p-5 md:px-6 flex items-start gap-4 min-w-0">
+          <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-sage-light text-[#6b8e6b] shrink-0">
+            <WalletCards size={20} strokeWidth={1.9} aria-hidden="true" />
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">
+            <p className="text-[11.5px] font-semibold text-grey-mid uppercase tracking-[0.04em]">
               General Fund Balance
             </p>
             <p className="mt-1 text-3xl font-bold text-ink font-mono tabular-nums break-words tracking-tight">
@@ -37,15 +37,15 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
           </div>
         </div>
 
-        <div className="p-5 min-w-0">
+        <div className="p-5 md:px-6 min-w-0">
           <div className="flex items-start gap-4 min-w-0">
-            <div className="p-2 rounded-md border bg-amber-light border-amber text-amber shrink-0">
-              <Target size={20} aria-hidden="true" />
-            </div>
+            <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-amber-light text-[#c79a5f] shrink-0">
+              <Target size={20} strokeWidth={1.9} aria-hidden="true" />
+            </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 min-w-0">
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-grey-mid uppercase tracking-wide">
+                  <p className="text-[11.5px] font-semibold text-grey-mid uppercase tracking-[0.04em]">
                     Campaign Progress
                   </p>
                   <p className="mt-1 font-bold text-ink break-words">
@@ -69,9 +69,9 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
                       Target {formatCurrency(campaign.targetAmount)}
                     </span>
                   </div>
-                  <div className="mt-2 h-2 bg-grey-light rounded-full overflow-hidden border border-ledger">
+                  <div className="mt-2 h-[7px] bg-[#eceae5] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-amber"
+                      className="h-full rounded-full bg-[#c79a5f]"
                       style={{ width: `${clampPercent(campaign.progressPercent)}%` }}
                     />
                   </div>
@@ -85,13 +85,13 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
           </div>
         </div>
 
-        <div className="p-5 min-w-0">
+        <div className="p-5 md:px-6 min-w-0">
           <div className="flex items-center gap-2 mb-4 min-w-0">
-            <PiggyBank size={18} className="text-grey-mid shrink-0" aria-hidden="true" />
-            <h4 className="font-bold text-ink text-sm uppercase tracking-wide break-words">
+            <PiggyBank size={18} strokeWidth={1.9} className="text-grey-mid shrink-0" aria-hidden="true" />
+            <h4 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em] break-words">
               Low-Balance Funds
             </h4>
-            <span className="bg-grey-light border border-ledger rounded-full px-2 py-0.5 text-[10px] font-mono font-bold text-grey-mid shrink-0">
+            <span className="font-mono text-[12.5px] font-bold text-grey-mid shrink-0">
               {funds.lowBalanceFunds.length}
             </span>
           </div>
@@ -101,7 +101,7 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
               No low-balance funds for this period.
             </p>
           ) : (
-            <div className="divide-y divide-ledger border-y border-ledger">
+            <div className="divide-y divide-[#efeee9] border-y border-[#efeee9]">
               {funds.lowBalanceFunds.map((fund) => (
                 <div
                   key={fund.fundId}

@@ -1,207 +1,16 @@
 import React, { useState } from "react";
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { ArrowLeft } from "lucide-react";
+import { clerkAppearance } from "@/lib/clerkAppearance";
 
 interface AuthPageProps {
   onBack?: () => void;
 }
 
-// Refined Ledger design system appearance for Clerk components.
-export const clerkAppearance = {
-  variables: {
-    colorPrimary: "#1c1917",
-    colorBackground: "#ffffff",
-    colorText: "#1c1917",
-    colorTextSecondary: "#78716c",
-    colorInputBackground: "#ffffff",
-    colorInputText: "#1c1917",
-    colorSuccess: "#557555",
-    colorDanger: "#b53d3d",
-    colorTextOnPrimaryBackground: "#ffffff",
-    borderRadius: "8px",
-    fontFamily: '"DM Sans", system-ui, sans-serif',
-    fontFamilyButtons: '"DM Sans", system-ui, sans-serif',
-    fontSize: "14.5px",
-  },
-  elements: {
-    rootBox: {
-      width: "100%",
-    },
-    card: {
-      backgroundColor: "#ffffff",
-      border: "1px solid #e7e5e1",
-      borderRadius: "12px",
-      boxShadow:
-        "0 1px 2px rgba(28,25,23,.04), 0 18px 40px -28px rgba(28,25,23,.25)",
-    },
-    headerTitle: {
-      fontFamily: '"DM Sans", sans-serif',
-      fontWeight: 700,
-      letterSpacing: "-0.02em",
-      color: "#1c1917",
-    },
-    headerSubtitle: {
-      color: "#78716c",
-    },
-    formButtonPrimary: {
-      backgroundColor: "#1c1917",
-      color: "#ffffff",
-      fontWeight: 600,
-      textTransform: "none",
-      border: "none",
-      borderRadius: "8px",
-      boxShadow: "none",
-      transition:
-        "transform .15s ease, box-shadow .15s ease, background .15s ease",
-      "&:hover": {
-        backgroundColor: "#2a2522",
-        boxShadow: "0 8px 18px -10px rgba(28,25,23,.65)",
-        transform: "translateY(-1px)",
-      },
-      "&:active": { transform: "translateY(0)", boxShadow: "none" },
-    },
-    formFieldInput: {
-      backgroundColor: "#ffffff",
-      border: "1px solid #e7e5e1",
-      borderRadius: "8px",
-      color: "#1c1917",
-      "&:focus": {
-        borderColor: "#1c1917",
-        boxShadow: "0 0 0 3px rgba(28,25,23,.08)",
-      },
-      "&::placeholder": { color: "#a8a29e" },
-    },
-    formFieldLabel: {
-      color: "#78716c",
-      fontFamily: '"JetBrains Mono", monospace',
-      fontSize: "10.5px",
-      fontWeight: 500,
-      letterSpacing: "0.14em",
-      textTransform: "uppercase",
-    },
-    footerActionLink: {
-      color: "#a9743f",
-      fontWeight: 600,
-      "&:hover": {
-        color: "#8c5d31",
-      },
-    },
-    formFieldAction: {
-      color: "#a9743f",
-      fontWeight: 600,
-      "&:hover": {
-        color: "#8c5d31",
-      },
-    },
-    socialButtonsBlockButton: {
-      backgroundColor: "#ffffff",
-      border: "1px solid #e7e5e1",
-      borderRadius: "8px",
-      color: "#1c1917",
-      "&:hover": {
-        backgroundColor: "#fcfbfa",
-        borderColor: "#c9c5be",
-      },
-    },
-    socialButtonsBlockButtonText: { fontWeight: 500, color: "#1c1917" },
-    dividerLine: {
-      backgroundColor: "#e7e5e1",
-    },
-    dividerText: {
-      color: "#a8a29e",
-      fontFamily: '"JetBrains Mono", monospace',
-      fontSize: "10px",
-      letterSpacing: "0.18em",
-      textTransform: "uppercase",
-    },
-    identityPreview: {
-      backgroundColor: "#faf9f7",
-      border: "1px solid #e7e5e1",
-      borderRadius: "8px",
-    },
-    identityPreviewText: {
-      color: "#1c1917",
-    },
-    identityPreviewEditButton: {
-      color: "#a9743f",
-      "&:hover": {
-        color: "#8c5d31",
-      },
-    },
-    formResendCodeLink: {
-      color: "#a9743f",
-      "&:hover": {
-        color: "#8c5d31",
-      },
-    },
-    otpCodeFieldInput: {
-      border: "1px solid #e7e5e1",
-      borderRadius: "8px",
-      color: "#1c1917",
-      "&:focus": {
-        borderColor: "#1c1917",
-        boxShadow: "0 0 0 3px rgba(28,25,23,.08)",
-      },
-    },
-    avatarBox: { borderRadius: "999px" },
-    userButtonAvatarBox: {
-      width: "38px",
-      height: "38px",
-      boxShadow: "0 0 0 3px #fff, 0 0 0 4px #cfe0cf",
-    },
-    userButtonPopoverCard: {
-      borderRadius: "12px",
-      border: "1px solid #e7e5e1",
-      boxShadow: "0 16px 40px -16px rgba(28,25,23,.28)",
-    },
-    userButtonPopoverActionButton: {
-      color: "#1c1917",
-      "&:hover": {
-        backgroundColor: "#f7f6f4",
-      },
-    },
-    userButtonPopoverActionButtonIcon: {
-      color: "#78716c",
-    },
-    userButtonPopoverFooter: {
-      display: "none",
-    },
-    navbar: {
-      backgroundColor: "#fcfbfa",
-      borderRight: "1px solid #e7e5e1",
-    },
-    navbarButton: {
-      color: "#78716c",
-      borderRadius: "8px",
-      "&[data-active='true'], &:hover": {
-        color: "#a9743f",
-        backgroundColor: "#faf2e9",
-      },
-    },
-    profileSectionTitleText: {
-      fontFamily: '"JetBrains Mono", monospace',
-      fontSize: "10.5px",
-      letterSpacing: "0.14em",
-      textTransform: "uppercase",
-      color: "#78716c",
-    },
-    badge: {
-      fontFamily: '"JetBrains Mono", monospace',
-      fontSize: "9.5px",
-      fontWeight: 700,
-      letterSpacing: "0.1em",
-      textTransform: "uppercase",
-      color: "#557555",
-      backgroundColor: "#eef3ee",
-      border: "1px solid #cfe0cf",
-      borderRadius: "5px",
-    },
-  },
-};
 
 // Dark branded panel for the sign-in split layout (Refined Ledger).
 const BrandPanel: React.FC = () => (
-  <div className="relative hidden lg:flex w-[380px] shrink-0 flex-col overflow-hidden bg-[#1c1917] text-white px-10 py-11">
+  <div className="relative hidden lg:flex w-[380px] shrink-0 flex-col overflow-hidden bg-ink text-white px-10 py-11">
     {/* faint ledger grid */}
     <div
       className="pointer-events-none absolute inset-0 opacity-5"
@@ -212,7 +21,7 @@ const BrandPanel: React.FC = () => (
       }}
     />
     {/* accent rule */}
-    <div className="absolute left-0 top-11 bottom-11 w-[3px] bg-[#a9743f]" />
+    <div className="absolute left-0 top-11 bottom-11 w-[3px] bg-amber" />
 
     <div className="relative z-10">
       <img

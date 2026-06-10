@@ -11,34 +11,31 @@ import type { DashboardSummaryProps, ExecutiveDashboardSummary } from "./types";
 
 type Tone = "healthy" | "watch" | "critical" | "neutral";
 
-const toneClasses: Record<Tone, { icon: string; badge: string; value: string; rail: string; wash: string }> = {
+// Refined Ledger tone palette: wash icon chips, mid rails, fg text tags
+const toneClasses: Record<Tone, { chip: string; tag: string; value: string; rail: string }> = {
   healthy: {
-    icon: "bg-sage-light border-sage text-sage",
-    badge: "badge-success",
+    chip: "bg-sage-light text-[#6b8e6b]",
+    tag: "text-[#557555]",
     value: "text-ink",
-    rail: "bg-sage",
-    wash: "bg-sage-light/40",
+    rail: "#6b8e6b",
   },
   watch: {
-    icon: "bg-amber-light border-amber text-amber",
-    badge: "badge-warning",
-    value: "text-ink",
-    rail: "bg-amber",
-    wash: "bg-amber-light/50",
+    chip: "bg-amber-light text-[#c79a5f]",
+    tag: "text-[#a9743f]",
+    value: "text-[#a9743f]",
+    rail: "#c79a5f",
   },
   critical: {
-    icon: "bg-error-light border-error text-error",
-    badge: "badge-error",
-    value: "text-error",
-    rail: "bg-error",
-    wash: "bg-error-light/50",
+    chip: "bg-error-light text-[#c64545]",
+    tag: "text-[#b53d3d]",
+    value: "text-[#b53d3d]",
+    rail: "#c64545",
   },
   neutral: {
-    icon: "bg-grey-light border-ledger text-grey-mid",
-    badge: "bg-grey-light text-grey-mid border border-ledger",
+    chip: "bg-[#f3f1ed] text-grey-mid",
+    tag: "text-grey-mid",
     value: "text-ink",
-    rail: "bg-ledger",
-    wash: "bg-paper",
+    rail: "#d8d5ce",
   },
 };
 
@@ -56,29 +53,32 @@ export default function DashboardHealthCards({ summary }: DashboardSummaryProps)
         return (
           <article
             key={title}
-            className="swiss-card bg-white overflow-hidden min-w-0 min-h-44 flex flex-col"
+            className="swiss-card relative bg-white overflow-hidden min-w-0 min-h-44 flex flex-col"
           >
-            <div className={`h-1.5 ${classes.rail}`} />
-            <div className="p-5 flex flex-col justify-between gap-5 flex-1">
-              <div className="flex items-start justify-between gap-3 min-w-0">
-                <div className={`p-2 rounded-md border shrink-0 ${classes.icon}`}>
-                  <Icon size={20} aria-hidden="true" />
-                </div>
+            <span
+              className="absolute left-0 top-[14px] bottom-[14px] w-[3px] rounded-r"
+              style={{ background: classes.rail }}
+            />
+            <div className="pl-[26px] pr-[22px] py-[22px] flex flex-col gap-[18px] flex-1">
+              <div className="flex items-center justify-between gap-3 min-w-0">
+                <span className={`inline-flex items-center justify-center w-10 h-10 rounded-lg shrink-0 ${classes.chip}`}>
+                  <Icon size={20} strokeWidth={2} aria-hidden="true" />
+                </span>
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide text-right leading-tight ${classes.badge}`}
+                  className={`text-[10.5px] font-bold uppercase tracking-[0.1em] text-right leading-tight ${classes.tag}`}
                 >
                   {badge}
                 </span>
               </div>
 
-              <div className={`min-w-0 rounded-md border border-ledger ${classes.wash} px-3 py-3`}>
-                <p className="text-[11px] font-bold text-grey-mid uppercase tracking-wide">
+              <div className="min-w-0">
+                <p className="text-[11.5px] font-semibold text-grey-mid uppercase tracking-[0.04em]">
                   {title}
                 </p>
-                <p className={`mt-1 text-2xl 2xl:text-3xl font-bold font-mono tabular-nums tracking-tight break-words ${classes.value}`}>
+                <p className={`mt-1.5 mb-2.5 text-2xl 2xl:text-[28px] font-bold font-mono tabular-nums tracking-tight break-words ${classes.value}`}>
                   {value}
                 </p>
-                <p className="mt-2 text-xs text-grey-mid font-medium leading-snug break-words">
+                <p className="text-[12.5px] text-grey-mid font-medium leading-relaxed break-words">
                   {detail}
                 </p>
               </div>

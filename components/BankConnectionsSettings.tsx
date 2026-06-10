@@ -4,15 +4,12 @@ import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Fund } from '../types';
 import {
-  Building2,
   Plus,
   RefreshCw,
   AlertTriangle,
-  CheckCircle2,
   Trash2,
   Link2,
-  Clock,
-  AlertCircle,
+  Landmark,
   ChevronRight
 } from 'lucide-react';
 import { notify } from '../lib/notifications';
@@ -109,39 +106,37 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     }
   };
 
+  // Refined Ledger pill badge with status dot
+  const pillBadge = (tone: 'sage' | 'amber' | 'error', label: string) => {
+    const styles = {
+      sage: { wash: '#eef3ee', line: '#d7e3d7', fg: '#557555', dot: '#6b8e6b' },
+      amber: { wash: '#faf2e9', line: '#ecd8bd', fg: '#a9743f', dot: '#c79a5f' },
+      error: { wash: '#fbeded', line: '#eccaca', fg: '#b53d3d', dot: '#c64545' },
+    }[tone];
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-[11px] py-[5px] rounded-full text-[11px] font-bold uppercase tracking-[0.05em] whitespace-nowrap"
+        style={{ color: styles.fg, background: styles.wash, border: `1px solid ${styles.line}` }}
+      >
+        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: styles.dot }} />
+        {label}
+      </span>
+    );
+  };
+
   const getStatusBadge = (status: string, daysUntilExpiry?: number | null) => {
     switch (status) {
       case 'active':
         if (daysUntilExpiry !== null && daysUntilExpiry !== undefined && daysUntilExpiry <= 7) {
-          return (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-100">
-              <Clock size={10} /> Expires in {daysUntilExpiry}d
-            </span>
-          );
+          return pillBadge('amber', `Expires in ${daysUntilExpiry}d`);
         }
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-sage-light text-sage-dark border border-sage/30">
-            <CheckCircle2 size={10} /> Connected
-          </span>
-        );
+        return pillBadge('sage', 'Connected');
       case 'error':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-error-light text-error border border-error/30">
-            <AlertCircle size={10} /> Error
-          </span>
-        );
+        return pillBadge('error', 'Error');
       case 'consent_expired':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-error-light text-error border border-error/30">
-            <AlertTriangle size={10} /> Expired
-          </span>
-        );
+        return pillBadge('error', 'Expired');
       case 'pending_reauth':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-100">
-            <RefreshCw size={10} /> Needs Re-auth
-          </span>
-        );
+        return pillBadge('amber', 'Needs Re-auth');
       default:
         return null;
     }
@@ -164,14 +159,14 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
   return (
     <div className="space-y-6">
       {itemsNeedingAttention.length > 0 && (
-        <div className="bg-amber-50 border border-amber-100 rounded-lg p-4">
+        <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="text-amber-600 mt-0.5" size={18} />
+            <AlertTriangle className="text-[#a9743f] mt-0.5 shrink-0" size={18} strokeWidth={1.9} />
             <div className="flex-1">
-              <h4 className="text-sm font-bold text-amber-900">Bank Connections Need Attention</h4>
+              <h4 className="text-sm font-bold text-[#7a5a30]">Bank Connections Need Attention</h4>
               <ul className="mt-2 space-y-1">
                 {itemsNeedingAttention.map((item) => (
-                  <li key={item._id} className="text-xs text-amber-800">
+                  <li key={item._id} className="text-xs text-[#7a5a30] leading-relaxed">
                     <strong>{item.institutionName}</strong>: {' '}
                     {item.status === 'consent_expired' && 'Consent has expired. Please re-authenticate.'}
                     {item.status === 'pending_reauth' && 'Consent requires renewal. Please re-authenticate.'}
@@ -186,28 +181,28 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
         </div>
       )}
 
-      <div className="swiss-card overflow-hidden">
-        <div className="p-6 border-b border-ledger flex justify-between items-center bg-paper/50">
+      <div className="swiss-card-static overflow-hidden">
+        <div className="flex items-center justify-between gap-4 px-6 py-[18px] border-b border-grey-light bg-[#fcfbf9]">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-white border border-ledger rounded-lg flex items-center justify-center text-grey-dark">
-              <Building2 size={16} />
-            </div>
+            <span className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-[9px] bg-white border border-ledger text-grey-dark shrink-0">
+              <Landmark size={16} strokeWidth={1.9} />
+            </span>
             <div>
-              <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Connected Banks</h3>
-              <p className="text-[10px] text-grey-mid">Connect your UK bank accounts via Open Banking.</p>
+              <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">Bank connections</h3>
+              <p className="text-[11.5px] text-grey-mid mt-0.5">Connected accounts used for transaction sync.</p>
             </div>
           </div>
           <button
             onClick={handleConnectBank}
             disabled={isConnecting}
-            className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md text-xs font-bold uppercase tracking-wide hover:bg-charcoal transition-colors shadow-sm disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
           >
             {isConnecting ? (
-              <RefreshCw size={12} className="animate-spin" />
+              <RefreshCw size={14} className="animate-spin" strokeWidth={2} />
             ) : (
-              <Plus size={12} />
+              <Plus size={14} strokeWidth={2} />
             )}
-            Connect Bank
+            Connect
           </button>
         </div>
 
@@ -219,17 +214,17 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
         {bankConnections.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="w-16 h-16 bg-grey-light rounded-2xl flex items-center justify-center mx-auto mb-4 text-slate-300">
-              <Link2 size={28} />
+            <div className="w-16 h-16 bg-paper border border-ledger rounded-2xl flex items-center justify-center mx-auto mb-4 text-grey-mid">
+              <Link2 size={28} strokeWidth={1.5} />
             </div>
             <h4 className="font-bold text-ink text-sm mb-2">No Banks Connected</h4>
-            <p className="text-xs text-grey-mid max-w-sm mx-auto mb-6">
+            <p className="text-xs text-grey-mid max-w-sm mx-auto mb-6 leading-relaxed">
               Connect your UK bank accounts to sync transactions directly. This uses secure Open Banking technology.
             </p>
             <button
               onClick={handleConnectBank}
               disabled={isConnecting}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-ink text-white rounded-md text-xs font-bold uppercase tracking-wide hover:bg-charcoal transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
             >
               {isConnecting ? (
                 <RefreshCw size={14} className="animate-spin" />
@@ -240,16 +235,16 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </button>
           </div>
         ) : (
-          <div className="divide-y divide-ledger">
+          <div className="divide-y divide-grey-light">
             {bankConnections.map((connection) => (
-              <div key={connection._id} className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-paper border border-ledger rounded-lg flex items-center justify-center">
-                      <Building2 size={18} className="text-grey-dark" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-ink text-sm">{connection.institutionName}</h4>
+              <div key={connection._id} className="px-6 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <span className="inline-flex items-center justify-center w-10 h-10 rounded-[10px] bg-paper border border-ledger text-grey-dark shrink-0">
+                      <Landmark size={18} strokeWidth={1.7} />
+                    </span>
+                    <div className="min-w-0">
+                      <h4 className="text-[14.5px] font-semibold text-ink truncate">{connection.institutionName}</h4>
                       <div className="flex items-center gap-2 mt-1">
                         {getStatusBadge(
                           connection.status,
@@ -258,8 +253,8 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                             : null
                         )}
                         {connection.lastSyncAt && (
-                          <span className="text-[10px] text-grey-mid">
-                            Last synced: {new Date(connection.lastSyncAt).toLocaleDateString()}
+                          <span className="text-[12.5px] text-grey-mid whitespace-nowrap">
+                            · Synced {new Date(connection.lastSyncAt).toLocaleDateString()}
                           </span>
                         )}
                       </div>
@@ -293,19 +288,19 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                 </div>
 
                 {editingItem === connection._id && (
-                  <div className="mt-4 pt-4 border-t border-ledger">
-                    <h5 className="text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-3">Account Mappings</h5>
-                    <div className="space-y-3">
+                  <div className="mt-4 pt-4 border-t border-grey-light">
+                    <h5 className="text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-3">Account Mappings</h5>
+                    <div className="space-y-2.5">
                       {connection.accounts.map((account) => (
-                        <div key={account.accountId} className="flex items-center justify-between p-3 bg-paper rounded-lg">
-                          <div>
-                            <p className="text-sm font-medium text-ink">{account.name}</p>
-                            <p className="text-[10px] text-grey-mid">
+                        <div key={account.accountId} className="flex items-center justify-between gap-3 px-3.5 py-3 bg-[#fbfaf8] border border-[#efeee9] rounded-[10px]">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-ink truncate">{account.name}</p>
+                            <p className="text-[12px] text-grey-mid mt-0.5">
                               {renderAccountDetails(account)}
                             </p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-grey-mid">Map to:</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-grey-mid">Map to</span>
                             <select
                               value={account.fundId || ''}
                               onChange={(e) => handleUpdateFundMapping(
@@ -313,7 +308,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                                 account.accountId,
                                 e.target.value ? e.target.value as Id<"funds"> : undefined
                               )}
-                              className="text-xs p-2 bg-white border border-ledger rounded outline-none focus:ring-1 focus:ring-ink min-w-[150px]"
+                              className="text-xs p-2 bg-white border border-ledger rounded-[9px] outline-none focus:ring-1 focus:ring-ink min-w-[150px] cursor-pointer"
                             >
                               <option value="">-- Not mapped --</option>
                               {funds.map((fund) => (
@@ -326,7 +321,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                         </div>
                       ))}
                     </div>
-                    <p className="mt-3 text-[10px] text-grey-mid">
+                    <p className="mt-3 text-[12px] text-grey-mid">
                       Only mapped accounts will sync transactions. Each account can map to one fund.
                     </p>
                   </div>
@@ -337,9 +332,9 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
         )}
       </div>
 
-      <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg">
-        <p className="text-xs text-blue-900 leading-relaxed">
-          <strong>UK Open Banking:</strong> Bank connections require consent renewal every 90 days.
+      <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
+        <p className="text-xs text-[#7a5a30] leading-relaxed">
+          <strong className="font-bold">UK Open Banking:</strong> Bank connections require consent renewal every 90 days.
           You'll be notified before consent expires and can re-authenticate without losing your transaction history.
         </p>
       </div>
@@ -366,7 +361,7 @@ const ReauthButton: React.FC<{ bankConnectionId: Id<"bankConnections"> }> = ({ b
     <button
       onClick={handleReauth}
       disabled={isLoading}
-      className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wide border border-amber-200 text-amber-700 rounded hover:bg-amber-50 disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.05em] border border-[#ecd8bd] text-[#a9743f] rounded-[8px] bg-white hover:bg-[#fcf7f0] transition-colors disabled:opacity-50"
     >
       <RefreshCw size={10} className={isLoading ? 'animate-spin' : ''} />
       Re-auth

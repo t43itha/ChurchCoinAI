@@ -5,7 +5,7 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import { clerkAppearance } from "./components/AuthPage";
+import { clerkAppearance } from "./lib/clerkAppearance";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./styles.css";
 

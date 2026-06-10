@@ -118,27 +118,27 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
               className="swiss-card bg-white overflow-hidden"
               aria-label="Pastoral follow-up"
             >
-              <div className="p-5 border-b border-ledger bg-[#fcfbf9] flex items-start justify-between gap-3">
+              <div className="px-6 py-[18px] border-b border-[#efeee9] flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
-                  <div className="p-2 rounded-lg bg-amber-light text-amber shrink-0">
-                    <UsersRound size={18} aria-hidden="true" />
-                  </div>
+                  <span className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-lg bg-amber-light text-[#c79a5f] shrink-0">
+                    <UsersRound size={18} strokeWidth={1.9} aria-hidden="true" />
+                  </span>
                   <div className="min-w-0">
-                    <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] break-words">
+                    <h3 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em] break-words">
                       Pastoral Follow-Up
                     </h3>
-                    <p className="text-xs text-grey-mid font-medium mt-1 leading-snug">
+                    <p className="text-[13.5px] text-grey-mid font-medium mt-1 leading-snug">
                       Aggregate attention count for {summary.period.label}
                     </p>
                   </div>
                 </div>
-                <span className="bg-white border border-ledger rounded-full px-2 py-0.5 text-[10px] font-mono font-bold text-grey-mid shrink-0 uppercase">
+                <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-grey-mid shrink-0">
                   Private
                 </span>
               </div>
 
               <div className="p-6">
-                <p className="text-5xl font-bold text-ink font-mono tabular-nums tracking-tight">
+                <p className="text-[40px] leading-none font-bold text-ink font-mono tabular-nums tracking-tight">
                   {summary.health.donorAttentionCount.toLocaleString("en-GB")}
                 </p>
                 <p className="mt-4 text-sm text-grey-mid font-medium leading-relaxed">

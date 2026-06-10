@@ -259,8 +259,8 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
               onClick={() => handleSelectDonor(donor)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between
-                         hover:bg-amber-50 transition-colors
-                         ${selectedIndex === index ? "bg-amber-50" : ""}`}
+                         hover:bg-amber-light transition-colors
+                         ${selectedIndex === index ? "bg-amber-light" : ""}`}
             >
               <div className="flex items-center gap-2">
                 <span className="font-mono">{donor.name}</span>

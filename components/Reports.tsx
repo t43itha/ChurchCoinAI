@@ -175,10 +175,10 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         </p>
         <div className="flex items-center gap-3">
           {/* Month/Year Navigation */}
-          <div className="flex items-center gap-1 bg-white border border-ledger rounded-md">
+          <div className="flex items-center h-10 bg-white border border-ledger rounded-[10px] overflow-hidden">
             <button
               onClick={handlePreviousMonth}
-              className="p-2 hover:bg-grey-light transition-colors rounded-l-md"
+              className="w-9 h-full inline-flex items-center justify-center text-grey-mid hover:text-ink hover:bg-[#fcfbf9] transition-colors"
             >
               <ArrowLeft size={16} />
             </button>
@@ -205,7 +205,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
             </div>
             <button
               onClick={handleNextMonth}
-              className="p-2 hover:bg-grey-light transition-colors rounded-r-md"
+              className="w-9 h-full inline-flex items-center justify-center text-grey-mid hover:text-ink hover:bg-[#fcfbf9] transition-colors disabled:opacity-40"
             >
               <ArrowRight size={16} />
             </button>
@@ -215,7 +215,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
           <button
             onClick={handleExportPDF}
             disabled={isExportingPdf || isExportingExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-charcoal transition-colors"
+            className="inline-flex items-center gap-2 h-10 px-4 bg-white border border-ledger rounded-[10px] text-[13px] font-semibold text-ink hover:border-grey-mid hover:shadow-soft-md transition-all disabled:opacity-50"
           >
             <FileText size={16} />
             {isExportingPdf ? 'Exporting...' : 'PDF'}
@@ -223,7 +223,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
           <button
             onClick={handleExportExcel}
             disabled={isExportingPdf || isExportingExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-sage text-white rounded-md text-sm font-medium hover:bg-sage/90 transition-colors"
+            className="inline-flex items-center gap-2 h-10 px-4 bg-white border border-ledger rounded-[10px] text-[13px] font-semibold text-ink hover:border-grey-mid hover:shadow-soft-md transition-all disabled:opacity-50"
           >
             <FileSpreadsheet size={16} />
             {isExportingExcel ? 'Exporting...' : 'Excel'}
@@ -233,39 +233,39 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <TrendingUp size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Gross Income</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Gross Income</span>
           </div>
-          <p className="text-2xl font-bold text-sage font-mono">
+          <p className="text-2xl font-bold tracking-tight text-sage font-mono">
             {formatCurrency(reportData.totals.grossIncome)}
           </p>
         </div>
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <TrendingDown size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Total Expenditure</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Total Expenditure</span>
           </div>
-          <p className="text-2xl font-bold text-error font-mono">
+          <p className="text-2xl font-bold tracking-tight text-error font-mono">
             {formatCurrency(reportData.totals.totalExpenditure)}
           </p>
         </div>
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <PoundSterling size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Net Bankable</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Net Bankable</span>
           </div>
-          <p className={`text-2xl font-bold font-mono ${reportData.totals.netBankable >= 0 ? 'text-ink' : 'text-error'}`}>
+          <p className={`text-2xl font-bold tracking-tight font-mono ${reportData.totals.netBankable >= 0 ? 'text-ink' : 'text-error'}`}>
             {formatCurrency(reportData.totals.netBankable)}
           </p>
         </div>
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <PoundSterling size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Gift Aid Claimable</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Gift Aid Claimable</span>
           </div>
-          <p className="text-2xl font-bold text-amber font-mono">
+          <p className="text-2xl font-bold tracking-tight text-amber font-mono">
             {formatCurrency(reportData.giftAidSummary.claimable)}
           </p>
         </div>
@@ -276,42 +276,42 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         <div className="swiss-card">
           <button
             onClick={() => toggleSection('receipts')}
-            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+            className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
           >
             <div className="flex items-center gap-2">
-              {expandedSections.has('receipts') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Receipts (Income)</h3>
+              {expandedSections.has('receipts') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+              <h3 className="text-[14.5px] font-bold text-ink">Receipts (Income)</h3>
             </div>
-            <span className="font-mono font-bold text-sage">
+            <span className="font-mono text-[15px] font-bold text-sage">
               {formatCurrency(reportData.totals.grossIncome)}
             </span>
           </button>
 
           {expandedSections.has('receipts') && (
-            <div className="border-t border-ledger">
+            <div className="border-t border-[#efeee9]">
               {reportData.receipts.length === 0 ? (
                 <p className="p-4 text-grey-mid text-sm">No income recorded for this month.</p>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-ledger bg-paper">
-                      <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Category</th>
-                      <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Amount</th>
+                    <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                      <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Category</th>
+                      <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reportData.receipts.map((group: CategoryGroup) => (
                       <React.Fragment key={group.mainCategory}>
-                        <tr className="bg-grey-light/30 border-b border-ledger">
-                          <td className="px-4 py-2 font-bold text-sm text-ink">{group.mainCategory}</td>
-                          <td className="px-4 py-2 text-right font-mono font-bold text-sm text-ink">
+                        <tr className="bg-[#fbfaf8] border-b border-[#efeee9]">
+                          <td className="px-5 py-2.5 font-bold text-sm text-ink">{group.mainCategory}</td>
+                          <td className="px-5 py-2.5 text-right font-mono font-bold text-sm text-ink">
                             {formatCurrency(group.total)}
                           </td>
                         </tr>
                         {group.subcategories.map((sub) => (
-                          <tr key={`${group.mainCategory}-${sub.name}`} className="border-b border-ledger/50">
-                            <td className="px-4 py-2 pl-8 text-sm text-grey-dark">{sub.name}</td>
-                            <td className="px-4 py-2 text-right font-mono text-sm text-grey-dark">
+                          <tr key={`${group.mainCategory}-${sub.name}`} className="border-b border-[#efeee9]">
+                            <td className="px-5 py-2.5 pl-12 text-[13.5px] text-grey-dark">{sub.name}</td>
+                            <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
                               {formatCurrency(sub.total)}
                             </td>
                           </tr>
@@ -329,42 +329,42 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         <div className="swiss-card">
           <button
             onClick={() => toggleSection('payments')}
-            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+            className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
           >
             <div className="flex items-center gap-2">
-              {expandedSections.has('payments') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Payments (Expenditure)</h3>
+              {expandedSections.has('payments') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+              <h3 className="text-[14.5px] font-bold text-ink">Payments (Expenditure)</h3>
             </div>
-            <span className="font-mono font-bold text-error">
+            <span className="font-mono text-[15px] font-bold text-error">
               {formatCurrency(reportData.totals.totalExpenditure)}
             </span>
           </button>
 
           {expandedSections.has('payments') && (
-            <div className="border-t border-ledger">
+            <div className="border-t border-[#efeee9]">
               {reportData.payments.length === 0 ? (
                 <p className="p-4 text-grey-mid text-sm">No expenditure recorded for this month.</p>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-ledger bg-paper">
-                      <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Category</th>
-                      <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Amount</th>
+                    <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                      <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Category</th>
+                      <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reportData.payments.map((group: CategoryGroup) => (
                       <React.Fragment key={group.mainCategory}>
-                        <tr className="bg-grey-light/30 border-b border-ledger">
-                          <td className="px-4 py-2 font-bold text-sm text-ink">{group.mainCategory}</td>
-                          <td className="px-4 py-2 text-right font-mono font-bold text-sm text-ink">
+                        <tr className="bg-[#fbfaf8] border-b border-[#efeee9]">
+                          <td className="px-5 py-2.5 font-bold text-sm text-ink">{group.mainCategory}</td>
+                          <td className="px-5 py-2.5 text-right font-mono font-bold text-sm text-ink">
                             {formatCurrency(group.total)}
                           </td>
                         </tr>
                         {group.subcategories.map((sub) => (
-                          <tr key={`${group.mainCategory}-${sub.name}`} className="border-b border-ledger/50">
-                            <td className="px-4 py-2 pl-8 text-sm text-grey-dark">{sub.name}</td>
-                            <td className="px-4 py-2 text-right font-mono text-sm text-grey-dark">
+                          <tr key={`${group.mainCategory}-${sub.name}`} className="border-b border-[#efeee9]">
+                            <td className="px-5 py-2.5 pl-12 text-[13.5px] text-grey-dark">{sub.name}</td>
+                            <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
                               {formatCurrency(sub.total)}
                             </td>
                           </tr>
@@ -383,11 +383,11 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
       <div className="swiss-card">
         <button
           onClick={() => toggleSection('weekly')}
-          className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+          className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
         >
           <div className="flex items-center gap-2">
-            {expandedSections.has('weekly') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-            <h3 className="font-bold text-ink">Weekly Summary</h3>
+            {expandedSections.has('weekly') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+            <h3 className="text-[14.5px] font-bold text-ink">Weekly Summary</h3>
           </div>
           <span className="text-xs text-grey-mid font-medium">
             {reportData.weeklyBreakdown.length} weeks
@@ -395,42 +395,42 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         </button>
 
         {expandedSections.has('weekly') && (
-          <div className="border-t border-ledger overflow-x-auto">
+          <div className="border-t border-[#efeee9] overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-ledger bg-paper">
-                  <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Week Ending</th>
-                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Receipts</th>
-                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Payments</th>
-                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Net</th>
+                <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                  <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Week Ending</th>
+                  <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Receipts</th>
+                  <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Payments</th>
+                  <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Net</th>
                 </tr>
               </thead>
               <tbody>
                 {reportData.weeklyBreakdown.map((week: WeeklyBreakdownItem, idx: number) => (
-                  <tr key={week.weekEnding} className={`border-b border-ledger ${idx % 2 === 0 ? '' : 'bg-grey-light/20'}`}>
-                    <td className="px-4 py-3 text-sm font-medium text-ink">
+                  <tr key={week.weekEnding} className={`border-b border-[#efeee9] ${idx % 2 === 0 ? '' : 'bg-[#fcfbf9]'}`}>
+                    <td className="px-5 py-3 text-sm font-medium text-ink">
                       {new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-sage">
+                    <td className="px-5 py-3 text-right font-mono text-sm text-sage">
                       {formatCurrency(week.receiptsTotal)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-error">
+                    <td className="px-5 py-3 text-right font-mono text-sm text-error">
                       {formatCurrency(week.paymentsTotal)}
                     </td>
-                    <td className={`px-4 py-3 text-right font-mono text-sm font-bold ${(week.receiptsTotal - week.paymentsTotal) >= 0 ? 'text-ink' : 'text-error'}`}>
+                    <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${(week.receiptsTotal - week.paymentsTotal) >= 0 ? 'text-ink' : 'text-error'}`}>
                       {formatCurrency(week.receiptsTotal - week.paymentsTotal)}
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-grey-light/50 font-bold">
-                  <td className="px-4 py-3 text-sm text-ink">Total</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-sage">
+                <tr className="bg-[#fbfaf8] font-bold border-t border-[#efeee9]">
+                  <td className="px-5 py-3 text-sm text-ink">Total</td>
+                  <td className="px-5 py-3 text-right font-mono text-sm text-sage">
                     {formatCurrency(reportData.totals.grossIncome)}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-error">
+                  <td className="px-5 py-3 text-right font-mono text-sm text-error">
                     {formatCurrency(reportData.totals.totalExpenditure)}
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono text-sm ${reportData.totals.netBankable >= 0 ? 'text-ink' : 'text-error'}`}>
+                  <td className={`px-5 py-3 text-right font-mono text-sm ${reportData.totals.netBankable >= 0 ? 'text-ink' : 'text-error'}`}>
                     {formatCurrency(reportData.totals.netBankable)}
                   </td>
                 </tr>
@@ -445,46 +445,46 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         <div className="swiss-card">
           <button
             onClick={() => toggleSection('missionTithe')}
-            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+            className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
           >
             <div className="flex items-center gap-2">
-              {expandedSections.has('missionTithe') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Mission Tithe (10% of General Fund Donations)</h3>
+              {expandedSections.has('missionTithe') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+              <h3 className="text-[14.5px] font-bold text-ink">Mission Tithe (10% of General Fund Donations)</h3>
             </div>
-            <span className="font-mono font-bold text-amber">
+            <span className="font-mono text-[15px] font-bold text-amber">
               {formatCurrency(reportData.missionTithe.titheToPay)}
             </span>
           </button>
 
           {expandedSections.has('missionTithe') && (
-            <div className="border-t border-ledger overflow-x-auto">
+            <div className="border-t border-[#efeee9] overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-ledger bg-paper">
-                    <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Week Ending</th>
-                    <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Total</th>
+                  <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                    <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Week Ending</th>
+                    <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reportData.missionTithe.weeklyBreakdown.map((week: MissionTitheItem, idx: number) => (
-                    <tr key={week.weekEnding} className={`border-b border-ledger ${idx % 2 === 0 ? '' : 'bg-grey-light/20'}`}>
-                      <td className="px-4 py-3 text-sm font-medium text-ink">
+                    <tr key={week.weekEnding} className={`border-b border-[#efeee9] ${idx % 2 === 0 ? '' : 'bg-[#fcfbf9]'}`}>
+                      <td className="px-5 py-3 text-sm font-medium text-ink">
                         {new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-sm text-ink">
+                      <td className="px-5 py-3 text-right font-mono text-sm text-ink">
                         {formatCurrency(week.total)}
                       </td>
                     </tr>
                   ))}
-                  <tr className="bg-grey-light/50 font-bold">
-                    <td className="px-4 py-3 text-sm text-ink">Total</td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-ink">
+                  <tr className="bg-[#fbfaf8] font-bold border-t border-[#efeee9]">
+                    <td className="px-5 py-3 text-sm text-ink">Total</td>
+                    <td className="px-5 py-3 text-right font-mono text-sm text-ink">
                       {formatCurrency(reportData.missionTithe.total)}
                     </td>
                   </tr>
-                  <tr className="bg-grey-light/50 font-bold">
-                    <td className="px-4 py-3 text-sm text-amber">Mission Tithe to Pay</td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-amber">
+                  <tr className="bg-[#fbfaf8] font-bold border-t border-[#efeee9]">
+                    <td className="px-5 py-3 text-sm text-amber">Mission Tithe to Pay</td>
+                    <td className="px-5 py-3 text-right font-mono text-sm text-amber">
                       {formatCurrency(reportData.missionTithe.titheToPay)}
                     </td>
                   </tr>
@@ -501,11 +501,11 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         <div className="swiss-card">
           <button
             onClick={() => toggleSection('tithes')}
-            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+            className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
           >
             <div className="flex items-center gap-2">
-              {expandedSections.has('tithes') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Tithes Breakdown</h3>
+              {expandedSections.has('tithes') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+              <h3 className="text-[14.5px] font-bold text-ink">Tithes Breakdown</h3>
             </div>
             <span className="text-xs text-grey-mid font-medium">
               {reportData.tithes.length} contributors
@@ -513,23 +513,23 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
           </button>
 
           {expandedSections.has('tithes') && (
-            <div className="border-t border-ledger">
+            <div className="border-t border-[#efeee9]">
               {reportData.tithes.length === 0 ? (
                 <p className="p-4 text-grey-mid text-sm">No tithe contributions recorded.</p>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-ledger bg-paper">
-                      <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Donor</th>
-                      <th className="px-4 py-2 text-center text-xs font-bold uppercase tracking-wide text-grey-mid">Gift Aid</th>
-                      <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Amount</th>
+                    <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                      <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Donor</th>
+                      <th className="px-5 py-2.5 text-center font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Gift Aid</th>
+                      <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reportData.tithes.map((tithe: TitheBreakdownItem, idx: number) => (
-                      <tr key={`${tithe.donorName}-${idx}`} className="border-b border-ledger/50">
-                        <td className="px-4 py-2 text-sm text-grey-dark">{tithe.donorName}</td>
-                        <td className="px-4 py-2 text-center">
+                      <tr key={`${tithe.donorName}-${idx}`} className="border-b border-[#efeee9]">
+                        <td className="px-5 py-2.5 text-sm text-grey-dark">{tithe.donorName}</td>
+                        <td className="px-5 py-2.5 text-center">
                           {tithe.isGiftAidEligible ? (
                             <span className="inline-block px-2 py-0.5 bg-sage-light text-sage text-xs font-bold rounded">
                               Yes
@@ -538,15 +538,15 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
                             <span className="text-grey-mid text-xs">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono text-sm text-grey-dark">
+                        <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
                           {formatCurrency(tithe.amount)}
                         </td>
                       </tr>
                     ))}
-                    <tr className="bg-grey-light/50 font-bold">
-                      <td className="px-4 py-2 text-sm text-ink">Total</td>
+                    <tr className="bg-[#fbfaf8] font-bold border-t border-[#efeee9]">
+                      <td className="px-5 py-2.5 text-sm text-ink">Total</td>
                       <td className="px-4 py-2"></td>
-                      <td className="px-4 py-2 text-right font-mono text-sm text-ink">
+                      <td className="px-5 py-2.5 text-right font-mono text-sm text-ink">
                         {formatCurrency(reportData.tithes.reduce((sum: number, t: TitheBreakdownItem) => sum + t.amount, 0))}
                       </td>
                     </tr>
@@ -572,7 +572,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
             </div>
             <div className="flex justify-between items-center py-3 border-b border-ledger">
               <span className="text-sm text-grey-dark">Claimable from HMRC (25%)</span>
-              <span className="font-mono font-bold text-amber">
+              <span className="font-mono text-[15px] font-bold text-amber">
                 {formatCurrency(reportData.giftAidSummary.claimable)}
               </span>
             </div>
@@ -587,7 +587,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
       </div>
 
       {/* Footer */}
-      <div className="swiss-card p-6 bg-grey-light/30">
+      <div className="swiss-card-static p-6 bg-[#fcfbf9]">
         <div className="flex justify-between items-center">
           <div>
             <p className="text-sm text-grey-dark">
@@ -694,10 +694,10 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
         </p>
         <div className="flex items-center gap-3">
           {/* Year Navigation */}
-          <div className="flex items-center gap-1 bg-white border border-ledger rounded-md">
+          <div className="flex items-center h-10 bg-white border border-ledger rounded-[10px] overflow-hidden">
             <button
               onClick={() => setYear(year - 1)}
-              className="p-2 hover:bg-grey-light transition-colors rounded-l-md"
+              className="w-9 h-full inline-flex items-center justify-center text-grey-mid hover:text-ink hover:bg-[#fcfbf9] transition-colors"
             >
               <ArrowLeft size={16} />
             </button>
@@ -715,7 +715,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
             </div>
             <button
               onClick={() => setYear(year + 1)}
-              className="p-2 hover:bg-grey-light transition-colors rounded-r-md"
+              className="w-9 h-full inline-flex items-center justify-center text-grey-mid hover:text-ink hover:bg-[#fcfbf9] transition-colors disabled:opacity-40"
               disabled={year >= today.getFullYear()}
             >
               <ArrowRight size={16} />
@@ -726,7 +726,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
           <button
             onClick={handleExportPDF}
             disabled={isExportingPdf || isExportingExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-charcoal transition-colors"
+            className="inline-flex items-center gap-2 h-10 px-4 bg-white border border-ledger rounded-[10px] text-[13px] font-semibold text-ink hover:border-grey-mid hover:shadow-soft-md transition-all disabled:opacity-50"
           >
             <FileText size={16} />
             {isExportingPdf ? 'Exporting...' : 'PDF'}
@@ -734,7 +734,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
           <button
             onClick={handleExportExcel}
             disabled={isExportingPdf || isExportingExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-sage text-white rounded-md text-sm font-medium hover:bg-sage/90 transition-colors"
+            className="inline-flex items-center gap-2 h-10 px-4 bg-white border border-ledger rounded-[10px] text-[13px] font-semibold text-ink hover:border-grey-mid hover:shadow-soft-md transition-all disabled:opacity-50"
           >
             <FileSpreadsheet size={16} />
             {isExportingExcel ? 'Exporting...' : 'Excel'}
@@ -744,12 +744,12 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <TrendingUp size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Total Income</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Total Income</span>
           </div>
-          <p className="text-2xl font-bold text-sage font-mono">
+          <p className="text-2xl font-bold tracking-tight text-sage font-mono">
             {formatCurrency(reportData.totals.totalIncome)}
           </p>
           {reportData.yearOverYear && (
@@ -758,12 +758,12 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
             </p>
           )}
         </div>
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <TrendingDown size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Total Expenditure</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Total Expenditure</span>
           </div>
-          <p className="text-2xl font-bold text-error font-mono">
+          <p className="text-2xl font-bold tracking-tight text-error font-mono">
             {formatCurrency(reportData.totals.totalExpenditure)}
           </p>
           {reportData.yearOverYear && (
@@ -772,21 +772,21 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
             </p>
           )}
         </div>
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <PoundSterling size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Net Movement</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Net Movement</span>
           </div>
-          <p className={`text-2xl font-bold font-mono ${reportData.totals.netMovement >= 0 ? 'text-ink' : 'text-error'}`}>
+          <p className={`text-2xl font-bold tracking-tight font-mono ${reportData.totals.netMovement >= 0 ? 'text-ink' : 'text-error'}`}>
             {formatCurrency(reportData.totals.netMovement)}
           </p>
         </div>
-        <div className="swiss-card p-4">
-          <div className="flex items-center gap-2 text-grey-mid mb-1">
+        <div className="swiss-card-static px-5 py-[18px]">
+          <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <PoundSterling size={14} />
-            <span className="text-xs font-medium uppercase tracking-wide">Gift Aid Claimable</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.08em]">Gift Aid Claimable</span>
           </div>
-          <p className="text-2xl font-bold text-amber font-mono">
+          <p className="text-2xl font-bold tracking-tight text-amber font-mono">
             {formatCurrency(reportData.giftAidAnnual.totalClaimable)}
           </p>
         </div>
@@ -796,40 +796,43 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
       <div className="swiss-card">
         <button
           onClick={() => toggleSection('trend')}
-          className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+          className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
         >
           <div className="flex items-center gap-2">
-            {expandedSections.has('trend') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+            {expandedSections.has('trend') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
             <BarChart3 size={18} className="text-grey-mid" />
-            <h3 className="font-bold text-ink">Monthly Trend</h3>
+            <h3 className="text-[14.5px] font-bold text-ink">Monthly Trend</h3>
           </div>
         </button>
 
         {expandedSections.has('trend') && (
-          <div className="border-t border-ledger p-4">
+          <div className="border-t border-[#efeee9] px-6 py-[26px]">
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={reportData.monthlyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#78716c" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#efeee9" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fill: '#78716c' }} stroke="#e7e5e1" tickLine={false} />
                 <YAxis
-                  tick={{ fontSize: 12 }}
-                  stroke="#78716c"
+                  tick={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fill: '#78716c' }}
+                  stroke="transparent"
+                  tickLine={false}
                   tickFormatter={(value) => `£${(value / 1000).toFixed(0)}k`}
                 />
                 <Tooltip
                   formatter={(value: number | string | undefined) =>
                     formatCurrency(typeof value === 'number' ? value : Number(value) || 0)
                   }
+                  cursor={{ fill: 'rgba(28, 25, 23, 0.04)' }}
                   contentStyle={{
                     backgroundColor: '#fff',
-                    border: '1px solid #e7e5e4',
-                    borderRadius: '4px',
+                    border: '1px solid #e7e5e1',
+                    borderRadius: '10px',
                     fontSize: '12px',
+                    boxShadow: '0 16px 40px -16px rgba(28, 25, 23, 0.28)',
                   }}
                 />
                 <Legend />
-                <Bar dataKey="income" fill="#779E7E" name="Income" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expenditure" fill="#E57373" name="Expenditure" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="income" fill="#6b8e6b" name="Income" radius={[5, 5, 0, 0]} />
+                <Bar dataKey="expenditure" fill="#c64545" name="Expenditure" radius={[5, 5, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -841,42 +844,42 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
         <div className="swiss-card">
           <button
             onClick={() => toggleSection('income')}
-            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+            className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
           >
             <div className="flex items-center gap-2">
-              {expandedSections.has('income') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Income Breakdown</h3>
+              {expandedSections.has('income') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+              <h3 className="text-[14.5px] font-bold text-ink">Income Breakdown</h3>
             </div>
-            <span className="font-mono font-bold text-sage">
+            <span className="font-mono text-[15px] font-bold text-sage">
               {formatCurrency(reportData.totals.totalIncome)}
             </span>
           </button>
 
           {expandedSections.has('income') && (
-            <div className="border-t border-ledger">
+            <div className="border-t border-[#efeee9]">
               {Object.keys(reportData.incomeByMainCategory).length === 0 ? (
                 <p className="p-4 text-grey-mid text-sm">No income recorded for this year.</p>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-ledger bg-paper">
-                      <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Category</th>
-                      <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Amount</th>
+                    <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                      <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Category</th>
+                      <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(reportData.incomeByMainCategory).map(([mainCategory, data]: [string, any]) => (
                       <React.Fragment key={mainCategory}>
-                        <tr className="bg-grey-light/30 border-b border-ledger">
-                          <td className="px-4 py-2 font-bold text-sm text-ink">{mainCategory}</td>
-                          <td className="px-4 py-2 text-right font-mono font-bold text-sm text-ink">
+                        <tr className="bg-[#fbfaf8] border-b border-[#efeee9]">
+                          <td className="px-5 py-2.5 font-bold text-sm text-ink">{mainCategory}</td>
+                          <td className="px-5 py-2.5 text-right font-mono font-bold text-sm text-ink">
                             {formatCurrency(data.total)}
                           </td>
                         </tr>
                         {data.subcategories.map((sub: { name: string; total: number }) => (
-                          <tr key={`${mainCategory}-${sub.name}`} className="border-b border-ledger/50">
-                            <td className="px-4 py-2 pl-8 text-sm text-grey-dark">{sub.name}</td>
-                            <td className="px-4 py-2 text-right font-mono text-sm text-grey-dark">
+                          <tr key={`${mainCategory}-${sub.name}`} className="border-b border-[#efeee9]">
+                            <td className="px-5 py-2.5 pl-12 text-[13.5px] text-grey-dark">{sub.name}</td>
+                            <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
                               {formatCurrency(sub.total)}
                             </td>
                           </tr>
@@ -894,42 +897,42 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
         <div className="swiss-card">
           <button
             onClick={() => toggleSection('expenditure')}
-            className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+            className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
           >
             <div className="flex items-center gap-2">
-              {expandedSections.has('expenditure') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-              <h3 className="font-bold text-ink">Expenditure Breakdown</h3>
+              {expandedSections.has('expenditure') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+              <h3 className="text-[14.5px] font-bold text-ink">Expenditure Breakdown</h3>
             </div>
-            <span className="font-mono font-bold text-error">
+            <span className="font-mono text-[15px] font-bold text-error">
               {formatCurrency(reportData.totals.totalExpenditure)}
             </span>
           </button>
 
           {expandedSections.has('expenditure') && (
-            <div className="border-t border-ledger">
+            <div className="border-t border-[#efeee9]">
               {Object.keys(reportData.expenditureByMainCategory).length === 0 ? (
                 <p className="p-4 text-grey-mid text-sm">No expenditure recorded for this year.</p>
               ) : (
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-ledger bg-paper">
-                      <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Category</th>
-                      <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Amount</th>
+                    <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                      <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Category</th>
+                      <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {Object.entries(reportData.expenditureByMainCategory).map(([mainCategory, data]: [string, any]) => (
                       <React.Fragment key={mainCategory}>
-                        <tr className="bg-grey-light/30 border-b border-ledger">
-                          <td className="px-4 py-2 font-bold text-sm text-ink">{mainCategory}</td>
-                          <td className="px-4 py-2 text-right font-mono font-bold text-sm text-ink">
+                        <tr className="bg-[#fbfaf8] border-b border-[#efeee9]">
+                          <td className="px-5 py-2.5 font-bold text-sm text-ink">{mainCategory}</td>
+                          <td className="px-5 py-2.5 text-right font-mono font-bold text-sm text-ink">
                             {formatCurrency(data.total)}
                           </td>
                         </tr>
                         {data.subcategories.map((sub: { name: string; total: number }) => (
-                          <tr key={`${mainCategory}-${sub.name}`} className="border-b border-ledger/50">
-                            <td className="px-4 py-2 pl-8 text-sm text-grey-dark">{sub.name}</td>
-                            <td className="px-4 py-2 text-right font-mono text-sm text-grey-dark">
+                          <tr key={`${mainCategory}-${sub.name}`} className="border-b border-[#efeee9]">
+                            <td className="px-5 py-2.5 pl-12 text-[13.5px] text-grey-dark">{sub.name}</td>
+                            <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
                               {formatCurrency(sub.total)}
                             </td>
                           </tr>
@@ -1006,7 +1009,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
             </div>
             <div className="flex justify-between items-center py-3 border-b border-ledger">
               <span className="text-sm text-grey-dark">Claimable from HMRC (25%)</span>
-              <span className="font-mono font-bold text-amber">
+              <span className="font-mono text-[15px] font-bold text-amber">
                 {formatCurrency(reportData.giftAidAnnual.totalClaimable)}
               </span>
             </div>
@@ -1024,12 +1027,12 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
       <div className="swiss-card">
         <button
           onClick={() => toggleSection('funds')}
-          className="w-full p-4 flex items-center justify-between hover:bg-grey-light/50 transition-colors"
+          className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
         >
           <div className="flex items-center gap-2">
-            {expandedSections.has('funds') ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+            {expandedSections.has('funds') ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
             <Wallet size={18} className="text-grey-mid" />
-            <h3 className="font-bold text-ink">Fund Balances (End of Year)</h3>
+            <h3 className="text-[14.5px] font-bold text-ink">Fund Balances (End of Year)</h3>
           </div>
           <span className="text-xs text-grey-mid font-medium">
             {reportData.fundBalances.length} funds
@@ -1037,19 +1040,19 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
         </button>
 
         {expandedSections.has('funds') && (
-          <div className="border-t border-ledger overflow-x-auto">
+          <div className="border-t border-[#efeee9] overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-ledger bg-paper">
-                  <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Fund</th>
-                  <th className="px-4 py-2 text-left text-xs font-bold uppercase tracking-wide text-grey-mid">Type</th>
-                  <th className="px-4 py-2 text-right text-xs font-bold uppercase tracking-wide text-grey-mid">Balance</th>
+                <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+                  <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Fund</th>
+                  <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Type</th>
+                  <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Balance</th>
                 </tr>
               </thead>
               <tbody>
                 {reportData.fundBalances.map((fund: { fund: string; type: string; balance: number }, idx: number) => (
-                  <tr key={fund.fund} className={`border-b border-ledger ${idx % 2 === 0 ? '' : 'bg-grey-light/20'}`}>
-                    <td className="px-4 py-3 text-sm font-medium text-ink">{fund.fund}</td>
+                  <tr key={fund.fund} className={`border-b border-[#efeee9] ${idx % 2 === 0 ? '' : 'bg-[#fcfbf9]'}`}>
+                    <td className="px-5 py-3 text-sm font-medium text-ink">{fund.fund}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
                         fund.type === 'Unrestricted' ? 'bg-sage-light text-sage' :
@@ -1060,15 +1063,15 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
                         {fund.type}
                       </span>
                     </td>
-                    <td className={`px-4 py-3 text-right font-mono text-sm font-bold ${fund.balance >= 0 ? 'text-ink' : 'text-error'}`}>
+                    <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${fund.balance >= 0 ? 'text-ink' : 'text-error'}`}>
                       {formatCurrency(fund.balance)}
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-grey-light/50 font-bold">
-                  <td className="px-4 py-3 text-sm text-ink">Total</td>
+                <tr className="bg-[#fbfaf8] font-bold border-t border-[#efeee9]">
+                  <td className="px-5 py-3 text-sm text-ink">Total</td>
                   <td className="px-4 py-3"></td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-ink">
+                  <td className="px-5 py-3 text-right font-mono text-sm text-ink">
                     {formatCurrency(reportData.fundBalances.reduce((sum: number, f: { balance: number }) => sum + f.balance, 0))}
                   </td>
                 </tr>
@@ -1079,7 +1082,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
       </div>
 
       {/* Footer */}
-      <div className="swiss-card p-6 bg-grey-light/30">
+      <div className="swiss-card-static p-6 bg-[#fcfbf9]">
         <div className="flex justify-between items-center">
           <div>
             <p className="text-sm text-grey-dark">
@@ -1341,7 +1344,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
           AI-generated commentary and compliance documents.
         </p>
         <div className="flex items-center gap-3">
-          <div className="bg-white border border-ledger rounded-md px-3 py-2 flex items-center gap-2">
+          <div className="bg-white border border-ledger rounded-[10px] h-10 px-3 flex items-center gap-2">
             <Calendar size={14} className="text-grey-mid"/>
             <select
               value={taxYear}
@@ -1433,7 +1436,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
               Create a newsletter update for a specific restricted fund.
             </p>
             <select
-              className="w-full mb-4 text-xs p-2 bg-paper border border-ledger rounded outline-none focus:ring-1 focus:ring-ink cursor-pointer"
+              className="w-full mb-4 text-xs p-2 bg-white border border-ledger rounded-lg outline-none focus:ring-1 focus:ring-ink cursor-pointer"
               value={selectedFundId}
               onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
               onClick={(e) => e.stopPropagation()}
@@ -1457,7 +1460,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
               Analyze fundraising metrics, donor count, and projection to goal.
             </p>
             <select
-              className="w-full mb-4 text-xs p-2 bg-paper border border-ledger rounded outline-none focus:ring-1 focus:ring-ink cursor-pointer"
+              className="w-full mb-4 text-xs p-2 bg-white border border-ledger rounded-lg outline-none focus:ring-1 focus:ring-ink cursor-pointer"
               value={selectedFundId}
               onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
               onClick={(e) => e.stopPropagation()}
@@ -1486,7 +1489,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
             {reportText ? (
               <article className="prose prose-slate prose-headings:font-mono prose-p:font-serif max-w-none">
                 <div className="mb-10 border-b border-ledger pb-6">
-                  <h1 className="text-2xl font-bold text-ink mb-2 tracking-tight">{reportTitle}</h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-ink mb-2 tracking-tight">{reportTitle}</h1>
                   <div className="flex items-center gap-4 text-xs font-mono text-grey-mid uppercase tracking-widest">
                     <span>Generated {new Date().toLocaleDateString()}</span>
                     <span>•</span>
@@ -1551,7 +1554,7 @@ class ReportsErrorBoundary extends React.Component<
           </p>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-6 py-2 bg-ink text-white rounded-md text-sm font-medium hover:bg-charcoal transition-colors"
+            className="px-6 py-2.5 bg-ink text-white rounded-[10px] text-sm font-semibold hover:bg-charcoal transition-colors"
           >
             Try Again
           </button>
@@ -1573,12 +1576,12 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Reports</h2>
         <p className="text-grey-mid mt-2 text-[15px] font-medium">
-          Financial reports, analytics, and AI-generated documents.
+          Statutory statements, annual accounts, and AI-assisted summaries
         </p>
       </header>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-white border border-ledger rounded-xl w-fit overflow-x-auto max-w-full">
+      {/* Tab Navigation — underline tabs */}
+      <div className="flex gap-1 border-b border-ledger overflow-x-auto max-w-full">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1586,13 +1589,13 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              className={`inline-flex items-center gap-2 px-5 py-3-mb-px whitespace-nowrap text-xs font-bold uppercase tracking-[0.05em] border-b-2 transition-colors ${
                 isActive
-                  ? 'bg-amber-light text-amber'
-                  : 'text-grey-mid hover:text-ink hover:bg-grey-light'
+                  ? 'text-ink border-ink'
+                  : 'text-grey-mid border-transparent hover:text-ink'
               }`}
             >
-              <Icon size={16} className={isActive ? 'text-amber' : ''} />
+              <Icon size={14} strokeWidth={1.9} />
               {tab.label}
             </button>
           );

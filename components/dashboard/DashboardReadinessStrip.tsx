@@ -11,17 +11,18 @@ import type { DashboardSummaryProps } from "./types";
 
 type ReadinessTone = "ready" | "attention" | "neutral";
 
-const toneClasses: Record<ReadinessTone, { icon: string; status: string }> = {
+// Refined Ledger tone palette: borderless wash chips, text-only status tags
+const toneClasses: Record<ReadinessTone, { chip: string; status: string }> = {
   ready: {
-    icon: "bg-sage-light border-sage text-sage",
-    status: "text-sage-dark",
+    chip: "bg-sage-light text-[#6b8e6b]",
+    status: "text-[#557555]",
   },
   attention: {
-    icon: "bg-amber-light border-amber text-amber",
-    status: "text-amber-dark",
+    chip: "bg-amber-light text-[#c79a5f]",
+    status: "text-[#a9743f]",
   },
   neutral: {
-    icon: "bg-grey-light border-ledger text-grey-mid",
+    chip: "bg-[#f3f1ed] text-grey-mid",
     status: "text-grey-mid",
   },
 };
@@ -81,49 +82,47 @@ export default function DashboardReadinessStrip({ summary }: DashboardSummaryPro
   const attentionCount = items.filter((item) => item.tone === "attention").length;
 
   return (
-    <section className="swiss-card bg-white overflow-hidden" aria-label="Month-end readiness">
-      <div className="px-5 py-4 border-b border-ledger bg-paper flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <section className="swiss-card-static overflow-hidden" aria-label="Month-end readiness">
+      <div className="px-6 md:px-7 py-[18px] md:py-[22px] border-b border-[#efeee9] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
+          <h3 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em] whitespace-nowrap">
             Month-End Readiness
           </h3>
-          <p className="text-xs text-grey-mid font-medium break-words">
+          <p className="text-[13.5px] text-grey-mid font-medium mt-1 break-words">
             {summary.period.label} control checks
           </p>
         </div>
         <span
-          className={`w-fit text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide ${
-            attentionCount === 0 ? "badge-success" : "badge-warning"
+          className={`w-fit text-[10.5px] font-bold uppercase tracking-[0.1em] ${
+            attentionCount === 0 ? "text-[#557555]" : "text-[#a9743f]"
           }`}
         >
           {attentionCount === 0 ? "Ready to review" : `${attentionCount} to review`}
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-px bg-ledger">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-px bg-[#efeee9]">
         {items.map(({ label, value, status, tone, icon: Icon }) => {
           const classes = toneClasses[tone];
 
           return (
-            <div key={label} className="p-4 md:p-5 min-w-0 bg-white">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className={`p-2 rounded-md border shrink-0 ${classes.icon}`}>
-                  <Icon size={16} aria-hidden="true" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide break-words">
-                    {label}
-                  </p>
-                  <p className="mt-1 text-xl font-bold text-ink font-mono tabular-nums break-words">
-                    {value}
-                  </p>
-                  <p
-                    className={`mt-0.5 text-[10px] font-bold uppercase tracking-wide break-words ${classes.status}`}
-                  >
-                    {status}
-                  </p>
-                </div>
+            <div key={label} className="px-6 py-[22px] md:py-[26px] min-w-0 bg-white flex flex-col items-start gap-3.5">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className={`inline-flex items-center justify-center w-[38px] h-[38px] rounded-lg shrink-0 ${classes.chip}`}>
+                  <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
+                </span>
+                <span className="text-xs font-bold text-grey-mid uppercase tracking-[0.07em] break-words">
+                  {label}
+                </span>
               </div>
+              <p className="text-[28px] leading-none font-bold text-ink font-mono tabular-nums tracking-tight break-words">
+                {value}
+              </p>
+              <p
+                className={`text-[10.5px] font-bold uppercase tracking-[0.1em] break-words ${classes.status}`}
+              >
+                {status}
+              </p>
             </div>
           );
         })}

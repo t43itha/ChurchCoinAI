@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppUser, Donor, DonorCreateInput, Fund, FundType, Pledge, PledgeCreateInput, Transaction } from '../types';
 import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { Upload, Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search } from 'lucide-react';
+import { Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search, ChevronDown } from 'lucide-react';
 import { notify } from '../lib/notifications';
 import { sumReportableIncome } from '../lib/reportableTransactions';
 
@@ -21,7 +20,47 @@ interface CampaignsProps {
     onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
 
-const COLORS = ['#6B8068', '#E5E0D8'];
+// Refined Ledger tone palette (mid shades used for bars/dots)
+const TONE = {
+  sage: { fg: '#557555', mid: '#6b8e6b' },
+  amber: { fg: '#a9743f', mid: '#c79a5f' },
+} as const;
+
+const statusTone = (s: string) => (s === 'Active' || s === 'Completed' ? TONE.sage : TONE.amber);
+
+const CLegend: React.FC<{ color: string; label: string }> = ({ color, label }) => (
+  <span className="inline-flex items-center gap-[7px] text-xs text-grey-dark">
+    <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: color }} />
+    {label}
+  </span>
+);
+
+// SVG donut with mono percentage in the centre (Refined Ledger)
+const CampaignDonut: React.FC<{ collected: number; target: number }> = ({ collected, target }) => {
+  const size = 150, stroke = 24, r = (size - stroke) / 2, cx = size / 2, cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  const frac = target > 0 ? Math.min(collected / target, 1) : 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e6e3de" strokeWidth={stroke} />
+      <g transform={`rotate(-90 ${cx} ${cy})`}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={TONE.sage.mid} strokeWidth={stroke} strokeDasharray={`${frac * circ} ${circ}`} strokeLinecap="round" />
+      </g>
+      <text x={cx} y={cy - 3} textAnchor="middle" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, fill: '#1c1917' }}>{Math.round(frac * 100)}%</text>
+      <text x={cx} y={cy + 15} textAnchor="middle" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 9.5, fontWeight: 700, letterSpacing: '.08em', fill: '#78716c' }}>FUNDED</text>
+    </svg>
+  );
+};
+
+const StatusDot: React.FC<{ status: string }> = ({ status }) => {
+  const tone = statusTone(status);
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.05em]" style={{ color: tone.fg }}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: tone.mid }} />
+      {status}
+    </span>
+  );
+};
 
 const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, donors, onAddPledge, onUpdatePledge, onBulkAddPledges, onBulkAddDonors, onUpdateTransaction, currentUser, onPledgeCompleted }) => {
     // Only show Restricted (campaign) funds
@@ -112,8 +151,6 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     );
     const target = selectedFund.targetAmount || totalPledged * 1.2;
     const percentComplete = Math.min((totalCollected / target) * 100, 100);
-
-    const pieData = [{ name: 'Collected', value: totalCollected }, { name: 'Remaining', value: Math.max(0, target - totalCollected) }];
 
     // --- Actions ---
 
@@ -459,10 +496,10 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     <p className="text-grey-mid mt-2 text-[15px] font-medium">Capital projects and pledged giving.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <div className="bg-white border border-ledger rounded-lg px-3 py-2 flex items-center gap-2">
-                        <Target size={14} className="text-grey-mid"/>
+                    <div className="bg-white border border-ledger rounded-xl h-[42px] px-3.5 flex items-center gap-2 shadow-soft-sm">
+                        <Target size={16} strokeWidth={1.9} className="text-grey-mid"/>
                         <select
-                            className="text-sm font-bold text-grey-dark outline-none bg-transparent cursor-pointer min-w-[150px]"
+                            className="appearance-none text-sm font-semibold text-ink outline-none bg-transparent cursor-pointer min-w-[150px] pr-1"
                             value={currentFundId}
                             onChange={(e) => setSelectedFundId(e.target.value)}
                         >
@@ -470,92 +507,84 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
+                        <ChevronDown size={15} strokeWidth={2} className="text-grey-mid"/>
                     </div>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-5">
-                <div className="lg:col-span-2 swiss-card p-6 md:p-8">
-                    <div className="flex justify-between items-start mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-[18px] items-stretch">
+                <div className="swiss-card-static px-6 py-[22px] md:px-7 md:py-[26px]">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-6">
                         <div>
-                            <h3 className="text-2xl font-bold text-ink">{selectedFund?.name}</h3>
-                            <p className="text-grey-mid text-sm mt-1 max-w-md">{selectedFund?.description}</p>
+                            <h3 className="text-[21px] font-bold text-ink tracking-tight">{selectedFund?.name}</h3>
+                            <p className="text-grey-mid text-sm mt-2 max-w-md leading-relaxed">{selectedFund?.description}</p>
                         </div>
-                        <span className="font-mono bg-sage-light text-sage-dark px-3 py-1 rounded-full text-[10.5px] font-bold uppercase tracking-[0.1em]">Active</span>
+                        <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-[0.06em] text-sage bg-sage-light border border-sage/20 rounded-full px-3 py-[5px]">Active</span>
                     </div>
 
-                    <div className="space-y-8">
-                        <div>
-                            <div className="flex justify-between font-mono text-[10.5px] font-semibold text-grey-mid mb-2 uppercase tracking-[0.1em]">
-                                <span>Collection Progress</span>
-                                <span>{percentComplete.toFixed(1)}%</span>
-                            </div>
-                            <div className="w-full h-2 bg-grey-light rounded-full overflow-hidden">
-                                <div className="h-full bg-sage rounded-full transition-all duration-1000 ease-out" style={{ width: `${percentComplete}%` }}></div>
-                            </div>
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-grey-mid">Collection progress</span>
+                            <span className="font-mono text-[12.5px] font-bold text-ink">{percentComplete.toFixed(1)}%</span>
                         </div>
+                        <div className="w-full h-[9px] bg-[#eceae5] rounded-[7px] overflow-hidden">
+                            <div className="h-full rounded-[7px] transition-all duration-1000 ease-out" style={{ width: `${percentComplete}%`, background: TONE.sage.mid }}></div>
+                        </div>
+                    </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-8 border-t border-grey-light pt-6">
-                            <div>
-                                <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Pledged</p>
-                                <p className="text-xl font-bold text-ink font-mono">£{totalPledged.toLocaleString()}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Collected</p>
-                                <p className="text-xl font-bold text-sage font-mono">£{totalCollected.toLocaleString()}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] text-grey-mid font-bold uppercase tracking-wide mb-1">Target</p>
-                                <p className="text-xl font-bold text-ink font-mono">£{target.toLocaleString()}</p>
-                            </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-[22px] border-t border-[#efeee9]">
+                        <div>
+                            <p className="text-[10.5px] text-grey-mid font-bold uppercase tracking-[0.08em]">Pledged</p>
+                            <p className="font-mono text-[22px] font-bold text-ink tracking-tight mt-1.5">£{totalPledged.toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10.5px] text-grey-mid font-bold uppercase tracking-[0.08em]">Collected</p>
+                            <p className="font-mono text-[22px] font-bold text-sage tracking-tight mt-1.5">£{totalCollected.toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10.5px] text-grey-mid font-bold uppercase tracking-[0.08em]">Target</p>
+                            <p className="font-mono text-[22px] font-bold text-ink tracking-tight mt-1.5">£{target.toLocaleString()}</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="swiss-card p-6 flex flex-col items-center justify-center">
-                    <div className="w-32 h-32 sm:w-48 sm:h-48">
-                         <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie data={pieData} innerRadius={40} outerRadius={65} paddingAngle={5} dataKey="value" stroke="none">
-                                    {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                                </Pie>
-                                <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e7e5e4', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', fontFamily: 'JetBrains Mono', fontSize: '12px' }}/>
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                    <div className="text-center mt-4">
-                        <p className="text-xs font-medium text-grey-mid">Funds vs Target</p>
+                <div className="swiss-card-static p-6 flex flex-col items-center justify-center gap-4">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-grey-mid self-start">Funds vs target</div>
+                    <CampaignDonut collected={totalCollected} target={target} />
+                    <div className="flex gap-[18px]">
+                        <CLegend color={TONE.sage.mid} label="Collected" />
+                        <CLegend color="#e6e3de" label="Remaining" />
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-5">
-                <div className="lg:col-span-2 swiss-card overflow-hidden flex flex-col">
-                    <div className="p-4 border-b border-ledger flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-[#fcfbf9]">
+            <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-[18px] items-start">
+                <div className="swiss-card-static overflow-hidden flex flex-col">
+                    <div className="px-4 md:px-6 py-4 border-b border-[#efeee9] flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-[#fcfbf9]">
                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
-                            <div className="flex items-center gap-3">
-                                <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2"><Users size={16} /> Pledges</h3>
-                                <span className="text-[10px] bg-ledger text-grey-dark px-1.5 py-0.5 rounded font-mono font-bold">{campaignPledges.length}</span>
+                            <div className="flex items-center gap-[11px]">
+                                <h3 className="text-xs font-bold text-grey-mid uppercase tracking-[0.08em] flex items-center gap-2"><Users size={15} strokeWidth={1.9} /> Pledges</h3>
+                                <span className="font-mono text-[11px] font-bold text-grey-dark bg-[#eceae5] rounded-[5px] px-[7px] py-0.5">{campaignPledges.length}</span>
                             </div>
                             <div className="relative w-full sm:w-auto">
-                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-grey-mid" />
+                                <Search size={14} strokeWidth={1.9} className="absolute left-[11px] top-1/2 -translate-y-1/2 text-grey-mid" />
                                 <input
                                     type="text"
-                                    placeholder="Search donors..."
+                                    placeholder="Search donors…"
                                     value={pledgeSearch}
                                     onChange={(e) => setPledgeSearch(e.target.value)}
-                                    className="pl-8 pr-3 py-1.5 text-xs border border-ledger rounded-md bg-white focus:ring-1 focus:ring-ink outline-none w-full sm:w-40"
+                                    className="h-9 pl-[34px] pr-3 text-[13px] text-ink border border-ledger rounded-[9px] bg-white outline-none w-full sm:w-[180px]"
                                 />
                             </div>
                         </div>
                         {canEdit ? (
-                            <div className="flex gap-2 w-full md:w-auto justify-end">
+                            <div className="flex gap-2.5 w-full md:w-auto justify-end items-center">
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="p-1.5 bg-white border border-ledger rounded hover:border-grey-mid text-grey-dark transition-colors shadow-sm"
+                                    className="w-9 h-9 inline-flex items-center justify-center bg-white border border-ledger rounded-[9px] text-grey-mid hover:text-grey-dark hover:border-grey-mid transition-colors"
                                     title="Import CSV"
                                 >
-                                    <FileSpreadsheet size={14} />
+                                    <FileSpreadsheet size={15} strokeWidth={1.9} />
                                     <input
                                         ref={fileInputRef}
                                         type="file"
@@ -566,17 +595,17 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 </button>
                                 <button
                                     onClick={handleAddPledgeClick}
-                                    className="p-1.5 bg-ink text-white border border-ink rounded hover:bg-charcoal transition-colors shadow-sm"
+                                    className="w-9 h-9 inline-flex items-center justify-center bg-ink text-white rounded-[9px] hover:bg-charcoal transition-colors"
                                     title="Add New Pledge"
                                 >
-                                    <Plus size={14} />
+                                    <Plus size={15} strokeWidth={2} />
                                 </button>
-                                <button onClick={handleAIReconcile} disabled={isReconciling} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-ledger text-sage rounded-md hover:border-sage/30 text-xs font-bold uppercase tracking-wide transition-colors">
+                                <button onClick={handleAIReconcile} disabled={isReconciling} className="h-9 flex items-center gap-2 px-3 bg-white border border-ledger text-sage rounded-[9px] hover:border-sage/30 text-xs font-bold uppercase tracking-wide transition-colors">
                                     {isReconciling ? <Wand2 size={14} className="animate-spin"/> : <Wand2 size={14} />} <span className="hidden sm:inline">AI Match</span>
                                 </button>
                             </div>
                         ) : (
-                             <div className="flex items-center gap-2 px-3 py-1 bg-grey-light rounded text-xs font-bold text-grey-mid uppercase tracking-wide">
+                             <div className="flex items-center gap-2 px-3 py-1.5 bg-grey-light rounded-[9px] text-xs font-bold text-grey-mid uppercase tracking-wide">
                                 <Lock size={12} /> Read Only
                             </div>
                         )}
@@ -593,7 +622,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     if (!txn) return <div key={i} style={{display: 'none'}} />;
 
                                     return (
-                                        <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-3 rounded border border-sage/30 shadow-sm gap-3">
+                                        <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-3 rounded-[9px] border border-sage/30 shadow-soft-sm gap-3">
                                             <div className="flex flex-col gap-1">
                                                 <div className="flex items-baseline gap-2">
                                                     <span className="font-mono text-xs text-grey-mid">{txn.date}</span>
@@ -609,7 +638,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                                  <button onClick={() => handleRejectMatch(m)} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors">
                                                     <X size={12}/> Dismiss
                                                 </button>
-                                                <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
+                                                <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded-[7px] font-bold uppercase flex items-center gap-1 transition-colors">
                                                     <Check size={12}/> Confirm Link
                                                 </button>
                                             </div>
@@ -623,19 +652,13 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     {/* Mobile Cards View */}
                     <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-3">
                         {filteredPledges.map((pledge) => (
-                            <div key={pledge._id} className="bg-white p-4 rounded-lg border border-ledger">
+                            <div key={pledge._id} className="bg-white p-4 rounded-[10px] border border-ledger shadow-soft-sm">
                                 <div className="flex justify-between items-start mb-2">
                                     <div>
-                                        <div className="font-bold text-ink text-sm">{pledge.donorName}</div>
-                                        <div className="text-xs text-grey-mid">{pledge.frequency}</div>
+                                        <div className="font-semibold text-ink text-[14.5px]">{pledge.donorName}</div>
+                                        <div className="text-[13px] text-grey-mid">{pledge.frequency}</div>
                                     </div>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
-                                        pledge.status === 'Active' ? 'bg-sage-light text-sage-dark border-sage/30' :
-                                        pledge.status === 'Completed' ? 'bg-sage-light text-sage-dark border-sage/30' :
-                                        'bg-grey-light text-grey-mid border-ledger'
-                                    }`}>
-                                        {pledge.status}
-                                    </span>
+                                    <StatusDot status={pledge.status} />
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-grey-light">
                                     <span className="text-sage font-mono font-bold text-lg">£{pledge.amount.toLocaleString()}</span>
@@ -643,9 +666,9 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                         {pledge.status === 'Completed' && (
                                             <button
                                                 onClick={() => handleThankDonor(pledge)}
-                                                className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-ledger text-grey-dark px-3 py-1.5 rounded hover:text-sage hover:border-sage/30 transition-colors shadow-sm"
+                                                className="inline-flex items-center gap-[5px] text-[10.5px] font-bold uppercase tracking-[0.04em] bg-white border border-ledger text-grey-dark px-3 py-1.5 rounded-[7px] hover:text-sage hover:border-sage/30 transition-colors whitespace-nowrap"
                                             >
-                                                <MessageSquare size={12} /> Thanks
+                                                <MessageSquare size={12} strokeWidth={1.9} /> Thanks
                                             </button>
                                         )}
                                         {canEdit && (
@@ -666,44 +689,38 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
                     {/* Desktop Table View */}
                     <div className="hidden md:block overflow-x-auto flex-1">
-                        <table className="w-full text-left ledger-table">
-                            <thead className="bg-paper border-b border-ledger">
-                                <tr>
-                                    <th className="px-6 py-3 pl-6 text-xs text-grey-mid font-bold uppercase tracking-wide">Donor</th>
-                                    <th className="px-6 py-3 text-xs text-grey-mid font-bold uppercase tracking-wide">Frequency</th>
-                                    <th className="px-6 py-3 text-right text-xs text-grey-mid font-bold uppercase tracking-wide">Amount</th>
-                                    <th className="px-6 py-3 text-center text-xs text-grey-mid font-bold uppercase tracking-wide">Status</th>
-                                    <th className="px-6 py-3 text-right">Actions</th>
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="border-b border-[#efeee9]">
+                                    <th className="px-6 py-3 text-[11px] text-grey-mid font-bold uppercase tracking-[0.08em]">Donor</th>
+                                    <th className="px-6 py-3 text-[11px] text-grey-mid font-bold uppercase tracking-[0.08em]">Frequency</th>
+                                    <th className="px-6 py-3 text-right text-[11px] text-grey-mid font-bold uppercase tracking-[0.08em]">Amount</th>
+                                    <th className="px-6 py-3 text-center text-[11px] text-grey-mid font-bold uppercase tracking-[0.08em]">Status</th>
+                                    <th className="px-6 py-3 text-right"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredPledges.map((pledge) => (
-                                    <tr key={pledge._id} className="hover:bg-paper transition-colors group border-b border-grey-light last:border-0">
-                                        <td className="px-6 py-4 pl-6 font-medium text-ink text-sm">{pledge.donorName}</td>
-                                        <td className="px-6 py-4 text-grey-mid text-xs">{pledge.frequency}</td>
-                                        <td className="px-6 py-4 text-sage font-mono font-bold text-right text-sm">£{pledge.amount.toLocaleString()}</td>
-                                        <td className="px-6 py-4 text-center">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${
-                                                pledge.status === 'Active' ? 'bg-sage-light text-sage-dark border-sage/30' :
-                                                pledge.status === 'Completed' ? 'bg-sage-light text-sage-dark border-sage/30' :
-                                                'bg-grey-light text-grey-mid border-ledger'
-                                            }`}>
-                                                {pledge.status}
-                                            </span>
+                                    <tr key={pledge._id} className="hover:bg-[#fcfbf9] transition-colors group border-b border-[#efeee9] last:border-0">
+                                        <td className="px-6 py-3.5 font-semibold text-ink text-[14.5px]">{pledge.donorName}</td>
+                                        <td className="px-6 py-3.5 text-grey-mid text-[13px]">{pledge.frequency}</td>
+                                        <td className="px-6 py-3.5 text-sage font-mono font-bold text-right text-[14.5px]">£{pledge.amount.toLocaleString()}</td>
+                                        <td className="px-6 py-3.5 text-center">
+                                            <StatusDot status={pledge.status} />
                                         </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2">
+                                        <td className="px-6 py-3.5 text-right">
+                                            <div className="flex justify-end items-center gap-1.5">
                                                 {pledge.status === 'Completed' && (
                                                     <button
                                                         onClick={() => handleThankDonor(pledge)}
-                                                        className="flex items-center gap-1 text-[10px] font-bold uppercase bg-white border border-ledger text-grey-dark px-2 py-1 rounded hover:text-sage hover:border-sage/30 transition-colors shadow-sm"
+                                                        className="inline-flex items-center gap-[5px] text-[10.5px] font-bold uppercase tracking-[0.04em] bg-white border border-ledger text-grey-dark px-2 py-[5px] rounded-[7px] hover:text-sage hover:border-sage/30 transition-opacity md:opacity-0 md:group-hover:opacity-100 whitespace-nowrap"
                                                     >
-                                                        <MessageSquare size={10} /> Say Thanks
+                                                        <MessageSquare size={11} strokeWidth={1.9} /> Thanks
                                                     </button>
                                                 )}
                                                 {canEdit && (
-                                                    <button onClick={() => handleEditPledgeClick(pledge)} className="text-ledger hover:text-grey-dark transition-colors md:opacity-0 md:group-hover:opacity-100">
-                                                        <Edit2 size={14} />
+                                                    <button onClick={() => handleEditPledgeClick(pledge)} title="Edit" className="p-1 text-grey-mid hover:text-grey-dark transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                                                        <Edit2 size={14} strokeWidth={1.9} />
                                                     </button>
                                                 )}
                                             </div>
@@ -712,7 +729,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 ))}
                                 {filteredPledges.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-grey-mid text-sm">
+                                        <td colSpan={5} className="px-6 py-10 text-center text-grey-mid text-[13.5px]">
                                             {pledgeSearch ? `No pledges matching "${pledgeSearch}"` : 'No pledges recorded for this campaign yet.'}
                                         </td>
                                     </tr>
@@ -722,18 +739,31 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     </div>
                 </div>
 
-                <div className="swiss-card p-6 h-full">
-                    <h3 className="font-bold text-ink mb-6 flex items-center gap-2 font-mono text-sm uppercase tracking-wide"><Calendar size={16} /> Campaign Timeline</h3>
-                    <div className="space-y-8 pl-2">
+                <div className="swiss-card-static px-6 py-[22px] h-full">
+                    <h3 className="text-xs font-bold text-grey-mid uppercase tracking-[0.08em] mb-[22px] inline-flex items-center gap-2"><Calendar size={15} strokeWidth={1.9} /> Campaign timeline</h3>
+                    <div className="flex flex-col">
                         {[
-                            { date: 'OCT 2023', title: 'Launch', color: 'bg-sage' },
-                            { date: 'DEC 2023', title: 'Milestone 1', color: 'bg-sage' },
-                            { date: 'JUN 2024', title: 'Construction', color: 'bg-grey-mid' }
-                        ].map((item, i) => (
-                            <div key={i} className="relative pl-6 border-l border-ledger last:border-0 pb-2">
-                                <div className={`absolute -left-[5px] top-1.5 w-2.5 h-2.5 rounded-full ${item.color} ring-4 ring-white`}></div>
-                                <p className="text-[10px] font-bold text-grey-mid font-mono mb-1">{item.date}</p>
-                                <h4 className="font-bold text-ink text-sm">{item.title}</h4>
+                            { date: 'OCT 2023', label: 'Launch', done: true },
+                            { date: 'DEC 2023', label: 'Milestone 1', done: true },
+                            { date: 'JUN 2024', label: 'Construction', done: false }
+                        ].map((item, i, arr) => (
+                            <div key={i} className={`flex gap-3.5 ${i < arr.length - 1 ? 'pb-[22px]' : ''}`}>
+                                <div className="flex flex-col items-center">
+                                    <span
+                                        className="w-[13px] h-[13px] rounded-full shrink-0"
+                                        style={{
+                                            background: item.done ? TONE.sage.mid : '#fff',
+                                            border: `2px solid ${item.done ? TONE.sage.mid : '#d6d3cd'}`,
+                                        }}
+                                    />
+                                    {i < arr.length - 1 && (
+                                        <span className="w-0.5 flex-1 mt-1" style={{ background: item.done ? '#dde7dd' : '#eceae5' }} />
+                                    )}
+                                </div>
+                                <div className="-mt-[3px]">
+                                    <p className="font-mono text-[11px] font-bold text-grey-mid tracking-[0.04em]">{item.date}</p>
+                                    <h4 className={`text-[13.5px] font-semibold mt-[3px] ${item.done ? 'text-ink' : 'text-grey-mid'}`}>{item.label}</h4>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -744,7 +774,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             {/* Thank You / Completion Modal */}
             {thankYouModal.isOpen && (
                 <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-lg rounded-lg shadow-2xl border border-ledger animate-enter">
+                    <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-sage-light rounded-t-lg">
                             <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
                                 <Target size={16} /> Pledge Completed!
@@ -778,12 +808,12 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
                                 <button
                                     onClick={sendViaWhatsApp}
-                                    className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366] text-white rounded-lg font-bold text-sm hover:bg-[#128C7E] transition-colors shadow-sm"
+                                    className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366] text-white rounded-lg font-bold text-sm hover:bg-[#128C7E] transition-colors"
                                 >
                                     <Phone size={16} /> WhatsApp
                                 </button>
                                 <button 
-                                    className="flex items-center justify-center gap-2 py-2.5 bg-ink text-white rounded-lg font-bold text-sm hover:bg-charcoal transition-colors shadow-sm"
+                                    className="flex items-center justify-center gap-2 py-2.5 bg-ink text-white rounded-lg font-bold text-sm hover:bg-charcoal transition-colors"
                                     onClick={() => { window.location.href = `mailto:?subject=Thank You&body=${encodeURIComponent(thankYouModal.text)}`; }}
                                 >
                                     <Mail size={16} /> Email
@@ -797,7 +827,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             {/* Add/Edit Pledge Modal */}
             {(showAddModal || editingPledge) && canEdit && (
                 <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-white w-full max-w-md rounded-lg shadow-2xl border border-ledger animate-enter my-4 md:my-auto max-h-[calc(100vh-2rem)] overflow-y-auto">
+                    <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter my-4 md:my-auto max-h-[calc(100vh-2rem)] overflow-y-auto">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                             <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
                                 {editingPledge ? 'Edit Pledge' : 'New Pledge'}
@@ -903,7 +933,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             {/* CSV Import Modal */}
             {showCsvMapper && canEdit && (
                 <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl animate-enter border border-ledger">
+                    <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-4xl animate-enter border border-ledger">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                             <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
                                 <TableIcon size={16} /> Import Pledges & Donor Details
@@ -1045,7 +1075,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             {/* Import Results Modal */}
             {importResult?.show && (
                 <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-lg shadow-2xl w-full max-w-md animate-enter border border-ledger">
+                    <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-md animate-enter border border-ledger">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-sage-light rounded-t-lg">
                             <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
                                 <Check size={16} /> Import Complete

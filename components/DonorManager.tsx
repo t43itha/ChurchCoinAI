@@ -861,8 +861,8 @@ ${churchDetails?.name || 'Church'} Finance Team
                     onClick={() => toggleDonorForMerge(donor._id)}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
                       isSelectedForMerge
-                        ? 'bg-amber-500 border-amber-500 text-white'
-                        : 'border-grey-mid hover:border-amber-500'
+                        ? 'bg-amber border-amber text-white'
+                        : 'border-grey-mid hover:border-amber'
                     }`}
                   >
                     {isSelectedForMerge && <Check size={12} />}
@@ -893,7 +893,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                   <div className="min-w-0 flex-1 text-left">
                     <div className={`text-sm font-semibold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>
                       {donor.name}
-                      {isPrimary && <span className="ml-1 text-[10px] text-amber-600">(Primary)</span>}
+                      {isPrimary && <span className="ml-1 text-[10px] text-amber">(Primary)</span>}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${giftAidStatus(donor).tone}`} />
@@ -911,7 +911,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                 {manualMergeMode && isSelectedForMerge && selectedForMerge.size >= 2 && !isPrimary && (
                   <button
                     onClick={() => setManualPrimaryId(donor._id)}
-                    className="text-[10px] px-2 py-1 bg-amber-100 text-amber-700 rounded hover:bg-amber-200 shrink-0"
+                    className="text-[10px] px-2 py-1 bg-amber-light text-amber-dark border border-[#ecd8bd] rounded hover:bg-[#f5e7d4] shrink-0"
                   >
                     Keep
                   </button>
@@ -1462,19 +1462,19 @@ ${churchDetails?.name || 'Church'} Finance Team
                             <button
                                 onClick={() => handleSendViaWhatsApp(selectedReportType, selectedCampaignId)}
                                 disabled={isGeneratingPdf}
-                                className="flex-1 py-2.5 border border-green-300 bg-green-50 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 py-2.5 border border-[#cfe0cf] bg-sage-light rounded-lg hover:bg-[#e3ece3] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <MessageSquare className="text-green-600" size={16} />
-                                <span className="font-bold text-xs text-green-700">WhatsApp</span>
+                                <MessageSquare className="text-sage" size={16} />
+                                <span className="font-bold text-xs text-sage-dark">WhatsApp</span>
                             </button>
                         ) : selectedDonor.email ? (
                             <button
                                 onClick={() => handleSendViaEmail(selectedReportType, selectedCampaignId)}
                                 disabled={isGeneratingPdf}
-                                className="flex-1 py-2.5 border border-blue-300 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 py-2.5 border border-ledger bg-paper rounded-lg hover:bg-grey-light transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <Mail className="text-blue-600" size={16} />
-                                <span className="font-bold text-xs text-blue-700">Email</span>
+                                <Mail className="text-grey-dark" size={16} />
+                                <span className="font-bold text-xs text-grey-dark">Email</span>
                             </button>
                         ) : null}
 
@@ -1492,7 +1492,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
                     {/* No contact warning if needed */}
                     {!selectedDonor.phone && !selectedDonor.email && (
-                        <div className="flex items-center gap-2 text-[10px] text-amber-600 bg-amber-50 px-2 py-1.5 rounded">
+                        <div className="flex items-center gap-2 text-[10px] text-amber-dark bg-amber-light border border-[#ecd8bd] px-2 py-1.5 rounded">
                             <AlertTriangle size={12} />
                             <span>No contact info on file for sending</span>
                         </div>
@@ -1541,7 +1541,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                           <button
                             onClick={() => handleMergeDonors(groupIndex)}
                             disabled={isMerging}
-                            className="px-3 py-1.5 bg-amber-500 text-white rounded text-xs font-bold uppercase hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1"
+                            className="px-3 py-1.5 bg-amber text-white rounded text-xs font-bold uppercase hover:bg-amber-dark disabled:opacity-50 flex items-center gap-1"
                           >
                             {isMerging ? 'Merging...' : <><Merge size={12} /> Merge</>}
                           </button>
@@ -1562,7 +1562,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                               }}
                               className={`w-full p-3 text-left border rounded-lg transition-colors ${
                                 isSelected
-                                  ? 'border-amber-500 bg-amber-50'
+                                  ? 'border-amber bg-amber-light'
                                   : 'border-ledger hover:border-grey-mid hover:bg-paper'
                               }`}
                             >
@@ -1576,7 +1576,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                       </span>
                                     )}
                                     {isSelected && (
-                                      <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                                      <span className="text-[10px] bg-amber-light text-amber-dark border border-[#ecd8bd] px-1.5 py-0.5 rounded">
                                         Primary
                                       </span>
                                     )}

@@ -11,7 +11,8 @@ import {
 // Components
 import Sidebar from "./components/Sidebar";
 import Onboarding from "./components/Onboarding";
-import AuthPage, { clerkAppearance } from "./components/AuthPage";
+import AuthPage from "./components/AuthPage";
+import { clerkAppearance } from "./lib/clerkAppearance";
 import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
 import LegalPage from "./components/legal/LegalPage";

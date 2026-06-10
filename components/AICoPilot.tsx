@@ -18,7 +18,7 @@ interface Message {
 const welcomeMessage: Message = {
     id: 'welcome',
     sender: 'ai',
-    text: "Hello. I'm Ward, your AI finance copilot. I can read the live ledger context and answer questions about giving, funds, donors, campaigns, Gift Aid, and monthly performance.",
+    text: "Hello, I'm Ward — your AI finance assistant. I can see your complete ledger: every gift, fund, and pledge. Ask me anything, like which month was best for giving or who your top donors are.",
     timestamp: new Date()
 };
 
@@ -118,7 +118,7 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                     <div>
                         <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-grey-mid mb-2">Gemini 2.5 Flash Connected</p>
                         <h2 className="font-heading text-[32px] md:text-[40px] leading-none text-ink tracking-normal">Ask Ward</h2>
-                        <p className="mt-3 text-[15px] text-grey-mid max-w-2xl">Your AI finance copilot, grounded in the live ledger.</p>
+                        <p className="mt-3 text-[15px] text-grey-mid max-w-2xl">Your AI finance copilot — grounded in the full ledger.</p>
                     </div>
                 </div>
                 <button
@@ -140,7 +140,7 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                                     <Sparkles size={15} />
                                 </div>
                             )}
-                            <div className={`max-w-[86%] md:max-w-[74%] p-4 md:p-[18px] text-sm md:text-[15px] leading-relaxed shadow-soft-xs ${
+                            <div className={`max-w-[86%] md:max-w-[74%] p-4 md:p-[18px] text-sm md:text-[15px] leading-relaxed ${
                                 msg.sender === 'user'
                                     ? 'bg-ink text-white rounded-2xl rounded-br-md'
                                     : 'bg-white text-grey-dark border border-ledger rounded-2xl rounded-tl-md'
@@ -151,18 +151,21 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                     ))}
 
                     {showStarterPrompts && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:ml-12 max-w-3xl">
-                            {starterPrompts.map((prompt) => (
-                                <button
-                                    key={prompt}
-                                    type="button"
-                                    onClick={() => handleSend(prompt)}
-                                    className="group min-h-[54px] text-left bg-white border border-ledger rounded-xl px-4 py-3 text-[13px] font-semibold text-grey-dark hover:border-ink hover:shadow-soft-sm transition-all flex items-center gap-3"
-                                >
-                                    <MessageSquare size={15} className="text-grey-mid group-hover:text-ink shrink-0" />
-                                    <span>{prompt}</span>
-                                </button>
-                            ))}
+                        <div className="md:ml-12 max-w-3xl">
+                            <p className="text-[11px] font-mono uppercase tracking-[0.08em] text-grey-mid mb-3">Try asking</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {starterPrompts.map((prompt) => (
+                                    <button
+                                        key={prompt}
+                                        type="button"
+                                        onClick={() => handleSend(prompt)}
+                                        className="group min-h-[54px] text-left bg-white border border-ledger rounded-xl px-4 py-3 text-[13px] font-semibold text-grey-dark hover:border-amber hover:bg-[#fffdf9] transition-colors flex items-center gap-3"
+                                    >
+                                        <MessageSquare size={15} className="text-grey-mid group-hover:text-amber shrink-0" />
+                                        <span>{prompt}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -171,11 +174,11 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                             <div className="w-9 h-9 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0 mt-1">
                                 <Loader2 size={15} className="animate-spin" />
                             </div>
-                            <div className="bg-white border border-ledger rounded-2xl rounded-tl-md p-4 shadow-soft-xs flex items-center gap-2">
+                            <div className="bg-white border border-ledger rounded-2xl rounded-tl-md p-4 flex items-center gap-2">
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse" />
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse [animation-delay:120ms]" />
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse [animation-delay:240ms]" />
-                                <span className="ml-2 text-xs text-grey-mid font-medium">Analyzing ledger</span>
+                                <span className="ml-2 text-xs text-grey-mid font-medium">Analysing your ledger…</span>
                             </div>
                         </div>
                     )}
@@ -189,7 +192,7 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Ask about your finances..."
+                            placeholder="Ask Ward about your finances…"
                             className="flex-1 h-12 bg-paper border border-ledger rounded-xl px-4 text-sm focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink transition-all"
                         />
                         <button
@@ -197,12 +200,12 @@ const AICoPilot: React.FC<AICoPilotProps> = () => {
                             aria-label="Send message"
                             onClick={() => handleSend()}
                             disabled={!inputValue.trim() || isThinking}
-                            className="btn-primary h-12 w-12 px-0 flex items-center justify-center rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="h-12 w-12 shrink-0 flex items-center justify-center rounded-xl bg-sage text-white transition-colors enabled:hover:opacity-90 disabled:bg-[#dcd9d3] disabled:cursor-default"
                         >
                             <Send size={18} />
                         </button>
                     </div>
-                    <p className="mt-3 text-[11px] text-grey-mid font-mono uppercase tracking-[0.08em]">Ward references your live financial data. Always review figures before filing or sharing.</p>
+                    <p className="mt-3 text-[11px] text-grey-mid text-center">Ward references your live financial data. Always review figures before filing or sharing.</p>
                 </div>
             </section>
         </div>

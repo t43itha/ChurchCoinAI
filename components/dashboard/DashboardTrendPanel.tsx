@@ -25,21 +25,21 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
 
   return (
     <section className="swiss-card bg-white overflow-hidden min-w-0" aria-label="Six-month financial trend">
-      <div className="p-5 md:p-6 border-b border-ledger bg-white flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="px-6 py-[18px] border-b border-[#efeee9] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <BarChart3 size={18} className="text-grey-mid shrink-0" aria-hidden="true" />
-            <h3 className="font-bold text-ink text-lg break-words">
+            <BarChart3 size={18} strokeWidth={1.9} className="text-grey-mid shrink-0" aria-hidden="true" />
+            <h3 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em] break-words">
               Income and Expenditure Trend
             </h3>
           </div>
-          <p className="text-xs text-grey-mid font-medium mt-1 break-words">
+          <p className="text-[13.5px] text-grey-mid font-medium mt-1 break-words">
             Six-month unrestricted movement ending {summary.period.label}
           </p>
         </div>
         {latest ? (
-          <div className="bg-paper border border-ledger rounded-md px-3 py-2 w-fit">
-            <p className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Latest net</p>
+          <div className="bg-[#fbfaf8] border border-[#efeee9] rounded-[10px] px-3.5 py-2 w-fit">
+            <p className="text-[10px] font-bold text-grey-mid uppercase tracking-[0.08em]">Latest net</p>
             <p className="text-sm font-bold text-ink font-mono tabular-nums">{formatCurrency(latest.Net)}</p>
           </div>
         ) : null}
