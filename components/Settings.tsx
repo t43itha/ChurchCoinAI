@@ -229,7 +229,7 @@ ${currentUser.name}`;
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Settings</h2>
-        <p className="text-grey-mid mt-2 text-[15px] font-medium">System configuration and access control.</p>
+        <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, categories, users, and bank connections.</p>
       </header>
 
       {/* Tabs */}

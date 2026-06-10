@@ -53,38 +53,38 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
               dataKey="label"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: "#666666" }}
+              tick={{ fontSize: 11, fill: "#78716c" }}
               dy={10}
               interval={0}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: "#666666" }}
+              tick={{ fontSize: 11, fill: "#78716c" }}
               tickFormatter={(value) => formatCompactCurrency(Number(value))}
               width={56}
             />
             <Tooltip
-              cursor={{ fill: "#fafaf9" }}
+              cursor={{ fill: "#faf9f7" }}
               formatter={(value, name) => [formatCurrency(Number(value)), name]}
               labelFormatter={(label) => `Month: ${label}`}
               contentStyle={{
                 borderRadius: "8px",
-                border: "1px solid #000000",
-                boxShadow: "4px 4px 0px rgba(0,0,0,1)",
+                border: "1px solid #e7e5e1",
+                boxShadow: "0 16px 40px -24px rgba(28,25,23,.28)",
                 fontFamily: "DM Sans, system-ui, sans-serif",
                 fontSize: "12px",
               }}
             />
             <Legend wrapperStyle={{ fontSize: "11px", fontWeight: 700 }} />
-            <Bar dataKey="Income" barSize={24} fill="#000000" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Expenditure" barSize={24} fill="#d4a574" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Income" barSize={24} fill="#1c1917" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Expenditure" barSize={24} fill="#a9743f" radius={[4, 4, 0, 0]} />
             <Line
               type="monotone"
               dataKey="Net"
-              stroke="#6b8e6b"
+              stroke="#557555"
               strokeWidth={3}
-              dot={{ r: 3, fill: "#6b8e6b", strokeWidth: 2, stroke: "#ffffff" }}
+              dot={{ r: 3, fill: "#557555", strokeWidth: 2, stroke: "#ffffff" }}
             />
           </ComposedChart>
         </ResponsiveContainer>

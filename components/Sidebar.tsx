@@ -2,6 +2,7 @@ import React from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { clerkAppearance } from './AuthPage';
 
 // Type for Convex user from database
 interface ConvexUser {
@@ -115,13 +116,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
           <div className="flex items-center gap-3">
             <UserButton
               afterSignOutUrl="/"
-              appearance={{
-                elements: {
-                  avatarBox: "w-[38px] h-[38px]",
-                  userButtonAvatarBox: "w-[38px] h-[38px] shadow-[0_0_0_3px_#fff,0_0_0_4px_#cfe0cf]",
-                  userButtonPopoverCard: "rounded-xl border border-ledger shadow-soft-lg",
-                }
-              }}
+              appearance={clerkAppearance}
             />
             <div className="flex-1 min-w-0 text-left">
               <p className="text-sm font-semibold text-ink truncate">{currentUser.name}</p>

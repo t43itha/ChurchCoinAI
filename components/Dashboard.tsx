@@ -41,7 +41,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
           <h2 className="text-[32px] md:text-4xl leading-tight font-bold text-ink tracking-tight">
             Leadership Dashboard
           </h2>
-          <p className="mt-2 text-[15px] text-grey-mid font-medium">
+          <p className="mt-2 text-[15px] text-grey-mid font-medium max-w-2xl">
             Controls, cash position, fund health, and donor follow-up at a glance.
           </p>
         </div>
@@ -187,8 +187,7 @@ function formatDisplayDate(date: string) {
   }
 
   return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
+    month: "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(parsed);

@@ -4,6 +4,7 @@ import { api } from '../convex/_generated/api';
 import { UserButton } from '@clerk/clerk-react';
 import { Check, Loader2, Sparkles, Crown, ArrowRight } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import { clerkAppearance } from './AuthPage';
 
 interface PlanConfig {
   id: 'starter' | 'growing' | 'thriving';
@@ -100,7 +101,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({ organizatio
             />
             <p className="text-xs text-grey-mid border-l border-ledger pl-3">{organizationName}</p>
           </div>
-          <UserButton afterSignOutUrl="/" />
+          <UserButton afterSignOutUrl="/" appearance={clerkAppearance} />
         </div>
       </header>
 
@@ -130,9 +131,9 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({ organizatio
               return (
                 <div
                   key={plan.id}
-                  className={`relative p-6 border-2 rounded-lg transition-all ${
+                  className={`relative p-6 border rounded-xl transition-all ${
                     plan.popular
-                      ? 'border-ink bg-paper shadow-[4px_4px_0px_#1a1a1a]'
+                      ? 'border-ink bg-white shadow-soft-lg'
                       : 'border-ledger bg-white hover:border-grey-mid'
                   }`}
                 >

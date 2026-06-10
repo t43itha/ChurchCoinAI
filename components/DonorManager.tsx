@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useConvex, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
@@ -141,6 +141,60 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   }
 
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  // Per-donor giving stats for the directory list and summary strip
+  const donorStats = useMemo(() => {
+    const stats = new Map<string, { ytd: number; lastGift: number }>();
+    const year = new Date().getFullYear();
+    for (const t of filterReportableTransactions(transactions)) {
+      if (t.type !== 'Income') continue;
+      const keys = [t.donorId, t.donorName].filter(Boolean) as string[];
+      const time = new Date(t.date).getTime();
+      const inYear = new Date(t.date).getFullYear() === year;
+      for (const key of keys) {
+        const s = stats.get(key) ?? { ytd: 0, lastGift: 0 };
+        if (inYear) s.ytd += t.amount;
+        if (time > s.lastGift) s.lastGift = time;
+        stats.set(key, s);
+      }
+    }
+    return stats;
+  }, [transactions]);
+
+  const statFor = (d: Donor) => donorStats.get(d._id) ?? donorStats.get(d.name) ?? { ytd: 0, lastGift: 0 };
+
+  const summary = useMemo(() => {
+    const now = Date.now();
+    const yearAgo = now - 365 * 86400000;
+    const sixtyDaysAgo = now - 60 * 86400000;
+    const month = new Date().getMonth();
+    const year = new Date().getFullYear();
+    let active = 0;
+    let needsReview = 0;
+    for (const d of donors) {
+      const { lastGift } = donorStats.get(d._id) ?? donorStats.get(d.name) ?? { lastGift: 0 };
+      if (lastGift >= yearAgo) active++;
+      if (!d.isGiftAidActive || lastGift < sixtyDaysAgo) needsReview++;
+    }
+    const monthTotal = filterReportableTransactions(transactions)
+      .filter(t => t.type === 'Income' && new Date(t.date).getMonth() === month && new Date(t.date).getFullYear() === year)
+      .reduce((acc, t) => acc + t.amount, 0);
+    return {
+      active,
+      giftAid: donors.filter(d => d.isGiftAidActive).length,
+      monthTotal,
+      needsReview,
+      monthLabel: new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+    };
+  }, [donors, transactions, donorStats]);
+
+  const giftAidStatus = (d: Donor): { tone: string; label: string } => {
+    const { lastGift } = statFor(d);
+    if (lastGift > 0 && lastGift < Date.now() - 60 * 86400000) return { tone: 'bg-amber', label: 'Lapsed' };
+    if (d.isGiftAidActive) return { tone: 'bg-sage', label: 'Gift Aid' };
+    return { tone: 'bg-error', label: 'No declaration' };
+  };
+
   const selectedDonor = donors.find(d => d._id === selectedDonorId);
   const donorTransactions = transactions.filter(t => t.donorId === selectedDonorId || t.donorName === selectedDonor?.name)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -694,7 +748,49 @@ ${churchDetails?.name || 'Church'} Finance Team
   };
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] animate-enter gap-0 swiss-card overflow-hidden relative max-w-7xl mx-auto">
+    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
+      {/* Page header */}
+      <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div>
+          <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Donors</h2>
+          <p className="text-grey-mid mt-2 text-[15px] font-medium">Giving history, Gift Aid status, and follow-up at a glance.</p>
+        </div>
+        {canEdit && (
+          <div className="flex gap-2 self-start shrink-0">
+            <button
+              onClick={handleFindDuplicates}
+              disabled={isFindingDuplicates}
+              className="btn-secondary px-4 py-2 text-xs font-bold uppercase flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+            >
+              <Merge size={14} /> {isFindingDuplicates ? 'Searching…' : 'Find duplicates'}
+            </button>
+            <button
+              onClick={() => setShowAddDonorModal(true)}
+              className="btn-primary px-4 py-2 text-xs font-bold uppercase flex items-center gap-2 whitespace-nowrap"
+            >
+              <Users size={14} /> Add donor
+            </button>
+          </div>
+        )}
+      </header>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Active donors', value: String(summary.active), sub: 'Gave in last 12 months', edge: '' },
+          { label: 'Gift Aid eligible', value: String(summary.giftAid), sub: 'Declarations on file', edge: 'border-l-[3px] border-l-sage' },
+          { label: 'Giving this month', value: `£${summary.monthTotal.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`, sub: summary.monthLabel, edge: '' },
+          { label: 'Needs review', value: String(summary.needsReview), sub: 'Lapsed, expired, or missing', edge: 'border-l-[3px] border-l-amber' },
+        ].map((s) => (
+          <div key={s.label} className={`bg-white border border-ledger rounded-xl px-5 py-4 ${s.edge}`}>
+            <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-grey-mid whitespace-nowrap">{s.label}</div>
+            <div className="font-mono text-[24px] font-bold text-ink tracking-tight mt-1.5">{s.value}</div>
+            <div className="text-[12px] text-grey-mid mt-0.5 whitespace-nowrap">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex h-[600px] gap-0 swiss-card overflow-hidden relative">
       {/* Sidebar - Directory */}
       <div className={`${mobileView === 'detail' ? 'hidden' : 'w-full'} md:block md:w-[340px] border-r border-ledger bg-white flex flex-col shrink-0`}>
         <div className="p-4 border-b border-ledger space-y-3 bg-[#fcfbf9]">
@@ -710,7 +806,6 @@ ${churchDetails?.name || 'Church'} Finance Team
                     <Merge size={14} />
                   </button>
                 )}
-                {canEdit && !manualMergeMode && <button onClick={() => setShowAddDonorModal(true)} className="p-1.5 bg-white hover:bg-grey-light rounded-lg text-grey-dark transition-colors border border-ledger" title="Add New Donor"><Plus size={14} /></button>}
               </div>
           </div>
           {/* Manual merge mode banner */}
@@ -741,7 +836,7 @@ ${churchDetails?.name || 'Church'} Finance Team
           )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" size={14} />
-            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-lg focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink bg-white transition-colors" />
+            <input type="text" placeholder="Search donors..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-lg focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink bg-white transition-colors" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -800,8 +895,16 @@ ${churchDetails?.name || 'Church'} Finance Team
                       {donor.name}
                       {isPrimary && <span className="ml-1 text-[10px] text-amber-600">(Primary)</span>}
                     </div>
-                    <div className="text-[11px] text-grey-mid truncate">{donor.email || donor.type}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${giftAidStatus(donor).tone}`} />
+                      <span className="text-[11px] text-grey-mid truncate">{giftAidStatus(donor).label}</span>
+                    </div>
                   </div>
+                  {!manualMergeMode && (
+                    <span className={`font-mono text-[12px] font-bold shrink-0 ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-mid'}`}>
+                      £{(statFor(donor).ytd / 1000).toFixed(1)}k
+                    </span>
+                  )}
                 </button>
 
                 {/* Keep as primary button */}
@@ -1148,6 +1251,7 @@ ${churchDetails?.name || 'Church'} Finance Team
             </div>
           </>
         ) : <div className="flex flex-col items-center justify-center h-full text-ledger space-y-4"><div className="w-20 h-20 bg-grey-light rounded-full flex items-center justify-center"><User size={32} className="opacity-20" /></div><p className="text-sm font-medium">Select a donor to view details.</p></div>}
+      </div>
       </div>
 
       {showAddDonorModal && canEdit && (
