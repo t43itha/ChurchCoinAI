@@ -96,6 +96,21 @@ async function checkPledgeCompletion(
   return null;
 }
 
+// Block changes to transactions locked by a completed reconciliation session
+async function assertNotLockedByReconciliation(
+  ctx: any,
+  transaction: { reconciliationSessionId?: Id<"reconciliationSessions"> | null }
+) {
+  if (!transaction.reconciliationSessionId) return;
+  const session = await ctx.db.get(transaction.reconciliationSessionId);
+  if (session && session.status === "completed") {
+    throw new Error(
+      "This transaction is part of a completed reconciliation. " +
+        "Reopen that reconciliation session before changing it."
+    );
+  }
+}
+
 async function refreshPledgeStatus(
   ctx: any,
   pledgeId: Id<"pledges">,
@@ -140,7 +155,6 @@ export const create = mutation({
     type: v.union(v.literal("Income"), v.literal("Expenditure")),
     category: v.string(),
     fundId: v.id("funds"),
-    isReconciled: v.optional(v.boolean()),
     notes: v.optional(v.string()),
     isGiftAidEligible: v.optional(v.boolean()),
     donorName: v.optional(v.string()),
@@ -193,7 +207,7 @@ export const create = mutation({
       type: args.type,
       category: args.category,
       fundId: args.fundId,
-      isReconciled: args.isReconciled ?? false,
+      isReconciled: false,
       notes: args.notes,
       isGiftAidEligible: args.isGiftAidEligible,
       donorName: args.donorName,
@@ -228,7 +242,6 @@ export const update = mutation({
     type: v.optional(v.union(v.literal("Income"), v.literal("Expenditure"))),
     category: v.optional(v.string()),
     fundId: v.optional(v.id("funds")),
-    isReconciled: v.optional(v.boolean()),
     notes: v.optional(v.string()),
     isGiftAidEligible: v.optional(v.boolean()),
     donorName: v.optional(v.string()),
@@ -242,6 +255,7 @@ export const update = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
+    await assertNotLockedByReconciliation(ctx, transaction);
 
     if (args.amount !== undefined) {
       assertValidTransactionAmount(args.amount);
@@ -287,7 +301,6 @@ export const update = mutation({
     if (args.type !== undefined) updates.type = args.type;
     if (args.category !== undefined) updates.category = args.category;
     if (args.fundId !== undefined) updates.fundId = args.fundId;
-    if (args.isReconciled !== undefined) updates.isReconciled = args.isReconciled;
     if (args.notes !== undefined) updates.notes = args.notes;
     if (args.isGiftAidEligible !== undefined)
       updates.isGiftAidEligible = args.isGiftAidEligible;
@@ -481,7 +494,6 @@ export const bulkUpdate = mutation({
     updates: v.object({
       category: v.optional(v.string()),
       fundId: v.optional(v.id("funds")),
-      isReconciled: v.optional(v.boolean()),
       isGiftAidEligible: v.optional(v.boolean()),
     }),
   },
@@ -501,13 +513,12 @@ export const bulkUpdate = mutation({
     for (const transactionId of args.transactionIds) {
       const transaction = await ctx.db.get(transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
+        await assertNotLockedByReconciliation(ctx, transaction);
         const updates: Record<string, any> = {};
         if (args.updates.category !== undefined)
           updates.category = args.updates.category;
         if (args.updates.fundId !== undefined)
           updates.fundId = args.updates.fundId;
-        if (args.updates.isReconciled !== undefined)
-          updates.isReconciled = args.updates.isReconciled;
         if (args.updates.isGiftAidEligible !== undefined)
           updates.isGiftAidEligible = args.updates.isGiftAidEligible;
 
@@ -529,7 +540,6 @@ export const batchUpdate = mutation({
         changes: v.object({
           category: v.optional(v.string()),
           fundId: v.optional(v.id("funds")),
-          isReconciled: v.optional(v.boolean()),
           isGiftAidEligible: v.optional(v.boolean()),
           donorName: v.optional(v.string()),
           pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
@@ -546,6 +556,7 @@ export const batchUpdate = mutation({
     for (const update of args.updates) {
       const transaction = await ctx.db.get(update.transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
+        await assertNotLockedByReconciliation(ctx, transaction);
         const changes: Record<string, any> = {};
 
         if (update.changes.category !== undefined)
@@ -557,8 +568,6 @@ export const batchUpdate = mutation({
             changes.fundId = update.changes.fundId;
           }
         }
-        if (update.changes.isReconciled !== undefined)
-          changes.isReconciled = update.changes.isReconciled;
         if (update.changes.isGiftAidEligible !== undefined)
           changes.isGiftAidEligible = update.changes.isGiftAidEligible;
         if (update.changes.donorName !== undefined)
@@ -693,6 +702,7 @@ export const remove = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
+    await assertNotLockedByReconciliation(ctx, transaction);
 
     const pledgeId = transaction.pledgeId;
 
@@ -739,6 +749,7 @@ export const voidTransaction = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
+    await assertNotLockedByReconciliation(ctx, transaction);
 
     await ctx.db.patch(args.transactionId, {
       isVoided: true,
@@ -766,6 +777,7 @@ export const unvoidTransaction = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
+    await assertNotLockedByReconciliation(ctx, transaction);
 
     await ctx.db.patch(args.transactionId, {
       isVoided: false,
@@ -793,6 +805,7 @@ export const toggleVoided = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
+    await assertNotLockedByReconciliation(ctx, transaction);
 
     const nextVoided = !transaction.isVoided;
     await ctx.db.patch(args.transactionId, {

@@ -151,6 +151,7 @@ export default defineSchema({
       v.literal("Online")
     )),
     cashCollectionId: v.optional(v.id("cashCollections")),
+    reconciliationSessionId: v.optional(v.id("reconciliationSessions")),
     cashBankingReconciliationId: v.optional(v.id("cashBankingReconciliations")),
     cashBankingRole: v.optional(v.union(
       v.literal("source_giving"),
@@ -175,6 +176,7 @@ export default defineSchema({
     .index("by_pledge", ["pledgeId"])
     .index("by_donor", ["donorId"])
     .index("by_cashCollection", ["cashCollectionId"])
+    .index("by_reconciliationSession", ["reconciliationSessionId"])
     .index("by_cashBankingReconciliation", ["cashBankingReconciliationId"])
     .index("by_organization_cashBankingRole", ["organizationId", "cashBankingRole"]),
 
@@ -203,6 +205,30 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_weekEnding", ["organizationId", "weekEndingDate"])
     .index("by_organization_status", ["organizationId", "status"]),
+
+  // Bank statement reconciliation sessions (one per fund per statement period)
+  reconciliationSessions: defineTable({
+    organizationId: v.id("organizations"),
+    fundId: v.id("funds"), // bank accounts map to funds
+    periodStart: v.string(), // ISO date YYYY-MM-DD
+    periodEnd: v.string(), // ISO date YYYY-MM-DD
+    statementOpeningBalance: v.number(), // pounds, as printed on the statement
+    statementClosingBalance: v.number(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("completed"),
+      v.literal("reopened")
+    ),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id("users")),
+    reopenedReason: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_fund", ["organizationId", "fundId"])
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_organization_fund_status", ["organizationId", "fundId", "status"]),
 
   // Cash Banking Reconciliations (cash/cheque collection to bank deposit matching)
   cashBankingReconciliations: defineTable({

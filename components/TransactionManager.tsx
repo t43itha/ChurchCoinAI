@@ -4,8 +4,9 @@ import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
+import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
@@ -151,6 +152,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [showReconciliation, setShowReconciliation] = useState(false);
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
   const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
@@ -164,7 +166,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
       type: 'Income' as TransactionType,
       date: new Date().toISOString().split('T')[0],
-      isReconciled: false,
       isGiftAidEligible: false,
       category: categoryNames[0] || 'Donation',
       fundId: funds[0]?._id
@@ -397,7 +398,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               updates: {
                   category: updates.category,
                   fundId: updates.fundId as Id<"funds"> | undefined,
-                  isReconciled: updates.isReconciled,
               }
           });
           setSelectedIds(new Set());
@@ -638,7 +638,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               description: row[descIdx],
               amount: amount,
               type,
-              isReconciled: false,
               category: '',
               fundId: funds[0]._id // Default to General
           };
@@ -688,7 +687,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       type: tx.type,
       fundId: tx.fundId || funds[0]?._id,
       category: tx.type === 'Income' ? 'Donation' : 'Operating Expenses',
-      isReconciled: false,
       isGiftAidEligible: false,
       source: 'bank',
       providerTransactionId: tx.providerTransactionId,
@@ -921,7 +919,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 type: (pt.type || 'Income') as 'Income' | 'Expenditure',
                 category: pt.category || categoryNames[0] || 'Donation',
                 fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
-                isReconciled: false,
                 isGiftAidEligible: pt.isGiftAidEligible || false,
                 donorName: pt.donorName, // Keep extracted name for reference
                 // No auto-linking: donorId and pledgeId left undefined
@@ -1016,7 +1013,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 type: newTransaction.type! as 'Income' | 'Expenditure',
                 category: newTransaction.category || categoryNames[0],
                 fundId: newTransaction.fundId as Id<"funds">,
-                isReconciled: newTransaction.isReconciled || false,
                 isGiftAidEligible: newTransaction.isGiftAidEligible,
                 donorName: newTransaction.donorName,
                 pledgeId: newTransaction.pledgeId as Id<"pledges"> | undefined
@@ -1030,7 +1026,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             setNewTransaction({
                 type: 'Income' as TransactionType,
                 date: new Date().toISOString().split('T')[0],
-                isReconciled: false,
                 isGiftAidEligible: false,
                 category: categoryNames[0] || 'Donation',
                 fundId: funds[0]?._id
@@ -1049,6 +1044,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           return dateString;
       }
   };
+
+  if (showReconciliation) {
+    return <Reconciliation onBack={() => setShowReconciliation(false)} />;
+  }
 
   return (
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
@@ -1100,6 +1099,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         className="hidden" 
                         onChange={handleFileUpload} 
                     />
+                </button>
+                <button
+                    onClick={() => setShowReconciliation(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-ledger rounded-md text-grey-dark hover:text-ink hover:border-slate-300 transition-all font-semibold text-xs uppercase tracking-wide shadow-sm"
+                >
+                    <Scale size={14} />
+                    Reconcile
                 </button>
                 <button
                     onClick={() => startTransition(() => setShowCashTakingsModal(true))}
@@ -1635,9 +1641,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       {isBulkProcessingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className="text-amber" />}
                       <span className="hidden sm:inline">AI Auto-Cat</span>
                   </button>
-                  <button onClick={() => executeBulkUpdate({ isReconciled: true })} className="flex items-center gap-2 px-3 py-1.5 hover:bg-charcoal rounded transition-colors text-xs font-bold uppercase tracking-wide whitespace-nowrap">
-                      <CheckSquare size={14} className="text-grey-mid" /> <span className="hidden sm:inline">Reconcile</span>
-                  </button>
                   {/* Inline Category Dropdown */}
                   <select
                       className="bg-charcoal text-white text-xs rounded px-2 py-1.5 border border-slate-600 hover:border-slate-500 cursor-pointer outline-none"
@@ -1991,16 +1994,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     )}
 
                     <div className="flex gap-6 pt-2">
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                             <input 
-                                type="checkbox" 
-                                checked={newTransaction.isReconciled}
-                                onChange={(e) => setNewTransaction({...newTransaction, isReconciled: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
-                            />
-                            <span className="text-sm text-grey-dark group-hover:text-ink">Reconciled</span>
-                        </label>
-                        
                          <label className="flex items-center gap-2 cursor-pointer group">
                              <input 
                                 type="checkbox" 
@@ -2046,7 +2039,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type: editingTransaction.type,
                                 category: editingTransaction.category,
                                 fundId: editingTransaction.fundId as Id<"funds">,
-                                isReconciled: editingTransaction.isReconciled,
                                 isGiftAidEligible: editingTransaction.isGiftAidEligible,
                                 donorName: editingTransaction.donorName,
                                 ...(editingTransaction.donorId
@@ -2187,16 +2179,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     )}
 
                     <div className="flex flex-wrap gap-x-6 gap-y-3 pt-2">
-                        <label className="flex items-center gap-2 cursor-pointer group">
-                             <input
-                                type="checkbox"
-                                checked={editingTransaction.isReconciled}
-                                onChange={(e) => setEditingTransaction({...editingTransaction, isReconciled: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4"
-                            />
-                            <span className="text-sm text-grey-dark group-hover:text-ink">Reconciled</span>
-                        </label>
-
                          <label className="flex items-center gap-2 cursor-pointer group">
                              <input
                                 type="checkbox"
