@@ -5,6 +5,7 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ConvexReactClient } from "convex/react";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { clerkAppearance } from "./components/AuthPage";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./styles.css";
 
@@ -16,17 +17,14 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Register service worker for PWA
+// Clean up any previously-installed service worker. Older builds registered
+// /sw.js, and stale browser caches can otherwise keep serving obsolete assets.
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register("/sw.js")
-      .then((registration) => {
-        console.log("SW registered: ", registration);
-      })
-      .catch((registrationError) => {
-        console.log("SW registration failed: ", registrationError);
-      });
+  window.addEventListener("load", async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    registrations.forEach((registration) => {
+      registration.unregister();
+    });
   });
 }
 
@@ -35,6 +33,7 @@ root.render(
   <React.StrictMode>
     <ClerkProvider
       publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string}
+      appearance={clerkAppearance}
     >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         <BrowserRouter>
