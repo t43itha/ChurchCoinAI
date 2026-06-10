@@ -134,15 +134,3 @@ export const getForAction = internalQuery({
     return await ctx.db.get(args.bankConnectionId);
   },
 });
-
-export const getPendingByState = internalQuery({
-  args: {
-    state: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("pendingBankConnections")
-      .withIndex("by_state", (q) => q.eq("state", args.state))
-      .first();
-  },
-});

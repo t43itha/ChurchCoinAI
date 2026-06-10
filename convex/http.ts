@@ -4,7 +4,6 @@ import { internal } from "./_generated/api";
 import { getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
 import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
-import { isPendingStateExpired } from "./lib/bankConnectionUtils";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 
@@ -261,7 +260,6 @@ http.route({
         case "customer.subscription.updated": {
           const subscription = event.data.object as Stripe.Subscription;
           const organizationId = subscription.metadata?.organizationId;
-          const planFromMetadata = subscription.metadata?.plan as "starter" | "growing" | "thriving" | undefined;
 
           if (!organizationId || typeof organizationId !== "string") {
             console.error("No organizationId in subscription metadata");
@@ -281,8 +279,10 @@ http.route({
             break;
           }
 
+          // Always derive the plan from the verified price ID — subscription
+          // metadata is writable outside the webhook and must not be trusted
           const priceId = subscription.items?.data?.[0]?.price?.id || "";
-          const plan = planFromMetadata || getPlanFromPriceId(priceId);
+          const plan = getPlanFromPriceId(priceId);
 
           // Get period end from subscription object
           const periodEnd =
@@ -299,14 +299,19 @@ http.route({
             status: mapStripeStatus(subscription.status),
             currentPeriodEnd: periodEnd * 1000,
             cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+            eventTimestamp: event.created * 1000,
           });
           break;
         }
 
         case "customer.subscription.deleted": {
+          // Stripe sends this when the subscription actually ends (including
+          // at period end after a cancel_at_period_end), so canceling here
+          // does not cut short a paid period
           const subscription = event.data.object as Stripe.Subscription;
           await ctx.runMutation(internal.mutations.subscriptions.markCanceled, {
             stripeSubscriptionId: subscription.id,
+            eventTimestamp: event.created * 1000,
           });
           break;
         }
@@ -321,6 +326,7 @@ http.route({
             await ctx.runMutation(internal.mutations.subscriptions.updateStatus, {
               stripeSubscriptionId: subscriptionId,
               status: "past_due",
+              eventTimestamp: event.created * 1000,
             });
           }
           break;
@@ -336,6 +342,7 @@ http.route({
             await ctx.runMutation(internal.mutations.subscriptions.updateStatus, {
               stripeSubscriptionId: subscriptionId,
               status: "active",
+              eventTimestamp: event.created * 1000,
             });
           }
           break;
@@ -492,24 +499,15 @@ http.route({
       });
     }
 
-    const pending = await ctx.runQuery(
-      internal.queries.bankConnections.getPendingByState,
+    // Atomically consume the state token before doing anything else so a
+    // replayed, raced, or guessed callback URL can never re-enter the flow.
+    // Expired states are marked as errors inside the claim mutation.
+    const claim = await ctx.runMutation(
+      internal.mutations.bankConnections.claimPendingState,
       { state }
     );
 
-    if (!pending || pending.status !== "pending") {
-      return redirectToBankSettings(request, "error");
-    }
-
-    if (isPendingStateExpired({ expiresAt: pending.expiresAt })) {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          state,
-          errorCode: "STATE_EXPIRED",
-          errorMessage: "Bank authorization session expired",
-        }
-      );
+    if (!claim.claimed) {
       return redirectToBankSettings(request, "error");
     }
 

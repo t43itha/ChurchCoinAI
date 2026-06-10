@@ -65,6 +65,44 @@ export const createPending = internalMutation({
   },
 });
 
+// Atomically claim a pending state token so it is strictly single-use: the
+// first callback flips it to "processing"; any replayed or raced callback
+// finds it already claimed and is rejected before the code exchange runs.
+export const claimPendingState = internalMutation({
+  args: {
+    state: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const pending = await ctx.db
+      .query("pendingBankConnections")
+      .withIndex("by_state", (q) => q.eq("state", args.state))
+      .first();
+
+    if (!pending || pending.status !== "pending") {
+      return { claimed: false as const };
+    }
+
+    const now = Date.now();
+
+    if (isPendingStateExpired({ expiresAt: pending.expiresAt, now })) {
+      await ctx.db.patch(pending._id, {
+        status: "error",
+        errorCode: "STATE_EXPIRED",
+        errorMessage: "Bank authorization session expired",
+        updatedAt: now,
+      });
+      return { claimed: false as const };
+    }
+
+    await ctx.db.patch(pending._id, {
+      status: "processing",
+      updatedAt: now,
+    });
+
+    return { claimed: true as const };
+  },
+});
+
 export const markPendingError = internalMutation({
   args: {
     state: v.string(),
@@ -79,7 +117,9 @@ export const markPendingError = internalMutation({
 
     if (!pending) return null;
 
-    if (pending.status !== "pending") return pending._id;
+    if (pending.status !== "pending" && pending.status !== "processing") {
+      return pending._id;
+    }
 
     await ctx.db.patch(pending._id, {
       status: "error",
@@ -105,7 +145,10 @@ export const completePending = internalMutation({
       .withIndex("by_state", (q) => q.eq("state", args.state))
       .first();
 
-    if (!pending || pending.status !== "pending") {
+    if (
+      !pending ||
+      (pending.status !== "pending" && pending.status !== "processing")
+    ) {
       throw new Error("Pending bank connection not found");
     }
 

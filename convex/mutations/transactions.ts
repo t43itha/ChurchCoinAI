@@ -11,6 +11,7 @@ import {
 import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 import { sumReportableIncome } from "../../lib/reportableTransactions";
+import { meetsMoneyTarget, roundMoney } from "../lib/money";
 
 const upsertAcceptedCategorizationMemory = makeFunctionReference<
   "mutation",
@@ -83,7 +84,7 @@ async function checkPledgeCompletion(
 
   const totalReceived = sumReportableIncome(linkedTransactions);
 
-  if (totalReceived >= pledge.amount) {
+  if (meetsMoneyTarget(totalReceived, pledge.amount)) {
     await ctx.db.patch(pledgeId, { status: "Completed" });
     return {
       completed: true,
@@ -127,7 +128,9 @@ async function refreshPledgeStatus(
     .collect();
 
   const totalReceived = sumReportableIncome(linkedTransactions);
-  const nextStatus = totalReceived >= pledge.amount ? "Completed" : "Active";
+  const nextStatus = meetsMoneyTarget(totalReceived, pledge.amount)
+    ? "Completed"
+    : "Active";
   const statusChanged =
     (pledge.status === "Active" || pledge.status === "Completed") &&
     pledge.status !== nextStatus;
@@ -203,7 +206,7 @@ export const create = mutation({
       organizationId: user.organizationId,
       date: args.date,
       description: args.description,
-      amount: args.amount,
+      amount: roundMoney(args.amount),
       type: args.type,
       category: args.category,
       fundId: args.fundId,
@@ -297,7 +300,7 @@ export const update = mutation({
 
     if (args.date !== undefined) updates.date = args.date;
     if (args.description !== undefined) updates.description = args.description;
-    if (args.amount !== undefined) updates.amount = args.amount;
+    if (args.amount !== undefined) updates.amount = roundMoney(args.amount);
     if (args.type !== undefined) updates.type = args.type;
     if (args.category !== undefined) updates.category = args.category;
     if (args.fundId !== undefined) updates.fundId = args.fundId;
@@ -338,7 +341,7 @@ export const update = mutation({
 
         const totalReceived = sumReportableIncome(linkedTransactions);
 
-        if (totalReceived < oldPledge.amount) {
+        if (!meetsMoneyTarget(totalReceived, oldPledge.amount)) {
           await ctx.db.patch(oldPledgeId, { status: "Active" });
         }
       }
@@ -373,6 +376,8 @@ export const bulkCreate = mutation({
           v.literal("Online")
         )),
         cashCollectionId: v.optional(v.id("cashCollections")),
+        bankConnectionId: v.optional(v.id("bankConnections")),
+        providerTransactionId: v.optional(v.string()),
       })
     ),
   },
@@ -382,8 +387,12 @@ export const bulkCreate = mutation({
       throw new Error("Cannot import more than 500 transactions at once");
     }
 
-    const transactionIds: Id<"transactions">[] = [];
+    // ids stays index-aligned with args.transactions; skipped duplicates are null
+    const transactionIds: (Id<"transactions"> | null)[] = [];
     const pledgesToCheck = new Set<string>();
+    const validatedConnections = new Set<string>();
+    const seenProviderIds = new Set<string>();
+    let skippedDuplicates = 0;
 
     for (const t of args.transactions) {
       assertValidTransactionAmount(t.amount);
@@ -411,11 +420,41 @@ export const bulkCreate = mutation({
         }
       }
 
+      // Source-level dedup for bank-synced transactions: skip anything already
+      // imported from the same connection with the same provider id.
+      if (t.bankConnectionId && t.providerTransactionId) {
+        if (!validatedConnections.has(t.bankConnectionId)) {
+          const connection = await ctx.db.get(t.bankConnectionId);
+          if (!connection || connection.organizationId !== user.organizationId) {
+            throw new Error(`Invalid bank connection: ${t.bankConnectionId}`);
+          }
+          validatedConnections.add(t.bankConnectionId);
+        }
+
+        const dedupKey = `${t.bankConnectionId}|${t.providerTransactionId}`;
+        const existing = seenProviderIds.has(dedupKey)
+          ? true
+          : await ctx.db
+              .query("transactions")
+              .withIndex("by_connection_providerTransaction", (q) =>
+                q
+                  .eq("bankConnectionId", t.bankConnectionId)
+                  .eq("providerTransactionId", t.providerTransactionId)
+              )
+              .first();
+        if (existing) {
+          transactionIds.push(null);
+          skippedDuplicates += 1;
+          continue;
+        }
+        seenProviderIds.add(dedupKey);
+      }
+
       const transactionId = await ctx.db.insert("transactions", {
         organizationId: user.organizationId,
         date: t.date,
         description: t.description,
-        amount: t.amount,
+        amount: roundMoney(t.amount),
         type: t.type,
         category: t.category,
         fundId: t.fundId,
@@ -427,6 +466,8 @@ export const bulkCreate = mutation({
         pledgeId: t.pledgeId,
         paymentMethod: t.paymentMethod,
         cashCollectionId: t.cashCollectionId,
+        bankConnectionId: t.bankConnectionId,
+        providerTransactionId: t.providerTransactionId,
         createdAt: Date.now(),
       });
 
@@ -438,33 +479,41 @@ export const bulkCreate = mutation({
     }
 
     // Schedule RAG indexing for all new transactions (batch for efficiency)
-    const ragIndexData = args.transactions.map((t, idx) => ({
-      transactionId: transactionIds[idx],
-      searchText: buildRAGSearchText({
-        description: t.description,
-        category: t.category,
-        type: t.type,
-        donorName: t.donorName,
-      }),
-      metadata: {
-        category: t.category,
-        fundId: t.fundId,
-        type: t.type,
-        isGiftAidEligible: t.isGiftAidEligible,
-        donorName: t.donorName,
-        amount: t.amount,
-      },
-    }));
+    const ragIndexData = args.transactions.flatMap((t, idx) => {
+      const transactionId = transactionIds[idx];
+      if (!transactionId) return []; // skipped duplicate
+      return [
+        {
+          transactionId,
+          searchText: buildRAGSearchText({
+            description: t.description,
+            category: t.category,
+            type: t.type,
+            donorName: t.donorName,
+          }),
+          metadata: {
+            category: t.category,
+            fundId: t.fundId,
+            type: t.type,
+            isGiftAidEligible: t.isGiftAidEligible,
+            donorName: t.donorName,
+            amount: t.amount,
+          },
+        },
+      ];
+    });
 
     // Schedule batch indexing (runs asynchronously, doesn't block import)
-    await ctx.scheduler.runAfter(
-      0,
-      internal.intelligence.ragIndexer.batchIndexTransactions,
-      {
-        organizationId: user.organizationId,
-        transactions: ragIndexData,
-      }
-    );
+    if (ragIndexData.length > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.intelligence.ragIndexer.batchIndexTransactions,
+        {
+          organizationId: user.organizationId,
+          transactions: ragIndexData,
+        }
+      );
+    }
 
     // Check all affected pledges
     const completedPledges: any[] = [];
@@ -480,8 +529,9 @@ export const bulkCreate = mutation({
     }
 
     return {
-      count: transactionIds.length,
+      count: transactionIds.filter(Boolean).length,
       ids: transactionIds,
+      skippedDuplicates,
       completedPledges,
     };
   },
@@ -680,7 +730,7 @@ export const unlinkFromPledge = mutation({
 
       const totalReceived = sumReportableIncome(linkedTransactions);
 
-      if (totalReceived < oldPledge.amount) {
+      if (!meetsMoneyTarget(totalReceived, oldPledge.amount)) {
         await ctx.db.patch(oldPledgeId, { status: "Active" });
         return { transactionId: args.transactionId, reactivated: true };
       }
@@ -723,7 +773,7 @@ export const remove = mutation({
 
         const totalReceived = sumReportableIncome(linkedTransactions);
 
-        if (totalReceived < pledge.amount) {
+        if (!meetsMoneyTarget(totalReceived, pledge.amount)) {
           await ctx.db.patch(pledgeId, { status: "Active" });
         }
       }

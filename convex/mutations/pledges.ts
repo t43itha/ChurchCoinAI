@@ -2,6 +2,7 @@ import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole, requireAuth } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
+import { meetsMoneyTarget, roundMoney } from "../lib/money";
 
 // Create a new pledge
 export const create = mutation({
@@ -43,7 +44,7 @@ export const create = mutation({
       organizationId: user.organizationId,
       donorId: args.donorId,
       donorName: args.donorName,
-      amount: args.amount,
+      amount: roundMoney(args.amount),
       fundId: args.fundId,
       frequency: args.frequency,
       startDate: args.startDate,
@@ -97,7 +98,7 @@ export const update = mutation({
     const updates: Record<string, any> = {};
     if (args.donorId !== undefined) updates.donorId = args.donorId;
     if (args.donorName !== undefined) updates.donorName = args.donorName;
-    if (args.amount !== undefined) updates.amount = args.amount;
+    if (args.amount !== undefined) updates.amount = roundMoney(args.amount);
     if (args.fundId !== undefined) updates.fundId = args.fundId;
     if (args.frequency !== undefined) updates.frequency = args.frequency;
     if (args.startDate !== undefined) updates.startDate = args.startDate;
@@ -139,6 +140,7 @@ export const bulkCreate = mutation({
     const pledgeIds: string[] = [];
 
     for (const pledge of args.pledges) {
+      const amount = roundMoney(pledge.amount);
       // Verify fund belongs to organization
       const fund = await ctx.db.get(pledge.fundId);
       if (!fund || fund.organizationId !== user.organizationId) {
@@ -152,7 +154,7 @@ export const bulkCreate = mutation({
           .withIndex("by_donor_fund_amount", (q) =>
             q.eq("donorId", pledge.donorId!)
               .eq("fundId", pledge.fundId)
-              .eq("amount", pledge.amount)
+              .eq("amount", amount)
           )
           .first();
 
@@ -165,7 +167,7 @@ export const bulkCreate = mutation({
         organizationId: user.organizationId,
         donorId: pledge.donorId,
         donorName: pledge.donorName,
-        amount: pledge.amount,
+        amount,
         fundId: pledge.fundId,
         frequency: pledge.frequency,
         startDate: pledge.startDate,
@@ -210,7 +212,7 @@ export const checkCompletion = mutation({
       0
     );
 
-    if (totalReceived >= pledge.amount) {
+    if (meetsMoneyTarget(totalReceived, pledge.amount)) {
       await ctx.db.patch(args.pledgeId, { status: "Completed" });
       return {
         updated: true,
@@ -260,7 +262,7 @@ export const reactivateIfNeeded = mutation({
       0
     );
 
-    if (totalReceived < pledge.amount) {
+    if (!meetsMoneyTarget(totalReceived, pledge.amount)) {
       await ctx.db.patch(args.pledgeId, { status: "Active" });
       return { reactivated: true, newStatus: "Active" };
     }

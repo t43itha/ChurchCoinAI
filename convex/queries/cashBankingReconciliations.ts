@@ -7,8 +7,7 @@ import {
   getCollectionBankingStatus,
 } from "../../lib/cashChequeBanking";
 import { isActiveTransaction } from "../../lib/voidedTransactions";
-
-const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+import { roundMoney } from "../lib/money";
 
 type CashBankingReconciliation = Doc<"cashBankingReconciliations">;
 

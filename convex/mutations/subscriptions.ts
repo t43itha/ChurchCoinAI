@@ -1,7 +1,18 @@
 import { query, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, isAdmin } from "../lib/auth";
-import { Id } from "../_generated/dataModel";
+import { Id, Doc } from "../_generated/dataModel";
+
+// True when a webhook event is older than the newest one already applied,
+// in which case it must not overwrite current state (Stripe retries webhooks
+// and does not guarantee delivery order).
+const isStaleStripeEvent = (
+  subscription: Doc<"subscriptions">,
+  eventTimestamp?: number
+) =>
+  eventTimestamp !== undefined &&
+  subscription.lastStripeEventAt !== undefined &&
+  eventTimestamp < subscription.lastStripeEventAt;
 
 // Upsert subscription (called by webhook handler)
 export const upsert = internalMutation({
@@ -23,6 +34,7 @@ export const upsert = internalMutation({
     ),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
+    eventTimestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -35,6 +47,9 @@ export const upsert = internalMutation({
     const now = Date.now();
 
     if (existing) {
+      if (isStaleStripeEvent(existing, args.eventTimestamp)) {
+        return existing._id;
+      }
       await ctx.db.patch(existing._id, {
         stripeSubscriptionId: args.stripeSubscriptionId,
         stripePriceId: args.stripePriceId,
@@ -42,6 +57,7 @@ export const upsert = internalMutation({
         status: args.status,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        lastStripeEventAt: args.eventTimestamp,
         updatedAt: now,
       });
       return existing._id;
@@ -55,6 +71,7 @@ export const upsert = internalMutation({
         status: args.status,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        lastStripeEventAt: args.eventTimestamp,
         createdAt: now,
         updatedAt: now,
       });
@@ -72,6 +89,7 @@ export const updateStatus = internalMutation({
       v.literal("canceled"),
       v.literal("incomplete")
     ),
+    eventTimestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
@@ -81,9 +99,10 @@ export const updateStatus = internalMutation({
       )
       .first();
 
-    if (subscription) {
+    if (subscription && !isStaleStripeEvent(subscription, args.eventTimestamp)) {
       await ctx.db.patch(subscription._id, {
         status: args.status,
+        lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
         updatedAt: Date.now(),
       });
     }
@@ -94,6 +113,7 @@ export const updateStatus = internalMutation({
 export const markCanceled = internalMutation({
   args: {
     stripeSubscriptionId: v.string(),
+    eventTimestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
@@ -103,9 +123,10 @@ export const markCanceled = internalMutation({
       )
       .first();
 
-    if (subscription) {
+    if (subscription && !isStaleStripeEvent(subscription, args.eventTimestamp)) {
       await ctx.db.patch(subscription._id, {
         status: "canceled",
+        lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
         updatedAt: Date.now(),
       });
     }

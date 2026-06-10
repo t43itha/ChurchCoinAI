@@ -943,6 +943,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 // No auto-linking: donorId and pledgeId left undefined
                 // User can manually link transactions to donors/pledges later
                 notes: pt.notes?.replace(/ \| New Donor:.*$/, '').replace(/ \| Donor:.*$/, '').replace(/ \| Pledge:.*$/, '') || undefined,
+                // Bank-synced rows carry provider identifiers so the server can
+                // skip anything already imported from the same connection
+                bankConnectionId: pt.bankConnectionId as Id<"bankConnections"> | undefined,
+                providerTransactionId: pt.providerTransactionId,
             };
         });
 
@@ -1011,6 +1015,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             for (const completed of result.completedPledges) {
                 onPledgeCompleted(completed.donorName, completed.amount);
             }
+        }
+
+        if (result?.skippedDuplicates) {
+            notify(
+                "Duplicates Skipped",
+                `${result.skippedDuplicates} transaction${result.skippedDuplicates === 1 ? ' was' : 's were'} already imported from this bank connection and ${result.skippedDuplicates === 1 ? 'was' : 'were'} skipped.`
+            );
         }
 
         setShowReviewModal(false);

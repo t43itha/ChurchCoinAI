@@ -34,6 +34,7 @@ import type * as lib_aiValidation from "../lib/aiValidation.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_bankConnectionUtils from "../lib/bankConnectionUtils.js";
 import type * as lib_enableBanking from "../lib/enableBanking.js";
+import type * as lib_money from "../lib/money.js";
 import type * as lib_plaid from "../lib/plaid.js";
 import type * as lib_ragInstance from "../lib/ragInstance.js";
 import type * as lib_stripe from "../lib/stripe.js";
@@ -108,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/bankConnectionUtils": typeof lib_bankConnectionUtils;
   "lib/enableBanking": typeof lib_enableBanking;
+  "lib/money": typeof lib_money;
   "lib/plaid": typeof lib_plaid;
   "lib/ragInstance": typeof lib_ragInstance;
   "lib/stripe": typeof lib_stripe;

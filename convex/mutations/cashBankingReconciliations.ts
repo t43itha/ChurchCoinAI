@@ -9,6 +9,7 @@ import {
 } from "../../lib/cashChequeBanking";
 import { sumReportableIncome } from "../../lib/reportableTransactions";
 import { isActiveTransaction } from "../../lib/voidedTransactions";
+import { meetsMoneyTarget, roundMoney } from "../lib/money";
 
 type BankingMedium = "cash" | "cheque" | "mixed";
 type VarianceType =
@@ -62,8 +63,6 @@ export const bankTransactionSplitInputValidator = v.object({
   cashAmount: v.optional(v.number()),
   chequeAmount: v.optional(v.number()),
 });
-
-const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
 
 function assertNonNegativeAmount(amount: number, label: string) {
   if (!Number.isFinite(amount) || amount < 0) {
@@ -252,7 +251,9 @@ async function refreshPledgeStatus(
     .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
     .collect();
   const totalReceived = sumReportableIncome(linkedTransactions);
-  const nextStatus = totalReceived >= pledge.amount ? "Completed" : "Active";
+  const nextStatus = meetsMoneyTarget(totalReceived, pledge.amount)
+    ? "Completed"
+    : "Active";
 
   if (pledge.status !== nextStatus) {
     await ctx.db.patch(pledgeId, { status: nextStatus });

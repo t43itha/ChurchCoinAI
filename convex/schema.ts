@@ -168,6 +168,9 @@ export default defineSchema({
     voidedBy: v.optional(v.id("users")),
     unvoidedAt: v.optional(v.number()),
     unvoidedBy: v.optional(v.id("users")),
+    // Source-level dedup for bank-synced transactions
+    bankConnectionId: v.optional(v.id("bankConnections")),
+    providerTransactionId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
@@ -178,7 +181,11 @@ export default defineSchema({
     .index("by_cashCollection", ["cashCollectionId"])
     .index("by_reconciliationSession", ["reconciliationSessionId"])
     .index("by_cashBankingReconciliation", ["cashBankingReconciliationId"])
-    .index("by_organization_cashBankingRole", ["organizationId", "cashBankingRole"]),
+    .index("by_organization_cashBankingRole", ["organizationId", "cashBankingRole"])
+    .index("by_connection_providerTransaction", [
+      "bankConnectionId",
+      "providerTransactionId",
+    ]),
 
   // Cash Collections (batch entry for weekly cash takings)
   cashCollections: defineTable({
@@ -376,6 +383,9 @@ export default defineSchema({
     ),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
+    // Timestamp of the newest Stripe event applied; guards against retried
+    // or out-of-order webhooks overwriting newer state
+    lastStripeEventAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -464,6 +474,7 @@ export default defineSchema({
     state: v.string(),
     status: v.union(
       v.literal("pending"),
+      v.literal("processing"),
       v.literal("completed"),
       v.literal("error")
     ),
