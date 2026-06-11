@@ -18,13 +18,18 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   "Donations": "Donation",
   "Books": "Merchandise",
   "Other": "Uncategorised",
+  "Rent-Premises For Worship": "Rent - Premises for Worship",
+  "Rent Premises for Worship": "Rent - Premises for Worship",
+  "Premises-Manse": "Premises - Manse",
+  "Manse": "Premises - Manse",
+  "Rent - Manse": "Premises - Manse",
 };
 
 export const RCI_EXPENDITURE_CATEGORIES: Record<string, string[]> = {
   "Major Programs": ["MP Honorarium", "MP Accommodation", "MP Refreshments"],
   "Ministry Costs": ["Church Provisions", "Travel & Transport"],
   "Staff & Volunteer Costs": ["Gross Salary", "Allowances"],
-  "Premises Costs": ["Rent", "Utilities"],
+  "Premises Costs": ["Rent", "Rent - Premises for Worship", "Premises - Manse", "Utilities"],
   "Mission Costs": ["Missions-Tithe", "Mission Support"],
   "Admin & Governance": ["Bank Charges", "IT Costs", "Love Gifts"],
 };

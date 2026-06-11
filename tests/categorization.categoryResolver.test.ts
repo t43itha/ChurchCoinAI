@@ -12,6 +12,9 @@ const categories: CategoryLike[] = [
   { name: "Offerings", mainCategory: "Donations", transactionType: "Income" },
   { name: "Bank Charges", mainCategory: "Admin & Governance", transactionType: "Expenditure" },
   { name: "Utilities", mainCategory: "Premises Costs", transactionType: "Expenditure" },
+  { name: "Rent", mainCategory: "Premises Costs", transactionType: "Expenditure" },
+  { name: "Rent - Premises for Worship", mainCategory: "Premises Costs", transactionType: "Expenditure" },
+  { name: "Premises - Manse", mainCategory: "Premises Costs", transactionType: "Expenditure" },
   { name: "Legacy", mainCategory: "Other" },
 ];
 
@@ -24,6 +27,9 @@ describe("category resolver", () => {
     expect(allowedCategoriesForType(categories, "Expenditure").map((c) => c.name)).toEqual([
       "Bank Charges",
       "Utilities",
+      "Rent",
+      "Rent - Premises for Worship",
+      "Premises - Manse",
     ]);
   });
 
@@ -48,6 +54,24 @@ describe("category resolver", () => {
     expect(resolveCategoryForTransaction("Legacy", "Income", categories)).toBeNull();
   });
 
+  it("groups rent and manse variants under Premises Costs in reports", () => {
+    expect(
+      resolveReportingMainCategory("Rent-Premises For Worship", "Expenditure", categories)
+    ).toBe("Premises Costs");
+    expect(
+      resolveReportingMainCategory("Rent - Premises for Worship", "Expenditure", categories)
+    ).toBe("Premises Costs");
+    expect(resolveReportingMainCategory("Premises - Manse", "Expenditure", categories)).toBe(
+      "Premises Costs"
+    );
+    expect(resolveReportingMainCategory("Manse", "Expenditure", categories)).toBe(
+      "Premises Costs"
+    );
+    expect(resolveReportingMainCategory("Rent", "Expenditure", categories)).toBe(
+      "Premises Costs"
+    );
+  });
+
   it("returns reporting fallback by transaction type", () => {
     expect(resolveReportingMainCategory("Missing", "Income", categories)).toBe("Other Income");
     expect(resolveReportingMainCategory("Missing", "Expenditure", categories)).toBe(
@@ -59,6 +83,9 @@ describe("category resolver", () => {
     expect(categoryNamesForPrompt(categories, "Expenditure")).toEqual([
       "Bank Charges",
       "Utilities",
+      "Rent",
+      "Rent - Premises for Worship",
+      "Premises - Manse",
     ]);
   });
 });
