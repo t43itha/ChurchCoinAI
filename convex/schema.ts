@@ -54,12 +54,16 @@ export default defineSchema({
       v.literal("accepted"),
       v.literal("expired")
     ),
+    // Secret link token; optional because older invitations predate it
+    token: v.optional(v.string()),
+    lastSentAt: v.optional(v.number()),
     createdAt: v.number(),
     expiresAt: v.number(), // 30 days from creation
   })
     .index("by_email", ["email"])
     .index("by_organization", ["organizationId"])
     .index("by_email_organization", ["email", "organizationId"])
+    .index("by_token", ["token"])
     .index("by_status", ["status"]),
 
   // Funds (no stored balance - computed from transactions)

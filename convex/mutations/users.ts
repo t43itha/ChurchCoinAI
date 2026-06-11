@@ -2,10 +2,15 @@ import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { getIdentity, requireAuth, requireRole } from "../lib/auth";
 
-// Join an organization via pending invitation (for new users)
-export const joinByInvitation = mutation({
-  args: {},
-  handler: async (ctx) => {
+// Accept an invitation explicitly (for new users). Identified either by the
+// secret link token (works regardless of which email the user signed up
+// with) or by an invitation id whose email must match the Clerk identity.
+export const acceptInvitation = mutation({
+  args: {
+    token: v.optional(v.string()),
+    invitationId: v.optional(v.id("invitations")),
+  },
+  handler: async (ctx, args) => {
     const identity = await getIdentity(ctx);
     if (!identity) {
       throw new Error("Must be signed in");
@@ -18,31 +23,42 @@ export const joinByInvitation = mutation({
       .first();
 
     if (existingUser) {
-      throw new Error("User already belongs to an organization");
+      throw new Error("You already belong to an organization");
     }
 
-    // Get email from Clerk identity
-    const email = identity.email?.toLowerCase().trim();
-    if (!email) {
-      throw new Error("No email found in your account");
-    }
-
-    // Find pending invitation for this email
+    const identityEmail = identity.email?.toLowerCase().trim();
     const now = Date.now();
-    const invitation = await ctx.db
-      .query("invitations")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "pending"),
-          q.gt(q.field("expiresAt"), now) // Not expired
-        )
-      )
-      .first();
 
-    if (!invitation) {
-      return null; // No invitation found - user should create new org
+    let invitation;
+    if (args.token) {
+      invitation = await ctx.db
+        .query("invitations")
+        .withIndex("by_token", (q) => q.eq("token", args.token))
+        .first();
+      if (!invitation) {
+        throw new Error("This invite link is invalid. Ask your administrator to send a new one.");
+      }
+    } else if (args.invitationId) {
+      invitation = await ctx.db.get(args.invitationId);
+      if (!invitation) {
+        throw new Error("Invitation not found");
+      }
+      // Without a token, the invitation must be addressed to this identity
+      if (!identityEmail || invitation.email !== identityEmail) {
+        throw new Error("This invitation was sent to a different email address");
+      }
+    } else {
+      throw new Error("An invitation token or id is required");
     }
+
+    if (invitation.status === "accepted") {
+      throw new Error("This invitation has already been used");
+    }
+    if (invitation.status !== "pending" || invitation.expiresAt <= now) {
+      throw new Error("This invitation has expired. Ask your administrator to resend it.");
+    }
+
+    const email = identityEmail ?? invitation.email;
 
     // Create the user record
     const userId = await ctx.db.insert("users", {

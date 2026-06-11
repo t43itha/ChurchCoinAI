@@ -4,6 +4,12 @@ import { requireRole } from "../lib/auth";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
+function generateToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // Create a pending invitation
 export const create = mutation({
   args: {
@@ -56,18 +62,94 @@ export const create = mutation({
       throw new Error("A pending invitation already exists for this email");
     }
 
+    const organization = await ctx.db.get(currentUser.organizationId);
+    if (!organization) {
+      throw new Error("Organization not found");
+    }
+
     const now = Date.now();
+    const token = generateToken();
     const invitationId = await ctx.db.insert("invitations", {
       organizationId: currentUser.organizationId,
       email,
       role: args.role,
       invitedBy: currentUser._id,
       status: "pending",
+      token,
       createdAt: now,
       expiresAt: now + THIRTY_DAYS_MS,
     });
 
-    return invitationId;
+    return {
+      invitationId,
+      token,
+      email,
+      role: args.role,
+      organizationName: organization.name,
+      inviterName: currentUser.name,
+    };
+  },
+});
+
+// Resend an invitation: extends expiry and regenerates a token if missing
+export const resend = mutation({
+  args: {
+    invitationId: v.id("invitations"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireRole(ctx, ["Admin"]);
+
+    const invitation = await ctx.db.get(args.invitationId);
+    if (!invitation) {
+      throw new Error("Invitation not found");
+    }
+
+    if (invitation.organizationId !== currentUser.organizationId) {
+      throw new Error("Cannot resend invitations from other organizations");
+    }
+
+    if (invitation.status === "accepted") {
+      throw new Error("This invitation has already been accepted");
+    }
+
+    const organization = await ctx.db.get(currentUser.organizationId);
+    if (!organization) {
+      throw new Error("Organization not found");
+    }
+
+    const now = Date.now();
+    const token = invitation.token ?? generateToken();
+    await ctx.db.patch(args.invitationId, {
+      status: "pending",
+      token,
+      expiresAt: now + THIRTY_DAYS_MS,
+    });
+
+    return {
+      invitationId: args.invitationId,
+      token,
+      email: invitation.email,
+      role: invitation.role,
+      organizationName: organization.name,
+      inviterName: currentUser.name,
+    };
+  },
+});
+
+// Record that the invitation email was delivered
+export const markSent = mutation({
+  args: {
+    invitationId: v.id("invitations"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await requireRole(ctx, ["Admin"]);
+
+    const invitation = await ctx.db.get(args.invitationId);
+    if (!invitation || invitation.organizationId !== currentUser.organizationId) {
+      throw new Error("Invitation not found");
+    }
+
+    await ctx.db.patch(args.invitationId, { lastSentAt: Date.now() });
   },
 });
 

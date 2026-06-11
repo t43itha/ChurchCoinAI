@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput } from '../types';
+import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
 import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
@@ -76,7 +76,8 @@ interface SettingsProps {
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
   onAddCategory: (category: string) => void;
   onRemoveCategory: (category: string) => void;
-  onInviteUser: (invitation: InvitationCreateInput) => void;
+  onInviteUser: (invitation: InvitationCreateInput) => Promise<InvitationSendResult | null>;
+  onResendInvitation: (invitationId: string) => Promise<InvitationSendResult | null>;
   onCancelInvitation: (invitationId: string) => void;
   onUpdateChurchDetails: (details: ChurchDetails) => void;
   onAddFund: (fund: FundCreateInput) => void;
@@ -95,6 +96,7 @@ const Settings: React.FC<SettingsProps> = ({
   onAddCategory,
   onRemoveCategory,
   onInviteUser,
+  onResendInvitation,
   onCancelInvitation,
   onUpdateChurchDetails,
   onAddFund,
@@ -122,8 +124,10 @@ const Settings: React.FC<SettingsProps> = ({
   const [showAddUser, setShowAddUser] = useState(false);
   const [newInvitation, setNewInvitation] = useState<InvitationCreateInput>({ email: '', role: 'Guest' });
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState<{ email: string; role: string } | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<{ email: string; role: string; inviteUrl: string; emailSent: boolean; emailError?: string } | null>(null);
   const [copiedNewInvite, setCopiedNewInvite] = useState(false);
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
 
   // Category State
   const [newCategory, setNewCategory] = useState('');
@@ -153,15 +157,36 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const handleCreateInvitation = (e: React.FormEvent) => {
+  const handleCreateInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newInvitation.email) {
-      onInviteUser(newInvitation);
-      // Show success state with copy option
-      setInviteSuccess({ email: newInvitation.email, role: newInvitation.role });
-      setCopiedNewInvite(false);
-    } else {
+    if (!newInvitation.email) {
       notify("Error", "Please provide an email address.");
+      return;
+    }
+    setIsCreatingInvite(true);
+    try {
+      const result = await onInviteUser(newInvitation);
+      if (result) {
+        setInviteSuccess({
+          email: newInvitation.email,
+          role: newInvitation.role,
+          inviteUrl: result.inviteUrl,
+          emailSent: result.emailSent,
+          emailError: result.emailError,
+        });
+        setCopiedNewInvite(false);
+      }
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
+  const handleResendInvitation = async (invitationId: string) => {
+    setResendingInviteId(invitationId);
+    try {
+      await onResendInvitation(invitationId);
+    } finally {
+      setResendingInviteId(null);
     }
   };
 
@@ -179,16 +204,22 @@ const Settings: React.FC<SettingsProps> = ({
     return `${days} days left`;
   };
 
-  const generateInviteMessage = (email: string, role: string) => {
-    const appUrl = window.location.origin;
+  const buildInviteUrl = (token?: string) =>
+    token ? `${window.location.origin}/?invite=${token}` : null;
+
+  const generateInviteMessage = (email: string, role: string, inviteUrl: string | null) => {
+    const acceptSteps = inviteUrl
+      ? `To accept this invitation, open this link and sign up:
+${inviteUrl}`
+      : `To accept this invitation:
+1. Go to ${window.location.origin}
+2. Sign up or log in using this email address: ${email}
+3. Accept the invitation when prompted`;
     return `Hi there!
 
 You've been invited to join ${churchDetails.name} on ChurchCoin as a ${role} member.
 
-To accept this invitation:
-1. Go to ${appUrl}
-2. Sign up or log in using this email address: ${email}
-3. You'll be automatically added to our organization
+${acceptSteps}
 
 This invitation expires in 30 days.
 
@@ -197,7 +228,11 @@ ${currentUser.name}`;
   };
 
   const handleCopyInvite = async (invitation: Invitation) => {
-    const message = generateInviteMessage(invitation.email, invitation.role);
+    const message = generateInviteMessage(
+      invitation.email,
+      invitation.role,
+      buildInviteUrl(invitation.token)
+    );
     try {
       await navigator.clipboard.writeText(message);
       setCopiedInviteId(invitation._id);
@@ -207,8 +242,8 @@ ${currentUser.name}`;
     }
   };
 
-  const handleCopyNewInvite = async (email: string, role: string) => {
-    const message = generateInviteMessage(email, role);
+  const handleCopyNewInvite = async (email: string, role: string, inviteUrl: string) => {
+    const message = generateInviteMessage(email, role, inviteUrl);
     try {
       await navigator.clipboard.writeText(message);
       return true;
@@ -682,16 +717,25 @@ ${currentUser.name}`;
                                     <div className="text-sm font-semibold text-ink break-all">{invitation.email}</div>
                                     <div className="text-xs text-grey-mid mt-0.5 flex items-center gap-2">
                                         <span>{invitation.role}</span>
-                                        <span className="inline-flex items-center gap-1 text-[#a9743f]">
+                                        <span className={`inline-flex items-center gap-1 ${invitation.expiresAt <= Date.now() ? 'text-error font-semibold' : 'text-[#a9743f]'}`}>
                                             <Clock size={11} strokeWidth={2} /> {formatExpiryDate(invitation.expiresAt)}
                                         </span>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
                                     <button
+                                        onClick={() => handleResendInvitation(invitation._id)}
+                                        disabled={resendingInviteId === invitation._id}
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] border border-ledger bg-white text-[12.5px] font-semibold text-ink hover:border-grey-mid transition-colors disabled:opacity-50"
+                                        title="Email the invitation again and extend its expiry"
+                                    >
+                                        <Mail size={14} strokeWidth={1.9} className="text-grey-mid" />
+                                        {resendingInviteId === invitation._id ? 'Sending…' : 'Resend'}
+                                    </button>
+                                    <button
                                         onClick={() => handleCopyInvite(invitation)}
                                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] border border-ledger bg-white text-[12.5px] font-semibold text-ink hover:border-grey-mid transition-colors"
-                                        title="Copy invite message"
+                                        title="Copy invite message with link"
                                     >
                                         {copiedInviteId === invitation._id ? (
                                             <><Check size={14} strokeWidth={1.9} className="text-sage" /> Copied!</>
@@ -780,10 +824,12 @@ ${currentUser.name}`;
                     // Success state with copy option
                     <div className="p-6 space-y-4">
                         <div className="text-center">
-                            <div className="w-12 h-12 bg-sage-light rounded-full flex items-center justify-center mx-auto mb-3">
-                                <Check size={24} className="text-sage" />
+                            <div className={`w-12 h-12 ${inviteSuccess.emailSent ? 'bg-sage-light' : 'bg-amber-light'} rounded-full flex items-center justify-center mx-auto mb-3`}>
+                                <Check size={24} className={inviteSuccess.emailSent ? 'text-sage' : 'text-amber'} />
                             </div>
-                            <h4 className="font-bold text-ink">Invitation Sent!</h4>
+                            <h4 className="font-bold text-ink">
+                                {inviteSuccess.emailSent ? 'Invitation Emailed!' : 'Invitation Created'}
+                            </h4>
                             <p className="text-sm text-grey-mid mt-1">
                                 Invited <span className="font-mono text-ink">{inviteSuccess.email}</span> as {inviteSuccess.role}
                             </p>
@@ -792,11 +838,18 @@ ${currentUser.name}`;
                         <div className="p-4 bg-paper border border-ledger rounded-[10px]">
                             <p className="text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-2">Share Instructions</p>
                             <p className="text-xs text-grey-dark leading-relaxed mb-3">
-                                Copy the invite message below and send it to the user via email, WhatsApp, or any messenger.
+                                {inviteSuccess.emailSent
+                                    ? 'An email with the invite link is on its way. You can also copy the message below to share via WhatsApp or any messenger.'
+                                    : 'The email could not be sent automatically, so copy the invite message below and send it to the user via email, WhatsApp, or any messenger.'}
                             </p>
+                            {!inviteSuccess.emailSent && inviteSuccess.emailError && (
+                                <p className="text-[11px] text-[#7a5a30] bg-[#fcf7f0] border border-[#ecd8bd] rounded-[8px] px-3 py-2 leading-relaxed mb-3">
+                                    {inviteSuccess.emailError}
+                                </p>
+                            )}
                             <button
                                 onClick={async () => {
-                                    const copied = await handleCopyNewInvite(inviteSuccess.email, inviteSuccess.role);
+                                    const copied = await handleCopyNewInvite(inviteSuccess.email, inviteSuccess.role, inviteSuccess.inviteUrl);
                                     if (copied) setCopiedNewInvite(true);
                                 }}
                                 className={`w-full py-2.5 rounded-[9px] text-sm font-bold uppercase tracking-[0.04em] flex items-center justify-center gap-2 transition-all ${
@@ -838,7 +891,7 @@ ${currentUser.name}`;
                                 placeholder="user@example.com"
                                 className={inputClass}
                             />
-                            <p className="text-[10.5px] text-grey-mid mt-1">The user will need to sign up with this email address.</p>
+                            <p className="text-[10.5px] text-grey-mid mt-1">We'll email an invite link to this address. The link works even if they sign up with a different email.</p>
                         </div>
                         <div>
                             <label className={labelClass}>Role</label>
@@ -855,13 +908,13 @@ ${currentUser.name}`;
                         </div>
                         <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
                             <p className="text-xs text-[#7a5a30] leading-relaxed">
-                                The invitation will expire in 30 days. After creating, you'll get a message to share with the user.
+                                The invitation will expire in 30 days. We'll email the invite link, and you'll also get a message you can share directly.
                             </p>
                         </div>
                         <div className="flex justify-end gap-3 pt-2">
                             <button type="button" onClick={handleCloseInviteModal} className="px-4 py-2 text-xs font-bold uppercase tracking-[0.04em] text-grey-mid hover:bg-paper rounded-[9px] transition-colors">Cancel</button>
-                            <button type="submit" className={primaryBtnClass}>
-                                <Mail size={14} strokeWidth={1.9} /> Create Invitation
+                            <button type="submit" disabled={isCreatingInvite} className={primaryBtnClass}>
+                                <Mail size={14} strokeWidth={1.9} /> {isCreatingInvite ? 'Sending…' : 'Send Invitation'}
                             </button>
                         </div>
                     </form>

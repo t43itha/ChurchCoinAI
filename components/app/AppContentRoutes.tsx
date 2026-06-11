@@ -11,6 +11,7 @@ import {
   FundCreateInput,
   Invitation,
   InvitationCreateInput,
+  InvitationSendResult,
   Pledge,
   PledgeCreateInput,
   Transaction,
@@ -55,7 +56,8 @@ interface AppContentRoutesProps {
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
   onAddCategory: (categoryName: string) => void;
   onRemoveCategory: (categoryName: string) => void;
-  onInviteUser: (invitation: InvitationCreateInput) => void;
+  onInviteUser: (invitation: InvitationCreateInput) => Promise<InvitationSendResult | null>;
+  onResendInvitation: (invitationId: string) => Promise<InvitationSendResult | null>;
   onCancelInvitation: (invitationId: string) => void;
   onUpdateChurchDetails: (details: ChurchDetails) => void;
   onAddFund: (fund: FundCreateInput) => void;
@@ -212,6 +214,7 @@ const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
                 onAddCategory={props.onAddCategory}
                 onRemoveCategory={props.onRemoveCategory}
                 onInviteUser={props.onInviteUser}
+                onResendInvitation={props.onResendInvitation}
                 onCancelInvitation={props.onCancelInvitation}
                 onUpdateChurchDetails={props.onUpdateChurchDetails}
                 onAddFund={props.onAddFund}

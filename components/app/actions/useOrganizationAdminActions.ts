@@ -1,9 +1,10 @@
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import {
   ChurchDetails,
   InvitationCreateInput,
+  InvitationSendResult,
   UserRole,
 } from "../../../types";
 import { ShowNotification } from "./types";
@@ -16,26 +17,67 @@ export const useOrganizationAdminActions = ({
   showNotification,
 }: UseOrganizationAdminActionsArgs) => {
   const updateUserRole = useMutation(api.mutations.users.updateRole);
-  const createInvitation = useMutation(api.mutations.invitations.create);
+  const createAndSendInvitation = useAction(api.actions.invitations.createAndSend);
+  const resendInvitation = useAction(api.actions.invitations.resend);
   const cancelInvitation = useMutation(api.mutations.invitations.cancel);
   const updateOrganization = useMutation(api.mutations.organizations.update);
 
-  const handleInviteUser = async (invitation: InvitationCreateInput) => {
+  const handleInviteUser = async (
+    invitation: InvitationCreateInput
+  ): Promise<InvitationSendResult | null> => {
     try {
-      await createInvitation({
+      const result = await createAndSendInvitation({
         email: invitation.email,
         role: invitation.role,
       });
-      showNotification(
-        "Invitation Sent",
-        `An invitation has been sent to ${invitation.email}.`
-      );
+      if (result.emailSent) {
+        showNotification(
+          "Invitation Emailed",
+          `An invitation email has been sent to ${invitation.email}.`
+        );
+      } else {
+        showNotification(
+          "Invitation Created",
+          `The email could not be sent — copy the invite link and share it with ${invitation.email}.`
+        );
+      }
+      return result;
     } catch (error: any) {
       console.error("Failed to invite user:", error);
       showNotification(
         "Error",
-        error.message || "Failed to send invitation. Please try again."
+        error.message || "Failed to create invitation. Please try again."
       );
+      return null;
+    }
+  };
+
+  const handleResendInvitation = async (
+    invitationId: string
+  ): Promise<InvitationSendResult | null> => {
+    try {
+      const result = await resendInvitation({
+        invitationId: invitationId as Id<"invitations">,
+      });
+      if (result.emailSent) {
+        showNotification(
+          "Invitation Resent",
+          "The invitation email has been sent again and its expiry extended by 30 days."
+        );
+      } else {
+        showNotification(
+          "Invitation Extended",
+          "Expiry extended by 30 days, but the email could not be sent — copy the link and share it."
+        );
+      }
+      return result;
+    } catch (error: any) {
+      console.error("Failed to resend invitation:", error);
+      showNotification(
+        "Error",
+        error.message || "Failed to resend invitation. Please try again."
+      );
+      return null;
     }
   };
 
@@ -93,6 +135,7 @@ export const useOrganizationAdminActions = ({
 
   return {
     handleInviteUser,
+    handleResendInvitation,
     handleCancelInvitation,
     handleUpdateUserRole,
     handleUpdateChurchDetails,

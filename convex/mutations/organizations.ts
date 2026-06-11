@@ -32,12 +32,17 @@ export const create = mutation({
     ),
     logoUrl: v.optional(v.string()),
     userName: v.string(),
-    userEmail: v.string(),
   },
   handler: async (ctx, args) => {
     const identity = await getIdentity(ctx);
     if (!identity) {
       throw new Error("Must be signed in to create an organization");
+    }
+
+    // Email always comes from the verified Clerk identity, never the client
+    const userEmail = identity.email?.toLowerCase().trim();
+    if (!userEmail) {
+      throw new Error("No email found on your account");
     }
 
     // Check if user already has an organization
@@ -68,7 +73,7 @@ export const create = mutation({
       clerkId: identity.subject,
       organizationId,
       name: args.userName,
-      email: args.userEmail,
+      email: userEmail,
       role: "Admin",
       createdAt: Date.now(),
     });

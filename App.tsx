@@ -22,6 +22,7 @@ import AppNotificationToast, {
 } from "./components/app/AppNotificationToast";
 import { useAppActions } from "./components/app/useAppActions";
 import { subscribeToNotifications } from "./lib/notifications";
+import { getStoredInviteToken, storeInviteToken } from "./lib/inviteToken";
 
 import { Menu } from "lucide-react";
 
@@ -29,6 +30,22 @@ function App() {
   const { isLoaded, isSignedIn, user: clerkUser } = useUser();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Capture an invite token from the URL before auth so it survives the
+  // Clerk sign-up flow; Onboarding picks it up from localStorage.
+  const inviteParam = new URLSearchParams(location.search).get("invite");
+  useEffect(() => {
+    if (inviteParam) {
+      storeInviteToken(inviteParam);
+      const params = new URLSearchParams(location.search);
+      params.delete("invite");
+      navigate(
+        { pathname: location.pathname, search: params.toString() },
+        { replace: true }
+      );
+    }
+  }, [inviteParam, location.pathname, location.search, navigate]);
+  const hasStoredInvite = !!inviteParam || !!getStoredInviteToken();
   const publicLegalPage =
     location.pathname === "/privacy"
       ? "privacy"
@@ -121,6 +138,7 @@ function App() {
     handleAddCategory,
     handleRemoveCategory,
     handleInviteUser,
+    handleResendInvitation,
     handleCancelInvitation,
     handleUpdateUserRole,
     handleUpdateChurchDetails,
@@ -134,9 +152,10 @@ function App() {
     return <LoadingSpinner message="Initializing..." />;
   }
 
-  // Show landing page or auth page if not signed in
+  // Show landing page or auth page if not signed in.
+  // Invitees arriving via an invite link go straight to sign-up.
   if (!isSignedIn) {
-    if (showAuth) {
+    if (showAuth || hasStoredInvite) {
       return <AuthPage onBack={() => setShowAuth(false)} />;
     }
     return <LandingPage onGetStarted={() => setShowAuth(true)} />;
@@ -257,6 +276,7 @@ function App() {
             onAddCategory={handleAddCategory}
             onRemoveCategory={handleRemoveCategory}
             onInviteUser={handleInviteUser}
+            onResendInvitation={handleResendInvitation}
             onCancelInvitation={handleCancelInvitation}
             onUpdateChurchDetails={handleUpdateChurchDetails}
             onAddFund={handleAddFund}

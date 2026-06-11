@@ -77,11 +77,20 @@ export interface Invitation {
   role: UserRole;
   invitedBy: string;
   status: InvitationStatus;
+  token?: string;
+  lastSentAt?: number;
   createdAt: number;
   expiresAt: number;
 }
 
 export type InvitationCreateInput = Pick<Invitation, 'email' | 'role'>;
+
+export interface InvitationSendResult {
+  invitationId: string;
+  inviteUrl: string;
+  emailSent: boolean;
+  emailError?: string;
+}
 
 export interface ChurchDetails {
   name: string;
