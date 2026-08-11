@@ -3,10 +3,7 @@ import { useUser, UserButton } from "@clerk/clerk-react";
 import { useQuery } from "convex/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "./convex/_generated/api";
-import {
-  ChurchDetails,
-  Invitation,
-} from "./types";
+import { ChurchDetails } from "./types";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -20,7 +17,6 @@ import AppContentRoutes from "./components/app/AppContentRoutes";
 import AppNotificationToast, {
   AppNotification,
 } from "./components/app/AppNotificationToast";
-import { useAppActions } from "./components/app/useAppActions";
 import { subscribeToNotifications } from "./lib/notifications";
 import { getStoredInviteToken, storeInviteToken } from "./lib/inviteToken";
 
@@ -53,10 +49,6 @@ function App() {
         ? "terms"
         : null;
 
-  if (publicLegalPage) {
-    return <LegalPage type={publicLegalPage} />;
-  }
-
   // Convex queries - only run when signed in (pass "skip" to disable)
   // First, get the current user - this returns null for new users (no error)
   const currentUser = useQuery(
@@ -72,32 +64,11 @@ function App() {
   // AFTER we confirm currentUser exists (not null, not undefined)
   const hasUser = isSignedIn && currentUser !== undefined && currentUser !== null;
 
-  const funds = useQuery(
-    api.queries.funds.list,
-    hasUser ? {} : "skip"
-  );
-  const transactions = useQuery(
-    api.queries.transactions.list,
-    hasUser ? {} : "skip"
-  );
-  const pledges = useQuery(
-    api.queries.pledges.list,
-    hasUser ? {} : "skip"
-  );
-  const donors = useQuery(
-    api.queries.donors.list,
-    hasUser ? {} : "skip"
-  );
+  // Shared reference data used by every route. Route-specific data
+  // (transactions, donors, pledges, users) is fetched inside each route.
+  const funds = useQuery(api.queries.funds.list, hasUser ? {} : "skip");
   const categories = useQuery(
     api.queries.categories.listWithDetails,
-    hasUser ? {} : "skip"
-  );
-  const users = useQuery(
-    api.queries.users.listByOrganization,
-    hasUser ? {} : "skip"
-  );
-  const pendingInvitations = useQuery(
-    api.queries.invitations.listPending,
     hasUser ? {} : "skip"
   );
 
@@ -124,28 +95,11 @@ function App() {
     return unsubscribe;
   }, [showNotification]);
 
-  const {
-    handleAddDonor,
-    handleUpdateDonor,
-    handleAddPledge,
-    handleUpdatePledge,
-    handleBulkAddPledges,
-    handleBulkAddDonors,
-    handleUpdateTransaction,
-    handleAddFund,
-    handleUpdateFund,
-    handleRemoveFund,
-    handleAddCategory,
-    handleRemoveCategory,
-    handleInviteUser,
-    handleResendInvitation,
-    handleCancelInvitation,
-    handleUpdateUserRole,
-    handleUpdateChurchDetails,
-  } = useAppActions({
-    categories: categories ?? [],
-    showNotification,
-  });
+  // All hooks must run before any conditional return (Rules of Hooks), so
+  // the public legal pages are handled here rather than at the top.
+  if (publicLegalPage) {
+    return <LegalPage type={publicLegalPage} />;
+  }
 
   // Show loading while Clerk initializes
   if (!isLoaded) {
@@ -185,19 +139,10 @@ function App() {
 
   const currentOrganization = organization;
 
-  // Show loading while financial setup data loads. Ledger-heavy routes receive
-  // safe empty arrays until their own queries resolve.
-  if (
-    funds === undefined ||
-    categories === undefined
-  ) {
+  // Show loading while financial setup data loads.
+  if (funds === undefined || categories === undefined) {
     return <LoadingSpinner message="Loading financial setup..." />;
   }
-
-  // Navigate to transaction ledger filtered by fund
-  const handleViewFundLedger = (fundId: string) => {
-    navigate(`/transactions?fundId=${encodeURIComponent(fundId)}`);
-  };
 
   // Map organization details for backwards compatibility
   const churchDetails: ChurchDetails = {
@@ -208,12 +153,6 @@ function App() {
     website: currentOrganization.website,
     reportingPeriod: currentOrganization.reportingPeriod,
     logoUrl: currentOrganization.logoUrl,
-  };
-  const handlePledgeCompleted = (donorName: string, amount: number) => {
-    showNotification(
-      "Pledge Fulfilled!",
-      `${donorName} has completed their goal of £${amount.toLocaleString()}.`
-    );
   };
 
   return (
@@ -251,37 +190,8 @@ function App() {
           <AppContentRoutes
             currentUser={currentUser}
             churchDetails={churchDetails}
-            funds={funds ?? []}
-            transactions={transactions ?? []}
-            pledges={pledges ?? []}
-            donors={donors ?? []}
-            categories={categories ?? []}
-            users={users ?? []}
-            pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
-            isTransactionsLoading={transactions === undefined}
-            isPledgesLoading={pledges === undefined}
-            isDonorsLoading={donors === undefined}
-            isUsersLoading={users === undefined}
-            isInvitationsLoading={pendingInvitations === undefined}
-            onViewFundLedger={handleViewFundLedger}
-            onPledgeCompleted={handlePledgeCompleted}
-            onAddDonor={handleAddDonor}
-            onUpdateDonor={handleUpdateDonor}
-            onAddPledge={handleAddPledge}
-            onUpdatePledge={handleUpdatePledge}
-            onBulkAddPledges={handleBulkAddPledges}
-            onBulkAddDonors={handleBulkAddDonors}
-            onUpdateTransaction={handleUpdateTransaction}
-            onUpdateUserRole={handleUpdateUserRole}
-            onAddCategory={handleAddCategory}
-            onRemoveCategory={handleRemoveCategory}
-            onInviteUser={handleInviteUser}
-            onResendInvitation={handleResendInvitation}
-            onCancelInvitation={handleCancelInvitation}
-            onUpdateChurchDetails={handleUpdateChurchDetails}
-            onAddFund={handleAddFund}
-            onUpdateFund={handleUpdateFund}
-            onRemoveFund={handleRemoveFund}
+            funds={funds}
+            categories={categories}
           />
         </div>
       </main>

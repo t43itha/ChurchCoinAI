@@ -130,16 +130,6 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
   const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
 
-  if (!canView) {
-      return (
-          <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
-              <div className="w-16 h-16 bg-grey-light rounded-2xl flex items-center justify-center mb-6 text-ledger"><ShieldAlert size={32} /></div>
-              <h2 className="text-lg font-bold text-ink font-mono mb-2">Access Restricted</h2>
-              <p className="text-sm max-w-sm text-center">Your user role ({currentUser.role}) does not have permission to view donor records.</p>
-          </div>
-      );
-  }
-
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   // Per-donor giving stats for the directory list and summary strip
@@ -187,6 +177,17 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       monthLabel: new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
     };
   }, [donors, transactions, donorStats]);
+
+  // After all hooks (Rules of Hooks) — read-only roles see a notice instead
+  if (!canView) {
+      return (
+          <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
+              <div className="w-16 h-16 bg-grey-light rounded-2xl flex items-center justify-center mb-6 text-ledger"><ShieldAlert size={32} /></div>
+              <h2 className="text-lg font-bold text-ink font-mono mb-2">Access Restricted</h2>
+              <p className="text-sm max-w-sm text-center">Your user role ({currentUser.role}) does not have permission to view donor records.</p>
+          </div>
+      );
+  }
 
   const giftAidStatus = (d: Donor): { tone: string; label: string } => {
     const { lastGift } = statFor(d);
