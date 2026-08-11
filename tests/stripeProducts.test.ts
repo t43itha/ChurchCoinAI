@@ -27,6 +27,11 @@ describe("Stripe product mapping", () => {
     expect(getPlanFromStripeProduct("prod_unknown")).toBeNull();
   });
 
+  it("matches a configured product when another tier is not configured", () => {
+    vi.stubEnv("STRIPE_PRODUCT_STARTER", "");
+    expect(getPlanFromStripeProduct("prod_thriving")).toBe("thriving");
+  });
+
   it("reads recurring prices from the environment", () => {
     expect(getStripePriceId("starter")).toBe("price_starter");
     expect(getStripePriceId("growing")).toBe("price_growing");

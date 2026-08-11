@@ -4,8 +4,8 @@ import { action, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import {
   getPlanFromStripeProduct,
+  getStripePriceId,
   getStripe,
-  resolveStripePriceId,
 } from "../lib/stripe";
 import { validateRedirectUrl } from "../lib/urlValidation";
 
@@ -91,7 +91,7 @@ export const createCheckoutSession = action({
     }
 
     // Get price ID for the selected plan
-    const priceId = await resolveStripePriceId(stripe, args.plan);
+    const priceId = getStripePriceId(args.plan);
 
     // Create checkout session
     const session = await stripe.checkout.sessions.create(

@@ -86,16 +86,10 @@ export const PLAN_CONFIG = {
   },
 } as const;
 
-export async function resolveStripePriceId(
-  _stripe: Stripe,
-  plan: PlanTier
-): Promise<string> {
-  return getStripePriceId(plan);
-}
-
 export function getPlanFromStripeProduct(productId: string): PlanTier | null {
   for (const plan of PLAN_TIERS) {
-    if (productId === getStripeProductId(plan)) return plan;
+    const configuredProductId = process.env[STRIPE_PRODUCT_ENV[plan]]?.trim();
+    if (configuredProductId && productId === configuredProductId) return plan;
   }
   return null;
 }
