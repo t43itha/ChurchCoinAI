@@ -19,25 +19,35 @@ export const getStripe = (): Stripe => {
   return stripeInstance;
 };
 
-// Price IDs - set these in Convex environment variables
-export const STRIPE_PRICES = {
-  starter:
-    process.env.STRIPE_PRICE_STARTER || "price_1SdcgM3ta3s0o656P0DP6BD9",
-  growing:
-    process.env.STRIPE_PRICE_GROWING || "price_1SdchC3ta3s0o656YOnYfii8",
-  thriving:
-    process.env.STRIPE_PRICE_THRIVING || "price_1SdcjP3ta3s0o656LO347Jgv",
-} as const;
+export type PlanTier = "starter" | "growing" | "thriving";
 
-// Product IDs are stable and non-secret. Environment overrides allow test and
-// live Stripe accounts to use different products without changing code.
-export const STRIPE_PRODUCTS = {
-  starter: process.env.STRIPE_PRODUCT_STARTER || "prod_TaoILVcX3Js9gF",
-  growing: process.env.STRIPE_PRODUCT_GROWING || "prod_TaoJy477MupSeI",
-  thriving: process.env.STRIPE_PRODUCT_THRIVING || "prod_TaoMzQFnBGlIm2",
-} as const;
+const PLAN_TIERS: PlanTier[] = ["starter", "growing", "thriving"];
 
-export type PlanTier = keyof typeof STRIPE_PRICES;
+const STRIPE_PRICE_ENV: Record<PlanTier, string> = {
+  starter: "STRIPE_PRICE_STARTER",
+  growing: "STRIPE_PRICE_GROWING",
+  thriving: "STRIPE_PRICE_THRIVING",
+};
+
+const STRIPE_PRODUCT_ENV: Record<PlanTier, string> = {
+  starter: "STRIPE_PRODUCT_STARTER",
+  growing: "STRIPE_PRODUCT_GROWING",
+  thriving: "STRIPE_PRODUCT_THRIVING",
+};
+
+function requireStripeCatalogId(envName: string): string {
+  const value = process.env[envName]?.trim();
+  if (!value) throw new Error(`${envName} not configured`);
+  return value;
+}
+
+export function getStripePriceId(plan: PlanTier): string {
+  return requireStripeCatalogId(STRIPE_PRICE_ENV[plan]);
+}
+
+export function getStripeProductId(plan: PlanTier): string {
+  return requireStripeCatalogId(STRIPE_PRODUCT_ENV[plan]);
+}
 
 // Plan configurations
 export const PLAN_CONFIG = {
@@ -77,38 +87,15 @@ export const PLAN_CONFIG = {
 } as const;
 
 export async function resolveStripePriceId(
-  stripe: Stripe,
+  _stripe: Stripe,
   plan: PlanTier
 ): Promise<string> {
-  const configuredPriceId = STRIPE_PRICES[plan];
-  if (configuredPriceId) return configuredPriceId;
-
-  const config = PLAN_CONFIG[plan];
-  const prices = await stripe.prices.list({
-    product: STRIPE_PRODUCTS[plan],
-    active: true,
-    type: "recurring",
-    currency: "gbp",
-    limit: 100,
-  });
-  const matches = prices.data.filter(
-    (price) =>
-      price.recurring?.interval === "month" &&
-      price.recurring.interval_count === 1 &&
-      price.unit_amount === config.price * 100
-  );
-
-  if (matches.length !== 1) {
-    throw new Error(
-      `Expected exactly one active monthly GBP price at £${config.price} for ${plan}; found ${matches.length}. Set STRIPE_PRICE_${plan.toUpperCase()} explicitly.`
-    );
-  }
-  return matches[0].id;
+  return getStripePriceId(plan);
 }
 
 export function getPlanFromStripeProduct(productId: string): PlanTier | null {
-  if (productId === STRIPE_PRODUCTS.starter) return "starter";
-  if (productId === STRIPE_PRODUCTS.growing) return "growing";
-  if (productId === STRIPE_PRODUCTS.thriving) return "thriving";
+  for (const plan of PLAN_TIERS) {
+    if (productId === getStripeProductId(plan)) return plan;
+  }
   return null;
 }

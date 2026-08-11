@@ -69,6 +69,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   const createPortal = useAction(api.actions.stripe.createPortalSession);
   const subscription = useQuery(api.queries.subscriptions.current);
   const [loading, setLoading] = useState<PlanTier | null>(null);
+  const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -129,7 +130,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   };
 
   const handleManageBilling = async () => {
-    setLoading("starter");
+    setIsPortalLoading(true);
     try {
       const result = await createPortal({ returnUrl: window.location.href });
       window.location.assign(result.url);
@@ -138,7 +139,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
         "Billing portal unavailable",
         error instanceof Error ? error.message : "Please try again."
       );
-      setLoading(null);
+      setIsPortalLoading(false);
     }
   };
 
@@ -247,10 +248,10 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
             </p>
             <button
               onClick={handleManageBilling}
-              disabled={loading !== null}
+              disabled={isPortalLoading}
               className="btn-primary mt-6 inline-flex items-center gap-2"
             >
-              {loading ? <Loader2 size={15} className="animate-spin" /> : <Crown size={15} />}
+              {isPortalLoading ? <Loader2 size={15} className="animate-spin" /> : <Crown size={15} />}
               Manage billing
             </button>
           </div>

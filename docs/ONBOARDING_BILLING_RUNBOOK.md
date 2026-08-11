@@ -7,8 +7,12 @@
    - `APP_BASE_URL`
    - `STRIPE_SECRET_KEY`
    - `STRIPE_WEBHOOK_SECRET`
-   - optional explicit `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, and `STRIPE_PRICE_THRIVING`
-   - optional product overrides `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, and `STRIPE_PRODUCT_THRIVING`
+   - `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, and `STRIPE_PRICE_THRIVING`
+   - `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, and `STRIPE_PRODUCT_THRIVING`
+
+   ChurchCoin fails fast with the missing variable name when any catalog ID is
+   absent. Keep test and live catalog IDs in their corresponding Convex
+   deployments; the application does not fall back to account-specific IDs.
 3. Register the Convex `/stripe/webhook` endpoint in Stripe for:
    - `checkout.session.completed`
    - `customer.subscription.created`
