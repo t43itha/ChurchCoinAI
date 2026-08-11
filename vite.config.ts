@@ -1,4 +1,3 @@
-import path from "path";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -29,18 +28,19 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         output: {
-          manualChunks: {
-            convex: ["convex", "convex/react"],
-            charts: ["recharts"],
-            motion: ["framer-motion"],
+          manualChunks(moduleId) {
+            if (moduleId.includes("node_modules/convex")) return "convex";
+            if (moduleId.includes("node_modules/recharts")) return "charts";
+            if (moduleId.includes("node_modules/framer-motion")) return "motion";
+            return undefined;
           },
         },
       },
     },
-    plugins: [react()],
+    plugins: react(),
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "."),
+        "@": import.meta.dirname,
       },
     },
   };

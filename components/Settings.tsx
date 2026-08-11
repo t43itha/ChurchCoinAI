@@ -1,9 +1,10 @@
 
 import React, { useState, useRef } from 'react';
 import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
-import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, CreditCard } from 'lucide-react';
+import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
+import DataPrivacySettings from './DataPrivacySettings';
 import BillingSettings from './BillingSettings';
 import { notify } from '../lib/notifications';
 
@@ -104,12 +105,12 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
-  type SettingsTab = 'general' | 'funds' | 'categories' | 'users' | 'bank' | 'billing';
+  type SettingsTab = 'general' | 'funds' | 'categories' | 'users' | 'bank' | 'billing' | 'data';
   const getInitialTab = (): SettingsTab => {
     if (typeof window === 'undefined') return 'general';
     const tab = new URLSearchParams(window.location.search).get('tab');
     const allowedTabs = currentUser.role === 'Admin'
-      ? ['general', 'funds', 'categories', 'users', 'bank', 'billing']
+      ? ['general', 'funds', 'categories', 'users', 'bank', 'billing', 'data']
       : ['general', 'funds', 'categories', 'users', 'bank'];
     return allowedTabs.includes(tab || '')
       ? tab as SettingsTab
@@ -338,7 +339,7 @@ ${currentUser.name}`;
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Settings</h2>
-        <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, categories, users, bank connections, and billing</p>
+        <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, users, bank connections, and data controls</p>
       </header>
 
       {/* Tabs */}
@@ -352,6 +353,7 @@ ${currentUser.name}`;
             ...(currentUser.role === 'Admin'
               ? [
                   { id: 'billing', label: 'Billing', icon: CreditCard },
+                  { id: 'data', label: 'Data & Privacy', icon: Database },
                 ]
               : []),
         ].map(tab => (
@@ -818,6 +820,11 @@ ${currentUser.name}`;
 
         {activeTab === 'billing' && currentUser.role === 'Admin' && (
             <BillingSettings />
+        )}
+
+        {/* DATA & PRIVACY TAB */}
+        {activeTab === 'data' && currentUser.role === 'Admin' && (
+            <DataPrivacySettings organizationName={churchDetails.name} />
         )}
 
       </div>

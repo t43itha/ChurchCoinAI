@@ -20,6 +20,7 @@ import AppNotificationToast, {
 } from "./components/app/AppNotificationToast";
 import { subscribeToNotifications } from "./lib/notifications";
 import { getStoredInviteToken, storeInviteToken } from "./lib/inviteToken";
+import { setMonitoringContext } from "./lib/monitoring";
 import {
   clearOnboardingIntent,
   getOnboardingIntent,
@@ -85,6 +86,13 @@ function App() {
     api.queries.categories.listWithDetails,
     hasAppAccess ? {} : "skip"
   );
+
+  useEffect(() => {
+    setMonitoringContext(
+      clerkUser?.id ?? null,
+      organization?._id ? String(organization._id) : null
+    );
+  }, [clerkUser?.id, organization?._id]);
 
   // UI State (local only)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);

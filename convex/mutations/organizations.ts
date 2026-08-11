@@ -135,7 +135,7 @@ async function seedDemoOrganization(
     await ctx.db.insert("transactions", {
       organizationId,
       date: isoDateMonthsAgo(month, 3),
-      description: `Standing order ??? ${donorDefinitions[donorIndex][0]}`,
+      description: `Standing order — ${donorDefinitions[donorIndex][0]}`,
       amount: monthlyIncome,
       type: "Income",
       category: "Tithe",
@@ -154,7 +154,7 @@ async function seedDemoOrganization(
     await ctx.db.insert("transactions", {
       organizationId,
       date: isoDateMonthsAgo(month, 12),
-      description: "Northshire Energy ??? electricity and gas",
+      description: "Northshire Energy — electricity and gas",
       amount: 310 + ((month + 2) % 3) * 35,
       type: "Expenditure",
       category: "Utilities",
@@ -194,6 +194,28 @@ async function seedDemoOrganization(
     transactions: transactionCount,
   };
 }
+
+const deletableOrganizationTableValidator = v.union(
+  v.literal("users"),
+  v.literal("invitations"),
+  v.literal("funds"),
+  v.literal("donors"),
+  v.literal("pledges"),
+  v.literal("transactions"),
+  v.literal("cashCollections"),
+  v.literal("reconciliationSessions"),
+  v.literal("cashBankingReconciliations"),
+  v.literal("categories"),
+  v.literal("aiRateLimits"),
+  v.literal("intelligenceSuggestions"),
+  v.literal("subscriptions"),
+  v.literal("plaidItems"),
+  v.literal("bankConnections"),
+  v.literal("pendingBankConnections"),
+  v.literal("categorizationCorrections"),
+  v.literal("transactionCategorizationMemory"),
+  v.literal("categorizationFeedbackEvents")
+);
 
 // Create a new organization (onboarding)
 export const create = mutation({
@@ -481,5 +503,125 @@ export const updateStripeCustomerId = internalMutation({
       stripeCustomerId: args.stripeCustomerId,
     });
     return args.organizationId;
+  },
+});
+
+// Delete a bounded number of tenant records per transaction. The public action
+// loops this mutation so larger organizations do not exceed Convex transaction
+// limits and interrupted deletion attempts can safely be retried.
+export const deleteDataBatch = internalMutation({
+  args: {
+    organizationId: v.id("organizations"),
+    table: deletableOrganizationTableValidator,
+    batchSize: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = Math.max(1, Math.min(Math.floor(args.batchSize), 100));
+    const organizationId = args.organizationId;
+    let records: Array<{ _id: any }>;
+
+    switch (args.table) {
+      case "users":
+        records = await ctx.db.query("users").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "invitations":
+        records = await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "funds":
+        records = await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "donors":
+        records = await ctx.db.query("donors").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "pledges":
+        records = await ctx.db.query("pledges").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "transactions":
+        records = await ctx.db.query("transactions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "cashCollections":
+        records = await ctx.db.query("cashCollections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "reconciliationSessions":
+        records = await ctx.db.query("reconciliationSessions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "cashBankingReconciliations":
+        records = await ctx.db.query("cashBankingReconciliations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "categories":
+        records = await ctx.db.query("categories").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "aiRateLimits":
+        records = await ctx.db.query("aiRateLimits").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "intelligenceSuggestions":
+        records = await ctx.db.query("intelligenceSuggestions").withIndex("by_organization_status", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "subscriptions":
+        records = await ctx.db.query("subscriptions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "plaidItems":
+        records = await ctx.db.query("plaidItems").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "bankConnections":
+        records = await ctx.db.query("bankConnections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "pendingBankConnections":
+        records = await ctx.db.query("pendingBankConnections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "categorizationCorrections":
+        records = await ctx.db.query("categorizationCorrections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "transactionCategorizationMemory":
+        records = await ctx.db.query("transactionCategorizationMemory").withIndex("by_organization_signature", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "categorizationFeedbackEvents":
+        records = await ctx.db.query("categorizationFeedbackEvents").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+    }
+
+    await Promise.all(records.map((record) => ctx.db.delete(record._id)));
+    return { deleted: records.length };
+  },
+});
+
+// Convex tracks each index-range read in this mutation. If a concurrent write
+// inserts tenant data between these checks and the organization delete, the
+// mutation is retried and cannot commit an orphaned record.
+export const finalizeDeletion = internalMutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const organization = await ctx.db.get(args.organizationId);
+    if (!organization) return { deleted: true, pendingTable: null };
+
+    const organizationId = args.organizationId;
+    const checks: Array<[string, unknown]> = [
+      ["users", await ctx.db.query("users").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["invitations", await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["funds", await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["donors", await ctx.db.query("donors").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["pledges", await ctx.db.query("pledges").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["transactions", await ctx.db.query("transactions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["cashCollections", await ctx.db.query("cashCollections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["reconciliationSessions", await ctx.db.query("reconciliationSessions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["cashBankingReconciliations", await ctx.db.query("cashBankingReconciliations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["categories", await ctx.db.query("categories").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["aiRateLimits", await ctx.db.query("aiRateLimits").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["intelligenceSuggestions", await ctx.db.query("intelligenceSuggestions").withIndex("by_organization_status", (q) => q.eq("organizationId", organizationId)).first()],
+      ["subscriptions", await ctx.db.query("subscriptions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["plaidItems", await ctx.db.query("plaidItems").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["bankConnections", await ctx.db.query("bankConnections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["pendingBankConnections", await ctx.db.query("pendingBankConnections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["categorizationCorrections", await ctx.db.query("categorizationCorrections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["transactionCategorizationMemory", await ctx.db.query("transactionCategorizationMemory").withIndex("by_organization_signature", (q) => q.eq("organizationId", organizationId)).first()],
+      ["categorizationFeedbackEvents", await ctx.db.query("categorizationFeedbackEvents").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+    ];
+    const pending = checks.find(([, record]) => Boolean(record));
+    if (pending) {
+      return { deleted: false, pendingTable: pending[0] };
+    }
+
+    await ctx.db.delete(args.organizationId);
+    return { deleted: true, pendingTable: null };
   },
 });
