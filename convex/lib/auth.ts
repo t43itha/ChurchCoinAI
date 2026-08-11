@@ -1,5 +1,6 @@
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { Doc } from "../_generated/dataModel";
+import { requireOrganizationAccess } from "./access";
 
 export type UserRole = "Admin" | "Finance Team" | "Pastorate" | "Guest";
 
@@ -28,11 +29,22 @@ export async function getIdentity(ctx: QueryCtx | MutationCtx) {
 /**
  * Require authentication - throws if not authenticated
  */
-export async function requireAuth(ctx: QueryCtx | MutationCtx) {
+export async function requireMembership(ctx: QueryCtx | MutationCtx) {
   const user = await getCurrentUser(ctx);
   if (!user) {
     throw new Error("Unauthorized: Please sign in to continue");
   }
+  return user;
+}
+
+/**
+ * Require authenticated membership and an active organization access grant.
+ * Billing, onboarding, and access-status functions intentionally use
+ * getCurrentUser/requireMembership instead so blocked Admins can recover.
+ */
+export async function requireAuth(ctx: QueryCtx | MutationCtx) {
+  const user = await requireMembership(ctx);
+  await requireOrganizationAccess(ctx, user);
   return user;
 }
 

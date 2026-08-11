@@ -28,9 +28,13 @@ export const upsert = internalMutation({
     ),
     status: v.union(
       v.literal("active"),
+      v.literal("trialing"),
       v.literal("past_due"),
       v.literal("canceled"),
-      v.literal("incomplete")
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("unpaid"),
+      v.literal("paused")
     ),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
@@ -52,11 +56,16 @@ export const upsert = internalMutation({
       }
       await ctx.db.patch(existing._id, {
         stripeSubscriptionId: args.stripeSubscriptionId,
+        stripeCustomerId: args.stripeCustomerId,
         stripePriceId: args.stripePriceId,
         plan: args.plan,
         status: args.status,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        pastDueSince:
+          args.status === "past_due"
+            ? existing.pastDueSince ?? now
+            : undefined,
         lastStripeEventAt: args.eventTimestamp,
         updatedAt: now,
       });
@@ -71,6 +80,7 @@ export const upsert = internalMutation({
         status: args.status,
         currentPeriodEnd: args.currentPeriodEnd,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        pastDueSince: args.status === "past_due" ? now : undefined,
         lastStripeEventAt: args.eventTimestamp,
         createdAt: now,
         updatedAt: now,
@@ -85,9 +95,13 @@ export const updateStatus = internalMutation({
     stripeSubscriptionId: v.string(),
     status: v.union(
       v.literal("active"),
+      v.literal("trialing"),
       v.literal("past_due"),
       v.literal("canceled"),
-      v.literal("incomplete")
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("unpaid"),
+      v.literal("paused")
     ),
     eventTimestamp: v.optional(v.number()),
   },
@@ -102,6 +116,10 @@ export const updateStatus = internalMutation({
     if (subscription && !isStaleStripeEvent(subscription, args.eventTimestamp)) {
       await ctx.db.patch(subscription._id, {
         status: args.status,
+        pastDueSince:
+          args.status === "past_due"
+            ? subscription.pastDueSince ?? Date.now()
+            : undefined,
         lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
         updatedAt: Date.now(),
       });

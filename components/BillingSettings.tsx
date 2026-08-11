@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
+import { createClientAttemptId } from '../lib/clientId';
 import { CreditCard, ExternalLink, AlertTriangle, Check, Loader2, Sparkles, Crown } from 'lucide-react';
 import { notify } from '../lib/notifications';
 
@@ -70,7 +71,7 @@ const BillingSettings: React.FC = () => {
 
   const currentTier = subscription?.plan || null;
   const status = subscription?.status || 'none';
-  const isActive = status === 'active';
+  const isActive = status === 'active' || status === 'trialing';
   const isPastDue = status === 'past_due';
 
   const handleSubscribe = async (plan: PlanId) => {
@@ -78,8 +79,9 @@ const BillingSettings: React.FC = () => {
     try {
       const result = await createCheckout({
         plan,
-        successUrl: `${window.location.origin}?tab=settings&billing=success`,
-        cancelUrl: `${window.location.origin}?tab=settings`,
+        attemptId: createClientAttemptId(),
+        successUrl: `${window.location.origin}?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${window.location.origin}/settings?tab=billing&subscription=cancelled`,
       });
 
       if (result?.url) {

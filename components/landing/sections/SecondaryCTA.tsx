@@ -6,9 +6,10 @@ import { secondaryCTAContent } from "../constants/content";
 
 interface SecondaryCTAProps {
   onGetStarted: () => void;
+  onBookDemo: () => void;
 }
 
-export default function SecondaryCTA({ onGetStarted }: SecondaryCTAProps) {
+export default function SecondaryCTA({ onGetStarted, onBookDemo }: SecondaryCTAProps) {
   return (
     <section className="bg-black py-24 px-6">
       <div className="max-w-4xl mx-auto text-center">
@@ -58,7 +59,7 @@ export default function SecondaryCTA({ onGetStarted }: SecondaryCTAProps) {
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </motion.button>
           <motion.button
-            onClick={onGetStarted}
+            onClick={onBookDemo}
             className="border-2 border-white text-white px-8 py-4 font-medium text-lg"
             whileHover={{ backgroundColor: "rgba(255,255,255,0.1)" }}
             transition={{ duration: 0.2 }}

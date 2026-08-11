@@ -1,7 +1,7 @@
 import { query, internalQuery } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
-import { getCurrentUser } from "../lib/auth";
+import { requireAuth } from "../lib/auth";
 
 const publicAccount = (
   account: Doc<"bankConnections">["accounts"][number]
@@ -35,8 +35,7 @@ const publicConnection = (connection: Doc<"bankConnections">) => ({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return [];
+    const user = await requireAuth(ctx);
 
     const connections = await ctx.db
       .query("bankConnections")
@@ -52,8 +51,7 @@ export const list = query({
 export const getActiveWithMappedAccounts = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return [];
+    const user = await requireAuth(ctx);
 
     const connections = await ctx.db
       .query("bankConnections")
@@ -82,8 +80,7 @@ export const getActiveWithMappedAccounts = query({
 export const getItemsNeedingAttention = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return [];
+    const user = await requireAuth(ctx);
 
     const connections = await ctx.db
       .query("bankConnections")

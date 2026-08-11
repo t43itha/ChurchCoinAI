@@ -1,5 +1,15 @@
 import { query } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { resolveOrganizationAccess } from "../lib/access";
+
+export const access = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return null;
+    return await resolveOrganizationAccess(ctx, user);
+  },
+});
 
 // Get current organization's subscription
 export const current = query({
@@ -33,6 +43,6 @@ export const hasActive = query({
       )
       .first();
 
-    return subscription?.status === "active";
+    return subscription?.status === "active" || subscription?.status === "trialing";
   },
 });

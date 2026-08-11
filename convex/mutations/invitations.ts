@@ -23,7 +23,6 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const currentUser = await requireRole(ctx, ["Admin"]);
-
     // Normalize email to lowercase
     const email = args.email.toLowerCase().trim();
 
@@ -65,6 +64,9 @@ export const create = mutation({
     const organization = await ctx.db.get(currentUser.organizationId);
     if (!organization) {
       throw new Error("Organization not found");
+    }
+    if (organization.dataMode === "synthetic") {
+      throw new Error("Real invitation emails are disabled for demo organizations");
     }
 
     const now = Date.now();

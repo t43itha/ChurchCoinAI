@@ -42,6 +42,11 @@ const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
     throw new Error("Forbidden: complete onboarding first");
   }
 
+  const access = await ctx.runQuery(api.queries.subscriptions.access, {});
+  if (!access?.canUseApp) {
+    throw new Error("Organization access is not active");
+  }
+
   const { internal } = (await import("../_generated/api")) as any;
   const configuredLimit = Number(process.env.AI_RATE_LIMIT_PER_MINUTE);
   const perMinuteLimit =

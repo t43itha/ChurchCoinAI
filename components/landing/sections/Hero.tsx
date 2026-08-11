@@ -29,6 +29,7 @@ import {
 
 interface HeroProps {
   onGetStarted: () => void;
+  onBookDemo: () => void;
 }
 
 // Live Progress Bar Component (matches original exactly)
@@ -141,7 +142,7 @@ function FloatingCard({ children }: { children: ReactNode }) {
   );
 }
 
-export default function Hero({ onGetStarted }: HeroProps) {
+export default function Hero({ onGetStarted, onBookDemo }: HeroProps) {
   const { heroCard, progressBars } = landingContent;
 
   return (
@@ -294,7 +295,7 @@ export default function Hero({ onGetStarted }: HeroProps) {
                   transition={{ duration: 0.2 }}
                 >
                   <button
-                    onClick={onGetStarted}
+                    onClick={onBookDemo}
                     className="border-2 border-black text-black px-8 py-4 font-medium text-lg block"
                   >
                     {landingContent.hero.secondaryCta}

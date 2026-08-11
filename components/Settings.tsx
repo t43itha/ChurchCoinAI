@@ -1,9 +1,10 @@
 
 import React, { useState, useRef } from 'react';
 import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
-import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check } from 'lucide-react';
+import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, CreditCard } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
+import BillingSettings from './BillingSettings';
 import { notify } from '../lib/notifications';
 
 // Refined Ledger tone palette (dot badges)
@@ -103,11 +104,14 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
-  type SettingsTab = 'general' | 'funds' | 'categories' | 'users' | 'bank';
+  type SettingsTab = 'general' | 'funds' | 'categories' | 'users' | 'bank' | 'billing';
   const getInitialTab = (): SettingsTab => {
     if (typeof window === 'undefined') return 'general';
     const tab = new URLSearchParams(window.location.search).get('tab');
-    return ['general', 'funds', 'categories', 'users', 'bank'].includes(tab || '')
+    const allowedTabs = currentUser.role === 'Admin'
+      ? ['general', 'funds', 'categories', 'users', 'bank', 'billing']
+      : ['general', 'funds', 'categories', 'users', 'bank'];
+    return allowedTabs.includes(tab || '')
       ? tab as SettingsTab
       : 'general';
   };
@@ -334,7 +338,7 @@ ${currentUser.name}`;
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Settings</h2>
-        <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, categories, users, and bank connections</p>
+        <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, categories, users, bank connections, and billing</p>
       </header>
 
       {/* Tabs */}
@@ -345,6 +349,11 @@ ${currentUser.name}`;
             { id: 'categories', label: 'Categories', icon: Tag },
             { id: 'users', label: 'Users', icon: Users },
             { id: 'bank', label: 'Bank Connections', icon: Landmark },
+            ...(currentUser.role === 'Admin'
+              ? [
+                  { id: 'billing', label: 'Billing', icon: CreditCard },
+                ]
+              : []),
         ].map(tab => (
             <button
                 key={tab.id}
@@ -805,6 +814,10 @@ ${currentUser.name}`;
         {/* BANK CONNECTIONS TAB */}
         {activeTab === 'bank' && (
             <BankConnectionsSettings funds={funds} />
+        )}
+
+        {activeTab === 'billing' && currentUser.role === 'Admin' && (
+            <BillingSettings />
         )}
 
       </div>

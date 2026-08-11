@@ -6,7 +6,7 @@ import { PricingCard } from "../ui";
 import { staggerContainerVariants } from "../constants/animations";
 
 interface PricingProps {
-  onGetStarted: () => void;
+  onGetStarted: (plan: "starter" | "growing" | "thriving") => void;
 }
 
 export default function Pricing({ onGetStarted }: PricingProps) {
@@ -42,7 +42,11 @@ export default function Pricing({ onGetStarted }: PricingProps) {
           viewport={{ once: true }}
         >
           {pricing.map((tier) => (
-            <PricingCard key={tier.id} tier={tier} onCTAClick={onGetStarted} />
+            <PricingCard
+              key={tier.id}
+              tier={tier}
+              onCTAClick={() => onGetStarted(tier.id as "starter" | "growing" | "thriving")}
+            />
           ))}
         </motion.div>
 

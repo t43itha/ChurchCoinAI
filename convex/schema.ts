@@ -12,6 +12,21 @@ export default defineSchema({
     reportingPeriod: v.optional(v.union(v.literal("tax_year"), v.literal("calendar_year"))),
     logoUrl: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()), // Stripe customer ID for billing
+    // Missing values are treated as `legacy` during the billing re-enable
+    // migration so existing churches are not unexpectedly locked out.
+    accessMode: v.optional(v.union(
+      v.literal("subscription"),
+      v.literal("demo"),
+      v.literal("legacy")
+    )),
+    dataMode: v.optional(v.union(v.literal("live"), v.literal("synthetic"))),
+    accessExpiresAt: v.optional(v.number()),
+    demoSeedStatus: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("failed")
+    )),
+    demoSeedVersion: v.optional(v.string()),
     createdAt: v.number(),
     createdBy: v.string(), // Clerk userId
   })
@@ -366,13 +381,18 @@ export default defineSchema({
       v.literal("thriving")
     ),
     status: v.union(
+      v.literal("trialing"),
       v.literal("active"),
       v.literal("past_due"),
       v.literal("canceled"),
-      v.literal("incomplete")
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("unpaid"),
+      v.literal("paused")
     ),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
+    pastDueSince: v.optional(v.number()),
     // Timestamp of the newest Stripe event applied; guards against retried
     // or out-of-order webhooks overwriting newer state
     lastStripeEventAt: v.optional(v.number()),
