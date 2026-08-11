@@ -2,29 +2,13 @@ import { query, internalQuery } from "../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { getCurrentUser, getIdentity, requireRole } from "../lib/auth";
-import type { OrganizationDataTable } from "../../lib/organizationData";
+import {
+  ORGANIZATION_DATA_TABLES,
+  type OrganizationDataTable,
+} from "../../lib/organizationData";
 
 const organizationDataTableValidator = v.union(
-  v.literal("organizations"),
-  v.literal("users"),
-  v.literal("invitations"),
-  v.literal("funds"),
-  v.literal("donors"),
-  v.literal("pledges"),
-  v.literal("transactions"),
-  v.literal("cashCollections"),
-  v.literal("reconciliationSessions"),
-  v.literal("cashBankingReconciliations"),
-  v.literal("categories"),
-  v.literal("aiRateLimits"),
-  v.literal("intelligenceSuggestions"),
-  v.literal("subscriptions"),
-  v.literal("plaidItems"),
-  v.literal("bankConnections"),
-  v.literal("pendingBankConnections"),
-  v.literal("categorizationCorrections"),
-  v.literal("transactionCategorizationMemory"),
-  v.literal("categorizationFeedbackEvents")
+  ...ORGANIZATION_DATA_TABLES.map((table) => v.literal(table))
 );
 
 const sanitizeExportRecord = (

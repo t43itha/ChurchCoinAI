@@ -1,6 +1,7 @@
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getIdentity, requireAuth, isAdmin } from "../lib/auth";
+import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 
 // Default categories for new organizations
 const DEFAULT_CATEGORIES = [
@@ -196,25 +197,7 @@ async function seedDemoOrganization(
 }
 
 const deletableOrganizationTableValidator = v.union(
-  v.literal("users"),
-  v.literal("invitations"),
-  v.literal("funds"),
-  v.literal("donors"),
-  v.literal("pledges"),
-  v.literal("transactions"),
-  v.literal("cashCollections"),
-  v.literal("reconciliationSessions"),
-  v.literal("cashBankingReconciliations"),
-  v.literal("categories"),
-  v.literal("aiRateLimits"),
-  v.literal("intelligenceSuggestions"),
-  v.literal("subscriptions"),
-  v.literal("plaidItems"),
-  v.literal("bankConnections"),
-  v.literal("pendingBankConnections"),
-  v.literal("categorizationCorrections"),
-  v.literal("transactionCategorizationMemory"),
-  v.literal("categorizationFeedbackEvents")
+  ...ORGANIZATION_DELETION_TABLES.map((table) => v.literal(table))
 );
 
 // Create a new organization (onboarding)
