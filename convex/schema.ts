@@ -64,7 +64,8 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_email_organization", ["email", "organizationId"])
     .index("by_token", ["token"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_status_expiresAt", ["status", "expiresAt"]),
 
   // Funds (no stored balance - computed from transactions)
   funds: defineTable({
@@ -306,21 +307,6 @@ export default defineSchema({
     .index("by_organization_name", ["organizationId", "name"])
     .index("by_organization_mainCategory", ["organizationId", "mainCategory"]),
 
-  // AI Chat History (for context persistence)
-  chatHistory: defineTable({
-    organizationId: v.id("organizations"),
-    clerkId: v.string(),
-    messages: v.array(
-      v.object({
-        role: v.union(v.literal("user"), v.literal("assistant")),
-        content: v.string(),
-        timestamp: v.number(),
-      })
-    ),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_organization_user", ["organizationId", "clerkId"]),
-
   // Per-organization AI rate limiting window state
   aiRateLimits: defineTable({
     organizationId: v.id("organizations"),
@@ -469,7 +455,8 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_provider_connection", ["provider", "providerConnectionId"])
-    .index("by_organization_status", ["organizationId", "status"]),
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_status_consentExpiresAt", ["status", "consentExpiresAt"]),
 
   pendingBankConnections: defineTable({
     organizationId: v.id("organizations"),
@@ -493,7 +480,8 @@ export default defineSchema({
   })
     .index("by_state", ["state"])
     .index("by_organization", ["organizationId"])
-    .index("by_organization_status", ["organizationId", "status"]),
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_status_expiresAt", ["status", "expiresAt"]),
 
   // AI Categorization corrections tracking (for ML learning)
   categorizationCorrections: defineTable({
