@@ -7,7 +7,10 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { clerkAppearance } from "./lib/clerkAppearance";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { initializeMonitoring } from "./lib/monitoring";
 import "./styles.css";
+
+initializeMonitoring();
 
 // Initialize Convex client
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);

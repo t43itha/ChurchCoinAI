@@ -1,4 +1,5 @@
 import React from "react";
+import { captureRenderError } from "../lib/monitoring";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -23,6 +24,7 @@ class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Unhandled render error:", error, errorInfo);
+    captureRenderError(error, errorInfo);
   }
 
   render() {
