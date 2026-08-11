@@ -1,4 +1,5 @@
 import { filterActiveTransactions, isActiveTransaction } from "./voidedTransactions";
+import { roundMoney } from "../convex/lib/money";
 
 export type ReportableTransaction = {
   amount: number;
@@ -47,19 +48,23 @@ export function filterReportableTransactions<T extends ReportableTransaction>(
 export function sumReportableIncome<T extends ReportableTransaction>(
   transactions: T[]
 ) {
-  return filterReportableTransactions(transactions)
-    .filter((transaction) => transaction.type === "Income")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  return roundMoney(
+    filterReportableTransactions(transactions)
+      .filter((transaction) => transaction.type === "Income")
+      .reduce((sum, transaction) => sum + transaction.amount, 0)
+  );
 }
 
 export function sumReportableSigned<T extends ReportableTransaction>(
   transactions: T[]
 ) {
-  return filterReportableTransactions(transactions).reduce(
-    (sum, transaction) =>
-      transaction.type === "Income"
-        ? sum + transaction.amount
-        : sum - transaction.amount,
-    0
+  return roundMoney(
+    filterReportableTransactions(transactions).reduce(
+      (sum, transaction) =>
+        transaction.type === "Income"
+          ? sum + transaction.amount
+          : sum - transaction.amount,
+      0
+    )
   );
 }
