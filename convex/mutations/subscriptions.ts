@@ -1,4 +1,4 @@
-import { query, internalMutation } from "../_generated/server";
+import { query, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, isAdmin } from "../lib/auth";
 import { Id, Doc } from "../_generated/dataModel";
@@ -13,6 +13,18 @@ const isStaleStripeEvent = (
   eventTimestamp !== undefined &&
   subscription.lastStripeEventAt !== undefined &&
   eventTimestamp < subscription.lastStripeEventAt;
+
+const markProductTrialConverted = async (
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  status: Doc<"subscriptions">["status"]
+) => {
+  if (status !== "active" && status !== "trialing") return;
+  const organization = await ctx.db.get(organizationId);
+  if (organization?.trialStatus === "active" || organization?.trialStatus === "expired") {
+    await ctx.db.patch(organizationId, { trialStatus: "converted" });
+  }
+};
 
 // Upsert subscription (called by webhook handler)
 export const upsert = internalMutation({
@@ -69,9 +81,10 @@ export const upsert = internalMutation({
         lastStripeEventAt: args.eventTimestamp,
         updatedAt: now,
       });
+      await markProductTrialConverted(ctx, args.organizationId, args.status);
       return existing._id;
     } else {
-      return await ctx.db.insert("subscriptions", {
+      const subscriptionId = await ctx.db.insert("subscriptions", {
         organizationId: args.organizationId,
         stripeCustomerId: args.stripeCustomerId,
         stripeSubscriptionId: args.stripeSubscriptionId,
@@ -85,6 +98,8 @@ export const upsert = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
+      await markProductTrialConverted(ctx, args.organizationId, args.status);
+      return subscriptionId;
     }
   },
 });
@@ -123,6 +138,11 @@ export const updateStatus = internalMutation({
         lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
         updatedAt: Date.now(),
       });
+      await markProductTrialConverted(
+        ctx,
+        subscription.organizationId,
+        args.status
+      );
     }
   },
 });

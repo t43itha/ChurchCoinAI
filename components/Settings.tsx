@@ -1,5 +1,6 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
 import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
 
@@ -105,6 +106,7 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateFund,
   onRemoveFund
 }) => {
+  const location = useLocation();
   type SettingsTab = 'general' | 'funds' | 'categories' | 'users' | 'bank' | 'billing' | 'data';
   const getInitialTab = (): SettingsTab => {
     if (typeof window === 'undefined') return 'general';
@@ -118,6 +120,16 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab);
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(location.search).get('tab');
+    const allowedTabs = currentUser.role === 'Admin'
+      ? ['general', 'funds', 'categories', 'users', 'bank', 'billing', 'data']
+      : ['general', 'funds', 'categories', 'users', 'bank'];
+    if (requestedTab && allowedTabs.includes(requestedTab)) {
+      setActiveTab(requestedTab as SettingsTab);
+    }
+  }, [currentUser.role, location.search]);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [localChurchDetails, setLocalChurchDetails] = useState<ChurchDetails>(churchDetails);
 

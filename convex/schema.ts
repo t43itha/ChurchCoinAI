@@ -21,6 +21,20 @@ export default defineSchema({
     )),
     dataMode: v.optional(v.union(v.literal("live"), v.literal("synthetic"))),
     accessExpiresAt: v.optional(v.number()),
+    // Server-issued, no-card product trial. This remains separate from a
+    // Stripe `trialing` subscription so sign-up never creates billing data.
+    trialStatus: v.optional(v.union(
+      v.literal("active"),
+      v.literal("converted"),
+      v.literal("expired")
+    )),
+    trialStartedAt: v.optional(v.number()),
+    trialEndsAt: v.optional(v.number()),
+    trialPlan: v.optional(v.union(
+      v.literal("starter"),
+      v.literal("growing"),
+      v.literal("thriving")
+    )),
     demoSeedStatus: v.optional(v.union(
       v.literal("pending"),
       v.literal("ready"),

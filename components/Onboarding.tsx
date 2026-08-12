@@ -19,6 +19,7 @@ import {
   getStoredInviteToken,
   storeInviteToken,
 } from "../lib/inviteToken";
+import type { PlanTier } from "../lib/onboardingIntent";
 
 interface OnboardingProps {
   clerkUser: {
@@ -28,6 +29,7 @@ interface OnboardingProps {
     fullName?: string | null;
   } | null;
   onComplete: (result?: "invitation" | "organization") => void;
+  selectedPlan?: PlanTier;
 }
 
 type View = "invites" | "enter-link" | "create-org";
@@ -35,7 +37,7 @@ type View = "invites" | "enter-link" | "create-org";
 const inputClass =
   "w-full px-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-all placeholder-grey-mid";
 
-const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
+const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }) => {
   const [inviteToken, setInviteToken] = useState<string | null>(
     getStoredInviteToken()
   );
@@ -116,6 +118,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
         charityNumber: orgCharityNum || undefined,
         reportingPeriod: "tax_year",
         userName: userName,
+        selectedPlan,
       });
       clearStoredInviteToken();
       onComplete("organization");
