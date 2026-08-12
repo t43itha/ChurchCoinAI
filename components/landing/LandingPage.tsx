@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -280,17 +280,56 @@ function HeroProductPreview() {
 }
 
 function TourModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusableElements = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => element.getAttribute("aria-hidden") !== "true");
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+      const currentIndex = focusableElements.findIndex((element) => element === activeElement);
+      const nextElement = event.shiftKey
+        ? currentIndex <= 0
+          ? lastElement
+          : focusableElements[currentIndex - 1]
+        : currentIndex < 0 || activeElement === lastElement
+          ? firstElement
+          : focusableElements[currentIndex + 1];
+
+      event.preventDefault();
+      nextElement.focus();
     };
-    window.addEventListener("keydown", closeOnEscape);
+
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus();
     };
   }, [open, onClose]);
 
@@ -310,6 +349,7 @@ function TourModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           aria-label="ChurchCoin one-minute demo"
         >
           <motion.div
+            ref={dialogRef}
             className="w-full max-w-5xl overflow-hidden rounded-2xl border border-white/15 bg-ink shadow-2xl"
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -326,6 +366,7 @@ function TourModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 </p>
               </div>
               <button
+                ref={closeButtonRef}
                 onClick={onClose}
                 className="rounded-lg border border-white/20 p-2 text-white/80 transition hover:bg-white/10 hover:text-white"
                 aria-label="Close demo"
@@ -338,7 +379,9 @@ function TourModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               className="max-h-[calc(100vh-9rem)] w-full bg-black object-contain"
               controls
               autoPlay
+              muted
               playsInline
+              tabIndex={0}
             />
           </motion.div>
         </motion.div>
@@ -356,16 +399,7 @@ export default function LandingPage({
   const [tourOpen, setTourOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const reduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    document.title = "ChurchCoin | Church Accounting Software for UK Treasurers";
-    const description =
-      document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (description) {
-      description.content =
-        "Church finance software that categorises your transactions, tracks restricted funds, handles Gift Aid and prepares your year-end figures. Built for volunteer treasurers. Free to start.";
-    }
-  }, []);
+  const closeTour = useCallback(() => setTourOpen(false), []);
 
   const motionProps = reduceMotion
     ? {}
@@ -383,7 +417,7 @@ export default function LandingPage({
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-paper text-ink selection:bg-amber-light selection:text-amber-dark">
-      <TourModal open={tourOpen} onClose={() => setTourOpen(false)} />
+      <TourModal open={tourOpen} onClose={closeTour} />
 
       <header className="fixed inset-x-0 top-0 z-50 border-b border-ledger bg-paper/95 backdrop-blur-xl">
         <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
