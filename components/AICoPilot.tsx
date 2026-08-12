@@ -3,11 +3,6 @@ import { Send, Loader2, Sparkles, RotateCcw, MessageSquare } from 'lucide-react'
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 
-interface AICoPilotProps {
-    // Props kept for backwards compatibility but no longer used
-    // AI context is now fetched via useQuery for comprehensive data
-}
-
 interface Message {
     id: string;
     sender: 'user' | 'ai';
@@ -31,7 +26,7 @@ const starterPrompts = [
     'Which donors need follow-up?'
 ];
 
-const AICoPilot: React.FC<AICoPilotProps> = () => {
+const AICoPilot: React.FC = () => {
     const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);

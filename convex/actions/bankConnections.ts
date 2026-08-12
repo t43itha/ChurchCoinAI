@@ -27,6 +27,14 @@ const requireUser = async (ctx: ActionCtx) => {
     throw new Error("Forbidden: complete onboarding first");
   }
 
+  const access = await ctx.runQuery(api.queries.subscriptions.access, {});
+  if (!access?.canUseApp) {
+    throw new Error("Organization access is not active");
+  }
+  if (access.dataMode === "synthetic") {
+    throw new Error("Live bank connections are disabled for demo organizations");
+  }
+
   return currentUser;
 };
 

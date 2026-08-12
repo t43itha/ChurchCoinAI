@@ -309,7 +309,7 @@ export const cleanupDuplicates = internalMutation({
   },
   handler: async (ctx, args) => {
     // If no org specified, get all orgs and process each
-    let orgIds: Id<"organizations">[] = [];
+    let orgIds: Id<"organizations">[];
 
     if (args.organizationId) {
       orgIds = [args.organizationId];

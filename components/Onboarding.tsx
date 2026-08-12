@@ -27,7 +27,7 @@ interface OnboardingProps {
     emailAddresses?: { emailAddress: string }[];
     fullName?: string | null;
   } | null;
-  onComplete: () => void;
+  onComplete: (result?: "invitation" | "organization") => void;
 }
 
 type View = "invites" | "enter-link" | "create-org";
@@ -83,7 +83,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
         invitationId: params.invitationId as Id<"invitations"> | undefined,
       });
       clearStoredInviteToken();
-      onComplete();
+      onComplete("invitation");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to accept invitation"
@@ -118,7 +118,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete }) => {
         userName: userName,
       });
       clearStoredInviteToken();
-      onComplete();
+      onComplete("organization");
     } catch (err) {
       console.error("Onboarding error:", err);
       setError(

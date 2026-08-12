@@ -50,4 +50,15 @@ describe("reportable transaction helpers", () => {
     expect(sumReportableIncome(transactions)).toBe(175);
     expect(sumReportableSigned(transactions)).toBe(155);
   });
+
+  it("rounds accumulated report totals to the nearest penny", () => {
+    const fractionalTransactions = [
+      { amount: 0.1, type: "Income" as const },
+      { amount: 0.2, type: "Income" as const },
+      { amount: 0.1, type: "Expenditure" as const },
+    ];
+
+    expect(sumReportableIncome(fractionalTransactions)).toBe(0.3);
+    expect(sumReportableSigned(fractionalTransactions)).toBe(0.2);
+  });
 });

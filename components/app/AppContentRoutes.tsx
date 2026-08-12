@@ -1,21 +1,24 @@
 import React, { Suspense, lazy } from "react";
-import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import LoadingSpinner from "../LoadingSpinner";
+import { notify } from "../../lib/notifications";
+import { useDonorPledgeActions } from "./actions/useDonorPledgeActions";
+import { useFundCategoryActions } from "./actions/useFundCategoryActions";
+import { useOrganizationAdminActions } from "./actions/useOrganizationAdminActions";
 import {
   AppUser,
   Category,
   ChurchDetails,
-  Donor,
-  DonorCreateInput,
   Fund,
-  FundCreateInput,
   Invitation,
-  InvitationCreateInput,
-  InvitationSendResult,
-  Pledge,
-  PledgeCreateInput,
-  Transaction,
-  UserRole,
 } from "../../types";
 
 const Dashboard = lazy(() => import("../Dashboard"));
@@ -27,53 +30,37 @@ const Reports = lazy(() => import("../Reports"));
 const AICoPilot = lazy(() => import("../AICoPilot"));
 const Settings = lazy(() => import("../Settings"));
 
-interface AppContentRoutesProps {
+// Shared context every route needs; route-specific data (transactions,
+// donors, pledges, users) is fetched by each route so only the active
+// page subscribes to it.
+interface RouteContext {
   currentUser: AppUser;
   churchDetails: ChurchDetails;
   funds: Fund[];
-  transactions: Transaction[];
-  pledges: Pledge[];
-  donors: Donor[];
   categories: Category[];
-  users: AppUser[];
-  pendingInvitations: Invitation[];
-  isTransactionsLoading: boolean;
-  isPledgesLoading: boolean;
-  isDonorsLoading: boolean;
-  isUsersLoading: boolean;
-  isInvitationsLoading: boolean;
-  onViewFundLedger: (fundId: string) => void;
-  onPledgeCompleted: (donorName: string, amount: number) => void;
-  onAddDonor: (donor: DonorCreateInput) => Promise<string | undefined>;
-  onUpdateDonor: (donor: Donor) => void;
-  onAddPledge: (pledge: PledgeCreateInput) => void;
-  onUpdatePledge: (pledge: Pledge) => void;
-  onBulkAddPledges: (pledgesToAdd: PledgeCreateInput[]) => void;
-  onBulkAddDonors: (
-    donorsToAdd: DonorCreateInput[]
-  ) => Promise<{ id: string; name: string; isNew: boolean }[]>;
-  onUpdateTransaction: (transaction: Transaction) => void;
-  onUpdateUserRole: (userId: string, newRole: UserRole) => void;
-  onAddCategory: (categoryName: string) => void;
-  onRemoveCategory: (categoryName: string) => void;
-  onInviteUser: (invitation: InvitationCreateInput) => Promise<InvitationSendResult | null>;
-  onResendInvitation: (invitationId: string) => Promise<InvitationSendResult | null>;
-  onCancelInvitation: (invitationId: string) => void;
-  onUpdateChurchDetails: (details: ChurchDetails) => void;
-  onAddFund: (fund: FundCreateInput) => void;
-  onUpdateFund: (fund: Fund) => void;
-  onRemoveFund: (fundId: string) => void;
 }
 
-const TransactionsRoute: React.FC<{
-  funds: Fund[];
-  pledges: Pledge[];
-  categories: Category[];
-  currentUser: AppUser;
-  onPledgeCompleted: (donorName: string, amount: number) => void;
-}> = ({ funds, pledges, categories, currentUser, onPledgeCompleted }) => {
+const financialDataLoader = (
+  <LoadingSpinner message="Loading financial data..." />
+);
+
+const handlePledgeCompleted = (donorName: string, amount: number) => {
+  notify(
+    "Pledge Fulfilled!",
+    `${donorName} has completed their goal of £${amount.toLocaleString()}.`
+  );
+};
+
+const TransactionsRoute: React.FC<RouteContext> = ({
+  funds,
+  categories,
+  currentUser,
+}) => {
   const [searchParams] = useSearchParams();
   const initialFundId = searchParams.get("fundId") ?? undefined;
+  const pledges = useQuery(api.queries.pledges.list, {});
+
+  if (pledges === undefined) return financialDataLoader;
 
   return (
     <TransactionManager
@@ -82,14 +69,155 @@ const TransactionsRoute: React.FC<{
       categories={categories}
       currentUser={currentUser}
       initialFundId={initialFundId}
-      onPledgeCompleted={onPledgeCompleted}
+      onPledgeCompleted={handlePledgeCompleted}
     />
   );
 };
 
-const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
-  const financialDataLoader = <LoadingSpinner message="Loading financial data..." />;
+const FundsRoute: React.FC<RouteContext> = ({ funds }) => {
+  const navigate = useNavigate();
+  const transactions = useQuery(api.queries.transactions.list, {});
 
+  if (transactions === undefined) return financialDataLoader;
+
+  return (
+    <FundManager
+      funds={funds}
+      transactions={transactions}
+      onViewLedger={(fundId) =>
+        navigate(`/transactions?fundId=${encodeURIComponent(fundId)}`)
+      }
+    />
+  );
+};
+
+const DonorsRoute: React.FC<RouteContext> = ({
+  funds,
+  currentUser,
+  churchDetails,
+}) => {
+  const donors = useQuery(api.queries.donors.list, {});
+  const transactions = useQuery(api.queries.transactions.list, {});
+  const pledges = useQuery(api.queries.pledges.list, {});
+  const actions = useDonorPledgeActions({ showNotification: notify });
+
+  if (
+    donors === undefined ||
+    transactions === undefined ||
+    pledges === undefined
+  ) {
+    return financialDataLoader;
+  }
+
+  return (
+    <DonorManager
+      donors={donors}
+      transactions={transactions}
+      pledges={pledges}
+      funds={funds}
+      onAddDonor={actions.handleAddDonor}
+      onUpdateDonor={actions.handleUpdateDonor}
+      onAddPledge={actions.handleAddPledge}
+      onUpdatePledge={actions.handleUpdatePledge}
+      onUpdateTransaction={actions.handleUpdateTransaction}
+      currentUser={currentUser}
+      churchDetails={churchDetails}
+    />
+  );
+};
+
+const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
+  const pledges = useQuery(api.queries.pledges.list, {});
+  const transactions = useQuery(api.queries.transactions.list, {});
+  const donors = useQuery(api.queries.donors.list, {});
+  const actions = useDonorPledgeActions({ showNotification: notify });
+
+  if (
+    pledges === undefined ||
+    transactions === undefined ||
+    donors === undefined
+  ) {
+    return financialDataLoader;
+  }
+
+  return (
+    <Campaigns
+      funds={funds}
+      pledges={pledges}
+      transactions={transactions}
+      donors={donors}
+      onAddPledge={actions.handleAddPledge}
+      onUpdatePledge={actions.handleUpdatePledge}
+      onBulkAddPledges={actions.handleBulkAddPledges}
+      onBulkAddDonors={actions.handleBulkAddDonors}
+      onUpdateTransaction={actions.handleUpdateTransaction}
+      currentUser={currentUser}
+      onPledgeCompleted={handlePledgeCompleted}
+    />
+  );
+};
+
+const ReportsRoute: React.FC<RouteContext> = ({ funds, churchDetails }) => {
+  const transactions = useQuery(api.queries.transactions.list, {});
+  const pledges = useQuery(api.queries.pledges.list, {});
+
+  if (transactions === undefined || pledges === undefined) {
+    return financialDataLoader;
+  }
+
+  return (
+    <Reports
+      transactions={transactions}
+      funds={funds}
+      pledges={pledges}
+      churchDetails={churchDetails}
+    />
+  );
+};
+
+const SettingsRoute: React.FC<RouteContext> = ({
+  currentUser,
+  churchDetails,
+  funds,
+  categories,
+}) => {
+  const users = useQuery(api.queries.users.listByOrganization, {});
+  const pendingInvitations = useQuery(api.queries.invitations.listPending, {});
+  const adminActions = useOrganizationAdminActions({
+    showNotification: notify,
+  });
+  const fundCategoryActions = useFundCategoryActions({
+    categories,
+    showNotification: notify,
+  });
+
+  if (users === undefined || pendingInvitations === undefined) {
+    return <LoadingSpinner message="Loading settings data..." />;
+  }
+
+  return (
+    <Settings
+      currentUser={currentUser}
+      users={users}
+      categories={categories.map((category) => category.name)}
+      funds={funds}
+      churchDetails={churchDetails}
+      pendingInvitations={pendingInvitations as Invitation[]}
+      onUpdateUserRole={adminActions.handleUpdateUserRole}
+      onAddCategory={fundCategoryActions.handleAddCategory}
+      onRemoveCategory={fundCategoryActions.handleRemoveCategory}
+      onInviteUser={adminActions.handleInviteUser}
+      onResendInvitation={adminActions.handleResendInvitation}
+      onCancelInvitation={adminActions.handleCancelInvitation}
+      onUpdateChurchDetails={adminActions.handleUpdateChurchDetails}
+      onAddFund={fundCategoryActions.handleAddFund}
+      onUpdateFund={fundCategoryActions.handleUpdateFund}
+      onRemoveFund={fundCategoryActions.handleRemoveFund}
+    />
+  );
+};
+
+const AppContentRoutes: React.FC<RouteContext> = (context) => {
   return (
     <Suspense fallback={<LoadingSpinner message="Loading page..." />}>
       <Routes>
@@ -97,133 +225,19 @@ const AppContentRoutes: React.FC<AppContentRoutesProps> = (props) => {
           path="/dashboard"
           element={
             <Dashboard
-              funds={props.funds}
-              categories={props.categories}
-              currentUser={props.currentUser}
+              funds={context.funds}
+              categories={context.categories}
+              currentUser={context.currentUser}
             />
           }
         />
-        <Route
-          path="/transactions"
-          element={
-            props.isPledgesLoading ? (
-              financialDataLoader
-            ) : (
-              <TransactionsRoute
-                funds={props.funds}
-                pledges={props.pledges}
-                categories={props.categories}
-                currentUser={props.currentUser}
-                onPledgeCompleted={props.onPledgeCompleted}
-              />
-            )
-          }
-        />
-        <Route
-          path="/funds"
-          element={
-            props.isTransactionsLoading ? (
-              financialDataLoader
-            ) : (
-              <FundManager
-                funds={props.funds}
-                transactions={props.transactions}
-                onViewLedger={props.onViewFundLedger}
-              />
-            )
-          }
-        />
-        <Route
-          path="/donors"
-          element={
-            props.isDonorsLoading ||
-            props.isTransactionsLoading ||
-            props.isPledgesLoading ? (
-              financialDataLoader
-            ) : (
-              <DonorManager
-                donors={props.donors}
-                transactions={props.transactions}
-                pledges={props.pledges}
-                funds={props.funds}
-                onAddDonor={props.onAddDonor}
-                onUpdateDonor={props.onUpdateDonor}
-                onAddPledge={props.onAddPledge}
-                onUpdatePledge={props.onUpdatePledge}
-                onUpdateTransaction={props.onUpdateTransaction}
-                currentUser={props.currentUser}
-                churchDetails={props.churchDetails}
-              />
-            )
-          }
-        />
-        <Route
-          path="/campaigns"
-          element={
-            props.isPledgesLoading ||
-            props.isTransactionsLoading ||
-            props.isDonorsLoading ? (
-              financialDataLoader
-            ) : (
-              <Campaigns
-                funds={props.funds}
-                pledges={props.pledges}
-                transactions={props.transactions}
-                donors={props.donors}
-                onAddPledge={props.onAddPledge}
-                onUpdatePledge={props.onUpdatePledge}
-                onBulkAddPledges={props.onBulkAddPledges}
-                onBulkAddDonors={props.onBulkAddDonors}
-                onUpdateTransaction={props.onUpdateTransaction}
-                currentUser={props.currentUser}
-                onPledgeCompleted={props.onPledgeCompleted}
-              />
-            )
-          }
-        />
-        <Route
-          path="/reports"
-          element={
-            props.isTransactionsLoading || props.isPledgesLoading ? (
-              financialDataLoader
-            ) : (
-              <Reports
-                transactions={props.transactions}
-                funds={props.funds}
-                pledges={props.pledges}
-                churchDetails={props.churchDetails}
-              />
-            )
-          }
-        />
+        <Route path="/transactions" element={<TransactionsRoute {...context} />} />
+        <Route path="/funds" element={<FundsRoute {...context} />} />
+        <Route path="/donors" element={<DonorsRoute {...context} />} />
+        <Route path="/campaigns" element={<CampaignsRoute {...context} />} />
+        <Route path="/reports" element={<ReportsRoute {...context} />} />
         <Route path="/copilot" element={<AICoPilot />} />
-        <Route
-          path="/settings"
-          element={
-            props.isUsersLoading || props.isInvitationsLoading ? (
-              <LoadingSpinner message="Loading settings data..." />
-            ) : (
-              <Settings
-                currentUser={props.currentUser}
-                users={props.users}
-                categories={props.categories.map((category) => category.name)}
-                funds={props.funds}
-                churchDetails={props.churchDetails}
-                pendingInvitations={props.pendingInvitations}
-                onUpdateUserRole={props.onUpdateUserRole}
-                onAddCategory={props.onAddCategory}
-                onRemoveCategory={props.onRemoveCategory}
-                onInviteUser={props.onInviteUser}
-                onResendInvitation={props.onResendInvitation}
-                onCancelInvitation={props.onCancelInvitation}
-                onUpdateChurchDetails={props.onUpdateChurchDetails}
-                onAddFund={props.onAddFund}
-                onUpdateFund={props.onUpdateFund}
-                onRemoveFund={props.onRemoveFund}
-              />
-            )
-          }
-        />
+        <Route path="/settings" element={<SettingsRoute {...context} />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

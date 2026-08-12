@@ -374,7 +374,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             createdPledgeKeys.add(batchKey);
 
             // Only use Convex _id for existing donors, undefined for new donors
-            let convexDonorId: string | undefined = existingDonor?._id;
+            let convexDonorId: string | undefined;
             let localDonorKey: string; // Key for the local upsert map
             let donorObj: DonorCreateInput;
 

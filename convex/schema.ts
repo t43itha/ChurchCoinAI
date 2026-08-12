@@ -12,6 +12,21 @@ export default defineSchema({
     reportingPeriod: v.optional(v.union(v.literal("tax_year"), v.literal("calendar_year"))),
     logoUrl: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()), // Stripe customer ID for billing
+    // Missing values are treated as `legacy` during the billing re-enable
+    // migration so existing churches are not unexpectedly locked out.
+    accessMode: v.optional(v.union(
+      v.literal("subscription"),
+      v.literal("demo"),
+      v.literal("legacy")
+    )),
+    dataMode: v.optional(v.union(v.literal("live"), v.literal("synthetic"))),
+    accessExpiresAt: v.optional(v.number()),
+    demoSeedStatus: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("failed")
+    )),
+    demoSeedVersion: v.optional(v.string()),
     createdAt: v.number(),
     createdBy: v.string(), // Clerk userId
   })
@@ -64,7 +79,8 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_email_organization", ["email", "organizationId"])
     .index("by_token", ["token"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_status_expiresAt", ["status", "expiresAt"]),
 
   // Funds (no stored balance - computed from transactions)
   funds: defineTable({
@@ -306,21 +322,6 @@ export default defineSchema({
     .index("by_organization_name", ["organizationId", "name"])
     .index("by_organization_mainCategory", ["organizationId", "mainCategory"]),
 
-  // AI Chat History (for context persistence)
-  chatHistory: defineTable({
-    organizationId: v.id("organizations"),
-    clerkId: v.string(),
-    messages: v.array(
-      v.object({
-        role: v.union(v.literal("user"), v.literal("assistant")),
-        content: v.string(),
-        timestamp: v.number(),
-      })
-    ),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_organization_user", ["organizationId", "clerkId"]),
-
   // Per-organization AI rate limiting window state
   aiRateLimits: defineTable({
     organizationId: v.id("organizations"),
@@ -380,13 +381,18 @@ export default defineSchema({
       v.literal("thriving")
     ),
     status: v.union(
+      v.literal("trialing"),
       v.literal("active"),
       v.literal("past_due"),
       v.literal("canceled"),
-      v.literal("incomplete")
+      v.literal("incomplete"),
+      v.literal("incomplete_expired"),
+      v.literal("unpaid"),
+      v.literal("paused")
     ),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
+    pastDueSince: v.optional(v.number()),
     // Timestamp of the newest Stripe event applied; guards against retried
     // or out-of-order webhooks overwriting newer state
     lastStripeEventAt: v.optional(v.number()),
@@ -469,7 +475,8 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_provider_connection", ["provider", "providerConnectionId"])
-    .index("by_organization_status", ["organizationId", "status"]),
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_status_consentExpiresAt", ["status", "consentExpiresAt"]),
 
   pendingBankConnections: defineTable({
     organizationId: v.id("organizations"),
@@ -493,7 +500,8 @@ export default defineSchema({
   })
     .index("by_state", ["state"])
     .index("by_organization", ["organizationId"])
-    .index("by_organization_status", ["organizationId", "status"]),
+    .index("by_organization_status", ["organizationId", "status"])
+    .index("by_status_expiresAt", ["status", "expiresAt"]),
 
   // AI Categorization corrections tracking (for ML learning)
   categorizationCorrections: defineTable({

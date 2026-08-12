@@ -5,6 +5,7 @@ import { clerkAppearance } from "@/lib/clerkAppearance";
 
 interface AuthPageProps {
   onBack?: () => void;
+  initialMode?: "signin" | "signup";
 }
 
 
@@ -48,8 +49,8 @@ const BrandPanel: React.FC = () => (
   </div>
 );
 
-export const AuthPage: React.FC<AuthPageProps> = ({ onBack }) => {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode = "signin" }) => {
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
 
   return (
     <div className="min-h-screen bg-paper flex">

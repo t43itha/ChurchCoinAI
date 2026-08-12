@@ -1,7 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { getStripe } from "./lib/stripe";
+import { getPlanFromStripeProduct, getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
 import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
 import type Stripe from "stripe";
@@ -198,30 +198,48 @@ const verifyPlaidWebhook = async (
 };
 
 // Price ID to plan tier mapping (reverse lookup)
-const getPlanFromPriceId = (priceId: string): "starter" | "growing" | "thriving" => {
+const getPlanFromPrice = (
+  priceId: string,
+  productId: string
+): "starter" | "growing" | "thriving" | null => {
+  const productPlan = getPlanFromStripeProduct(productId);
+  if (productPlan) return productPlan;
   if (priceId === process.env.STRIPE_PRICE_STARTER) return "starter";
   if (priceId === process.env.STRIPE_PRICE_GROWING) return "growing";
   if (priceId === process.env.STRIPE_PRICE_THRIVING) return "thriving";
-  // Default to starter if unknown
-  return "starter";
+  return null;
 };
 
 // Map Stripe status to our status type
-const mapStripeStatus = (status: string): "active" | "past_due" | "canceled" | "incomplete" => {
+const mapStripeStatus = (status: string):
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "canceled"
+  | "incomplete"
+  | "incomplete_expired"
+  | "unpaid"
+  | "paused"
+  | null => {
   switch (status) {
     case "active":
-    case "trialing":
       return "active";
+    case "trialing":
+      return "trialing";
     case "past_due":
       return "past_due";
     case "canceled":
-    case "unpaid":
       return "canceled";
+    case "unpaid":
+      return "unpaid";
     case "incomplete":
-    case "incomplete_expired":
       return "incomplete";
+    case "incomplete_expired":
+      return "incomplete_expired";
+    case "paused":
+      return "paused";
     default:
-      return "active";
+      return null;
   }
 };
 
@@ -278,25 +296,58 @@ http.route({
             );
             break;
           }
+          if (organization.accessMode !== "subscription") {
+            throw new Error(
+              `Stripe event targeted a non-subscription organization: ${organizationId}`
+            );
+          }
+          const stripeCustomerId =
+            typeof subscription.customer === "string"
+              ? subscription.customer
+              : subscription.customer?.id || "";
+          if (
+            !stripeCustomerId ||
+            (organization.stripeCustomerId &&
+              organization.stripeCustomerId !== stripeCustomerId)
+          ) {
+            throw new Error(
+              `Stripe customer mismatch for organization: ${organizationId}`
+            );
+          }
 
           // Always derive the plan from the verified price ID — subscription
           // metadata is writable outside the webhook and must not be trusted
           const priceId = subscription.items?.data?.[0]?.price?.id || "";
-          const plan = getPlanFromPriceId(priceId);
+          const product = subscription.items?.data?.[0]?.price?.product;
+          const productId = typeof product === "string" ? product : product?.id || "";
+          const plan = getPlanFromPrice(priceId, productId);
+          const status = mapStripeStatus(subscription.status);
+          if (!plan) {
+            throw new Error(
+              `Unknown Stripe product/price: ${productId || "missing"}/${priceId || "missing"}`
+            );
+          }
+          if (!status) {
+            throw new Error(`Unknown Stripe subscription status: ${subscription.status}`);
+          }
 
           // Get period end from subscription object
           const periodEnd =
             (subscription as any).current_period_end ??
+            (subscription.items?.data?.[0] as any)?.current_period_end ??
             (subscription as any).currentPeriodEnd ??
             0;
+          if (!Number.isFinite(periodEnd) || periodEnd <= 0) {
+            throw new Error("Stripe subscription is missing its current period end");
+          }
 
           await ctx.runMutation(internal.mutations.subscriptions.upsert, {
             organizationId: organization._id,
-            stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id || '',
+            stripeCustomerId,
             stripeSubscriptionId: subscription.id,
             stripePriceId: priceId,
             plan,
-            status: mapStripeStatus(subscription.status),
+            status,
             currentPeriodEnd: periodEnd * 1000,
             cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
             eventTimestamp: event.created * 1000,
@@ -332,6 +383,7 @@ http.route({
           break;
         }
 
+        case "invoice.paid":
         case "invoice.payment_succeeded": {
           const invoice = event.data.object as Stripe.Invoice;
           const subscriptionRef = (invoice as any).subscription;

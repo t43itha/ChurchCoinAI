@@ -16,21 +16,23 @@ import {
 } from "./sections";
 
 interface LandingPageProps {
-  onGetStarted: () => void;
+  onSignIn: () => void;
+  onGetStarted: (plan?: "starter" | "growing" | "thriving") => void;
+  onBookDemo: () => void;
 }
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({ onSignIn, onGetStarted, onBookDemo }: LandingPageProps) {
   return (
     <div className="bg-paper min-h-screen text-ink selection:bg-amber-light selection:text-amber-dark">
       {/* Background grid */}
       <LedgerGridBackground />
 
       {/* Navigation */}
-      <Navigation onSignIn={onGetStarted} onGetStarted={onGetStarted} />
+      <Navigation onSignIn={onSignIn} onGetStarted={() => onGetStarted()} />
 
       {/* Main content */}
       <main>
-        <Hero onGetStarted={onGetStarted} />
+        <Hero onGetStarted={() => onGetStarted()} onBookDemo={onBookDemo} />
         <TrustMetrics />
         <Testimonials />
         <ProblemSection />
@@ -38,7 +40,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         <Features />
         <Pricing onGetStarted={onGetStarted} />
         <FAQ />
-        <SecondaryCTA onGetStarted={onGetStarted} />
+        <SecondaryCTA onGetStarted={() => onGetStarted()} onBookDemo={onBookDemo} />
       </main>
 
       {/* Footer */}

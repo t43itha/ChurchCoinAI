@@ -19,14 +19,35 @@ export const getStripe = (): Stripe => {
   return stripeInstance;
 };
 
-// Price IDs - set these in Convex environment variables
-export const STRIPE_PRICES = {
-  starter: process.env.STRIPE_PRICE_STARTER!,
-  growing: process.env.STRIPE_PRICE_GROWING!,
-  thriving: process.env.STRIPE_PRICE_THRIVING!,
-} as const;
+export type PlanTier = "starter" | "growing" | "thriving";
 
-export type PlanTier = keyof typeof STRIPE_PRICES;
+const PLAN_TIERS: PlanTier[] = ["starter", "growing", "thriving"];
+
+const STRIPE_PRICE_ENV: Record<PlanTier, string> = {
+  starter: "STRIPE_PRICE_STARTER",
+  growing: "STRIPE_PRICE_GROWING",
+  thriving: "STRIPE_PRICE_THRIVING",
+};
+
+const STRIPE_PRODUCT_ENV: Record<PlanTier, string> = {
+  starter: "STRIPE_PRODUCT_STARTER",
+  growing: "STRIPE_PRODUCT_GROWING",
+  thriving: "STRIPE_PRODUCT_THRIVING",
+};
+
+function requireStripeCatalogId(envName: string): string {
+  const value = process.env[envName]?.trim();
+  if (!value) throw new Error(`${envName} not configured`);
+  return value;
+}
+
+export function getStripePriceId(plan: PlanTier): string {
+  return requireStripeCatalogId(STRIPE_PRICE_ENV[plan]);
+}
+
+export function getStripeProductId(plan: PlanTier): string {
+  return requireStripeCatalogId(STRIPE_PRODUCT_ENV[plan]);
+}
 
 // Plan configurations
 export const PLAN_CONFIG = {
@@ -64,3 +85,11 @@ export const PLAN_CONFIG = {
     ],
   },
 } as const;
+
+export function getPlanFromStripeProduct(productId: string): PlanTier | null {
+  for (const plan of PLAN_TIERS) {
+    const configuredProductId = process.env[STRIPE_PRODUCT_ENV[plan]]?.trim();
+    if (configuredProductId && productId === configuredProductId) return plan;
+  }
+  return null;
+}

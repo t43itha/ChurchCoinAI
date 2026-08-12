@@ -1,13 +1,12 @@
 import { query } from "../_generated/server";
-import { getCurrentUser } from "../lib/auth";
+import { requireAuth } from "../lib/auth";
 import { v } from "convex/values";
 
 // List all connected banks for the organization (excludes accessToken for security)
 export const listItems = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return [];
+    const user = await requireAuth(ctx);
 
     const items = await ctx.db
       .query("plaidItems")
@@ -42,8 +41,7 @@ export const getItem = query({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return null;
+    const user = await requireAuth(ctx);
 
     const item = await ctx.db.get(args.plaidItemId);
     if (!item || item.organizationId !== user.organizationId) {
@@ -74,8 +72,7 @@ export const getItem = query({
 export const getItemsNeedingAttention = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return [];
+    const user = await requireAuth(ctx);
 
     const items = await ctx.db
       .query("plaidItems")
@@ -124,8 +121,7 @@ export const getItemsNeedingAttention = query({
 export const hasConnections = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return false;
+    const user = await requireAuth(ctx);
 
     const item = await ctx.db
       .query("plaidItems")
@@ -142,8 +138,7 @@ export const hasConnections = query({
 export const getActiveItemsWithMappedAccounts = query({
   args: {},
   handler: async (ctx) => {
-    const user = await getCurrentUser(ctx);
-    if (!user) return [];
+    const user = await requireAuth(ctx);
 
     const items = await ctx.db
       .query("plaidItems")

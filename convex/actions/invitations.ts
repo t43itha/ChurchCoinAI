@@ -3,6 +3,7 @@
 import { action } from "../_generated/server";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
+import { getInviteEmailConfig } from "../lib/emailConfig";
 
 interface InviteEmailParams {
   email: string;
@@ -25,12 +26,11 @@ function buildInviteUrl(token: string): string {
 }
 
 async function sendInviteEmail(params: InviteEmailParams): Promise<{ sent: boolean; error?: string }> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    return { sent: false, error: "Email delivery is not configured (missing RESEND_API_KEY)" };
+  const emailConfig = getInviteEmailConfig();
+  if (!emailConfig.configured) {
+    return { sent: false, error: emailConfig.error };
   }
 
-  const from = process.env.RESEND_FROM_EMAIL ?? "ChurchCoin <onboarding@resend.dev>";
   const subject = `You're invited to join ${params.organizationName} on ChurchCoin`;
   const html = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #1a1a1a;">
@@ -54,10 +54,16 @@ async function sendInviteEmail(params: InviteEmailParams): Promise<{ sent: boole
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${emailConfig.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: [params.email], subject, html, text }),
+      body: JSON.stringify({
+        from: emailConfig.from,
+        to: [params.email],
+        subject,
+        html,
+        text,
+      }),
     });
 
     if (!response.ok) {
