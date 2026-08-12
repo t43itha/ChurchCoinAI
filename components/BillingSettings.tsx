@@ -2,79 +2,28 @@ import React, { useState } from 'react';
 import { useQuery, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { createClientAttemptId } from '../lib/clientId';
-import { CreditCard, ExternalLink, AlertTriangle, Check, Loader2, Sparkles, Crown } from 'lucide-react';
+import { CreditCard, ExternalLink, AlertTriangle, Check, Loader2, Sparkles, Crown, Hourglass } from 'lucide-react';
 import { notify } from '../lib/notifications';
-
-// Plan configurations
-interface PlanConfig {
-  id: 'starter' | 'growing' | 'thriving';
-  name: string;
-  price: number;
-  description: string;
-  features: string[];
-  popular?: boolean;
-}
-
-const PLANS: PlanConfig[] = [
-  {
-    id: 'starter',
-    name: 'Starter',
-    price: 29,
-    description: 'Perfect for small churches just getting organised',
-    features: [
-      'Up to 50 donors',
-      '3 funds',
-      'Basic Gift Aid tracking',
-      'Monthly reports',
-      'Email support',
-    ],
-  },
-  {
-    id: 'growing',
-    name: 'Growing',
-    price: 59,
-    description: 'For established churches ready to scale',
-    features: [
-      'Up to 200 donors',
-      'Unlimited funds',
-      'Full Gift Aid automation',
-      'AI categorisation',
-      'Trustee reports',
-      'Priority support',
-    ],
-    popular: true,
-  },
-  {
-    id: 'thriving',
-    name: 'Thriving',
-    price: 99,
-    description: 'For multi-site churches and complex needs',
-    features: [
-      'Unlimited donors',
-      'Multi-site support',
-      'API access',
-      'Custom integrations',
-      'Dedicated support',
-      'Training sessions',
-    ],
-  },
-];
-
-type PlanId = PlanConfig['id'];
+import { PLANS } from '../lib/plans';
+import type { PlanTier } from '../lib/onboardingIntent';
+import { getTrialProgress } from '../lib/trial';
 
 const BillingSettings: React.FC = () => {
   const subscription = useQuery(api.queries.subscriptions.current);
+  const access = useQuery(api.queries.subscriptions.access);
   const createCheckout = useAction(api.actions.stripe.createCheckoutSession);
   const createPortal = useAction(api.actions.stripe.createPortalSession);
 
   const [loading, setLoading] = useState<string | null>(null);
 
-  const currentTier = subscription?.plan || null;
+  const isProductTrial = access?.state === 'active_trial';
+  const currentTier = subscription?.plan || access?.plan || null;
   const status = subscription?.status || 'none';
   const isActive = status === 'active' || status === 'trialing';
   const isPastDue = status === 'past_due';
+  const checkoutCancelled = new URLSearchParams(window.location.search).get('subscription') === 'cancelled';
 
-  const handleSubscribe = async (plan: PlanId) => {
+  const handleSubscribe = async (plan: PlanTier) => {
     setLoading(plan);
     try {
       const result = await createCheckout({
@@ -114,7 +63,7 @@ const BillingSettings: React.FC = () => {
   };
 
   // Loading state
-  if (subscription === undefined) {
+  if (subscription === undefined || access === undefined) {
     return (
       <div className="swiss-card p-8 flex items-center justify-center">
         <Loader2 className="animate-spin text-grey-mid" size={24} />
@@ -124,6 +73,40 @@ const BillingSettings: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {checkoutCancelled && (
+        <div className="flex items-start gap-3 rounded-[10px] border border-[#e4d0b5] bg-amber-light px-4 py-3 text-sm text-amber-dark">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-bold">Checkout cancelled</p>
+            <p className="mt-0.5 text-xs">No subscription was started and your remaining trial access is unchanged.</p>
+          </div>
+        </div>
+      )}
+
+      {isProductTrial && access.expiresAt && (() => {
+        const progress = getTrialProgress(access.expiresAt);
+        return (
+          <div className="swiss-card-static overflow-hidden border-[#e4d0b5] shadow-hard-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between px-6 py-5 bg-[#fcf7f0]">
+              <div className="flex items-start gap-3">
+                <span className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-[10px] bg-white border border-[#e4d0b5] text-amber shrink-0">
+                  <Hourglass size={17} strokeWidth={2} />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-ink">Your 14-day free trial is active</h3>
+                  <p className="text-xs text-grey-dark mt-1">
+                    Day {progress.dayNumber} of 14 · {progress.daysLeft === 0 ? 'Ends today' : `${progress.daysLeft} ${progress.daysLeft === 1 ? 'day' : 'days'} left`}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-grey-mid sm:text-right max-w-xs">
+                Choose a plan below. Billing starts immediately after secure Stripe checkout.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Current Subscription Status */}
       {subscription && (
         <div className={`swiss-card-static overflow-hidden ${isPastDue ? 'border-[#ecd8bd]' : ''}`}>
@@ -214,26 +197,31 @@ const BillingSettings: React.FC = () => {
       <div className="swiss-card-static overflow-hidden">
         <div className="px-6 py-[18px] border-b border-grey-light bg-[#fcfbf9]">
           <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">
-            {subscription ? 'Change Plan' : 'Choose a Plan'}
+            {subscription ? 'Change Plan' : isProductTrial ? 'Upgrade your trial' : 'Choose a Plan'}
           </h3>
           <p className="text-[11.5px] text-grey-mid mt-0.5">
             {subscription
               ? 'Upgrade or downgrade your subscription at any time.'
-              : 'Select a plan to get started with ChurchCoin.'}
+              : isProductTrial
+                ? 'Select a plan to keep your church ledger active after the trial.'
+                : 'Select a plan to get started with ChurchCoin.'}
           </p>
         </div>
 
         <div className="p-6">
           <div className="grid md:grid-cols-3 gap-4">
             {PLANS.map((plan) => {
-              const isCurrent = currentTier === plan.id;
+              const isCurrent = Boolean(subscription) && currentTier === plan.id;
+              const isTrialPreference = isProductTrial && currentTier === plan.id;
               const isLoading = loading === plan.id;
 
               return (
                 <div
                   key={plan.id}
                   className={`relative p-6 border rounded-xl transition-all ${
-                    plan.popular
+                    isTrialPreference
+                      ? 'border-amber bg-[#fffdf9] shadow-hard-sm'
+                      : plan.popular
                       ? 'border-ink bg-white shadow-soft-lg'
                       : isCurrent
                       ? 'border-sage bg-sage-light/30'
@@ -251,6 +239,12 @@ const BillingSettings: React.FC = () => {
                   {isCurrent && (
                     <div className="absolute -top-3 right-4 bg-sage text-white px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.05em] font-bold">
                       Current
+                    </div>
+                  )}
+
+                  {isTrialPreference && (
+                    <div className="absolute -top-3 right-4 bg-amber text-white px-3 py-1 rounded-full text-[10px] uppercase tracking-[0.05em] font-bold">
+                      Trial choice
                     </div>
                   )}
 
@@ -288,6 +282,8 @@ const BillingSettings: React.FC = () => {
                       'Current Plan'
                     ) : subscription ? (
                       'Switch Plan'
+                    ) : isProductTrial ? (
+                      `Upgrade to ${plan.name}`
                     ) : (
                       'Get Started'
                     )}

@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { Link, NavLink } from 'react-router-dom';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon, Hourglass } from 'lucide-react';
 import { clerkAppearance } from '@/lib/clerkAppearance';
+import type { PlanTier } from '@/lib/onboardingIntent';
+import { getPlanName } from '@/lib/plans';
+import { getTrialProgress } from '@/lib/trial';
 
 // Type for Convex user from database
 interface ConvexUser {
@@ -17,9 +20,21 @@ interface SidebarProps {
   currentUser: ConvexUser;
   isOpen: boolean;
   onClose: () => void;
+  access: {
+    state: string;
+    expiresAt: number | null;
+    plan: PlanTier | null;
+  };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, access }) => {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (access.state !== 'active_trial') return;
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [access.state]);
 
   // Permission Logic
   const canViewDonors = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
@@ -35,6 +50,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
     { path: '/settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
     { path: '/copilot', label: 'Ask Ward', icon: Sparkles },
   ];
+  const trialProgress =
+    access.state === 'active_trial' && access.expiresAt
+      ? getTrialProgress(access.expiresAt, now)
+      : null;
+  const trialPlanName = getPlanName(access.plan);
 
   return (
     <>
@@ -70,7 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
         </div>
         
         {/* Navigation */}
-        <nav className="flex-1 px-[18px] space-y-[3px] overflow-y-auto">
+        <nav className="min-h-0 flex-1 px-[18px] space-y-[3px] overflow-y-auto">
           {menuItems.filter(item => !item.hidden).map((item) => {
             const Icon = item.icon;
             const isWard = item.path === '/copilot';
@@ -112,7 +132,57 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose }) => {
         </nav>
 
         {/* User Section */}
-        <div className="px-[18px] pt-[22px] pb-5 border-t border-ledger mx-[18px] mt-auto">
+        <div className="px-[18px] pt-[18px] pb-5 border-t border-ledger mt-auto space-y-4">
+          {trialProgress && (
+            <section
+              className="rounded-[12px] border border-[#dfd3c5] bg-[#fffdf9] p-3.5 shadow-hard-sm"
+              aria-label="Free trial status"
+            >
+              <div className="flex items-start gap-2.5">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-[#e4d0b5] bg-white text-amber">
+                  <Hourglass size={15} strokeWidth={2.1} />
+                </span>
+                <div className="min-w-0 pt-0.5">
+                  <p className="truncate text-[13px] font-bold text-ink">
+                    {trialPlanName ? `${trialPlanName} trial` : 'ChurchCoin trial'}
+                  </p>
+                  <p className="mt-0.5 text-[10.5px] leading-[1.35] text-grey-mid">
+                    Full access for 14 days. No card required.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#ebe8e3]" aria-hidden="true">
+                <div
+                  className="h-full rounded-full bg-amber transition-[width] duration-300"
+                  style={{ width: `${trialProgress.progressPercent}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[10.5px] font-semibold text-grey-dark">
+                <span>Day {trialProgress.dayNumber} of 14</span>
+                <span className="text-grey-mid">
+                  {trialProgress.daysLeft === 0
+                    ? 'Ends today'
+                    : `${trialProgress.daysLeft} ${trialProgress.daysLeft === 1 ? 'day' : 'days'} left`}
+                </span>
+              </div>
+
+              {currentUser.role === 'Admin' ? (
+                <Link
+                  to="/settings?tab=billing"
+                  onClick={onClose}
+                  className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[9px] bg-ink px-3 text-[11px] font-bold uppercase tracking-[0.05em] text-white transition-colors hover:bg-charcoal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+                >
+                  Upgrade now
+                </Link>
+              ) : (
+                <p className="mt-3 border-t border-[#ece2d6] pt-2.5 text-[10.5px] leading-[1.4] text-grey-mid">
+                  Ask an organisation admin to upgrade.
+                </p>
+              )}
+            </section>
+          )}
+
           <div className="flex items-center gap-3">
             <UserButton
               afterSignOutUrl="/"

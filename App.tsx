@@ -77,6 +77,14 @@ function App() {
     api.queries.subscriptions.access,
     hasUser ? {} : "skip"
   );
+  const returnedFromCheckout =
+    new URLSearchParams(location.search).get("subscription") === "success";
+  const checkoutVerificationPending =
+    returnedFromCheckout &&
+    access !== undefined &&
+    access !== null &&
+    access.state !== "active_subscription" &&
+    access.state !== "trialing_subscription";
 
   // Shared reference data used by every route. Route-specific data
   // (transactions, donors, pledges, users) is fetched inside each route.
@@ -116,6 +124,23 @@ function App() {
       clearOnboardingIntent();
     }
   }, [access?.canUseApp]);
+
+  useEffect(() => {
+    if (
+      !returnedFromCheckout ||
+      (access?.state !== "active_subscription" &&
+        access?.state !== "trialing_subscription")
+    ) {
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    params.delete("subscription");
+    params.delete("session_id");
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true }
+    );
+  }, [access?.state, location.pathname, location.search, navigate, returnedFromCheckout]);
 
   const beginAuth = (mode: "signin" | "signup", plan?: PlanTier, source = "landing") => {
     storeOnboardingIntent({ authMode: mode, selectedPlan: plan, source });
@@ -193,6 +218,7 @@ function App() {
     return (
       <Onboarding
         clerkUser={clerkUser}
+        selectedPlan={selectedPlan}
         onComplete={(result) => {
           if (result === "invitation") {
             clearOnboardingIntent();
@@ -210,13 +236,14 @@ function App() {
     return <LoadingSpinner message="Checking organization access..." />;
   }
 
-  if (access === null || !access.canUseApp) {
+  if (access === null || !access.canUseApp || checkoutVerificationPending) {
     return (
       <SubscriptionRequired
         organizationName={currentOrganization.name}
         userRole={currentUser.role}
-        selectedPlan={selectedPlan}
+        selectedPlan={selectedPlan ?? access?.plan ?? undefined}
         accessState={access?.state ?? "access_revoked"}
+        accessReason={access?.reason}
       />
     );
   }
@@ -246,6 +273,7 @@ function App() {
 
       <Sidebar
         currentUser={currentUser}
+        access={access}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
       />

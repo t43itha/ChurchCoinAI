@@ -16,46 +16,14 @@ import { notify } from "../lib/notifications";
 import { clerkAppearance } from "@/lib/clerkAppearance";
 import type { PlanTier } from "../lib/onboardingIntent";
 import { createClientAttemptId } from "../lib/clientId";
-
-interface PlanConfig {
-  id: PlanTier;
-  name: string;
-  price: number;
-  description: string;
-  features: string[];
-  popular?: boolean;
-}
-
-const PLANS: PlanConfig[] = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: 29,
-    description: "Perfect for small churches just getting organised",
-    features: ["Up to 50 donors", "3 funds", "Gift Aid tracking", "Monthly reports"],
-  },
-  {
-    id: "growing",
-    name: "Growing",
-    price: 59,
-    description: "For established churches ready to scale",
-    features: ["Up to 200 donors", "Unlimited funds", "AI categorisation", "Trustee reports"],
-    popular: true,
-  },
-  {
-    id: "thriving",
-    name: "Thriving",
-    price: 99,
-    description: "For multi-site churches and complex needs",
-    features: ["Unlimited donors", "Multi-site support", "Custom integrations", "Dedicated support"],
-  },
-];
+import { PLANS } from "../lib/plans";
 
 interface SubscriptionRequiredProps {
   organizationName: string;
   userRole: string;
   selectedPlan?: PlanTier;
   accessState: string;
+  accessReason?: string;
 }
 
 const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
@@ -63,6 +31,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   userRole,
   selectedPlan,
   accessState,
+  accessReason,
 }) => {
   const createCheckout = useAction(api.actions.stripe.createCheckoutSession);
   const reconcileCheckout = useAction(api.actions.stripe.reconcileCheckoutSession);
@@ -77,6 +46,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   const checkoutSessionId = params.get("session_id");
   const checkoutCancelled = params.get("subscription") === "cancelled";
   const isProcessing = returnedFromCheckout || accessState === "payment_processing";
+  const trialExpired = accessReason === "product_trial_expired";
 
   useEffect(() => {
     if (!isProcessing) return;
@@ -224,7 +194,9 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
             <AlertTriangle size={34} className="mx-auto text-amber mb-5" />
             <h1 className="text-2xl font-bold text-ink">Billing action required</h1>
             <p className="mt-3 text-sm text-grey-mid leading-relaxed">
-              An administrator for <strong>{organizationName}</strong> needs to choose a plan or restore billing before members can continue.
+              {trialExpired
+                ? <>The free trial for <strong>{organizationName}</strong> has ended. Ask an organisation administrator to choose a plan.</>
+                : <>An administrator for <strong>{organizationName}</strong> needs to choose a plan or restore billing before members can continue.</>}
             </p>
           </div>
         </main>
@@ -266,14 +238,19 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="max-w-5xl w-full">
           <div className="text-center mb-10">
-            <div className="inline-flex items-center gap-2 bg-sage-light text-sage-dark px-4 py-2 rounded-full text-sm font-medium mb-5">
-              <Crown size={16} /> Your church ledger is ready
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-5 ${
+              trialExpired ? "bg-amber-light text-amber-dark" : "bg-sage-light text-sage-dark"
+            }`}>
+              {trialExpired ? <Clock3 size={16} /> : <Crown size={16} />}
+              {trialExpired ? "Your 14-day trial is complete" : "Your church ledger is ready"}
             </div>
             <h1 className="text-4xl md:text-5xl font-bold text-ink tracking-tight mb-4">
-              Choose a plan to continue
+              {trialExpired ? "Keep ChurchCoin working for your church" : "Choose a plan to continue"}
             </h1>
             <p className="text-grey-dark max-w-2xl mx-auto">
-              Confirm a plan for <strong>{organizationName}</strong>. Payment is handled securely by Stripe.
+              {trialExpired
+                ? <>Choose a plan for <strong>{organizationName}</strong> to restore access. Your records are safe and waiting.</>
+                : <>Confirm a plan for <strong>{organizationName}</strong>. Payment is handled securely by Stripe.</>}
             </p>
             {checkoutCancelled && (
               <p className="mt-4 inline-flex items-center gap-2 text-sm text-amber-dark bg-amber-light px-4 py-2 rounded-lg">

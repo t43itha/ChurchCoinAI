@@ -1,7 +1,9 @@
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import { getIdentity, requireAuth, isAdmin } from "../lib/auth";
 import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
+import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 
 // Default categories for new organizations
 const DEFAULT_CATEGORIES = [
@@ -213,6 +215,11 @@ export const create = mutation({
     ),
     logoUrl: v.optional(v.string()),
     userName: v.string(),
+    selectedPlan: v.optional(v.union(
+      v.literal("starter"),
+      v.literal("growing"),
+      v.literal("thriving")
+    )),
   },
   handler: async (ctx, args) => {
     const identity = await getIdentity(ctx);
@@ -236,7 +243,10 @@ export const create = mutation({
       throw new Error("User already belongs to an organization");
     }
 
-    // Create the organization
+    const now = Date.now();
+    const trialEndsAt = now + PRODUCT_TRIAL_DURATION_MS;
+
+    // Create the organization with a server-issued product trial.
     const organizationId = await ctx.db.insert("organizations", {
       name: args.name,
       charityNumber: args.charityNumber,
@@ -247,7 +257,11 @@ export const create = mutation({
       logoUrl: args.logoUrl,
       accessMode: "subscription",
       dataMode: "live",
-      createdAt: Date.now(),
+      trialStatus: "active",
+      trialStartedAt: now,
+      trialEndsAt,
+      trialPlan: args.selectedPlan,
+      createdAt: now,
       createdBy: identity.subject,
     });
 
@@ -258,7 +272,7 @@ export const create = mutation({
       name: args.userName,
       email: userEmail,
       role: "Admin",
-      createdAt: Date.now(),
+      createdAt: now,
     });
 
     // Create default categories
@@ -266,7 +280,7 @@ export const create = mutation({
       await ctx.db.insert("categories", {
         organizationId,
         name: categoryName,
-        createdAt: Date.now(),
+        createdAt: now,
       });
     }
 
@@ -276,10 +290,46 @@ export const create = mutation({
       name: "General Fund",
       type: "Unrestricted",
       description: "Main unrestricted fund for general operations",
-      createdAt: Date.now(),
+      createdAt: now,
     });
 
+    // Server-time checks in the resolver remain authoritative if this job is
+    // delayed. The scheduled transition gives connected clients an immediate
+    // reactive update at the boundary.
+    await ctx.scheduler.runAt(
+      trialEndsAt,
+      internal.mutations.organizations.expireProductTrial,
+      { organizationId }
+    );
+
     return organizationId;
+  },
+});
+
+export const expireProductTrial = internalMutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, { organizationId }) => {
+    const organization = await ctx.db.get(organizationId);
+    if (
+      !organization ||
+      organization.accessMode !== "subscription" ||
+      organization.trialStatus !== "active" ||
+      !organization.trialEndsAt
+    ) {
+      return;
+    }
+
+    const remainingMs = organization.trialEndsAt - Date.now();
+    if (remainingMs > 0) {
+      await ctx.scheduler.runAfter(
+        remainingMs,
+        internal.mutations.organizations.expireProductTrial,
+        { organizationId }
+      );
+      return;
+    }
+
+    await ctx.db.patch(organizationId, { trialStatus: "expired" });
   },
 });
 

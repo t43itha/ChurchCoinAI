@@ -6,6 +6,7 @@ const PAST_DUE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 export type OrganizationAccessState =
   | "active_subscription"
   | "trialing_subscription"
+  | "active_trial"
   | "past_due_grace"
   | "active_demo"
   | "legacy_grant"
@@ -104,21 +105,7 @@ export async function resolveOrganizationAccess(
     .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
     .first();
 
-  if (!subscription) {
-    return {
-      state: "payment_required" as const,
-      canUseApp: false,
-      canManageBilling,
-      reason: "subscription_missing",
-      accessMode,
-      dataMode,
-      expiresAt: null,
-      subscriptionStatus: null,
-      plan: null,
-    };
-  }
-
-  if (subscription.status === "active") {
+  if (subscription?.status === "active") {
     return {
       state: "active_subscription" as const,
       canUseApp: true,
@@ -132,7 +119,7 @@ export async function resolveOrganizationAccess(
     };
   }
 
-  if (subscription.status === "trialing") {
+  if (subscription?.status === "trialing") {
     return {
       state: "trialing_subscription" as const,
       canUseApp: true,
@@ -146,7 +133,7 @@ export async function resolveOrganizationAccess(
     };
   }
 
-  if (subscription.status === "past_due") {
+  if (subscription?.status === "past_due") {
     const graceEndsAt = (subscription.pastDueSince ?? subscription.updatedAt) + PAST_DUE_GRACE_MS;
     if (graceEndsAt > now) {
       return {
@@ -161,6 +148,44 @@ export async function resolveOrganizationAccess(
         plan: subscription.plan,
       };
     }
+  }
+
+  // A ChurchCoin product trial is independent of Stripe. Valid paid access
+  // wins, while an incomplete Checkout cannot cut short the remaining trial.
+  if (
+    organization.trialStatus === "active" &&
+    organization.trialStartedAt !== undefined &&
+    organization.trialEndsAt !== undefined &&
+    organization.trialEndsAt > now
+  ) {
+    return {
+      state: "active_trial" as const,
+      canUseApp: true,
+      canManageBilling,
+      reason: "product_trial_active",
+      accessMode,
+      dataMode,
+      expiresAt: organization.trialEndsAt,
+      subscriptionStatus: subscription?.status ?? null,
+      plan: organization.trialPlan ?? null,
+    };
+  }
+
+  if (!subscription) {
+    return {
+      state: "payment_required" as const,
+      canUseApp: false,
+      canManageBilling,
+      reason:
+        organization.trialStatus === "active" || organization.trialStatus === "expired"
+          ? "product_trial_expired"
+          : "subscription_missing",
+      accessMode,
+      dataMode,
+      expiresAt: organization.trialEndsAt ?? null,
+      subscriptionStatus: null,
+      plan: organization.trialPlan ?? null,
+    };
   }
 
   const processing = subscription.status === "incomplete";
