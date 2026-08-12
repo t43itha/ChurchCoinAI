@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   Menu,
+  Pause,
   Play,
   ShieldCheck,
   X,
@@ -151,6 +152,33 @@ function ScreenshotFrame({
   disableHover?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!videoSrc || !video) return;
+
+    if (reduceMotion) {
+      video.pause();
+      video.currentTime = 0;
+      setVideoPlaying(false);
+      return;
+    }
+
+    void video.play().catch(() => setVideoPlaying(false));
+  }, [reduceMotion, videoSrc]);
+
+  const toggleVideo = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      void video.play().catch(() => setVideoPlaying(false));
+    } else {
+      video.pause();
+    }
+  };
 
   return (
     <motion.figure
@@ -167,17 +195,33 @@ function ScreenshotFrame({
         </span>
       </div>
       {children ?? (videoSrc ? (
-        <video
-          src={videoSrc}
-          poster={poster}
-          aria-label={alt}
-          className={`block aspect-video w-full object-cover object-top ${disableHover ? "" : "transition-transform duration-700 ease-out group-hover:scale-[1.008]"}`}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-        />
+        <div className="relative">
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            poster={poster}
+            aria-label={alt}
+            className={`block aspect-video w-full object-cover object-top ${disableHover ? "" : "transition-transform duration-700 ease-out group-hover:scale-[1.008]"}`}
+            autoPlay={!reduceMotion}
+            muted
+            loop={!reduceMotion}
+            playsInline
+            preload={reduceMotion ? "none" : "metadata"}
+            onPlay={() => setVideoPlaying(true)}
+            onPause={() => setVideoPlaying(false)}
+            onEnded={() => setVideoPlaying(false)}
+          />
+          <button
+            type="button"
+            onClick={toggleVideo}
+            className="absolute bottom-3 right-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/30 bg-ink/90 px-4 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2"
+            aria-label={videoPlaying ? "Pause transaction preview" : "Play transaction preview"}
+            aria-pressed={videoPlaying}
+          >
+            {videoPlaying ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+            {videoPlaying ? "Pause" : "Play"}
+          </button>
+        </div>
       ) : (
         <img
           src={src}
