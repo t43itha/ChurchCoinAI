@@ -120,6 +120,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
+  const fundNamesById = useMemo(
+    () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
+    [funds]
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
@@ -685,6 +689,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
     setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
     setOriginalPredictions((current) => reindexMapAfterRemoval(current, removedIndex));
+  }, []);
+
+  const updatePendingTransactionAt = useCallback((index: number, updates: Partial<PendingReviewTransaction>) => {
+    setPendingTransactions((current) => current.map((transaction, currentIndex) => (
+      currentIndex === index ? { ...transaction, ...updates } : transaction
+    )));
   }, []);
 
   const handleSyncedBankTransactions = (
@@ -2326,13 +2336,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       {/* Review Modal */}
       {showReviewModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-soft-lg w-full max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger">
-                <div className="p-6 border-b border-[#efeee9] flex justify-between items-center rounded-t-lg">
+            <div className="bg-white rounded-lg shadow-soft-lg w-full min-w-0 max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger overflow-hidden">
+                <div className="p-6 border-b border-[#efeee9] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center rounded-t-lg">
                     <div>
                         <h3 className="text-lg font-bold text-ink">Review Import</h3>
                         <p className="text-xs text-grey-mid font-mono mt-1 uppercase tracking-wide">Found {pendingTransactions.length} items</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <select
                             onChange={(e) => {
                                 if (e.target.value) {
@@ -2343,7 +2353,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     })));
                                 }
                             }}
-                            className="px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer"
+                            className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto"
                             defaultValue=""
                         >
                             <option value="">Assign to Campaign...</option>
@@ -2351,12 +2361,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
-                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide">
+                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap">
                             {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
                         </button>
                     </div>
                 </div>
-                <div className="overflow-y-auto flex-1 p-6">
+                <div className="min-w-0 overflow-y-auto overflow-x-hidden flex-1 p-6">
                     {duplicateWarnings.size > 0 && (
                       <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
                         <AlertTriangle size={16} className="text-amber-600" />
@@ -2366,7 +2376,80 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </p>
                       </div>
                     )}
-                    <table className="w-full text-left ledger-table">
+                    <div className="space-y-3 md:hidden">
+                        {pendingTransactions.map((transaction, index) => {
+                          const isDuplicate = duplicateWarnings.has(index);
+                          return (
+                            <article
+                              key={index}
+                              className={`rounded-lg border p-4 ${isDuplicate ? 'border-amber-200 bg-amber-50' : 'border-ledger bg-white'}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2 text-xs font-mono text-grey-mid">
+                                  {isDuplicate && (
+                                    <span title="Potential duplicate">
+                                      <AlertTriangle size={13} className="shrink-0 text-amber-600" />
+                                    </span>
+                                  )}
+                                  <span>{transaction.date}</span>
+                                </div>
+                                <span className="shrink-0 text-sm font-bold font-mono text-ink">
+                                  £{transaction.amount?.toFixed(2)}
+                                </span>
+                              </div>
+                              <p className="mt-2 break-words text-sm font-medium text-ink">
+                                {transaction.description || 'No description'}
+                              </p>
+                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <label className="min-w-0">
+                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Category</span>
+                                  <select
+                                    aria-label={`Category for import row ${index + 1}`}
+                                    title={transaction.category || 'Select category'}
+                                    className="block w-full min-w-0 max-w-full rounded border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
+                                    value={transaction.category || ''}
+                                    onChange={(event) => updatePendingTransactionAt(index, { category: event.target.value })}
+                                  >
+                                    <option value="">Select...</option>
+                                    {categoryNames.map((category) => <option key={category} value={category}>{category}</option>)}
+                                  </select>
+                                </label>
+                                <label className="min-w-0">
+                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Fund</span>
+                                  <select
+                                    aria-label={`Fund for import row ${index + 1}`}
+                                    title={fundNamesById.get(transaction.fundId || '') || 'Select fund'}
+                                    className="block w-full min-w-0 max-w-full rounded border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
+                                    value={transaction.fundId || ''}
+                                    onChange={(event) => updatePendingTransactionAt(index, { fundId: event.target.value })}
+                                  >
+                                    <option value="">Select...</option>
+                                    {funds.map((fund) => <option key={fund._id} value={fund._id}>{fund.name}</option>)}
+                                  </select>
+                                </label>
+                              </div>
+                              {isDuplicate && (
+                                <button
+                                  type="button"
+                                  onClick={() => removePendingTransactionAt(index)}
+                                  className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-error hover:text-error-dark"
+                                >
+                                  <X size={14} /> Remove duplicate
+                                </button>
+                              )}
+                            </article>
+                          );
+                        })}
+                    </div>
+                    <table className="hidden w-full table-fixed text-left ledger-table md:table">
+                        <colgroup>
+                            <col className="w-[14%]" />
+                            <col className="w-[28%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[20%]" />
+                            <col className="w-[20%]" />
+                            <col className="w-[6%]" />
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th className="pb-2">Date</th>
@@ -2390,10 +2473,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         {t.date}
                                       </div>
                                     </td>
-                                    <td className="py-3 font-medium text-ink text-sm">{t.description}</td>
+                                    <td className="py-3 font-medium text-ink text-sm overflow-hidden">
+                                      <div className="truncate" title={t.description}>{t.description}</div>
+                                    </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3"><select className="bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].category = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
-                                    <td className="py-3"><select className="bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(e) => { const n = [...pendingTransactions]; n[i].fundId = e.target.value; setPendingTransactions(n); }}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
                                         <button
