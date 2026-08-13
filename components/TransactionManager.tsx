@@ -11,6 +11,7 @@ import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
+import ImportCategorizationProgress from './ImportCategorizationProgress';
 
 interface Category {
   _id: string;
@@ -126,6 +127,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   );
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [categorizationTransactionCount, setCategorizationTransactionCount] = useState(0);
+  const [categorizationStatusMessage, setCategorizationStatusMessage] = useState('');
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -851,6 +854,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleApplyAI = async () => {
+    const transactionCount = pendingTransactions.length;
+    const entryLabel = transactionCount === 1 ? 'entry' : 'entries';
+    let terminalStatus = `Auto-categorisation failed for ${transactionCount} ${entryLabel}. Please try again.`;
+    setCategorizationTransactionCount(transactionCount);
+    setCategorizationStatusMessage('');
     setIsProcessingAI(true);
     try {
         // Use the categorization pipeline, with the configured AI only for unresolved transactions.
@@ -899,6 +907,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
         setOriginalPredictions(predictions);
         setPendingTransactions(updatedPending);
+        terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
     } catch (error) {
         console.error("AI Error", error);
         // Fallback to simple categorization if RAG fails
@@ -925,15 +934,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 };
             });
             setPendingTransactions(updatedPending);
+            terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
         } catch (fallbackError) {
             console.error("Fallback AI Error", fallbackError);
         }
     } finally {
         setIsProcessingAI(false);
+        setCategorizationStatusMessage(terminalStatus);
     }
   };
 
   const handleConfirmImport = async () => {
+    if (isProcessingAI) {
+      notify(
+        "Categorisation in progress",
+        "Wait for auto-categorisation to finish before confirming this import."
+      );
+      return;
+    }
     if (bankSyncReviewConnectionId && nextBankSyncCursor) {
       notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
       return;
@@ -1093,6 +1111,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   return (
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+      {/* Keep announcements mounted when the review modal closes mid-process. */}
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {categorizationStatusMessage}
+      </p>
       <header className="swiss-card-static p-6 md:p-[26px] flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
           <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Transactions</h2>
@@ -2346,6 +2368,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <select
+                            disabled={isProcessingAI}
                             onChange={(e) => {
                                 if (e.target.value) {
                                     setPendingTransactions(prev => prev.map(t => ({
@@ -2355,7 +2378,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     })));
                                 }
                             }}
-                            className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto"
+                            className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto disabled:cursor-wait disabled:opacity-60"
                             defaultValue=""
                         >
                             <option value="">Assign to Campaign...</option>
@@ -2363,12 +2386,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
-                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap">
-                            {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
+                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap disabled:cursor-wait disabled:opacity-80">
+                            {isProcessingAI ? <><Loader2 size={14} className="animate-spin" /> Categorising</> : <><Sparkles size={14} /> Auto-Categorise</>}
                         </button>
                     </div>
                 </div>
                 <div className="min-w-0 overflow-y-auto overflow-x-hidden flex-1 p-6">
+                    {isProcessingAI && (
+                      <ImportCategorizationProgress transactionCount={categorizationTransactionCount} />
+                    )}
                     {duplicateWarnings.size > 0 && (
                       <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
                         <AlertTriangle size={16} className="text-amber-600" />
@@ -2519,11 +2545,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         setShowReviewModal(false);
                         clearBankSyncReviewState();
                       }}
-                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors"
+                      disabled={isProcessingAI}
+                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors disabled:cursor-wait disabled:opacity-50"
                     >
                       Discard
                     </button>
-                    <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
+                    <button
+                      onClick={handleConfirmImport}
+                      disabled={isProcessingAI}
+                      aria-busy={isProcessingAI}
+                      className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isProcessingAI ? 'Categorising…' : 'Confirm Import'}
+                    </button>
                     </div>
                 </div>
             </div>
