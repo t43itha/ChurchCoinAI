@@ -8,9 +8,14 @@ import {
   TRANSACTION_EMBEDDING_MODEL,
 } from "../lib/transactionEmbeddingModel";
 import {
+  getPendingIndexingRecoveryAction,
   getRagIndexingCompletionState,
   isRagIndexingSweepCursorCurrent,
 } from "./ragIndexingProgress";
+
+const DEFAULT_TRANSACTION_BATCH_SIZE = 100;
+const PENDING_RECOVERY_DELAY_MS = 10 * 60 * 1000;
+const MAX_INDEXING_ATTEMPTS = 3;
 
 /**
  * Bootstrap existing transactions into the RAG index with durable progress.
@@ -70,7 +75,11 @@ export const recordIndexingOutcome = internalMutation({
       processedTransactions,
       successfulTransactions,
       failedTransactions,
-      status: completion.status,
+      status:
+        run.status === "failed" && !run.schedulingComplete
+          ? "failed"
+          : completion.status,
+      updatedAt: Date.now(),
       completedAt: completion.isFinished ? Date.now() : undefined,
     });
 
@@ -137,20 +146,27 @@ export const indexSingleTransaction = internalAction({
   },
 });
 
-// Index all existing transactions for an organization (batch processing)
-export const indexAllTransactions = internalMutation({
+/** Atomically schedule one durable transaction page for an organization run. */
+export const processIndexingRunPage = internalMutation({
   args: {
     runId: v.id("ragIndexingRuns"),
-    organizationId: v.id("organizations"),
     cursor: v.optional(v.string()),
-    batchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const batchSize = args.batchSize ?? 100;
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("RAG indexing run not found");
+    if (
+      run.schedulingComplete ||
+      !isRagIndexingSweepCursorCurrent(run.cursor, args.cursor)
+    ) {
+      return { advanced: false, status: run.status };
+    }
+
+    const batchSize = run.batchSize ?? DEFAULT_TRANSACTION_BATCH_SIZE;
     const query = ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
-        q.eq("organizationId", args.organizationId)
+        q.eq("organizationId", run.organizationId)
       );
 
     const page = await query.paginate({
@@ -158,28 +174,6 @@ export const indexAllTransactions = internalMutation({
       numItems: batchSize,
     });
     const transactions = page.page;
-
-    if (transactions.length === 0) {
-      const run = await ctx.db.get(args.runId);
-      if (run) {
-        const completion = getRagIndexingCompletionState({
-          schedulingComplete: true,
-          totalTransactions: run.totalTransactions,
-          processedTransactions: run.processedTransactions,
-          failedTransactions: run.failedTransactions,
-        });
-        await ctx.db.patch(run._id, {
-          schedulingComplete: true,
-          status: completion.status,
-          completedAt: completion.isFinished ? Date.now() : undefined,
-        });
-      }
-      return {
-        scheduled: 0,
-        transactionSchedulingComplete: true,
-        message: "No transactions remain to schedule",
-      };
-    }
 
     // Schedule indexing for each transaction
     let scheduled = 0;
@@ -193,7 +187,7 @@ export const indexAllTransactions = internalMutation({
 
       const itemId = await ctx.db.insert("ragIndexingItems", {
         runId: args.runId,
-        organizationId: args.organizationId,
+        organizationId: run.organizationId,
         transactionId: tx._id,
         status: "pending",
         attempts: 1,
@@ -205,7 +199,7 @@ export const indexAllTransactions = internalMutation({
         internal.intelligence.bootstrapRAG.indexSingleTransaction,
         {
           itemId,
-          organizationId: args.organizationId,
+          organizationId: run.organizationId,
           transactionId: tx._id,
           searchText,
           metadata: {
@@ -223,45 +217,270 @@ export const indexAllTransactions = internalMutation({
     }
 
     const hasMore = !page.isDone;
-    const run = await ctx.db.get(args.runId);
-    if (run) {
-      const totalTransactions = run.totalTransactions + scheduled;
-      const schedulingComplete = !hasMore;
-      const completion = getRagIndexingCompletionState({
-        schedulingComplete,
-        totalTransactions,
-        processedTransactions: run.processedTransactions,
-        failedTransactions: run.failedTransactions,
-      });
-      await ctx.db.patch(args.runId, {
-        scheduledTransactions: run.scheduledTransactions + scheduled,
-        totalTransactions,
-        schedulingComplete,
-        status: completion.status,
-        completedAt: completion.isFinished ? Date.now() : undefined,
-      });
-    }
+    const totalTransactions = run.totalTransactions + scheduled;
+    const schedulingComplete = !hasMore;
+    const completion = getRagIndexingCompletionState({
+      schedulingComplete,
+      totalTransactions,
+      processedTransactions: run.processedTransactions,
+      failedTransactions: run.failedTransactions,
+    });
+    await ctx.db.patch(args.runId, {
+      cursor: hasMore ? page.continueCursor : undefined,
+      batchSize,
+      scheduledTransactions: run.scheduledTransactions + scheduled,
+      totalTransactions,
+      schedulingComplete,
+      status: completion.status,
+      updatedAt: Date.now(),
+      completedAt: completion.isFinished ? Date.now() : undefined,
+      lastError: undefined,
+    });
 
     if (hasMore) {
-      // Continue from the pagination cursor to avoid re-indexing the same page.
       await ctx.scheduler.runAfter(
-        100, // Small delay to avoid overwhelming the scheduler
+        100,
         internal.intelligence.bootstrapRAG.indexAllTransactions,
         {
           runId: args.runId,
-          organizationId: args.organizationId,
           cursor: page.continueCursor,
-          batchSize,
         }
+      );
+    } else {
+      // Reconcile actions that terminate before recording a durable outcome.
+      await ctx.scheduler.runAfter(
+        PENDING_RECOVERY_DELAY_MS,
+        internal.intelligence.bootstrapRAG.retryStalePendingTransactions,
+        { runId: args.runId }
       );
     }
 
     return {
+      advanced: true,
       scheduled,
       transactionSchedulingComplete: !hasMore,
       message: hasMore
         ? `Scheduled ${scheduled} transactions. More batches pending.`
         : `Scheduled the final ${scheduled} transactions. Indexing continues asynchronously.`,
+    };
+  },
+});
+
+/** Record a page failure without discarding the last committed run cursor. */
+export const markIndexingRunFailed = internalMutation({
+  args: {
+    runId: v.id("ragIndexingRuns"),
+    cursor: v.optional(v.string()),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.schedulingComplete ||
+      !isRagIndexingSweepCursorCurrent(run.cursor, args.cursor)
+    ) {
+      return { recorded: false };
+    }
+    await ctx.db.patch(args.runId, {
+      status: "failed",
+      lastError: args.error.slice(0, 1000),
+      updatedAt: Date.now(),
+    });
+    return { recorded: true };
+  },
+});
+
+/** Wrap transaction pagination so every failure becomes visible and resumable. */
+export const indexAllTransactions = internalAction({
+  args: {
+    runId: v.id("ragIndexingRuns"),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<unknown> => {
+    try {
+      return await ctx.runMutation(
+        internal.intelligence.bootstrapRAG.processIndexingRunPage,
+        args
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(
+        internal.intelligence.bootstrapRAG.markIndexingRunFailed,
+        { ...args, error: message }
+      );
+      return { advanced: false, status: "failed" as const, error: message };
+    }
+  },
+});
+
+/** Resume transaction pagination from the run's last committed cursor. */
+export const resumeIndexingRun = internalMutation({
+  args: { runId: v.id("ragIndexingRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("RAG indexing run not found");
+    if (run.schedulingComplete) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.intelligence.bootstrapRAG.retryStalePendingTransactions,
+        { runId: args.runId }
+      );
+      return { resumed: true, recovery: "pending_outcomes" as const };
+    }
+    await ctx.db.patch(args.runId, {
+      status: "scheduled",
+      lastError: undefined,
+      updatedAt: Date.now(),
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.intelligence.bootstrapRAG.indexAllTransactions,
+      { runId: args.runId, cursor: run.cursor }
+    );
+    return { resumed: true, recovery: "transaction_pagination" as const };
+  },
+});
+
+/**
+ * Retry pending actions that stopped before recording an outcome. Repeatedly
+ * stranded items become explicit failures instead of leaving a run running
+ * forever.
+ */
+export const retryStalePendingTransactions = internalMutation({
+  args: {
+    runId: v.id("ragIndexingRuns"),
+    batchSize: v.optional(v.number()),
+    staleAfterMs: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new Error("RAG indexing run not found");
+
+    const batchSize = Math.min(
+      100,
+      Math.max(1, Math.floor(args.batchSize ?? DEFAULT_TRANSACTION_BATCH_SIZE))
+    );
+    const staleAfterMs = Math.max(
+      0,
+      args.staleAfterMs ?? PENDING_RECOVERY_DELAY_MS
+    );
+    const now = Date.now();
+    const pendingItems = await ctx.db
+      .query("ragIndexingItems")
+      .withIndex("by_run_status", (q) =>
+        q.eq("runId", args.runId).eq("status", "pending")
+      )
+      .take(batchSize);
+
+    let retrying = 0;
+    let exhausted = 0;
+    let removed = 0;
+    for (const item of pendingItems) {
+      const recoveryAction = getPendingIndexingRecoveryAction({
+        attempts: item.attempts,
+        updatedAt: item.updatedAt,
+        now,
+        staleAfterMs,
+        maxAttempts: MAX_INDEXING_ATTEMPTS,
+      });
+      if (recoveryAction === "wait") continue;
+
+      const tx = await ctx.db.get(item.transactionId);
+      if (!tx) {
+        await ctx.db.delete(item._id);
+        removed++;
+        continue;
+      }
+      if (recoveryAction === "fail") {
+        await ctx.db.patch(item._id, {
+          status: "failed",
+          error: `No indexing outcome after ${item.attempts} attempts`,
+          updatedAt: Date.now(),
+        });
+        exhausted++;
+        continue;
+      }
+
+      const searchText = buildSearchText({
+        description: tx.description,
+        category: tx.category,
+        type: tx.type,
+        donorName: tx.donorName,
+      });
+      await ctx.db.patch(item._id, {
+        attempts: item.attempts + 1,
+        error: undefined,
+        updatedAt: Date.now(),
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.intelligence.bootstrapRAG.indexSingleTransaction,
+        {
+          itemId: item._id,
+          organizationId: run.organizationId,
+          transactionId: tx._id,
+          searchText,
+          metadata: {
+            transactionId: tx._id,
+            category: tx.category,
+            fundId: tx.fundId,
+            type: tx.type,
+            isGiftAidEligible: tx.isGiftAidEligible,
+            donorName: tx.donorName,
+            amount: tx.amount,
+          },
+        }
+      );
+      retrying++;
+    }
+
+    if (removed > 0 || exhausted > 0 || retrying > 0) {
+      const totalTransactions = Math.max(0, run.totalTransactions - removed);
+      const processedTransactions = run.processedTransactions + exhausted;
+      const failedTransactions = run.failedTransactions + exhausted;
+      const completion = getRagIndexingCompletionState({
+        schedulingComplete: run.schedulingComplete,
+        totalTransactions,
+        processedTransactions,
+        failedTransactions,
+      });
+      await ctx.db.patch(args.runId, {
+        totalTransactions,
+        scheduledTransactions: Math.max(
+          0,
+          run.scheduledTransactions - removed
+        ),
+        processedTransactions,
+        failedTransactions,
+        status:
+          run.status === "failed" && !run.schedulingComplete
+            ? "failed"
+            : completion.status,
+        updatedAt: Date.now(),
+        completedAt: completion.isFinished ? Date.now() : undefined,
+      });
+    }
+
+    const pendingItem = await ctx.db
+      .query("ragIndexingItems")
+      .withIndex("by_run_status", (q) =>
+        q.eq("runId", args.runId).eq("status", "pending")
+      )
+      .first();
+    if (pendingItem) {
+      await ctx.scheduler.runAfter(
+        Math.max(1000, staleAfterMs),
+        internal.intelligence.bootstrapRAG.retryStalePendingTransactions,
+        { runId: args.runId, batchSize, staleAfterMs }
+      );
+    }
+
+    return {
+      retrying,
+      exhausted,
+      removedTransactions: removed,
+      pendingRecoveryScheduled: Boolean(pendingItem),
     };
   },
 });
@@ -352,6 +571,7 @@ export const retryFailedTransactions = internalMutation({
             : failedTransactions > 0
               ? "completed_with_errors"
               : "completed",
+        updatedAt: Date.now(),
         completedAt:
           retrying > 0 || failedTransactions > 0 ? undefined : Date.now(),
       });
@@ -453,6 +673,7 @@ export const processReindexSweepPage = internalMutation({
         indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
         dimension: TRANSACTION_EMBEDDING_DIMENSION,
         status: "scheduled",
+        batchSize: DEFAULT_TRANSACTION_BATCH_SIZE,
         schedulingComplete: false,
         totalTransactions: 0,
         scheduledTransactions: 0,
@@ -460,12 +681,13 @@ export const processReindexSweepPage = internalMutation({
         successfulTransactions: 0,
         failedTransactions: 0,
         startedAt: now,
+        updatedAt: now,
       });
 
       await ctx.scheduler.runAfter(
         0,
         internal.intelligence.bootstrapRAG.indexAllTransactions,
-        { runId, organizationId: organization._id }
+        { runId }
       );
     }
 
@@ -555,21 +777,71 @@ export const resumeReindexSweep = internalMutation({
   handler: async (ctx, args) => {
     const sweep = await ctx.db.get(args.sweepId);
     if (!sweep) throw new Error("RAG indexing sweep not found");
-    if (sweep.status === "completed") {
-      return { resumed: false, status: sweep.status };
+    let sweepContinuationScheduled = false;
+    if (sweep.status !== "completed") {
+      await ctx.db.patch(args.sweepId, {
+        status: "scheduled",
+        lastError: undefined,
+        updatedAt: Date.now(),
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.intelligence.bootstrapRAG.continueReindexSweep,
+        { sweepId: args.sweepId, cursor: sweep.cursor }
+      );
+      sweepContinuationScheduled = true;
     }
 
-    await ctx.db.patch(args.sweepId, {
-      status: "scheduled",
-      lastError: undefined,
-      updatedAt: Date.now(),
-    });
-    await ctx.scheduler.runAfter(
-      0,
-      internal.intelligence.bootstrapRAG.continueReindexSweep,
-      { sweepId: args.sweepId, cursor: sweep.cursor }
-    );
-    return { resumed: true, status: "scheduled" as const };
+    // A sweep can finish scheduling organizations while one of its child runs
+    // later fails. Resume those children from their own durable state too.
+    const runs = await ctx.db
+      .query("ragIndexingRuns")
+      .withIndex("by_sweep", (q) => q.eq("sweepId", args.sweepId))
+      .collect();
+    let transactionRunsResumed = 0;
+    let pendingRecoveriesScheduled = 0;
+    let failedRetriesScheduled = 0;
+    for (const run of runs) {
+      if (!run.schedulingComplete) {
+        await ctx.db.patch(run._id, {
+          status: "scheduled",
+          lastError: undefined,
+          updatedAt: Date.now(),
+        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.intelligence.bootstrapRAG.indexAllTransactions,
+          { runId: run._id, cursor: run.cursor }
+        );
+        transactionRunsResumed++;
+      } else if (run.status === "running") {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.intelligence.bootstrapRAG.retryStalePendingTransactions,
+          { runId: run._id }
+        );
+        pendingRecoveriesScheduled++;
+      } else if (run.status === "completed_with_errors") {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.intelligence.bootstrapRAG.retryFailedTransactions,
+          { runId: run._id }
+        );
+        failedRetriesScheduled++;
+      }
+    }
+
+    return {
+      resumed:
+        sweepContinuationScheduled ||
+        transactionRunsResumed > 0 ||
+        pendingRecoveriesScheduled > 0 ||
+        failedRetriesScheduled > 0,
+      status: sweepContinuationScheduled ? "scheduled" : sweep.status,
+      transactionRunsResumed,
+      pendingRecoveriesScheduled,
+      failedRetriesScheduled,
+    };
   },
 });
 
@@ -618,6 +890,14 @@ export const getIndexingStatus = internalQuery({
           )
           .take(20)
       : [];
+    const pendingItems = latestRun
+      ? await ctx.db
+          .query("ragIndexingItems")
+          .withIndex("by_run_status", (q) =>
+            q.eq("runId", latestRun._id).eq("status", "pending")
+          )
+          .take(20)
+      : [];
 
     return {
       totalTransactions: allTransactions.length,
@@ -627,6 +907,7 @@ export const getIndexingStatus = internalQuery({
       dimension: TRANSACTION_EMBEDDING_DIMENSION,
       latestRun,
       failedTransactionIds: failedItems.map((item) => item.transactionId),
+      pendingTransactionIds: pendingItems.map((item) => item.transactionId),
     };
   },
 });

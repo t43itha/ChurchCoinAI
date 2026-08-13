@@ -629,9 +629,12 @@ export default defineSchema({
     status: v.union(
       v.literal("scheduled"),
       v.literal("running"),
+      v.literal("failed"),
       v.literal("completed"),
       v.literal("completed_with_errors")
     ),
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
     schedulingComplete: v.boolean(),
     totalTransactions: v.number(),
     scheduledTransactions: v.number(),
@@ -639,7 +642,9 @@ export default defineSchema({
     successfulTransactions: v.number(),
     failedTransactions: v.number(),
     startedAt: v.number(),
+    updatedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
   })
     .index("by_sweep", ["sweepId"])
     .index("by_organization", ["organizationId"])

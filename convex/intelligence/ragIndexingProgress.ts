@@ -10,6 +10,19 @@ export function isRagIndexingSweepCursorCurrent(
   return (savedCursor ?? null) === (expectedCursor ?? null);
 }
 
+export type PendingIndexingRecoveryAction = "wait" | "retry" | "fail";
+
+export function getPendingIndexingRecoveryAction(args: {
+  attempts: number;
+  updatedAt: number;
+  now: number;
+  staleAfterMs: number;
+  maxAttempts: number;
+}): PendingIndexingRecoveryAction {
+  if (args.updatedAt > args.now - args.staleAfterMs) return "wait";
+  return args.attempts >= args.maxAttempts ? "fail" : "retry";
+}
+
 export function getRagIndexingCompletionState(args: {
   schedulingComplete: boolean;
   totalTransactions: number;
