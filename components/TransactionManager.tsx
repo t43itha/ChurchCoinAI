@@ -1104,6 +1104,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   return (
     <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+      {/* Keep announcements mounted when the review modal closes mid-process. */}
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {categorizationStatusMessage}
+      </p>
       <header className="swiss-card-static p-6 md:p-[26px] flex flex-col md:flex-row md:items-start justify-between gap-4">
         <div>
           <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Transactions</h2>
@@ -2350,9 +2354,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       {showReviewModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-soft-lg w-full min-w-0 max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger overflow-hidden">
-                <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-                    {categorizationStatusMessage}
-                </p>
                 <div className="p-6 border-b border-[#efeee9] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center rounded-t-lg">
                     <div>
                         <h3 className="text-lg font-bold text-ink">Review Import</h3>
