@@ -1,8 +1,12 @@
 import { internalMutation, internalAction, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
 import { transactionRAG } from "../lib/ragInstance";
+import {
+  TRANSACTION_EMBEDDING_DIMENSION,
+  TRANSACTION_EMBEDDING_INDEX_VERSION,
+  TRANSACTION_EMBEDDING_MODEL,
+} from "../lib/transactionEmbeddingModel";
 
 /**
  * Bootstrap existing transactions into the RAG index.
@@ -152,6 +156,55 @@ export const indexAllTransactions = internalMutation({
   },
 });
 
+/**
+ * Rebuild the transaction index for every organization after an embedding
+ * model migration. Convex RAG isolates the new model version from the old
+ * vectors, so this can run safely while the application remains online.
+ *
+ * Run once from the Convex dashboard after deploying this change:
+ * internal.intelligence.bootstrapRAG.reindexAllOrganizations({})
+ */
+export const reindexAllOrganizations = internalMutation({
+  args: {
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const batchSize = args.batchSize ?? 20;
+    const page = await ctx.db.query("organizations").paginate({
+      cursor: args.cursor ?? null,
+      numItems: batchSize,
+    });
+
+    for (const organization of page.page) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.intelligence.bootstrapRAG.indexAllTransactions,
+        { organizationId: organization._id }
+      );
+    }
+
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        100,
+        internal.intelligence.bootstrapRAG.reindexAllOrganizations,
+        {
+          cursor: page.continueCursor,
+          batchSize,
+        }
+      );
+    }
+
+    return {
+      organizationsScheduled: page.page.length,
+      complete: page.isDone,
+      model: TRANSACTION_EMBEDDING_MODEL,
+      indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
+      dimension: TRANSACTION_EMBEDDING_DIMENSION,
+    };
+  },
+});
+
 // Get indexing status for an organization
 export const getIndexingStatus = internalQuery({
   args: {
@@ -169,6 +222,9 @@ export const getIndexingStatus = internalQuery({
     return {
       totalTransactions: allTransactions.length,
       namespace: `org_${args.organizationId}`,
+      model: TRANSACTION_EMBEDDING_MODEL,
+      indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
+      dimension: TRANSACTION_EMBEDDING_DIMENSION,
     };
   },
 });
