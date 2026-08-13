@@ -9,11 +9,15 @@ standard direct service tier did not beat the existing options on this workload.
 | Category accuracy | 98.7% | **100.0%** | 99.0% |
 | All fields correct | 97.3% | **99.0%** | 98.0% |
 | Category consistency | 97.0% | **100.0%** | 98.0% |
-| Median latency / 10 | 3,081 ms | **357 ms** | 485 ms |
-| P95 latency / 10 | 13,436 ms | **669 ms** | 833 ms |
+| Historical header latency p50 / 10† | 3,081 ms | 357 ms | 485 ms |
+| Historical header latency p95 / 10† | 13,436 ms | 669 ms | 833 ms |
 | Cost / 300 predictions | $0.11525 | **$0.01169** | $0.06877 |
 | Projected cost / 1,000 | $0.384 | **$0.039** | $0.229 |
 | Request/schema failures | 0 | 0 | 0 |
+
+† The original harness recorded latency after response headers but before body
+download and JSON parsing. These figures are retained for auditability, not as an
+end-to-end speed comparison. The harness now measures the fully parsed response.
 
 Direct Chat Completions was also smoke-tested with the same contract. It succeeded
 but took 3,392 ms, so the endpoint choice does not explain the direct latency.
@@ -25,9 +29,10 @@ Gift Aid), which would raise post-validation all-field accuracy to approximately
 
 ## Decision
 
-Keep `CATEGORIZATION_AI_PROVIDER` on Gemini for now. The direct Luna adapter remains
-deployed and ready for shadow use, with automatic Gemini fallback, but direct Luna
-should not be made the synchronous UI default while its measured p95 is 13.4 seconds.
+Prefer OpenRouter Luna for the current controlled rollout because it had the best
+accuracy and cost in the focused test. Keep Gemini as an operational fallback. The
+direct Luna adapter remains available, but requires a new end-to-end timing run
+before making any speed comparison.
 
 OpenAI Priority processing is a possible future latency experiment if enabled for
 the project, but it is a different service tier and should be evaluated separately

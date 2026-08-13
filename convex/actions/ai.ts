@@ -227,7 +227,8 @@ export const categorizeWithPipelinePreview = action({
               );
               modelProvider = "openrouter";
               console.info("categorization_openrouter_usage", {
-                generationId: result.generationId,
+                generationIds: result.generationIds,
+                batchCount: result.generationIds.length,
                 model: result.model,
                 upstreamProvider: result.provider,
                 transactionCount: unresolvedTransactions.length,
