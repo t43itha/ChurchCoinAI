@@ -891,6 +891,8 @@ export const recordCorrections = mutation({
         aiConfidence: v.string(),
         predictionSource: v.union(
           v.literal("gemini"),
+          v.literal("openrouter"),
+          v.literal("openai"),
           v.literal("rag"),
           v.literal("memory"),
           v.literal("none")
@@ -1076,6 +1078,10 @@ export const getCategorizationStats = query({
     const correct = allCorrections.filter((c) => c.wasCorrect).length;
     const bySource = {
       gemini: allCorrections.filter((c) => c.predictionSource === "gemini"),
+      openrouter: allCorrections.filter(
+        (c) => c.predictionSource === "openrouter"
+      ),
+      openai: allCorrections.filter((c) => c.predictionSource === "openai"),
       rag: allCorrections.filter((c) => c.predictionSource === "rag"),
       memory: allCorrections.filter((c) => c.predictionSource === "memory"),
     };
@@ -1088,6 +1094,18 @@ export const getCategorizationStats = query({
         bySource.gemini.length > 0
           ? (bySource.gemini.filter((c) => c.wasCorrect).length /
               bySource.gemini.length) *
+            100
+          : 0,
+      openrouterAccuracy:
+        bySource.openrouter.length > 0
+          ? (bySource.openrouter.filter((c) => c.wasCorrect).length /
+              bySource.openrouter.length) *
+            100
+          : 0,
+      openaiAccuracy:
+        bySource.openai.length > 0
+          ? (bySource.openai.filter((c) => c.wasCorrect).length /
+              bySource.openai.length) *
             100
           : 0,
       ragAccuracy:
@@ -1104,6 +1122,8 @@ export const getCategorizationStats = query({
           : 0,
       ragCount: bySource.rag.length,
       geminiCount: bySource.gemini.length,
+      openrouterCount: bySource.openrouter.length,
+      openaiCount: bySource.openai.length,
       memoryCount: bySource.memory.length,
     };
   },

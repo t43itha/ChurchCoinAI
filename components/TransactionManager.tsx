@@ -42,7 +42,7 @@ type PendingReviewTransaction = Partial<Transaction> & {
   bankConnectionId?: Id<"bankConnections">;
 };
 
-type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'rag' | 'none';
+type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
 
 type OriginalPrediction = {
   category: string;
@@ -840,6 +840,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           : 'RAG Match';
       case 'gemini':
         return 'Gemini AI';
+      case 'openai':
+        return 'Luna AI (OpenAI)';
+      case 'openrouter':
+        return 'Luna AI';
       case 'none':
       default:
         return 'No AI suggestion';
@@ -849,7 +853,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handleApplyAI = async () => {
     setIsProcessingAI(true);
     try {
-        // Use the categorization pipeline, with Gemini only for unresolved transactions.
+        // Use the categorization pipeline, with the configured AI only for unresolved transactions.
         const transactionsForAI = pendingTransactions.map(t => ({
             description: t.description || '',
             amount: t.amount || 0,
@@ -857,9 +861,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         }));
 
         const suggestions = await categorizeWithPipeline({
-            transactions: transactionsForAI,
-            fundNames: funds.map(f => f.name),
-            categories: categoryNames
+            transactions: transactionsForAI
         });
 
         // Track original AI predictions for correction learning

@@ -22,7 +22,10 @@ import type * as intelligence_categorization_confidence from "../intelligence/ca
 import type * as intelligence_categorization_feedback from "../intelligence/categorization/feedback.js";
 import type * as intelligence_categorization_gemini from "../intelligence/categorization/gemini.js";
 import type * as intelligence_categorization_memory from "../intelligence/categorization/memory.js";
+import type * as intelligence_categorization_modelContract from "../intelligence/categorization/modelContract.js";
 import type * as intelligence_categorization_normalize from "../intelligence/categorization/normalize.js";
+import type * as intelligence_categorization_openai from "../intelligence/categorization/openai.js";
+import type * as intelligence_categorization_openrouter from "../intelligence/categorization/openrouter.js";
 import type * as intelligence_categorization_pipeline from "../intelligence/categorization/pipeline.js";
 import type * as intelligence_categorization_rag from "../intelligence/categorization/rag.js";
 import type * as intelligence_categorization_rules from "../intelligence/categorization/rules.js";
@@ -103,7 +106,10 @@ declare const fullApi: ApiFromModules<{
   "intelligence/categorization/feedback": typeof intelligence_categorization_feedback;
   "intelligence/categorization/gemini": typeof intelligence_categorization_gemini;
   "intelligence/categorization/memory": typeof intelligence_categorization_memory;
+  "intelligence/categorization/modelContract": typeof intelligence_categorization_modelContract;
   "intelligence/categorization/normalize": typeof intelligence_categorization_normalize;
+  "intelligence/categorization/openai": typeof intelligence_categorization_openai;
+  "intelligence/categorization/openrouter": typeof intelligence_categorization_openrouter;
   "intelligence/categorization/pipeline": typeof intelligence_categorization_pipeline;
   "intelligence/categorization/rag": typeof intelligence_categorization_rag;
   "intelligence/categorization/rules": typeof intelligence_categorization_rules;

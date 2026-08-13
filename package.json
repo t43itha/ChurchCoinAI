@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 300",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:categorization": "node scripts/eval-categorization.mjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.106",

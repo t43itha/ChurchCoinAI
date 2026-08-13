@@ -23,6 +23,8 @@ export const defaultConfidenceForSource = (
     case "rag":
       return 0.86;
     case "gemini":
+    case "openrouter":
+    case "openai":
       return 0.72;
     case "none":
       return 0;
