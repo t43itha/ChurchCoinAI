@@ -945,6 +945,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleConfirmImport = async () => {
+    if (isProcessingAI) {
+      notify(
+        "Categorisation in progress",
+        "Wait for auto-categorisation to finish before confirming this import."
+      );
+      return;
+    }
     if (bankSyncReviewConnectionId && nextBankSyncCursor) {
       notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
       return;
@@ -2361,6 +2368,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <select
+                            disabled={isProcessingAI}
                             onChange={(e) => {
                                 if (e.target.value) {
                                     setPendingTransactions(prev => prev.map(t => ({
@@ -2370,7 +2378,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     })));
                                 }
                             }}
-                            className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto"
+                            className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto disabled:cursor-wait disabled:opacity-60"
                             defaultValue=""
                         >
                             <option value="">Assign to Campaign...</option>
@@ -2537,11 +2545,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         setShowReviewModal(false);
                         clearBankSyncReviewState();
                       }}
-                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors"
+                      disabled={isProcessingAI}
+                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors disabled:cursor-wait disabled:opacity-50"
                     >
                       Discard
                     </button>
-                    <button onClick={handleConfirmImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide">Confirm Import</button>
+                    <button
+                      onClick={handleConfirmImport}
+                      disabled={isProcessingAI}
+                      aria-busy={isProcessingAI}
+                      className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isProcessingAI ? 'Categorising…' : 'Confirm Import'}
+                    </button>
                     </div>
                 </div>
             </div>
