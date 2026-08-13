@@ -194,6 +194,12 @@ export const exportDataPage = query({
       case "categorizationFeedbackEvents":
         result = await ctx.db.query("categorizationFeedbackEvents").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
         break;
+      case "ragIndexingRuns":
+        result = await ctx.db.query("ragIndexingRuns").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
+      case "ragIndexingItems":
+        result = await ctx.db.query("ragIndexingItems").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
     }
 
     return {

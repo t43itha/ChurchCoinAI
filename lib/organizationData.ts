@@ -25,6 +25,8 @@ export const ORGANIZATION_DATA_TABLES = [
   "categorizationCorrections",
   "transactionCategorizationMemory",
   "categorizationFeedbackEvents",
+  "ragIndexingRuns",
+  "ragIndexingItems",
 ] as const;
 
 export type OrganizationDataTable = (typeof ORGANIZATION_DATA_TABLES)[number];
@@ -35,6 +37,8 @@ export type OrganizationDataTable = (typeof ORGANIZATION_DATA_TABLES)[number];
  * order keeps the operation understandable and retryable.
  */
 export const ORGANIZATION_DELETION_TABLES = [
+  "ragIndexingItems",
+  "ragIndexingRuns",
   "categorizationFeedbackEvents",
   "transactionCategorizationMemory",
   "categorizationCorrections",

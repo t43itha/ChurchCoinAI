@@ -595,4 +595,48 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_transaction", ["transactionId"])
     .index("by_organization_source", ["organizationId", "source"]),
+
+  // Durable progress for one-off transaction embedding migrations.
+  ragIndexingRuns: defineTable({
+    organizationId: v.id("organizations"),
+    model: v.string(),
+    indexVersion: v.string(),
+    dimension: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("completed_with_errors")
+    ),
+    schedulingComplete: v.boolean(),
+    totalTransactions: v.number(),
+    scheduledTransactions: v.number(),
+    processedTransactions: v.number(),
+    successfulTransactions: v.number(),
+    failedTransactions: v.number(),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_version", ["organizationId", "indexVersion"])
+    .index("by_status", ["status"]),
+
+  // One row per transaction makes progress idempotent and failed work
+  // discoverable/retryable without rebuilding successful embeddings.
+  ragIndexingItems: defineTable({
+    runId: v.id("ragIndexingRuns"),
+    organizationId: v.id("organizations"),
+    transactionId: v.id("transactions"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("success"),
+      v.literal("failed")
+    ),
+    attempts: v.number(),
+    error: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_run_status", ["runId", "status"])
+    .index("by_run_transaction", ["runId", "transactionId"]),
 });

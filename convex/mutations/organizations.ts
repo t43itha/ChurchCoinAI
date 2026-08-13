@@ -611,6 +611,12 @@ export const deleteDataBatch = internalMutation({
       case "categorizationFeedbackEvents":
         records = await ctx.db.query("categorizationFeedbackEvents").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
+      case "ragIndexingRuns":
+        records = await ctx.db.query("ragIndexingRuns").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "ragIndexingItems":
+        records = await ctx.db.query("ragIndexingItems").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
     }
 
     await Promise.all(records.map((record) => ctx.db.delete(record._id)));
