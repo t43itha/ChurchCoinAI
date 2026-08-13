@@ -214,12 +214,12 @@ function ScreenshotFrame({
           <button
             type="button"
             onClick={toggleVideo}
-            className="absolute bottom-3 right-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/30 bg-ink/90 px-4 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2"
+            className="absolute bottom-3 right-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink/10 bg-white/85 text-ink shadow-sm backdrop-blur-sm transition hover:border-ink/20 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2"
             aria-label={videoPlaying ? "Pause transaction preview" : "Play transaction preview"}
             aria-pressed={videoPlaying}
+            title={videoPlaying ? "Pause" : "Play"}
           >
             {videoPlaying ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-            {videoPlaying ? "Pause" : "Play"}
           </button>
         </div>
       ) : (
