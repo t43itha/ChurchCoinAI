@@ -61,7 +61,8 @@ const categorizeOpenRouterBatch = async (
   transactions: CategorizationInput[],
   categories: CategoryLike[],
   funds: FundLike[],
-  evidence: CategorizationEvidence[]
+  evidence: CategorizationEvidence[],
+  sharedSignal: AbortSignal
 ): Promise<OpenRouterCategorizationResult> => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -72,7 +73,18 @@ const categorizeOpenRouterBatch = async (
     process.env.OPENROUTER_CATEGORIZATION_MODEL?.trim() ||
     OPENROUTER_CATEGORIZATION_MODEL;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+  let timedOut = false;
+  const abortFromSharedSignal = () => controller.abort(sharedSignal.reason);
+  if (sharedSignal.aborted) abortFromSharedSignal();
+  else {
+    sharedSignal.addEventListener("abort", abortFromSharedSignal, {
+      once: true,
+    });
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, OPENROUTER_TIMEOUT_MS);
 
   try {
     const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
@@ -148,7 +160,7 @@ const categorizeOpenRouterBatch = async (
       usage: payload.usage ?? {},
     };
   } catch (error) {
-    if (controller.signal.aborted) {
+    if (timedOut) {
       throw Object.assign(
         new Error(
           `OpenRouter categorization timed out after ${OPENROUTER_TIMEOUT_MS}ms`
@@ -159,6 +171,7 @@ const categorizeOpenRouterBatch = async (
     throw error;
   } finally {
     clearTimeout(timer);
+    sharedSignal.removeEventListener("abort", abortFromSharedSignal);
   }
 };
 
@@ -203,17 +216,30 @@ export const categorizeWithOpenRouter = async (
   }
 
   const results = new Array<OpenRouterCategorizationResult>(batches.length);
+  const poolController = new AbortController();
   let nextBatchIndex = 0;
+  let firstError: unknown;
+  let hasError = false;
   const worker = async () => {
-    while (nextBatchIndex < batches.length) {
+    while (!poolController.signal.aborted && nextBatchIndex < batches.length) {
       const batchIndex = nextBatchIndex;
       nextBatchIndex += 1;
-      results[batchIndex] = await categorizeOpenRouterBatch(
-        batches[batchIndex],
-        categories,
-        funds,
-        evidence
-      );
+      try {
+        results[batchIndex] = await categorizeOpenRouterBatch(
+          batches[batchIndex],
+          categories,
+          funds,
+          evidence,
+          poolController.signal
+        );
+      } catch (error) {
+        if (!hasError) {
+          hasError = true;
+          firstError = error;
+          poolController.abort(error);
+        }
+        return;
+      }
     }
   };
 
@@ -223,6 +249,8 @@ export const categorizeWithOpenRouter = async (
       () => worker()
     )
   );
+
+  if (hasError) throw firstError;
 
   return {
     suggestions: results.flatMap((result) => result.suggestions),

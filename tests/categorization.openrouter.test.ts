@@ -184,6 +184,48 @@ describe("OpenRouter categorization adapter", () => {
     expect(result.usage.cost).toBeCloseTo(0.0003);
   });
 
+  it("cancels and settles sibling workers before surfacing a batch failure", async () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    const transactions = Array.from(
+      { length: OPENROUTER_BATCH_SIZE * 5 },
+      (_, index) => ({
+        description: `Donation ${index + 1}`,
+        amount: index + 1,
+        type: "Income" as const,
+      })
+    );
+    let siblingAbortCount = 0;
+    const fetchMock = vi.fn().mockImplementation((_url, request) => {
+      if (fetchMock.mock.calls.length === 1) {
+        return Promise.resolve({
+          ok: false,
+          status: 503,
+          statusText: "Unavailable",
+          json: async () => ({ error: { message: "Provider unavailable" } }),
+        });
+      }
+
+      return new Promise((_resolve, reject) => {
+        request.signal.addEventListener(
+          "abort",
+          () => {
+            siblingAbortCount += 1;
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true }
+        );
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      categorizeWithOpenRouter(transactions, categories, funds, [])
+    ).rejects.toThrow("OpenRouter 503: Provider unavailable");
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(siblingAbortCount).toBe(3);
+  });
+
   it("fails clearly when the Convex secret is missing", async () => {
     await expect(
       categorizeWithOpenRouter(
