@@ -127,6 +127,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   );
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [categorizationTransactionCount, setCategorizationTransactionCount] = useState(0);
+  const [categorizationStatusMessage, setCategorizationStatusMessage] = useState('');
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -852,6 +854,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleApplyAI = async () => {
+    const transactionCount = pendingTransactions.length;
+    const entryLabel = transactionCount === 1 ? 'entry' : 'entries';
+    let terminalStatus = `Auto-categorisation failed for ${transactionCount} ${entryLabel}. Please try again.`;
+    setCategorizationTransactionCount(transactionCount);
+    setCategorizationStatusMessage('');
     setIsProcessingAI(true);
     try {
         // Use the categorization pipeline, with the configured AI only for unresolved transactions.
@@ -900,6 +907,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
         setOriginalPredictions(predictions);
         setPendingTransactions(updatedPending);
+        terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
     } catch (error) {
         console.error("AI Error", error);
         // Fallback to simple categorization if RAG fails
@@ -926,11 +934,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 };
             });
             setPendingTransactions(updatedPending);
+            terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
         } catch (fallbackError) {
             console.error("Fallback AI Error", fallbackError);
         }
     } finally {
         setIsProcessingAI(false);
+        setCategorizationStatusMessage(terminalStatus);
     }
   };
 
@@ -2340,6 +2350,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       {showReviewModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-soft-lg w-full min-w-0 max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger overflow-hidden">
+                <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+                    {categorizationStatusMessage}
+                </p>
                 <div className="p-6 border-b border-[#efeee9] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center rounded-t-lg">
                     <div>
                         <h3 className="text-lg font-bold text-ink">Review Import</h3>
@@ -2371,7 +2384,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </div>
                 <div className="min-w-0 overflow-y-auto overflow-x-hidden flex-1 p-6">
                     {isProcessingAI && (
-                      <ImportCategorizationProgress transactionCount={pendingTransactions.length} />
+                      <ImportCategorizationProgress transactionCount={categorizationTransactionCount} />
                     )}
                     {duplicateWarnings.size > 0 && (
                       <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
