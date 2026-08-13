@@ -9,7 +9,13 @@ It measures:
 - all-fields-correct transaction accuracy;
 - income/expenditure category violations;
 - missing, duplicate, or malformed predictions;
-- request latency, token usage, reasoning tokens, and billed cost.
+- end-to-end request latency (including body download and JSON parsing), token
+  usage, reasoning tokens, and billed cost.
+
+Latency results produced before the 13 August 2026 timing correction measured
+response headers rather than the fully parsed structured response. The checked-in
+historical summaries label those figures explicitly; do not use them as a proxy for
+user-visible wait time.
 
 The default model matrix is defined in `scripts/eval-categorization.mjs`. All models
 receive the same prompt and strict JSON schema. Reasoning is disabled where the

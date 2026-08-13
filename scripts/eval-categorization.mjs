@@ -339,8 +339,8 @@ async function callOpenRouter(apiKey, body, attempt = 0) {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    const latencyMs = performance.now() - startedAt;
     const payload = await response.json().catch(() => ({}));
+    const latencyMs = performance.now() - startedAt;
     if (!response.ok) {
       if (attempt === 0 && [429, 502, 503].includes(response.status)) {
         const retryAfter = Number(response.headers.get("retry-after"));
@@ -405,8 +405,8 @@ async function callOpenAIDirect(apiKey, body, attempt = 0) {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    const latencyMs = performance.now() - startedAt;
     const payload = await response.json().catch(() => ({}));
+    const latencyMs = performance.now() - startedAt;
     if (!response.ok) {
       if (attempt === 0 && [429, 500, 502, 503].includes(response.status)) {
         const retryAfter = Number(response.headers.get("retry-after"));
@@ -438,8 +438,8 @@ async function callOpenAIChat(apiKey, body, attempt = 0) {
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    const latencyMs = performance.now() - startedAt;
     const payload = await response.json().catch(() => ({}));
+    const latencyMs = performance.now() - startedAt;
     if (!response.ok) {
       if (attempt === 0 && [429, 500, 502, 503].includes(response.status)) {
         const retryAfter = Number(response.headers.get("retry-after"));

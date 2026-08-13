@@ -11,7 +11,9 @@ import {
 
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_TIMEOUT_MS = 10_000;
+const OPENROUTER_TIMEOUT_MS = 30_000;
+export const OPENROUTER_BATCH_SIZE = 20;
+export const OPENROUTER_MAX_CONCURRENCY = 4;
 
 export const OPENROUTER_CATEGORIZATION_MODEL = "openai/gpt-5.6-luna";
 
@@ -36,7 +38,7 @@ type OpenRouterResponse = {
 
 export type OpenRouterCategorizationResult = {
   suggestions: Record<string, unknown>[];
-  generationId: string | null;
+  generationIds: string[];
   model: string;
   provider: string | null;
   usage: NonNullable<OpenRouterResponse["usage"]>;
@@ -55,11 +57,12 @@ export const openRouterOutputText = (
     .join("");
 };
 
-export const categorizeWithOpenRouter = async (
+const categorizeOpenRouterBatch = async (
   transactions: CategorizationInput[],
   categories: CategoryLike[],
   funds: FundLike[],
-  evidence: CategorizationEvidence[]
+  evidence: CategorizationEvidence[],
+  sharedSignal: AbortSignal
 ): Promise<OpenRouterCategorizationResult> => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -70,7 +73,18 @@ export const categorizeWithOpenRouter = async (
     process.env.OPENROUTER_CATEGORIZATION_MODEL?.trim() ||
     OPENROUTER_CATEGORIZATION_MODEL;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENROUTER_TIMEOUT_MS);
+  let timedOut = false;
+  const abortFromSharedSignal = () => controller.abort(sharedSignal.reason);
+  if (sharedSignal.aborted) abortFromSharedSignal();
+  else {
+    sharedSignal.addEventListener("abort", abortFromSharedSignal, {
+      once: true,
+    });
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, OPENROUTER_TIMEOUT_MS);
 
   try {
     const response = await fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
@@ -119,7 +133,7 @@ export const categorizeWithOpenRouter = async (
       signal: controller.signal,
     });
 
-    const payload = (await response.json().catch(() => ({}))) as OpenRouterResponse;
+    const payload = (await response.json()) as OpenRouterResponse;
     if (!response.ok) {
       throw new Error(
         `OpenRouter ${response.status}: ${payload.error?.message || response.statusText}`
@@ -140,12 +154,109 @@ export const categorizeWithOpenRouter = async (
 
     return {
       suggestions: parsed.predictions as Record<string, unknown>[],
-      generationId: payload.id ?? null,
+      generationIds: payload.id ? [payload.id] : [],
       model: payload.model ?? model,
       provider: payload.provider ?? null,
       usage: payload.usage ?? {},
     };
+  } catch (error) {
+    if (timedOut) {
+      throw Object.assign(
+        new Error(
+          `OpenRouter categorization timed out after ${OPENROUTER_TIMEOUT_MS}ms`
+        ),
+        { cause: error }
+      );
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
+    sharedSignal.removeEventListener("abort", abortFromSharedSignal);
   }
+};
+
+const sumUsage = (
+  results: OpenRouterCategorizationResult[]
+): NonNullable<OpenRouterResponse["usage"]> => ({
+  prompt_tokens: results.reduce(
+    (sum, result) => sum + (result.usage.prompt_tokens ?? 0),
+    0
+  ),
+  completion_tokens: results.reduce(
+    (sum, result) => sum + (result.usage.completion_tokens ?? 0),
+    0
+  ),
+  total_tokens: results.reduce(
+    (sum, result) => sum + (result.usage.total_tokens ?? 0),
+    0
+  ),
+  cost: results.reduce(
+    (sum, result) => sum + (result.usage.cost ?? 0),
+    0
+  ),
+  completion_tokens_details: {
+    reasoning_tokens: results.reduce(
+      (sum, result) =>
+        sum +
+        (result.usage.completion_tokens_details?.reasoning_tokens ?? 0),
+      0
+    ),
+  },
+});
+
+export const categorizeWithOpenRouter = async (
+  transactions: CategorizationInput[],
+  categories: CategoryLike[],
+  funds: FundLike[],
+  evidence: CategorizationEvidence[]
+): Promise<OpenRouterCategorizationResult> => {
+  const batches: CategorizationInput[][] = [];
+  for (let index = 0; index < transactions.length; index += OPENROUTER_BATCH_SIZE) {
+    batches.push(transactions.slice(index, index + OPENROUTER_BATCH_SIZE));
+  }
+
+  const results = new Array<OpenRouterCategorizationResult>(batches.length);
+  const poolController = new AbortController();
+  let nextBatchIndex = 0;
+  let firstError: unknown;
+  let hasError = false;
+  const worker = async () => {
+    while (!poolController.signal.aborted && nextBatchIndex < batches.length) {
+      const batchIndex = nextBatchIndex;
+      nextBatchIndex += 1;
+      try {
+        results[batchIndex] = await categorizeOpenRouterBatch(
+          batches[batchIndex],
+          categories,
+          funds,
+          evidence,
+          poolController.signal
+        );
+      } catch (error) {
+        if (!hasError) {
+          hasError = true;
+          firstError = error;
+          poolController.abort(error);
+        }
+        return;
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(OPENROUTER_MAX_CONCURRENCY, batches.length) },
+      () => worker()
+    )
+  );
+
+  if (hasError) throw firstError;
+
+  return {
+    suggestions: results.flatMap((result) => result.suggestions),
+    generationIds: results.flatMap((result) => result.generationIds),
+    model: results[0]?.model ?? OPENROUTER_CATEGORIZATION_MODEL,
+    provider: results[0]?.provider ?? null,
+    usage: sumUsage(results),
+  };
 };
