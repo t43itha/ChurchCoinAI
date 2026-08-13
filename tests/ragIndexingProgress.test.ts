@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { getRagIndexingCompletionState } from "../convex/intelligence/ragIndexingProgress";
+import {
+  getRagIndexingCompletionState,
+  isRagIndexingSweepCursorCurrent,
+} from "../convex/intelligence/ragIndexingProgress";
+
+describe("RAG indexing sweep continuation", () => {
+  it("accepts the initial page and the currently saved continuation", () => {
+    expect(isRagIndexingSweepCursorCurrent()).toBe(true);
+    expect(isRagIndexingSweepCursorCurrent("next-page", "next-page")).toBe(
+      true
+    );
+  });
+
+  it("rejects a stale or duplicate continuation", () => {
+    expect(isRagIndexingSweepCursorCurrent("new-page", "old-page")).toBe(
+      false
+    );
+    expect(isRagIndexingSweepCursorCurrent("new-page")).toBe(false);
+  });
+});
 
 describe("RAG indexing completion", () => {
   it("does not complete while transaction scheduling is unfinished", () => {

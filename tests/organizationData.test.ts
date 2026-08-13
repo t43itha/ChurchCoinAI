@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  GLOBAL_OPERATIONAL_TABLES,
   ORGANIZATION_DATA_TABLES,
   ORGANIZATION_DELETION_TABLES,
 } from "../lib/organizationData";
@@ -16,7 +17,9 @@ describe("organization data lifecycle table coverage", () => {
       (match) => match[1]
     );
 
-    expect([...ORGANIZATION_DATA_TABLES].sort()).toEqual(schemaTables.sort());
+    expect(
+      [...ORGANIZATION_DATA_TABLES, ...GLOBAL_OPERATIONAL_TABLES].sort()
+    ).toEqual(schemaTables.sort());
   });
 
   it("deletes every tenant table exactly once before the organization", () => {

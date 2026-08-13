@@ -29,6 +29,9 @@ export const ORGANIZATION_DATA_TABLES = [
   "ragIndexingItems",
 ] as const;
 
+/** Global operational tables that must not be exported as tenant data. */
+export const GLOBAL_OPERATIONAL_TABLES = ["ragIndexingSweeps"] as const;
+
 export type OrganizationDataTable = (typeof ORGANIZATION_DATA_TABLES)[number];
 
 /**

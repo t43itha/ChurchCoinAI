@@ -596,8 +596,32 @@ export default defineSchema({
     .index("by_transaction", ["transactionId"])
     .index("by_organization_source", ["organizationId", "source"]),
 
-  // Durable progress for one-off transaction embedding migrations.
+  // Durable tenant-wide orchestration state for embedding migrations. This is
+  // operational data rather than organization-owned export data.
+  ragIndexingSweeps: defineTable({
+    model: v.string(),
+    indexVersion: v.string(),
+    dimension: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    cursor: v.optional(v.string()),
+    batchSize: v.number(),
+    organizationsScheduled: v.number(),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_version", ["indexVersion"])
+    .index("by_status", ["status"]),
+
+  // Durable progress for each organization's embedding migration.
   ragIndexingRuns: defineTable({
+    sweepId: v.optional(v.id("ragIndexingSweeps")),
     organizationId: v.id("organizations"),
     model: v.string(),
     indexVersion: v.string(),
@@ -617,6 +641,7 @@ export default defineSchema({
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
+    .index("by_sweep", ["sweepId"])
     .index("by_organization", ["organizationId"])
     .index("by_organization_version", ["organizationId", "indexVersion"])
     .index("by_status", ["status"]),

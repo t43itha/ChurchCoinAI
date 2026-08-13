@@ -7,12 +7,15 @@ import {
   TRANSACTION_EMBEDDING_INDEX_VERSION,
   TRANSACTION_EMBEDDING_MODEL,
 } from "../lib/transactionEmbeddingModel";
-import { getRagIndexingCompletionState } from "./ragIndexingProgress";
+import {
+  getRagIndexingCompletionState,
+  isRagIndexingSweepCursorCurrent,
+} from "./ragIndexingProgress";
 
 /**
  * Bootstrap existing transactions into the RAG index with durable progress.
- * Start migrations through reindexAllOrganizations so every asynchronous
- * outcome belongs to a tracked run.
+ * Start migrations through reindexAllOrganizations so both the tenant-wide
+ * sweep and every asynchronous transaction outcome are tracked.
  */
 
 // Build searchable text combining description + categorization metadata
@@ -380,20 +383,71 @@ export const retryFailedTransactions = internalMutation({
  */
 export const reindexAllOrganizations = internalMutation({
   args: {
-    cursor: v.optional(v.string()),
     batchSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const batchSize = args.batchSize ?? 20;
-    const page = await ctx.db.query("organizations").paginate({
-      cursor: args.cursor ?? null,
-      numItems: batchSize,
+    const batchSize = Math.min(
+      100,
+      Math.max(1, Math.floor(args.batchSize ?? 20))
+    );
+    const now = Date.now();
+    const sweepId = await ctx.db.insert("ragIndexingSweeps", {
+      model: TRANSACTION_EMBEDDING_MODEL,
+      indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
+      dimension: TRANSACTION_EMBEDDING_DIMENSION,
+      status: "scheduled",
+      batchSize,
+      organizationsScheduled: 0,
+      startedAt: now,
+      updatedAt: now,
     });
 
-    const runs = [];
+    await ctx.scheduler.runAfter(
+      0,
+      internal.intelligence.bootstrapRAG.continueReindexSweep,
+      { sweepId }
+    );
+
+    return {
+      sweepId,
+      status: "scheduled" as const,
+      model: TRANSACTION_EMBEDDING_MODEL,
+      indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
+      dimension: TRANSACTION_EMBEDDING_DIMENSION,
+    };
+  },
+});
+
+/**
+ * Atomically schedules one page of organizations and advances the saved
+ * cursor. Matching the expected cursor makes duplicate/resumed continuations
+ * idempotent: only the first invocation can advance a given page.
+ */
+export const processReindexSweepPage = internalMutation({
+  args: {
+    sweepId: v.id("ragIndexingSweeps"),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const sweep = await ctx.db.get(args.sweepId);
+    if (!sweep) throw new Error("RAG indexing sweep not found");
+
+    if (
+      sweep.status === "completed" ||
+      !isRagIndexingSweepCursorCurrent(sweep.cursor, args.cursor)
+    ) {
+      return { advanced: false, status: sweep.status };
+    }
+
+    const page = await ctx.db.query("organizations").paginate({
+      cursor: sweep.cursor ?? null,
+      numItems: sweep.batchSize,
+    });
+
     for (const organization of page.page) {
       const now = Date.now();
       const runId = await ctx.db.insert("ragIndexingRuns", {
+        sweepId: args.sweepId,
         organizationId: organization._id,
         model: TRANSACTION_EMBEDDING_MODEL,
         indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
@@ -413,31 +467,124 @@ export const reindexAllOrganizations = internalMutation({
         internal.intelligence.bootstrapRAG.indexAllTransactions,
         { runId, organizationId: organization._id }
       );
-      runs.push({
-        organizationId: organization._id,
-        runId,
-      });
     }
+
+    const now = Date.now();
+    const organizationsScheduled =
+      sweep.organizationsScheduled + page.page.length;
+    await ctx.db.patch(args.sweepId, {
+      status: page.isDone ? "completed" : "running",
+      cursor: page.isDone ? undefined : page.continueCursor,
+      organizationsScheduled,
+      updatedAt: now,
+      completedAt: page.isDone ? now : undefined,
+      lastError: undefined,
+    });
 
     if (!page.isDone) {
       await ctx.scheduler.runAfter(
         100,
-        internal.intelligence.bootstrapRAG.reindexAllOrganizations,
+        internal.intelligence.bootstrapRAG.continueReindexSweep,
         {
+          sweepId: args.sweepId,
           cursor: page.continueCursor,
-          batchSize,
         }
       );
     }
 
     return {
-      organizationsScheduled: page.page.length,
+      advanced: true,
+      organizationsScheduled,
       organizationSchedulingComplete: page.isDone,
-      runs,
-      model: TRANSACTION_EMBEDDING_MODEL,
-      indexVersion: TRANSACTION_EMBEDDING_INDEX_VERSION,
-      dimension: TRANSACTION_EMBEDDING_DIMENSION,
     };
+  },
+});
+
+/** Mark only the still-current page as failed so stale workers cannot regress it. */
+export const markReindexSweepFailed = internalMutation({
+  args: {
+    sweepId: v.id("ragIndexingSweeps"),
+    cursor: v.optional(v.string()),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const sweep = await ctx.db.get(args.sweepId);
+    if (
+      !sweep ||
+      sweep.status === "completed" ||
+      !isRagIndexingSweepCursorCurrent(sweep.cursor, args.cursor)
+    ) {
+      return { recorded: false };
+    }
+
+    await ctx.db.patch(args.sweepId, {
+      status: "failed",
+      lastError: args.error.slice(0, 1000),
+      updatedAt: Date.now(),
+    });
+    return { recorded: true };
+  },
+});
+
+/** Wrap each page so failures are visible and the saved cursor can be resumed. */
+export const continueReindexSweep = internalAction({
+  args: {
+    sweepId: v.id("ragIndexingSweeps"),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<unknown> => {
+    try {
+      return await ctx.runMutation(
+        internal.intelligence.bootstrapRAG.processReindexSweepPage,
+        args
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(
+        internal.intelligence.bootstrapRAG.markReindexSweepFailed,
+        { ...args, error: message }
+      );
+      return { advanced: false, status: "failed" as const, error: message };
+    }
+  },
+});
+
+/** Resume a failed or stalled sweep from its last durably saved cursor. */
+export const resumeReindexSweep = internalMutation({
+  args: { sweepId: v.id("ragIndexingSweeps") },
+  handler: async (ctx, args) => {
+    const sweep = await ctx.db.get(args.sweepId);
+    if (!sweep) throw new Error("RAG indexing sweep not found");
+    if (sweep.status === "completed") {
+      return { resumed: false, status: sweep.status };
+    }
+
+    await ctx.db.patch(args.sweepId, {
+      status: "scheduled",
+      lastError: undefined,
+      updatedAt: Date.now(),
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.intelligence.bootstrapRAG.continueReindexSweep,
+      { sweepId: args.sweepId, cursor: sweep.cursor }
+    );
+    return { resumed: true, status: "scheduled" as const };
+  },
+});
+
+/** Inspect a specific sweep, or the latest sweep for the current index version. */
+export const getReindexSweepStatus = internalQuery({
+  args: { sweepId: v.optional(v.id("ragIndexingSweeps")) },
+  handler: async (ctx, args) => {
+    if (args.sweepId) return await ctx.db.get(args.sweepId);
+    return await ctx.db
+      .query("ragIndexingSweeps")
+      .withIndex("by_version", (q) =>
+        q.eq("indexVersion", TRANSACTION_EMBEDDING_INDEX_VERSION)
+      )
+      .order("desc")
+      .first();
   },
 });
 

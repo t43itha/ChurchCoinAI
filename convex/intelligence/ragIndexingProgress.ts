@@ -3,6 +3,13 @@ export type RagIndexingTerminalStatus =
   | "completed"
   | "completed_with_errors";
 
+export function isRagIndexingSweepCursorCurrent(
+  savedCursor?: string,
+  expectedCursor?: string
+): boolean {
+  return (savedCursor ?? null) === (expectedCursor ?? null);
+}
+
 export function getRagIndexingCompletionState(args: {
   schedulingComplete: boolean;
   totalTransactions: number;
