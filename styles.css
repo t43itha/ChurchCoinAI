@@ -120,6 +120,41 @@ button {
   animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes ledgerProcessingScan {
+  0% {
+    transform: translateX(-110%);
+  }
+  55%,
+  100% {
+    transform: translateX(310%);
+  }
+}
+
+.ledger-processing-scan {
+  animation: ledgerProcessingScan 2.2s cubic-bezier(0.65, 0, 0.35, 1)
+    infinite;
+}
+
+@keyframes ledgerProcessingCell {
+  0%,
+  18%,
+  100% {
+    border-color: #e7e5e1;
+    color: #78716c;
+    transform: translateY(0);
+  }
+  38%,
+  62% {
+    border-color: #a9bfa9;
+    color: #557555;
+    transform: translateY(-2px);
+  }
+}
+
+.ledger-processing-cell {
+  animation: ledgerProcessingCell 2.8s ease-in-out infinite;
+}
+
 @keyframes slideUp {
   from {
     opacity: 0;
@@ -234,6 +269,10 @@ button {
     transition: none;
   }
   .animate-enter {
+    animation: none;
+  }
+  .ledger-processing-scan,
+  .ledger-processing-cell {
     animation: none;
   }
 }
