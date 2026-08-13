@@ -11,6 +11,7 @@ import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
+import ImportCategorizationProgress from './ImportCategorizationProgress';
 
 interface Category {
   _id: string;
@@ -2363,12 +2364,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
-                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap">
-                            {isProcessingAI ? 'Processing...' : <><Sparkles size={14} /> Auto-Categorize</>}
+                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap disabled:cursor-wait disabled:opacity-80">
+                            {isProcessingAI ? <><Loader2 size={14} className="animate-spin" /> Categorising</> : <><Sparkles size={14} /> Auto-Categorise</>}
                         </button>
                     </div>
                 </div>
                 <div className="min-w-0 overflow-y-auto overflow-x-hidden flex-1 p-6">
+                    {isProcessingAI && (
+                      <ImportCategorizationProgress transactionCount={pendingTransactions.length} />
+                    )}
                     {duplicateWarnings.size > 0 && (
                       <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
                         <AlertTriangle size={16} className="text-amber-600" />
