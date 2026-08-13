@@ -1,12 +1,28 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { getCurrentUser, getIdentity, requireAuth } from "../lib/auth";
+import { resolveOrganizationAccess } from "../lib/access";
 
 // Get the current authenticated user
 export const current = query({
   args: {},
   handler: async (ctx) => {
     return await getCurrentUser(ctx);
+  },
+});
+
+// Fetch the user and app-access decision together for server actions. This avoids
+// making every AI action resolve the same authenticated user twice.
+export const currentWithAccess = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return null;
+
+    return {
+      user,
+      access: await resolveOrganizationAccess(ctx, user),
+    };
   },
 });
 

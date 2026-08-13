@@ -7,6 +7,7 @@ import { applyDeterministicRules } from "./rules";
 import {
   CategoryLike,
   CategorizationInput,
+  CategorizationSource,
   CategorizationSuggestion,
   FundLike,
 } from "./types";
@@ -20,6 +21,16 @@ type PipelineCtx = {
 
 const getCategorizationMemoryBySignatures = (internal as any).intelligence
   .categorizationMemory.getBySignatures;
+
+export const categorizationSignatures = (
+  transactions: CategorizationInput[]
+): string[] => [
+  ...new Set(
+    transactions.map(
+      (transaction) => normalizeTransaction(transaction).signature
+    )
+  ),
+];
 
 const unresolvedSuggestion = (
   transaction: CategorizationInput
@@ -67,20 +78,25 @@ export const categorizeWithoutExternalAI = async (
   categories: CategoryLike[],
   funds: FundLike[]
 ): Promise<CategorizationSuggestion[]> => {
-  const normalizedTransactions = transactions.map((transaction) =>
-    normalizeTransaction(transaction)
-  );
-  const signatures = [
-    ...new Set(
-      normalizedTransactions.map((transaction) => transaction.signature)
-    ),
-  ];
+  const signatures = categorizationSignatures(transactions);
   const memories: any[] = signatures.length
     ? await ctx.runQuery(getCategorizationMemoryBySignatures, {
         organizationId,
         signatures,
       })
     : [];
+  return categorizeFromContext(transactions, categories, funds, memories);
+};
+
+export const categorizeFromContext = (
+  transactions: CategorizationInput[],
+  categories: CategoryLike[],
+  funds: FundLike[],
+  memories: any[]
+): CategorizationSuggestion[] => {
+  const normalizedTransactions = transactions.map((transaction) =>
+    normalizeTransaction(transaction)
+  );
   const memoryBySignature = new Map<string, any>(
     memories.map((memory) => [memory.signature, memory])
   );
@@ -108,22 +124,28 @@ export const categorizeWithoutExternalAI = async (
   return suggestions;
 };
 
-export const mergeGeminiFallback = (
+type AIPredictionSource = Extract<
+  CategorizationSource,
+  "gemini" | "openrouter" | "openai"
+>;
+
+export const mergeAIFallback = (
   currentSuggestions: CategorizationSuggestion[],
-  rawGeminiSuggestions: Record<string, unknown>[],
+  rawAISuggestions: Record<string, unknown>[],
   originalTransactions: CategorizationInput[],
   categories: CategoryLike[],
-  funds: FundLike[]
+  funds: FundLike[],
+  predictionSource: AIPredictionSource
 ): CategorizationSuggestion[] => {
-  let geminiIndex = 0;
+  let aiIndex = 0;
 
   return currentSuggestions.map((suggestion, index) => {
     if (suggestion.predictionSource !== "none") {
       return suggestion;
     }
 
-    const rawSuggestion = rawGeminiSuggestions[geminiIndex];
-    geminiIndex += 1;
+    const rawSuggestion = rawAISuggestions[aiIndex];
+    aiIndex += 1;
     if (!rawSuggestion) {
       return suggestion;
     }
@@ -142,10 +164,56 @@ export const mergeGeminiFallback = (
         rawSuggestion,
         transaction,
         categories,
-        funds
+        funds,
+        predictionSource
       ) ?? suggestion
     );
   });
+};
+
+export const mergeGeminiFallback = (
+  currentSuggestions: CategorizationSuggestion[],
+  rawGeminiSuggestions: Record<string, unknown>[],
+  originalTransactions: CategorizationInput[],
+  categories: CategoryLike[],
+  funds: FundLike[]
+): CategorizationSuggestion[] =>
+  mergeAIFallback(
+    currentSuggestions,
+    rawGeminiSuggestions,
+    originalTransactions,
+    categories,
+    funds,
+    "gemini"
+  );
+
+export type LoadedAIFallback = {
+  suggestions: Record<string, unknown>[];
+  source: AIPredictionSource;
+};
+
+export const mergeAIFallbackSafely = async (
+  initialSuggestions: CategorizationSuggestion[],
+  loadRawSuggestions: () => Promise<LoadedAIFallback> | LoadedAIFallback,
+  originalTransactions: CategorizationInput[],
+  categories: CategoryLike[],
+  funds: FundLike[],
+  onError?: (error: unknown) => void
+): Promise<CategorizationSuggestion[]> => {
+  try {
+    const loaded = await loadRawSuggestions();
+    return mergeAIFallback(
+      initialSuggestions,
+      loaded.suggestions,
+      originalTransactions,
+      categories,
+      funds,
+      loaded.source
+    );
+  } catch (error) {
+    onError?.(error);
+    return initialSuggestions;
+  }
 };
 
 export const mergeGeminiFallbackSafely = async (
@@ -158,16 +226,15 @@ export const mergeGeminiFallbackSafely = async (
   funds: FundLike[],
   onError?: (error: unknown) => void
 ): Promise<CategorizationSuggestion[]> => {
-  try {
-    return mergeGeminiFallback(
-      initialSuggestions,
-      await loadRawGeminiSuggestions(),
-      originalTransactions,
-      categories,
-      funds
-    );
-  } catch (error) {
-    onError?.(error);
-    return initialSuggestions;
-  }
+  return mergeAIFallbackSafely(
+    initialSuggestions,
+    async () => ({
+      suggestions: await loadRawGeminiSuggestions(),
+      source: "gemini",
+    }),
+    originalTransactions,
+    categories,
+    funds,
+    onError
+  );
 };

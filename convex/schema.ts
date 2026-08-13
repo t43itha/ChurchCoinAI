@@ -526,6 +526,8 @@ export default defineSchema({
     aiConfidence: v.string(),
     predictionSource: v.union(
       v.literal("gemini"),
+      v.literal("openrouter"),
+      v.literal("openai"),
       v.literal("rag"),
       v.literal("memory"),
       v.literal("none")
@@ -570,6 +572,8 @@ export default defineSchema({
       v.literal("rule"),
       v.literal("rag"),
       v.literal("gemini"),
+      v.literal("openrouter"),
+      v.literal("openai"),
       v.literal("none")
     ),
     confidence: v.number(),

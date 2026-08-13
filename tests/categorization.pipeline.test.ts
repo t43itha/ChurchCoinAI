@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  categorizationSignatures,
+  categorizeFromContext,
   categorizeWithoutExternalAI,
   mergeGeminiFallback,
   mergeGeminiFallbackSafely,
@@ -48,6 +50,68 @@ const suggestion = (
 });
 
 describe("categorization pipeline", () => {
+  it("builds deduplicated signatures before loading pipeline context", () => {
+    const repeated = {
+      description: "Standing order from Jane Smith",
+      amount: 50,
+      type: "Income" as const,
+    };
+    const unique = {
+      description: "Monthly bank charges",
+      amount: 7.5,
+      type: "Expenditure" as const,
+    };
+
+    expect(categorizationSignatures([repeated, repeated, unique])).toEqual([
+      normalizeTransaction(repeated).signature,
+      normalizeTransaction(unique).signature,
+    ]);
+  });
+
+  it("categorizes from preloaded metadata and memory without another query", () => {
+    const remembered = {
+      description: "Standing order from Jane Smith",
+      amount: 50,
+      type: "Income" as const,
+    };
+    const ruleMatched = {
+      description: "Monthly bank charges",
+      amount: 7.5,
+      type: "Expenditure" as const,
+    };
+    const memories = [
+      {
+        signature: normalizeTransaction(remembered).signature,
+        category: "Offerings",
+        fundId: "fund-general",
+        isGiftAidEligible: true,
+        donorName: "Jane Smith",
+        acceptedCount: 3,
+        confidence: 0.93,
+        transactionType: "Income",
+      },
+    ];
+
+    const suggestions = categorizeFromContext(
+      [remembered, ruleMatched],
+      categories,
+      funds,
+      memories
+    );
+
+    expect(suggestions).toMatchObject([
+      {
+        predictionSource: "memory",
+        category: "Offerings",
+        donorName: "Jane Smith",
+      },
+      {
+        predictionSource: "rule",
+        category: "Bank Charges",
+      },
+    ]);
+  });
+
   it("batch loads deduplicated memory signatures before falling back to rules", async () => {
     const remembered = {
       description: "Standing order from Jane Smith",

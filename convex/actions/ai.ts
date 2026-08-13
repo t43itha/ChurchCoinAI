@@ -10,13 +10,16 @@ import {
   validateGiftAidEligibleTransactions,
 } from "../lib/aiValidation";
 import {
-  categorizeWithoutExternalAI,
-  mergeGeminiFallbackSafely,
+  categorizationSignatures,
+  categorizeFromContext,
+  mergeAIFallbackSafely,
 } from "../intelligence/categorization/pipeline";
 import {
   buildGeminiCategorizationPrompt,
   CATEGORIZATION_MODEL,
 } from "../intelligence/categorization/gemini";
+import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
+import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
@@ -37,13 +40,15 @@ const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
     throw new Error("Unauthorized: please sign in");
   }
   const { api } = (await import("../_generated/api")) as any;
-  const currentUser = await ctx.runQuery(api.queries.users.current, {});
-  if (!currentUser) {
+  const userContext = await ctx.runQuery(
+    api.queries.users.currentWithAccess,
+    {}
+  );
+  if (!userContext?.user) {
     throw new Error("Forbidden: complete onboarding first");
   }
 
-  const access = await ctx.runQuery(api.queries.subscriptions.access, {});
-  if (!access?.canUseApp) {
+  if (!userContext.access?.canUseApp) {
     throw new Error("Organization access is not active");
   }
 
@@ -55,18 +60,22 @@ const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
       : DEFAULT_AI_RATE_LIMIT_PER_MINUTE;
 
   await ctx.runMutation(internal.mutations.aiRateLimit.checkAndConsume, {
-    organizationId: currentUser.organizationId,
+    organizationId: userContext.user.organizationId,
     limit: perMinuteLimit,
     windowMs: AI_RATE_LIMIT_WINDOW_MS,
   });
 
-  return currentUser;
+  return userContext.user;
 };
 
 // Check if API key is configured
 export const hasApiKey = action({
   args: {},
   handler: async () => {
+    const provider =
+      process.env.CATEGORIZATION_AI_PROVIDER?.trim().toLowerCase();
+    if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;
+    if (provider === "openai") return !!process.env.OPENAI_API_KEY;
     return !!process.env.GEMINI_API_KEY;
   },
 });
@@ -137,7 +146,7 @@ export const categorizeTransactions = action({
   },
 });
 
-// Preview the categorization pipeline, using Gemini only for unresolved rows.
+// Preview the categorization pipeline, using the configured AI only for unresolved rows.
 export const categorizeWithPipelinePreview = action({
   args: {
     transactions: v.array(
@@ -147,24 +156,29 @@ export const categorizeWithPipelinePreview = action({
         type: v.union(v.literal("Income"), v.literal("Expenditure")),
       })
     ),
-    fundNames: v.array(v.string()),
-    categories: v.array(v.string()),
   },
   handler: async (ctx, args) => {
+    const startedAt = performance.now();
     const user = await requireUser(ctx);
-    const { api } = (await import("../_generated/api")) as any;
-    const [categoryDetails, funds] = await Promise.all([
-      ctx.runQuery(api.queries.categories.listWithDetails, {}),
-      ctx.runQuery(api.queries.funds.list, {}),
-    ]);
-
-    const initialSuggestions = await categorizeWithoutExternalAI(
-      ctx,
-      user.organizationId,
+    const authenticatedAt = performance.now();
+    const { internal } = (await import("../_generated/api")) as any;
+    const pipelineContext = await ctx.runQuery(
+      internal.intelligence.categorizationMemory.getPipelineContext,
+      {
+        organizationId: user.organizationId,
+        signatures: categorizationSignatures(args.transactions),
+      }
+    );
+    const contextLoadedAt = performance.now();
+    const categoryDetails = pipelineContext.categories;
+    const funds = pipelineContext.funds;
+    const initialSuggestions = categorizeFromContext(
       args.transactions,
       categoryDetails,
-      funds
+      funds,
+      pipelineContext.memories
     );
+    const locallyCategorizedAt = performance.now();
     const unresolvedTransactions = initialSuggestions
       .map((suggestion, index) =>
         suggestion.predictionSource === "none" ? args.transactions[index] : null
@@ -174,62 +188,178 @@ export const categorizeWithPipelinePreview = action({
       );
 
     if (unresolvedTransactions.length === 0) {
+      console.info("categorization_pipeline_timing", {
+        transactionCount: args.transactions.length,
+        unresolvedCount: 0,
+        authenticationMs: Math.round(authenticatedAt - startedAt),
+        contextMs: Math.round(contextLoadedAt - authenticatedAt),
+        localCategorizationMs: Math.round(
+          locallyCategorizedAt - contextLoadedAt
+        ),
+        modelMs: 0,
+        totalMs: Math.round(performance.now() - startedAt),
+      });
       return initialSuggestions;
     }
 
-    return mergeGeminiFallbackSafely(
+    let modelMs = 0;
+    let modelProvider: "openrouter" | "openai" | "gemini" = "gemini";
+    let fallbackUsed = false;
+    const configuredProviderValue =
+      process.env.CATEGORIZATION_AI_PROVIDER?.trim().toLowerCase();
+    const configuredProvider =
+      configuredProviderValue === "openrouter" ||
+      configuredProviderValue === "openai"
+        ? configuredProviderValue
+        : "gemini";
+    const mergedSuggestions = await mergeAIFallbackSafely(
       initialSuggestions,
       async () => {
-        const ai = getAI();
-        const response = await ai.models.generateContent({
-          model: CATEGORIZATION_MODEL,
-          contents: buildGeminiCategorizationPrompt(
-            unresolvedTransactions,
-            categoryDetails,
-            funds,
-            initialSuggestions.flatMap((suggestion) => suggestion.evidence)
-          ),
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  description: { type: Type.STRING },
-                  category: { type: Type.STRING },
-                  fundName: { type: Type.STRING },
-                  confidence: {
-                    type: Type.STRING,
-                    description: "High, Medium, or Low",
+        const modelStartedAt = performance.now();
+        try {
+          if (configuredProvider === "openrouter") {
+            try {
+              const result = await categorizeWithOpenRouter(
+                unresolvedTransactions,
+                categoryDetails,
+                funds,
+                initialSuggestions.flatMap((suggestion) => suggestion.evidence)
+              );
+              modelProvider = "openrouter";
+              console.info("categorization_openrouter_usage", {
+                generationId: result.generationId,
+                model: result.model,
+                upstreamProvider: result.provider,
+                transactionCount: unresolvedTransactions.length,
+                promptTokens: result.usage.prompt_tokens ?? 0,
+                completionTokens: result.usage.completion_tokens ?? 0,
+                reasoningTokens:
+                  result.usage.completion_tokens_details?.reasoning_tokens ?? 0,
+                costUsd: result.usage.cost ?? null,
+              });
+              return {
+                suggestions: result.suggestions,
+                source: "openrouter" as const,
+              };
+            } catch (error) {
+              fallbackUsed = true;
+              console.error(
+                "OpenRouter categorization failed; falling back to Gemini.",
+                error
+              );
+            }
+          }
+
+          if (configuredProvider === "openai") {
+            try {
+              const result = await categorizeWithOpenAI(
+                unresolvedTransactions,
+                categoryDetails,
+                funds,
+                initialSuggestions.flatMap((suggestion) => suggestion.evidence)
+              );
+              modelProvider = "openai";
+              console.info("categorization_openai_usage", {
+                responseId: result.responseId,
+                transactionCount: unresolvedTransactions.length,
+                inputTokens: result.usage.input_tokens ?? 0,
+                cachedInputTokens:
+                  result.usage.input_tokens_details?.cached_tokens ?? 0,
+                outputTokens: result.usage.output_tokens ?? 0,
+                reasoningTokens:
+                  result.usage.output_tokens_details?.reasoning_tokens ?? 0,
+              });
+              return {
+                suggestions: result.suggestions,
+                source: "openai" as const,
+              };
+            } catch (error) {
+              fallbackUsed = true;
+              console.error(
+                "OpenAI categorization failed; falling back to Gemini.",
+                error
+              );
+            }
+          }
+
+          const ai = getAI();
+          const response = await ai.models.generateContent({
+            model: CATEGORIZATION_MODEL,
+            contents: buildGeminiCategorizationPrompt(
+              unresolvedTransactions,
+              categoryDetails,
+              funds,
+              initialSuggestions.flatMap((suggestion) => suggestion.evidence)
+            ),
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    description: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    fundName: { type: Type.STRING },
+                    confidence: {
+                      type: Type.STRING,
+                      description: "High, Medium, or Low",
+                    },
+                    isGiftAidEligible: { type: Type.BOOLEAN },
+                    donorName: { type: Type.STRING },
+                    evidence: { type: Type.STRING },
                   },
-                  isGiftAidEligible: { type: Type.BOOLEAN },
-                  donorName: { type: Type.STRING },
-                  evidence: { type: Type.STRING },
                 },
               },
+              thinkingConfig: { thinkingBudget: 0 },
             },
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        });
+          });
 
-        return response.text
-          ? safeJsonParse<Record<string, unknown>[]>(
-              response.text,
-              "categorizeWithPipelinePreview response"
-            )
-          : [];
+          modelProvider = "gemini";
+          const suggestions = response.text
+            ? safeJsonParse<Record<string, unknown>[]>(
+                response.text,
+                "categorizeWithPipelinePreview response"
+              )
+            : [];
+          return { suggestions, source: "gemini" as const };
+        } finally {
+          modelMs = Math.round(performance.now() - modelStartedAt);
+        }
       },
       args.transactions,
       categoryDetails,
       funds,
       (error) => {
         console.error(
-          "Gemini pipeline fallback failed; returning non-AI categorization suggestions.",
+          "Categorization model fallback failed; returning non-AI suggestions.",
           error
         );
       }
     );
+
+    console.info("categorization_pipeline_timing", {
+      transactionCount: args.transactions.length,
+      unresolvedCount: unresolvedTransactions.length,
+      memoryCount: initialSuggestions.filter(
+        (suggestion) => suggestion.predictionSource === "memory"
+      ).length,
+      ruleCount: initialSuggestions.filter(
+        (suggestion) => suggestion.predictionSource === "rule"
+      ).length,
+      authenticationMs: Math.round(authenticatedAt - startedAt),
+      contextMs: Math.round(contextLoadedAt - authenticatedAt),
+      localCategorizationMs: Math.round(
+        locallyCategorizedAt - contextLoadedAt
+      ),
+      modelMs,
+      configuredProvider,
+      modelProvider,
+      fallbackUsed,
+      totalMs: Math.round(performance.now() - startedAt),
+    });
+
+    return mergedSuggestions;
   },
 });
 
