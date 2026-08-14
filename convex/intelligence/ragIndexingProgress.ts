@@ -3,6 +3,42 @@ export type RagIndexingTerminalStatus =
   | "completed"
   | "completed_with_errors";
 
+export type RagIndexingSweepStatus =
+  | "scheduled"
+  | "running"
+  | "failed"
+  | "completed"
+  | "completed_with_errors";
+
+export function getRagIndexingSweepState(args: {
+  organizationSchedulingComplete: boolean;
+  childStatuses: Array<
+    "scheduled" | "running" | "failed" | "completed" | "completed_with_errors"
+  >;
+}): { isFinished: boolean; status: RagIndexingSweepStatus } {
+  if (args.childStatuses.includes("failed")) {
+    return { isFinished: false, status: "failed" };
+  }
+  if (!args.organizationSchedulingComplete) {
+    return { isFinished: false, status: "running" };
+  }
+  if (
+    args.childStatuses.some(
+      (status) => status === "scheduled" || status === "running"
+    )
+  ) {
+    return { isFinished: false, status: "running" };
+  }
+
+  const completedWithErrors = args.childStatuses.includes(
+    "completed_with_errors"
+  );
+  return {
+    isFinished: true,
+    status: completedWithErrors ? "completed_with_errors" : "completed",
+  };
+}
+
 export function isRagIndexingSweepCursorCurrent(
   savedCursor?: string,
   expectedCursor?: string

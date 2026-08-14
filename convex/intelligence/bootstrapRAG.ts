@@ -1,4 +1,9 @@
-import { internalMutation, internalAction, internalQuery } from "../_generated/server";
+import {
+  internalMutation,
+  internalAction,
+  internalQuery,
+  type MutationCtx,
+} from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { transactionRAG } from "../lib/ragInstance";
@@ -10,12 +15,25 @@ import {
 import {
   getPendingIndexingRecoveryAction,
   getRagIndexingCompletionState,
+  getRagIndexingSweepState,
   isRagIndexingSweepCursorCurrent,
 } from "./ragIndexingProgress";
 
 const DEFAULT_TRANSACTION_BATCH_SIZE = 100;
 const PENDING_RECOVERY_DELAY_MS = 10 * 60 * 1000;
 const MAX_INDEXING_ATTEMPTS = 3;
+
+async function scheduleSweepReconciliation(
+  ctx: MutationCtx,
+  sweepId?: import("../_generated/dataModel").Id<"ragIndexingSweeps">
+): Promise<void> {
+  if (!sweepId) return;
+  await ctx.scheduler.runAfter(
+    0,
+    internal.intelligence.bootstrapRAG.reconcileReindexSweep,
+    { sweepId }
+  );
+}
 
 /**
  * Bootstrap existing transactions into the RAG index with durable progress.
@@ -82,6 +100,7 @@ export const recordIndexingOutcome = internalMutation({
       updatedAt: Date.now(),
       completedAt: completion.isFinished ? Date.now() : undefined,
     });
+    await scheduleSweepReconciliation(ctx, run.sweepId);
 
     return { recorded: true, isFinished: completion.isFinished };
   },
@@ -236,6 +255,7 @@ export const processIndexingRunPage = internalMutation({
       completedAt: completion.isFinished ? Date.now() : undefined,
       lastError: undefined,
     });
+    await scheduleSweepReconciliation(ctx, run.sweepId);
 
     if (hasMore) {
       await ctx.scheduler.runAfter(
@@ -287,6 +307,7 @@ export const markIndexingRunFailed = internalMutation({
       lastError: args.error.slice(0, 1000),
       updatedAt: Date.now(),
     });
+    await scheduleSweepReconciliation(ctx, run.sweepId);
     return { recorded: true };
   },
 });
@@ -333,6 +354,7 @@ export const resumeIndexingRun = internalMutation({
       lastError: undefined,
       updatedAt: Date.now(),
     });
+    await scheduleSweepReconciliation(ctx, run.sweepId);
     await ctx.scheduler.runAfter(
       0,
       internal.intelligence.bootstrapRAG.indexAllTransactions,
@@ -460,6 +482,7 @@ export const retryStalePendingTransactions = internalMutation({
         updatedAt: Date.now(),
         completedAt: completion.isFinished ? Date.now() : undefined,
       });
+      await scheduleSweepReconciliation(ctx, run.sweepId);
     }
 
     const pendingItem = await ctx.db
@@ -575,6 +598,7 @@ export const retryFailedTransactions = internalMutation({
         completedAt:
           retrying > 0 || failedTransactions > 0 ? undefined : Date.now(),
       });
+      await scheduleSweepReconciliation(ctx, run.sweepId);
     }
 
     if (failedItems.length === batchSize) {
@@ -618,6 +642,7 @@ export const reindexAllOrganizations = internalMutation({
       status: "scheduled",
       batchSize,
       organizationsScheduled: 0,
+      organizationSchedulingComplete: false,
       startedAt: now,
       updatedAt: now,
     });
@@ -653,7 +678,7 @@ export const processReindexSweepPage = internalMutation({
     if (!sweep) throw new Error("RAG indexing sweep not found");
 
     if (
-      sweep.status === "completed" ||
+      sweep.organizationSchedulingComplete ||
       !isRagIndexingSweepCursorCurrent(sweep.cursor, args.cursor)
     ) {
       return { advanced: false, status: sweep.status };
@@ -695,13 +720,20 @@ export const processReindexSweepPage = internalMutation({
     const organizationsScheduled =
       sweep.organizationsScheduled + page.page.length;
     await ctx.db.patch(args.sweepId, {
-      status: page.isDone ? "completed" : "running",
+      status: "running",
       cursor: page.isDone ? undefined : page.continueCursor,
       organizationsScheduled,
+      organizationSchedulingComplete: page.isDone,
       updatedAt: now,
-      completedAt: page.isDone ? now : undefined,
+      completedAt: undefined,
       lastError: undefined,
     });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.intelligence.bootstrapRAG.reconcileReindexSweep,
+      { sweepId: args.sweepId }
+    );
 
     if (!page.isDone) {
       await ctx.scheduler.runAfter(
@@ -722,6 +754,65 @@ export const processReindexSweepPage = internalMutation({
   },
 });
 
+/** Reconcile tenant-wide status from every organization run's durable state. */
+export const reconcileReindexSweep = internalMutation({
+  args: { sweepId: v.id("ragIndexingSweeps") },
+  handler: async (ctx, args) => {
+    const sweep = await ctx.db.get(args.sweepId);
+    if (!sweep) return null;
+
+    const runs = await ctx.db
+      .query("ragIndexingRuns")
+      .withIndex("by_sweep", (q) => q.eq("sweepId", args.sweepId))
+      .collect();
+    const organizationSchedulingComplete =
+      sweep.organizationSchedulingComplete ??
+      (sweep.status === "completed" ||
+        sweep.status === "completed_with_errors");
+
+    // Preserve a failure in organization pagination until the operator resumes
+    // it; child-run reconciliation cannot repair that cursor.
+    if (!organizationSchedulingComplete && sweep.status === "failed") {
+      return {
+        status: sweep.status,
+        organizationSchedulingComplete,
+        organizationRuns: runs.length,
+      };
+    }
+
+    const state = getRagIndexingSweepState({
+      organizationSchedulingComplete,
+      childStatuses: runs.map((run) => run.status),
+    });
+    const now = Date.now();
+    const failedRuns = runs.filter((run) => run.status === "failed").length;
+    const completedWithErrorsRuns = runs.filter(
+      (run) => run.status === "completed_with_errors"
+    ).length;
+    await ctx.db.patch(args.sweepId, {
+      status: state.status,
+      updatedAt: now,
+      completedAt: state.isFinished ? now : undefined,
+      lastError:
+        state.status === "failed"
+          ? `${failedRuns} organization indexing run${failedRuns === 1 ? "" : "s"} failed`
+          : undefined,
+    });
+
+    return {
+      status: state.status,
+      organizationSchedulingComplete,
+      organizationRuns: runs.length,
+      completedRuns: runs.filter((run) => run.status === "completed").length,
+      completedWithErrorsRuns,
+      failedRuns,
+      activeRuns: runs.filter(
+        (run) => run.status === "scheduled" || run.status === "running"
+      ).length,
+    };
+  },
+});
+
 /** Mark only the still-current page as failed so stale workers cannot regress it. */
 export const markReindexSweepFailed = internalMutation({
   args: {
@@ -733,7 +824,7 @@ export const markReindexSweepFailed = internalMutation({
     const sweep = await ctx.db.get(args.sweepId);
     if (
       !sweep ||
-      sweep.status === "completed" ||
+      sweep.organizationSchedulingComplete ||
       !isRagIndexingSweepCursorCurrent(sweep.cursor, args.cursor)
     ) {
       return { recorded: false };
@@ -777,8 +868,12 @@ export const resumeReindexSweep = internalMutation({
   handler: async (ctx, args) => {
     const sweep = await ctx.db.get(args.sweepId);
     if (!sweep) throw new Error("RAG indexing sweep not found");
+    const organizationSchedulingComplete =
+      sweep.organizationSchedulingComplete ??
+      (sweep.status === "completed" ||
+        sweep.status === "completed_with_errors");
     let sweepContinuationScheduled = false;
-    if (sweep.status !== "completed") {
+    if (!organizationSchedulingComplete) {
       await ctx.db.patch(args.sweepId, {
         status: "scheduled",
         lastError: undefined,
@@ -830,6 +925,7 @@ export const resumeReindexSweep = internalMutation({
         failedRetriesScheduled++;
       }
     }
+    await scheduleSweepReconciliation(ctx, args.sweepId);
 
     return {
       resumed:
@@ -849,14 +945,47 @@ export const resumeReindexSweep = internalMutation({
 export const getReindexSweepStatus = internalQuery({
   args: { sweepId: v.optional(v.id("ragIndexingSweeps")) },
   handler: async (ctx, args) => {
-    if (args.sweepId) return await ctx.db.get(args.sweepId);
-    return await ctx.db
-      .query("ragIndexingSweeps")
-      .withIndex("by_version", (q) =>
-        q.eq("indexVersion", TRANSACTION_EMBEDDING_INDEX_VERSION)
-      )
-      .order("desc")
-      .first();
+    const sweep = args.sweepId
+      ? await ctx.db.get(args.sweepId)
+      : await ctx.db
+          .query("ragIndexingSweeps")
+          .withIndex("by_version", (q) =>
+            q.eq("indexVersion", TRANSACTION_EMBEDDING_INDEX_VERSION)
+          )
+          .order("desc")
+          .first();
+    if (!sweep) return null;
+
+    const runs = await ctx.db
+      .query("ragIndexingRuns")
+      .withIndex("by_sweep", (q) => q.eq("sweepId", sweep._id))
+      .collect();
+    const organizationSchedulingComplete =
+      sweep.organizationSchedulingComplete ??
+      (sweep.status === "completed" ||
+        sweep.status === "completed_with_errors");
+    const state =
+      !organizationSchedulingComplete && sweep.status === "failed"
+        ? { isFinished: false, status: "failed" as const }
+        : getRagIndexingSweepState({
+            organizationSchedulingComplete,
+            childStatuses: runs.map((run) => run.status),
+          });
+
+    return {
+      ...sweep,
+      status: state.status,
+      organizationSchedulingComplete,
+      organizationRuns: runs.length,
+      activeRuns: runs.filter(
+        (run) => run.status === "scheduled" || run.status === "running"
+      ).length,
+      completedRuns: runs.filter((run) => run.status === "completed").length,
+      completedWithErrorsRuns: runs.filter(
+        (run) => run.status === "completed_with_errors"
+      ).length,
+      failedRuns: runs.filter((run) => run.status === "failed").length,
+    };
   },
 });
 

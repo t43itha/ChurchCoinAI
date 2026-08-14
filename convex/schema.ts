@@ -606,11 +606,13 @@ export default defineSchema({
       v.literal("scheduled"),
       v.literal("running"),
       v.literal("completed"),
+      v.literal("completed_with_errors"),
       v.literal("failed")
     ),
     cursor: v.optional(v.string()),
     batchSize: v.number(),
     organizationsScheduled: v.number(),
+    organizationSchedulingComplete: v.optional(v.boolean()),
     startedAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),

@@ -2,8 +2,65 @@ import { describe, expect, it } from "vitest";
 import {
   getPendingIndexingRecoveryAction,
   getRagIndexingCompletionState,
+  getRagIndexingSweepState,
   isRagIndexingSweepCursorCurrent,
 } from "../convex/intelligence/ragIndexingProgress";
+
+describe("tenant-wide RAG indexing completion", () => {
+  it("stays running until organization scheduling and child runs finish", () => {
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: false,
+        childStatuses: ["completed"],
+      })
+    ).toEqual({ isFinished: false, status: "running" });
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: true,
+        childStatuses: ["completed", "running"],
+      })
+    ).toEqual({ isFinished: false, status: "running" });
+  });
+
+  it("surfaces a failed child run instead of reporting completion", () => {
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: true,
+        childStatuses: ["completed", "failed"],
+      })
+    ).toEqual({ isFinished: false, status: "failed" });
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: false,
+        childStatuses: ["failed"],
+      })
+    ).toEqual({ isFinished: false, status: "failed" });
+  });
+
+  it("completes only after every child reaches a terminal outcome", () => {
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: true,
+        childStatuses: ["completed", "completed"],
+      })
+    ).toEqual({ isFinished: true, status: "completed" });
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: true,
+        childStatuses: ["completed", "completed_with_errors"],
+      })
+    ).toEqual({ isFinished: true, status: "completed_with_errors" });
+  });
+
+  it("completes an empty sweep after organization scheduling finishes", () => {
+    expect(
+      getRagIndexingSweepState({
+        organizationSchedulingComplete: true,
+        childStatuses: [],
+      })
+    ).toEqual({ isFinished: true, status: "completed" });
+  });
+});
 
 describe("RAG indexing sweep continuation", () => {
   it("accepts the initial page and the currently saved continuation", () => {
