@@ -13,7 +13,10 @@ import {
 } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import { notify } from "../lib/notifications";
-import { clerkAppearance } from "@/lib/clerkAppearance";
+import {
+  clerkUserButtonAppearance,
+  clerkUserProfileAppearance,
+} from "@/lib/clerkAppearance";
 import type { PlanTier } from "../lib/onboardingIntent";
 import { createClientAttemptId } from "../lib/clientId";
 import { PLANS } from "../lib/plans";
@@ -124,7 +127,11 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
           />
           <p className="text-xs text-grey-mid border-l border-ledger pl-3">{organizationName}</p>
         </div>
-        <UserButton afterSignOutUrl="/" appearance={clerkAppearance} />
+        <UserButton
+          afterSignOutUrl="/"
+          appearance={clerkUserButtonAppearance}
+          userProfileProps={{ appearance: clerkUserProfileAppearance }}
+        />
       </div>
     </header>
   );

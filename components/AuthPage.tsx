@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { ArrowLeft } from "lucide-react";
-import { clerkAppearance } from "@/lib/clerkAppearance";
+import { clerkAuthAppearance } from "@/lib/clerkAppearance";
 
 interface AuthPageProps {
   onBack?: () => void;
@@ -89,13 +89,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode = "signi
           </div>
           {mode === "signin" ? (
             <SignIn
-              appearance={clerkAppearance}
+              appearance={clerkAuthAppearance}
               routing="hash"
               signUpUrl="#signup"
             />
           ) : (
             <SignUp
-              appearance={clerkAppearance}
+              appearance={clerkAuthAppearance}
               routing="hash"
               signInUrl="#signin"
             />
@@ -113,9 +113,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode = "signi
           </div>
         </div>
 
-        <div className="mt-12 text-center text-xs text-grey-mid">
+        <div className="mt-10 text-center text-xs text-grey-mid">
           <p>Secure church finance management</p>
-          <p className="mt-1">Built with Convex & Clerk</p>
+          <div className="mt-1.5 flex items-center justify-center gap-2">
+            <a href="/privacy" className="rounded-sm hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20">
+              Privacy
+            </a>
+            <span aria-hidden="true">·</span>
+            <a href="/terms" className="rounded-sm hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20">
+              Terms
+            </a>
+          </div>
         </div>
       </div>
     </div>

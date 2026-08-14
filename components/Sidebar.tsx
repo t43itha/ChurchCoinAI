@@ -2,7 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { Link, NavLink } from 'react-router-dom';
 import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon, Hourglass } from 'lucide-react';
-import { clerkAppearance } from '@/lib/clerkAppearance';
+import {
+  clerkUserButtonAppearance,
+  clerkUserProfileAppearance,
+} from '@/lib/clerkAppearance';
 import type { PlanTier } from '@/lib/onboardingIntent';
 import { getPlanName } from '@/lib/plans';
 import { getTrialProgress } from '@/lib/trial';
@@ -186,7 +189,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, access 
           <div className="flex items-center gap-3">
             <UserButton
               afterSignOutUrl="/"
-              appearance={clerkAppearance}
+              appearance={clerkUserButtonAppearance}
+              userProfileProps={{ appearance: clerkUserProfileAppearance }}
             />
             <div className="flex-1 min-w-0 text-left">
               <p className="text-sm font-semibold text-ink truncate">{currentUser.name}</p>

@@ -9,7 +9,10 @@ import { ChurchDetails } from "./types";
 import Sidebar from "./components/Sidebar";
 import Onboarding from "./components/Onboarding";
 import AuthPage from "./components/AuthPage";
-import { clerkAppearance } from "./lib/clerkAppearance";
+import {
+  clerkUserButtonAppearance,
+  clerkUserProfileAppearance,
+} from "./lib/clerkAppearance";
 import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
 import LegalPage from "./components/legal/LegalPage";
@@ -286,7 +289,11 @@ function App() {
             className="h-10 w-auto"
           />
           <div className="flex items-center gap-2">
-            <UserButton afterSignOutUrl="/" appearance={clerkAppearance} />
+            <UserButton
+              afterSignOutUrl="/"
+              appearance={clerkUserButtonAppearance}
+              userProfileProps={{ appearance: clerkUserProfileAppearance }}
+            />
             <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="p-2 text-grey-dark hover:bg-grey-light rounded-md"

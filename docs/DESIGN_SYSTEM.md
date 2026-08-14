@@ -10,7 +10,7 @@ The current design source is `C:\Users\tabit\_Projects\ChurchCoinAI\churchcoin`.
 - `dashboard.jsx`: dashboard chrome variants and KPI/readiness patterns.
 - `donors.jsx`: donor master-detail layout.
 - `settings.jsx`: organisation settings tabs and card sections.
-- `clerk-auth.jsx` and `clerkAppearance.refined-ledger.ts`: Clerk auth styling.
+- `clerk-auth.jsx`: original Clerk auth styling reference.
 
 ## Principles
 
@@ -120,7 +120,7 @@ Use a master-detail layout. The left donor directory has a compact search field 
 
 ### Clerk Auth
 
-Clerk surfaces follow `clerkAppearance.refined-ledger.ts`: white card, 1px line border, 12px radius, soft shadow, DM Sans body, mono uppercase labels, ink primary buttons, amber links, and sage avatar/user status rings.
+Embedded Clerk surfaces follow `lib/clerkAppearance.ts`: white cards, 1px line borders, 12px radii, soft elevation, DM Sans body, mono uppercase labels, ink primary buttons, amber links, and sage avatar/user status rings. The file contains separate themes for authentication and verification, the user menu, and the Manage account profile modal so nested Clerk components do not fall back to vendor defaults. Hosted Account Portal pages and Clerk messages are configured separately using `docs/CLERK_BRANDING_RUNBOOK.md`.
 
 ### Settings
 
@@ -132,7 +132,8 @@ Settings uses a tabbed Refined Ledger layout: top tabs with uppercase mono text 
 | --- | --- |
 | Global CSS utilities | [styles.css](../styles.css) |
 | Tailwind tokens | [tailwind.config.cjs](../tailwind.config.cjs) |
-| Clerk appearance | [components/AuthPage.tsx](../components/AuthPage.tsx) |
+| Clerk appearance | [lib/clerkAppearance.ts](../lib/clerkAppearance.ts) |
+| Clerk hosted-surface rollout | [docs/CLERK_BRANDING_RUNBOOK.md](CLERK_BRANDING_RUNBOOK.md) |
 | Dashboard | [components/Dashboard.tsx](../components/Dashboard.tsx) |
 | Donors | [components/DonorManager.tsx](../components/DonorManager.tsx) |
 | Settings | [components/Settings.tsx](../components/Settings.tsx) |
