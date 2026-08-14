@@ -69,7 +69,13 @@ const sanitizeExportRecord = (
   }
 
   if (table === "bankConnections") {
-    const { providerConnectionId: _providerConnectionId, accounts, ...safe } = record;
+    const {
+      providerConnectionId: _providerConnectionId,
+      providerAccessToken: _providerAccessToken,
+      providerInstitutionId: _providerInstitutionId,
+      accounts,
+      ...safe
+    } = record;
     return {
       ...safe,
       accounts: (accounts ?? []).map(
@@ -84,7 +90,11 @@ const sanitizeExportRecord = (
   }
 
   if (table === "pendingBankConnections") {
-    const { state: _state, ...safe } = record;
+    const {
+      state: _state,
+      providerInstitutionId: _providerInstitutionId,
+      ...safe
+    } = record;
     return safe;
   }
 

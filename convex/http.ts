@@ -3,7 +3,6 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getPlanFromStripeProduct, getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
-import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import {
@@ -21,34 +20,10 @@ const applyGithubSupportStatus = makeFunctionReference<
 
 const http = httpRouter();
 
-type EnableBankingCallbackAccount = {
-  uid?: unknown;
-  identification_hash?: unknown;
-  identification_hashes?: unknown;
-  name?: unknown;
-  details?: {
-    name?: unknown;
-    currency?: unknown;
-    product?: unknown;
-    cash_account_type?: unknown;
-    iban?: unknown;
-    bban?: unknown;
-  };
-};
-
-const nonEmptyString = (value: unknown) => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-};
-
 const trimCallbackValue = (value: string | null) => {
   const trimmed = value?.trim();
   return trimmed || undefined;
 };
-
-const safeErrorMessage = (message: string, fallback: string) =>
-  (message.trim() || fallback).slice(0, 500);
 
 const isLocalCallbackOrigin = (origin: URL) =>
   origin.hostname === "localhost" ||
@@ -75,22 +50,30 @@ const getBankSettingsOrigin = (request: Request) => {
   }
 };
 
-const settingsBankUrl = (request: Request, result: "success" | "error") => {
+const settingsBankUrl = (
+  request: Request,
+  result: "success" | "error" | "processing",
+  attemptState?: string
+) => {
   const url = new URL("/settings", getBankSettingsOrigin(request));
   url.searchParams.set("tab", "bank");
   url.searchParams.set("bankConnection", result);
+  if (attemptState) {
+    url.searchParams.set("bankConnectionState", attemptState);
+  }
   return url.toString();
 };
 
 const redirectToBankSettings = (
   request: Request,
-  result: "success" | "error"
+  result: "success" | "error" | "processing",
+  attemptState?: string
 ) => {
   let location: string;
   try {
-    location = settingsBankUrl(request, result);
+    location = settingsBankUrl(request, result, attemptState);
   } catch (error: any) {
-    console.error("Enable Banking callback redirect is not configured:", error?.message);
+    console.error("Bank callback redirect is not configured:", error?.message);
     return new Response("APP_BASE_URL not configured", { status: 500 });
   }
 
@@ -100,49 +83,6 @@ const redirectToBankSettings = (
       Location: location,
     },
   });
-};
-
-const getAccountMask = (account: EnableBankingCallbackAccount) => {
-  const identifier =
-    nonEmptyString(account.details?.iban) || nonEmptyString(account.details?.bban);
-  if (!identifier) return undefined;
-  const compactIdentifier = identifier.replace(/\s+/g, "");
-  return compactIdentifier.slice(-4) || undefined;
-};
-
-const mapEnableBankingAccount = (account: EnableBankingCallbackAccount) => {
-  const accountId = nonEmptyString(account.uid);
-  if (!accountId) {
-    throw new Error("Enable Banking account is missing uid");
-  }
-
-  const identificationHashes = Array.isArray(account.identification_hashes)
-    ? account.identification_hashes
-        .map(nonEmptyString)
-        .filter((hash): hash is string => Boolean(hash))
-    : undefined;
-
-  const name =
-    nonEmptyString(account.name) ||
-    nonEmptyString(account.details?.name) ||
-    nonEmptyString(account.details?.product) ||
-    nonEmptyString(account.details?.iban) ||
-    nonEmptyString(account.details?.bban) ||
-    "Bank account";
-
-  return {
-    accountId,
-    providerAccountHash: nonEmptyString(account.identification_hash),
-    providerAccountHashes: identificationHashes?.length
-      ? identificationHashes
-      : undefined,
-    name,
-    mask: getAccountMask(account),
-    type:
-      nonEmptyString(account.details?.cash_account_type) ||
-      nonEmptyString(account.details?.product),
-    currency: nonEmptyString(account.details?.currency),
-  };
 };
 
 const bytesToHex = (bytes: Uint8Array) =>
@@ -541,93 +481,62 @@ http.route({
   }),
 });
 
-// Enable Banking callback endpoint
+// Yapily Connect sends the browser here with a short-lived one-time token.
+// Claim the state and redirect immediately; token exchange and account lookup
+// continue in a scheduled action so the callback stays below Yapily's 100 ms
+// user-experience target.
 http.route({
-  path: "/enable-banking/callback",
+  path: "/yapily/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
-    const code = trimCallbackValue(url.searchParams.get("code"));
     const state = trimCallbackValue(url.searchParams.get("state"));
-    const providerError = trimCallbackValue(url.searchParams.get("error"));
-    const providerErrorDescription = trimCallbackValue(
-      url.searchParams.get("error_description")
+    const oneTimeToken = trimCallbackValue(
+      url.searchParams.get("one-time-token") ||
+        url.searchParams.get("oneTimeToken")
     );
+    const providerError = trimCallbackValue(url.searchParams.get("error"));
 
     if (!state) {
-      return new Response("Enable Banking callback endpoint is ready.", {
+      return new Response("Yapily callback endpoint is ready.", {
         status: 200,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-        },
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
     }
 
-    // Atomically consume the state token before doing anything else so a
-    // replayed, raced, or guessed callback URL can never re-enter the flow.
-    // Expired states are marked as errors inside the claim mutation.
     const claim = await ctx.runMutation(
       internal.mutations.bankConnections.claimPendingState,
-      { state }
+      { state, provider: "yapily" }
     );
-
     if (!claim.claimed) {
       return redirectToBankSettings(request, "error");
     }
 
-    if (providerError) {
+    if (providerError || !oneTimeToken) {
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: claim.organizationId,
           state,
-          errorCode: providerError.slice(0, 100),
-          errorMessage: safeErrorMessage(
-            providerErrorDescription || "",
-            "Bank authorization was not completed"
-          ),
+          errorCode: providerError?.slice(0, 100) || "MISSING_ONE_TIME_TOKEN",
+          errorMessage: providerError
+            ? "Bank authorization was not completed"
+            : "Yapily callback did not include a one-time token",
         }
       );
       return redirectToBankSettings(request, "error");
     }
 
-    if (!code) {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          state,
-          errorCode: "MISSING_CODE",
-          errorMessage: "Bank authorization callback did not include a code",
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
-
-    try {
-      const session = await authorizeSession(code);
-      const consentExpiresAt = new Date(getConsentValidUntil()).getTime();
-
-      await ctx.runMutation(
-        internal.mutations.bankConnections.completePending,
-        {
-          state,
-          providerConnectionId: session.session_id,
-          accounts: session.accounts.map(mapEnableBankingAccount),
-          consentExpiresAt,
-        }
-      );
-
-      return redirectToBankSettings(request, "success");
-    } catch {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          state,
-          errorCode: "SESSION_EXCHANGE_FAILED",
-          errorMessage: "Failed to authorize bank session",
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.bankConnections.completeYapilyConnection,
+      {
+        organizationId: claim.organizationId,
+        state,
+        oneTimeToken,
+      }
+    );
+    return redirectToBankSettings(request, "processing", state);
   }),
 });
 

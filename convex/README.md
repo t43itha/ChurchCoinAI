@@ -89,26 +89,28 @@ Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
 
-## Enable Banking
+## Yapily banking
 
 Bank connection secrets are backend-only Convex environment variables:
 
-- `ENABLE_BANKING_APPLICATION_ID`
-- `ENABLE_BANKING_PRIVATE_KEY`
-- `ENABLE_BANKING_REDIRECT_URL`
+- `YAPILY_APPLICATION_ID`
+- `YAPILY_APPLICATION_SECRET`
+- `YAPILY_CALLBACK_URL`
 - `APP_BASE_URL`
-- `ENABLE_BANKING_DEFAULT_COUNTRY`
-- `ENABLE_BANKING_DEFAULT_ASPSP`
-- Optional `ENABLE_BANKING_API_BASE_URL`
+- Optional `YAPILY_API_BASE_URL`
 
 Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables.
-`APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to the Convex callback. It is required outside local development.
+`APP_BASE_URL` is the public frontend origin used after Yapily redirects back to the Convex callback. It is required outside local development.
 
-The active v1 flow is manual sync:
+The active flow discovers compatible UK banks directly from Yapily:
 
-1. Admin or Finance Team starts a connection from Settings > Bank Connections.
-2. Enable Banking redirects back to `/enable-banking/callback`.
-3. The returned account is mapped to a fund.
-4. Transactions are fetched on demand from the Transactions screen and reviewed before import.
+1. Admin or Finance Team opens Settings > Bank Connections.
+2. ChurchCoin fetches the current UK institution list and filters it to account-authorisation, account, and transaction support.
+3. The user selects a bank and is redirected through Yapily consent.
+4. Yapily redirects back to `/yapily/callback`; the callback claims its single-use state and schedules the one-time-token exchange.
+5. Each returned account is mapped to a fund.
+6. Transactions are fetched on demand from the Transactions screen and reviewed before import.
 
-The first rollout is for internal validation with the linked Metro Bank account. Tenant-wide availability requires a separate commercial/compliance decision.
+Production access requires a Yapily application with the required UK institutions
+enabled and an agreed regulatory route, such as Yapily Connect delegated AISP
+licensing.

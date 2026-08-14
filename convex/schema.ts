@@ -512,8 +512,14 @@ export default defineSchema({
   // Provider-neutral bank connections
   bankConnections: defineTable({
     organizationId: v.id("organizations"),
-    provider: v.union(v.literal("enable_banking")),
+    // Keep the retired provider value readable until all historic rows have
+    // been disconnected. New connection flows create Yapily records only.
+    provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
     providerConnectionId: v.string(),
+    // Provider credential used for data access. Kept server-side and excluded
+    // from organisation exports and every public bank-connection query.
+    providerAccessToken: v.optional(v.string()),
+    providerInstitutionId: v.optional(v.string()),
     institutionName: v.string(),
     institutionCountry: v.string(),
     accounts: v.array(
@@ -540,6 +546,7 @@ export default defineSchema({
     lastSyncAt: v.optional(v.number()),
     lastSyncedThrough: v.optional(v.string()),
     consentExpiresAt: v.optional(v.number()),
+    consentReconfirmBy: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -552,7 +559,8 @@ export default defineSchema({
   pendingBankConnections: defineTable({
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
-    provider: v.union(v.literal("enable_banking")),
+    // Retained for schema compatibility with any unexpired historic attempts.
+    provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
     state: v.string(),
     status: v.union(
       v.literal("pending"),
@@ -562,6 +570,7 @@ export default defineSchema({
     ),
     aspspCountry: v.string(),
     aspspName: v.string(),
+    providerInstitutionId: v.optional(v.string()),
     existingConnectionId: v.optional(v.id("bankConnections")),
     errorCode: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
@@ -571,6 +580,7 @@ export default defineSchema({
   })
     .index("by_state", ["state"])
     .index("by_organization", ["organizationId"])
+    .index("by_organization_and_state", ["organizationId", "state"])
     .index("by_organization_status", ["organizationId", "status"])
     .index("by_status_expiresAt", ["status", "expiresAt"]),
 

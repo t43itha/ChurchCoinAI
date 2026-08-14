@@ -29,7 +29,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - **Backend:** Convex (serverless BaaS with real-time reactivity)
 - **Auth:** Clerk (JWT-based, bridged to Convex via `ConvexProviderWithClerk`)
 - **AI:** Google Gemini 2.5 Flash + Convex RAG for transaction categorization
-- **Banking:** Provider-neutral bank connections, with Enable Banking as the active provider for manual UK Open Banking transaction sync
+- **Banking:** Yapily for manual UK Open Banking transaction sync, with a provider discriminator retained only for legacy-record compatibility
 - **Payments:** Stripe (subscription billing with webhook handling)
 - **Styling:** Tailwind CSS via PostCSS (`tailwind.config.cjs` + `styles.css`) with the "Refined Ledger" design system
 - **Exports:** html2canvas + jsPDF for PDF, XLSX (SheetJS 0.20.x from cdn.sheetjs.com) for Excel
@@ -52,7 +52,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `mutations/` — Data modifications with role validation
 - `actions/` — Server-side async operations (AI calls, Stripe, bank connection flows)
 - `intelligence/` — AI insight generation and RAG indexing
-- `http.ts` — HTTP routes for Stripe webhooks, active Enable Banking callbacks, and preserved Plaid webhook compatibility
+- `http.ts` — HTTP routes for Stripe webhooks, the Yapily callback, and preserved Plaid webhook compatibility
 - `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections
 - `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireRole()`, `canEdit()`
 - `lib/money.ts` — Money helpers: amounts are pounds as floats; always round sums with `roundMoney()` and compare targets with `meetsMoneyTarget()`
@@ -90,20 +90,20 @@ The "Refined Ledger" design system is defined in `tailwind.config.cjs` and `styl
 
 **Backend** (set via Convex Dashboard or `npx convex env set`):
 - `GEMINI_API_KEY`, `CLERK_JWT_ISSUER_DOMAIN`
-- `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`, `APP_BASE_URL`
-- `ENABLE_BANKING_DEFAULT_COUNTRY`, `ENABLE_BANKING_DEFAULT_ASPSP`, optional `ENABLE_BANKING_API_BASE_URL`
+- `YAPILY_APPLICATION_ID`, `YAPILY_APPLICATION_SECRET`, `YAPILY_CALLBACK_URL`, optional `YAPILY_API_BASE_URL`
+- `APP_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 - `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, `STRIPE_PRODUCT_THRIVING`
 - `RESEND_API_KEY` (invitation emails), optional `RESEND_FROM_EMAIL` (defaults to `ChurchCoin <onboarding@resend.dev>`; set a verified-domain sender for production)
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).
-`APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to Convex; set it for deployed environments.
+`APP_BASE_URL` is the public frontend origin used after Yapily redirects back to Convex; set it for deployed environments.
 
 ## Key Conventions
 
 - Path alias: `@/*` maps to project root (configured in `tsconfig.json` and `vite.config.ts`)
 - Convex auto-generates types in `convex/_generated/` — never edit these files
-- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, active Enable Banking callback at `/enable-banking/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
+- HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Yapily at `/yapily/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
 - Reuse existing Convex queries and mutations rather than creating duplicates

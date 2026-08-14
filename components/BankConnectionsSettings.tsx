@@ -10,7 +10,8 @@ import {
   Trash2,
   Link2,
   Landmark,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 import { notify } from '../lib/notifications';
 
@@ -18,14 +19,60 @@ interface BankConnectionsSettingsProps {
   funds: Fund[];
 }
 
+type AvailableInstitution = {
+  provider: 'yapily';
+  institutionId: string;
+  name: string;
+  country: string;
+  logoUrl: string | null;
+  maximumConsentValiditySeconds: number | null;
+  beta: boolean;
+  environmentType: string | null;
+};
+
+type BankProvider = 'yapily' | 'enable_banking';
+
+type ReauthConnection = {
+  _id: Id<"bankConnections">;
+  institutionName: string;
+  institutionCountry: string;
+  provider: BankProvider;
+  providerInstitutionId?: string;
+};
+
+const getCallbackAttemptState = () => {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('bankConnectionState');
+};
+
+const clearBankCallbackParams = () => {
+  const searchParams = new URLSearchParams(window.location.search);
+  searchParams.delete('bankConnection');
+  searchParams.delete('bankConnectionState');
+  const nextSearch = searchParams.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+  window.history.replaceState(window.history.state, '', nextUrl);
+};
+
 const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
+  const [callbackAttemptState, setCallbackAttemptState] = useState<string | null>(getCallbackAttemptState);
+  const callbackAttempt = useQuery(
+    api.queries.bankConnections.getAttempt,
+    callbackAttemptState ? { state: callbackAttemptState } : 'skip'
+  );
   const updateFundMapping = useMutation(api.mutations.bankConnections.updateAccountFundMapping);
+  const listInstitutions = useAction(api.actions.bankConnections.listInstitutions);
   const startConnection = useAction(api.actions.bankConnections.startConnection);
   const removeConnection = useAction(api.actions.bankConnections.removeConnection);
 
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
+  const [isBankPickerOpen, setIsBankPickerOpen] = useState(false);
+  const [availableInstitutions, setAvailableInstitutions] = useState<AvailableInstitution[]>([]);
+  const [reauthConnection, setReauthConnection] = useState<ReauthConnection | undefined>();
+  const [isAwaitingCompletion, setIsAwaitingCompletion] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
@@ -38,32 +85,117 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     const searchParams = new URLSearchParams(window.location.search);
     const callbackResult = searchParams.get('bankConnection');
 
-    if (callbackResult !== 'success' && callbackResult !== 'error') {
+    if (callbackResult !== 'success' && callbackResult !== 'error' && callbackResult !== 'processing') {
       return;
     }
 
-    searchParams.delete('bankConnection');
-    const nextSearch = searchParams.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-    window.history.replaceState(window.history.state, '', nextUrl);
-
     if (callbackResult === 'success') {
+      clearBankCallbackParams();
+      setCallbackAttemptState(null);
       setConnectionError(null);
       notify('Success', 'Bank connection completed successfully.');
       return;
     }
 
+    if (callbackResult === 'processing') {
+      if (!callbackAttemptState) {
+        clearBankCallbackParams();
+        const message = 'Bank connection status could not be verified. Please try connecting again.';
+        setConnectionError(message);
+        notify('Error', message);
+        return;
+      }
+
+      searchParams.delete('bankConnection');
+      const nextSearch = searchParams.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+      window.history.replaceState(window.history.state, '', nextUrl);
+      setConnectionError(null);
+      setIsAwaitingCompletion(true);
+      notify('Bank authorised', 'ChurchCoin is securely finishing the Yapily connection.');
+      return;
+    }
+
+    clearBankCallbackParams();
+    setCallbackAttemptState(null);
     const message = 'Bank connection was not completed. Please try connecting again.';
     setConnectionError(message);
     notify('Error', message);
-  }, []);
+  }, [callbackAttemptState]);
 
-  const handleConnectBank = async () => {
+  useEffect(() => {
+    if (!callbackAttemptState || callbackAttempt === undefined) return;
+
+    if (!callbackAttempt) {
+      clearBankCallbackParams();
+      setCallbackAttemptState(null);
+      setIsAwaitingCompletion(false);
+      const message = 'Bank connection status could not be verified. Please try connecting again.';
+      setConnectionError(message);
+      notify('Error', message);
+      return;
+    }
+
+    if (callbackAttempt.status === 'pending' || callbackAttempt.status === 'processing') {
+      setIsAwaitingCompletion(true);
+      return;
+    }
+
+    clearBankCallbackParams();
+    setCallbackAttemptState(null);
+    if (callbackAttempt.status === 'completed') {
+      setIsAwaitingCompletion(false);
+      setConnectionError(null);
+      notify('Success', `${callbackAttempt.institutionName} connected successfully.`);
+    } else if (callbackAttempt.status === 'error') {
+      const message = callbackAttempt.errorMessage || 'Yapily could not finish the bank connection.';
+      setIsAwaitingCompletion(false);
+      setConnectionError(message);
+      notify('Error', message);
+    }
+  }, [callbackAttemptState, callbackAttempt]);
+
+  const loadInstitutions = async () => {
+    setIsLoadingInstitutions(true);
+    setAvailableInstitutions([]);
+    setConnectionError(null);
+
+    try {
+      const institutions = await listInstitutions({});
+      setAvailableInstitutions(institutions);
+    } catch (error: any) {
+      const message = error?.message || 'Failed to load supported UK banks';
+      setConnectionError(message);
+      notify('Error', message);
+    } finally {
+      setIsLoadingInstitutions(false);
+    }
+  };
+
+  const openBankPicker = async (existingConnection?: ReauthConnection) => {
+    if (existingConnection?.provider === 'enable_banking') {
+      const message = 'This legacy connection cannot be renewed. Disconnect it and reconnect with Yapily.';
+      setConnectionError(message);
+      notify('Action required', message);
+      return;
+    }
+
+    setReauthConnection(existingConnection);
+    setIsBankPickerOpen(true);
+    await loadInstitutions();
+  };
+
+  const handleConnectBank = async (institution: AvailableInstitution) => {
     setIsConnecting(true);
     setConnectionError(null);
 
     try {
-      const { authorizationUrl } = await startConnection({});
+      const { authorizationUrl } = await startConnection({
+        institutionId: institution.institutionId,
+        institutionName: institution.name,
+        institutionCountry: institution.country,
+        existingConnectionId: reauthConnection?._id,
+      });
       window.location.assign(authorizationUrl);
     } catch (error: any) {
       const message = error?.message || 'Failed to start bank connection';
@@ -71,6 +203,12 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       notify('Error', message);
       setIsConnecting(false);
     }
+  };
+
+  const closeBankPicker = () => {
+    if (isConnecting) return;
+    setIsBankPickerOpen(false);
+    setReauthConnection(undefined);
   };
 
   const handleRemoveConnection = async (connectionId: Id<"bankConnections">) => {
@@ -124,11 +262,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     );
   };
 
-  const getStatusBadge = (status: string, daysUntilExpiry?: number | null) => {
+  const getStatusBadge = (status: string, daysUntilReview?: number | null) => {
     switch (status) {
       case 'active':
-        if (daysUntilExpiry !== null && daysUntilExpiry !== undefined && daysUntilExpiry <= 7) {
-          return pillBadge('amber', `Expires in ${daysUntilExpiry}d`);
+        if (daysUntilReview !== null && daysUntilReview !== undefined && daysUntilReview <= 7) {
+          return pillBadge('amber', `Review in ${daysUntilReview}d`);
         }
         return pillBadge('sage', 'Connected');
       case 'error':
@@ -156,8 +294,24 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     return details.length > 0 ? details.join(' - ') : 'Bank account';
   };
 
+  const selectableInstitutions = reauthConnection
+    ? availableInstitutions.filter(
+        (institution) =>
+          institution.country === reauthConnection.institutionCountry.toUpperCase() &&
+          institution.name === reauthConnection.institutionName &&
+          (!reauthConnection.providerInstitutionId ||
+            institution.institutionId === reauthConnection.providerInstitutionId)
+      )
+    : availableInstitutions;
+
   return (
     <div className="space-y-6">
+      {isAwaitingCompletion && (
+        <div className="flex items-center gap-3 rounded-[10px] border border-[#cbd9e8] bg-[#f3f7fb] p-4 text-xs text-[#385a7a]">
+          <RefreshCw size={16} className="animate-spin shrink-0" />
+          Yapily authorisation received. Securely exchanging the one-time token and loading your accounts…
+        </div>
+      )}
       {itemsNeedingAttention.length > 0 && (
         <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] p-4">
           <div className="flex items-start gap-3">
@@ -168,11 +322,19 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                 {itemsNeedingAttention.map((item) => (
                   <li key={item._id} className="text-xs text-[#7a5a30] leading-relaxed">
                     <strong>{item.institutionName}</strong>: {' '}
-                    {item.status === 'consent_expired' && 'Consent has expired. Please re-authenticate.'}
-                    {item.status === 'pending_reauth' && 'Consent requires renewal. Please re-authenticate.'}
-                    {item.status === 'error' && `Error: ${item.errorMessage || 'Unknown error'}`}
-                    {item.daysUntilExpiry !== null && item.daysUntilExpiry <= 7 && item.status === 'active' &&
-                      `Consent expires in ${item.daysUntilExpiry} days.`}
+                    {item.provider !== 'yapily' ? (
+                      'This legacy connection is no longer supported. Disconnect it and reconnect with Yapily.'
+                    ) : (
+                      <>
+                        {item.status === 'consent_expired' && 'Consent has expired. Please re-authenticate.'}
+                        {item.status === 'pending_reauth' && 'Consent requires renewal. Please re-authenticate.'}
+                        {item.status === 'error' && `Error: ${item.errorMessage || 'Unknown error'}`}
+                        {item.daysUntilExpiry !== null && item.daysUntilExpiry <= 7 && item.status === 'active' &&
+                          `Consent expires in ${item.daysUntilExpiry} days.`}
+                        {item.daysUntilReconfirmation !== null && item.daysUntilReconfirmation <= 7 && item.status === 'active' &&
+                          ` Please reconfirm access within ${item.daysUntilReconfirmation} days.`}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -193,11 +355,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </div>
           </div>
           <button
-            onClick={handleConnectBank}
-            disabled={isConnecting}
+            onClick={() => openBankPicker()}
+            disabled={isConnecting || isLoadingInstitutions}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
           >
-            {isConnecting ? (
+            {isLoadingInstitutions ? (
               <RefreshCw size={14} className="animate-spin" strokeWidth={2} />
             ) : (
               <Plus size={14} strokeWidth={2} />
@@ -222,11 +384,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
               Connect your UK bank accounts to sync transactions directly. This uses secure Open Banking technology.
             </p>
             <button
-              onClick={handleConnectBank}
-              disabled={isConnecting}
+              onClick={() => openBankPicker()}
+              disabled={isConnecting || isLoadingInstitutions}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
             >
-              {isConnecting ? (
+              {isLoadingInstitutions ? (
                 <RefreshCw size={14} className="animate-spin" />
               ) : (
                 <Plus size={14} />
@@ -245,12 +407,16 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     </span>
                     <div className="min-w-0">
                       <h4 className="text-[14.5px] font-semibold text-ink truncate">{connection.institutionName}</h4>
+                      <p className="mt-0.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-grey-mid">
+                        {connection.provider === 'yapily' ? 'Yapily' : 'Legacy provider'}
+                      </p>
                       <div className="flex items-center gap-2 mt-1">
                         {getStatusBadge(
                           connection.status,
-                          connection.consentExpiresAt
-                            ? Math.ceil((connection.consentExpiresAt - Date.now()) / (24 * 60 * 60 * 1000))
-                            : null
+                          [connection.consentExpiresAt, connection.consentReconfirmBy]
+                            .filter((value): value is number => typeof value === 'number')
+                            .map((value) => Math.ceil((value - Date.now()) / (24 * 60 * 60 * 1000)))
+                            .sort((a, b) => a - b)[0] ?? null
                         )}
                         {connection.lastSyncAt && (
                           <span className="text-[12.5px] text-grey-mid whitespace-nowrap">
@@ -261,8 +427,16 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {(connection.status === 'consent_expired' || connection.status === 'pending_reauth' || connection.status === 'error') && (
-                      <ReauthButton bankConnectionId={connection._id} />
+                    {connection.provider === 'yapily' &&
+                      (connection.status === 'consent_expired' ||
+                        connection.status === 'pending_reauth' ||
+                        connection.status === 'error' ||
+                        Boolean(connection.consentReconfirmBy && connection.consentReconfirmBy < Date.now() + 7 * 24 * 60 * 60 * 1000) ||
+                        Boolean(connection.consentExpiresAt && connection.consentExpiresAt < Date.now() + 7 * 24 * 60 * 60 * 1000)) && (
+                      <ReauthButton
+                        disabled={isConnecting || isLoadingInstitutions}
+                        onClick={() => openBankPicker(connection)}
+                      />
                     )}
                     <button
                       onClick={() => setEditingItem(editingItem === connection._id ? null : connection._id)}
@@ -334,36 +508,132 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
       <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
         <p className="text-xs text-[#7a5a30] leading-relaxed">
-          <strong className="font-bold">UK Open Banking:</strong> Bank connections require consent renewal every 90 days.
-          You'll be notified before consent expires and can re-authenticate without losing your transaction history.
+          <strong className="font-bold">UK Open Banking:</strong> Connections are read-only and provider-specific.
+          You'll be notified before access needs reconfirmation or re-authorisation, without losing imported history or fund mappings.
         </p>
       </div>
+
+      {isBankPickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bank-picker-title"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) closeBankPicker();
+          }}
+        >
+          <div className="w-full max-w-xl overflow-hidden rounded-[14px] border border-ledger bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-grey-light bg-[#fcfbf9] px-6 py-5">
+              <div>
+                <h3 id="bank-picker-title" className="text-base font-bold text-ink">
+                  {reauthConnection
+                    ? `Reconnect ${reauthConnection.institutionName}`
+                    : 'Choose a UK bank'}
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-grey-mid">
+                  UK institutions are loaded live from Yapily.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBankPicker}
+                disabled={isConnecting}
+                aria-label="Close bank picker"
+                className="rounded-[8px] p-2 text-grey-mid transition-colors hover:bg-paper hover:text-ink disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              {isLoadingInstitutions ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-grey-mid">
+                  <RefreshCw size={16} className="animate-spin" />
+                  Checking supported banks...
+                </div>
+              ) : connectionError ? (
+                <div className="rounded-[10px] border border-error/30 bg-error-light p-4 text-sm text-error">
+                  {connectionError}
+                </div>
+              ) : selectableInstitutions.length === 0 ? (
+                <div className="rounded-[10px] border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-sm text-[#7a5a30]">
+                  {reauthConnection
+                    ? `${reauthConnection.institutionName} is not currently available under its saved name. Use Connect to create a fresh link if the bank has been renamed.`
+                    : 'No compatible UK banks are currently available for this Yapily application.'}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {selectableInstitutions.map((institution) => {
+                    const consentDays = institution.maximumConsentValiditySeconds == null
+                      ? null
+                      : Math.max(
+                          1,
+                          Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60))
+                        );
+
+                    return (
+                      <button
+                        type="button"
+                        key={`${institution.provider}:${institution.institutionId}`}
+                        onClick={() => handleConnectBank(institution)}
+                        disabled={isConnecting}
+                        className="group flex min-h-[112px] flex-col items-start rounded-[11px] border border-ledger bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-[3px_3px_0_#1c1c1c] disabled:translate-y-0 disabled:cursor-wait disabled:opacity-50 disabled:shadow-none"
+                      >
+                        <div className="flex w-full items-start justify-between gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[9px] border border-grey-light bg-paper">
+                            {institution.logoUrl ? (
+                              <img
+                                src={institution.logoUrl}
+                                alt=""
+                                className="h-full w-full object-contain p-1.5"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <Landmark size={17} className="text-grey-dark" />
+                            )}
+                          </span>
+                          {isConnecting && (
+                            <RefreshCw size={14} className="animate-spin text-grey-mid" />
+                          )}
+                        </div>
+                        <span className="mt-3 text-sm font-bold text-ink">{institution.name}</span>
+                        <span className="mt-1 text-[11.5px] text-grey-mid">
+                          Yapily
+                          {consentDays ? ` · up to ${consentDays} days` : ' · bank-managed consent'}
+                          {institution.environmentType === 'SANDBOX' ? ' · sandbox' : ''}
+                          {institution.beta && institution.environmentType !== 'SANDBOX' ? ' · beta' : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-grey-light bg-[#fcfbf9] px-6 py-4">
+              <p className="text-[11.5px] leading-relaxed text-grey-mid">
+                ChurchCoin requests read-only access to accounts and transactions through Yapily. Your bank credentials are entered with your bank, not ChurchCoin.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const ReauthButton: React.FC<{ bankConnectionId: Id<"bankConnections"> }> = ({ bankConnectionId }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const startConnection = useAction(api.actions.bankConnections.startConnection);
-
-  const handleReauth = async () => {
-    setIsLoading(true);
-    try {
-      const { authorizationUrl } = await startConnection({ existingConnectionId: bankConnectionId });
-      window.location.assign(authorizationUrl);
-    } catch (error: any) {
-      notify('Error', error?.message || 'Failed to start re-authentication');
-      setIsLoading(false);
-    }
-  };
-
+const ReauthButton: React.FC<{
+  disabled: boolean;
+  onClick: () => void;
+}> = ({ disabled, onClick }) => {
   return (
     <button
-      onClick={handleReauth}
-      disabled={isLoading}
+      onClick={onClick}
+      disabled={disabled}
       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.05em] border border-[#ecd8bd] text-[#a9743f] rounded-[8px] bg-white hover:bg-[#fcf7f0] transition-colors disabled:opacity-50"
     >
-      <RefreshCw size={10} className={isLoading ? 'animate-spin' : ''} />
+      <RefreshCw size={10} />
       Re-auth
     </button>
   );
