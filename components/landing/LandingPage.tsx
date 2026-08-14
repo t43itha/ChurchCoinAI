@@ -38,7 +38,7 @@ const navigation = [
 const pricingPlans: PricingPlan[] = [
   {
     id: "starter",
-    name: "Essentials",
+    name: "Core",
     price: "£19",
     description: "For churches with under £100k annual income and straightforward finances.",
     features: [
@@ -50,11 +50,11 @@ const pricingPlans: PricingPlan[] = [
   },
   {
     id: "growing",
-    name: "Church",
+    name: "Standard",
     price: "£29",
     description: "For churches with £100k–£500k annual income and more to manage.",
     features: [
-      "Everything in Essentials",
+      "Everything in Core",
       "Connected bank accounts",
       "Trustee-ready reports",
       "One onboarding session",
@@ -67,7 +67,7 @@ const pricingPlans: PricingPlan[] = [
     price: "£49",
     description: "For churches with £500k–£1m annual income and greater support needs.",
     features: [
-      "Everything in Church",
+      "Everything in Standard",
       "More connected bank accounts",
       "Advanced permissions",
       "Assisted onboarding and training",

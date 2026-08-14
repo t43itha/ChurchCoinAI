@@ -52,7 +52,7 @@ export function getStripeProductId(plan: PlanTier): string {
 // Plan configurations
 export const PLAN_CONFIG = {
   starter: {
-    name: "Essentials",
+    name: "Core",
     price: 19,
     maxDonors: Infinity,
     maxFunds: Infinity,
@@ -66,12 +66,12 @@ export const PLAN_CONFIG = {
     ],
   },
   growing: {
-    name: "Church",
+    name: "Standard",
     price: 29,
     maxDonors: Infinity,
     maxFunds: Infinity,
     features: [
-      "Everything in Essentials",
+      "Everything in Core",
       "Human approval workflow",
       "Connected bank accounts",
       "Trustee-ready reports",
@@ -85,7 +85,7 @@ export const PLAN_CONFIG = {
     maxDonors: Infinity,
     maxFunds: Infinity,
     features: [
-      "Everything in Church",
+      "Everything in Standard",
       "More connected bank accounts",
       "Advanced permissions",
       "Assisted onboarding",
