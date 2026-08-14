@@ -1,6 +1,6 @@
 "use node";
 
-import { action, type ActionCtx } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import {
@@ -16,8 +16,22 @@ import {
 import {
   calculateDefaultSyncRange,
   normalizeEnableBankingTransaction,
+  normalizeYapilyAccount,
+  normalizeYapilyTransaction,
   type EnableBankingTransactionLike,
 } from "../lib/bankConnectionUtils";
+import {
+  deleteYapilyConsent,
+  exchangeYapilyOneTimeToken,
+  getYapilyAccounts,
+  getYapilyAccountTransactions,
+  getYapilyCallbackUrl,
+  getYapilyInstitutions,
+  isYapilyAuthorizationError,
+  startYapilyAccountAuthorization,
+  YapilyApiError,
+  type YapilyTransactionLike,
+} from "../lib/yapily";
 
 const requireUser = async (ctx: ActionCtx) => {
   const identity = await ctx.auth.getUserIdentity();
@@ -58,11 +72,14 @@ const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
 const MAX_SYNC_TRANSACTIONS = 500;
 
 const institutionSchema = v.object({
+  provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
+  institutionId: v.string(),
   name: v.string(),
   country: v.string(),
   logoUrl: v.union(v.string(), v.null()),
-  maximumConsentValiditySeconds: v.number(),
+  maximumConsentValiditySeconds: v.union(v.number(), v.null()),
   beta: v.boolean(),
+  environmentType: v.union(v.string(), v.null()),
 });
 
 const syncCursorSchema = v.object({
@@ -162,21 +179,41 @@ const validateSyncCursor = (
 };
 
 export const listInstitutions = action({
-  args: {},
+  args: {
+    provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
+  },
   returns: v.array(institutionSchema),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     requireFinanceRole(user);
 
+    if (args.provider === "yapily") {
+      const institutions = await getYapilyInstitutions();
+      return institutions.map((institution) => ({
+        provider: "yapily" as const,
+        ...institution,
+        maximumConsentValiditySeconds: null,
+        beta: institution.environmentType === "SANDBOX",
+      }));
+    }
+
     const { aspspCountry } = getEnableBankingDefaults();
-    return await getAvailableInstitutions(aspspCountry);
+    const institutions = await getAvailableInstitutions(aspspCountry);
+    return institutions.map((institution) => ({
+      provider: "enable_banking" as const,
+      institutionId: institution.name,
+      ...institution,
+      environmentType: null,
+    }));
   },
 });
 
 export const startConnection = action({
   args: {
-    aspspName: v.string(),
-    aspspCountry: v.string(),
+    provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
+    institutionId: v.string(),
+    institutionName: v.string(),
+    institutionCountry: v.string(),
     existingConnectionId: v.optional(v.id("bankConnections")),
   },
   returns: v.object({ authorizationUrl: v.string() }),
@@ -185,23 +222,42 @@ export const startConnection = action({
     requireFinanceRole(user);
 
     const { internal } = await import("../_generated/api");
-    const defaults = getEnableBankingDefaults();
-    const aspspCountry = args.aspspCountry.trim().toUpperCase();
-    const aspspName = args.aspspName.trim();
+    const aspspCountry = args.institutionCountry.trim().toUpperCase();
+    const aspspName = args.institutionName.trim();
+    const institutionId = args.institutionId.trim();
 
-    if (!aspspName || aspspCountry !== defaults.aspspCountry.toUpperCase()) {
+    if (!institutionId || !aspspName || aspspCountry !== "GB") {
       throw new Error("This bank is not available for UK Open Banking");
     }
 
-    const availableInstitutions = await getAvailableInstitutions(aspspCountry);
-    const institution = availableInstitutions.find(
-      (candidate) =>
-        candidate.country === aspspCountry && candidate.name === aspspName
-    );
-    if (!institution) {
+    let maximumConsentValiditySeconds: number | undefined;
+    const isAvailable =
+      args.provider === "yapily"
+        ? (await getYapilyInstitutions()).some(
+            (candidate) =>
+              candidate.country === aspspCountry &&
+              candidate.name === aspspName &&
+              candidate.institutionId === institutionId
+          )
+        : (await getAvailableInstitutions(aspspCountry)).some((candidate) => {
+            const matches =
+              candidate.country === aspspCountry && candidate.name === aspspName;
+            if (matches) {
+              maximumConsentValiditySeconds =
+                candidate.maximumConsentValiditySeconds;
+            }
+            return matches;
+          });
+    if (!isAvailable) {
       throw new Error(
         "This bank is no longer available. Refresh the bank list and try again."
       );
+    }
+    if (
+      args.provider === "enable_banking" &&
+      maximumConsentValiditySeconds == null
+    ) {
+      throw new Error("Enable Banking institution has no consent validity");
     }
 
     const state = randomState();
@@ -222,8 +278,11 @@ export const startConnection = action({
       }
 
       if (
+        existingConnection.provider !== args.provider ||
         existingConnection.institutionCountry.toUpperCase() !== aspspCountry ||
-        existingConnection.institutionName !== aspspName
+        existingConnection.institutionName !== aspspName ||
+        (args.provider === "yapily" &&
+          existingConnection.providerInstitutionId !== institutionId)
       ) {
         throw new Error(
           "Re-authorization must use the bank already linked to this connection"
@@ -234,26 +293,36 @@ export const startConnection = action({
     await ctx.runMutation(internal.mutations.bankConnections.createPending, {
       organizationId: user.organizationId,
       createdBy: user._id,
-      provider: "enable_banking",
+      provider: args.provider,
       state,
       aspspCountry,
       aspspName,
+      providerInstitutionId: institutionId,
       existingConnectionId,
       expiresAt,
     });
 
     try {
-      const response = await startAuthorization({
-        state,
-        aspspCountry,
-        aspspName,
-        redirectUrl: defaults.redirectUrl,
-        validUntil: getConsentValidUntil(
-          institution.maximumConsentValiditySeconds
-        ),
-      });
+      const response =
+        args.provider === "yapily"
+          ? await startYapilyAccountAuthorization({
+              applicationUserId: `churchcoin-${user.organizationId}`,
+              institutionId,
+              callback: getYapilyCallbackUrl(state),
+            })
+          : await startAuthorization({
+              state,
+              aspspCountry,
+              aspspName,
+              redirectUrl: getEnableBankingDefaults().redirectUrl,
+              validUntil: getConsentValidUntil(
+                maximumConsentValiditySeconds!
+              ),
+            });
 
-      return { authorizationUrl: assertValidAuthorizationUrl(response.url) };
+      const authorizationUrl =
+        "authorizationUrl" in response ? response.authorizationUrl : response.url;
+      return { authorizationUrl: assertValidAuthorizationUrl(authorizationUrl) };
     } catch (error: any) {
       try {
         await ctx.runMutation(internal.mutations.bankConnections.markPendingError, {
@@ -268,6 +337,117 @@ export const startConnection = action({
 
       throw error;
     }
+  },
+});
+
+const optionalFutureTimestamp = (value: string | undefined) => {
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp > Date.now()
+    ? timestamp
+    : undefined;
+};
+
+export const completeYapilyConnection = internalAction({
+  args: {
+    state: v.string(),
+    oneTimeToken: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { internal } = await import("../_generated/api");
+    let newConsentId: string | undefined;
+    let existingConnectionId: Id<"bankConnections"> | undefined;
+    let completed = false;
+
+    try {
+      const pending = await ctx.runQuery(
+        internal.queries.bankConnections.getPendingForAction,
+        { state: args.state }
+      );
+      if (!pending || pending.provider !== "yapily") {
+        throw new Error("Pending Yapily connection not found");
+      }
+      existingConnectionId = pending.existingConnectionId;
+
+      const consent = await exchangeYapilyOneTimeToken(args.oneTimeToken);
+      newConsentId = consent.id;
+      if (consent.status !== "AUTHORIZED") {
+        throw new Error(`Yapily consent is ${consent.status.toLowerCase()}`);
+      }
+      if (
+        !pending.providerInstitutionId ||
+        consent.institutionId !== pending.providerInstitutionId
+      ) {
+        throw new Error("Yapily consent institution does not match the request");
+      }
+
+      const accounts = await getYapilyAccounts(consent.consentToken);
+      if (pending.existingConnectionId) {
+        const existing = await ctx.runQuery(
+          internal.queries.bankConnections.getForAction,
+          { bankConnectionId: pending.existingConnectionId }
+        );
+        if (
+          existing?.provider === "yapily" &&
+          existing.organizationId === pending.organizationId &&
+          existing.providerConnectionId !== consent.id
+        ) {
+          try {
+            await deleteYapilyConsent(existing.providerConnectionId);
+          } catch (error) {
+            if (!(error instanceof YapilyApiError && error.status === 404)) {
+              throw error;
+            }
+          }
+        }
+      }
+
+      await ctx.runMutation(
+        internal.mutations.bankConnections.completePending,
+        {
+          state: args.state,
+          providerConnectionId: consent.id,
+          providerAccessToken: consent.consentToken,
+          accounts: accounts.map(normalizeYapilyAccount),
+          consentExpiresAt: optionalFutureTimestamp(consent.expiresAt),
+          consentReconfirmBy: optionalFutureTimestamp(consent.reconfirmBy),
+        }
+      );
+      completed = true;
+    } catch (error: any) {
+      if (newConsentId && !completed) {
+        try {
+          await deleteYapilyConsent(newConsentId);
+        } catch {
+          // Preserve the connection failure; provider cleanup can be retried
+          // from the Yapily console if the transient deletion also failed.
+        }
+      }
+      if (existingConnectionId && !completed) {
+        await ctx.runMutation(
+          internal.mutations.bankConnections.updateStatus,
+          {
+            bankConnectionId: existingConnectionId,
+            status: "pending_reauth",
+            errorCode: "YAPILY_REAUTH_FAILED",
+            errorMessage:
+              error?.message || "Failed to refresh the Yapily bank connection",
+          }
+        );
+      }
+      await ctx.runMutation(
+        internal.mutations.bankConnections.markPendingError,
+        {
+          state: args.state,
+          errorCode: "YAPILY_CONNECTION_FAILED",
+          errorMessage:
+            error?.message || "Failed to finish the Yapily bank connection",
+        }
+      );
+    }
+
+    return null;
   },
 });
 
@@ -344,25 +524,52 @@ export const syncTransactions = action({
             break syncLoop;
           }
 
-          const response = await getAccountTransactions({
-            accountId: account.accountId,
-            dateFrom,
-            dateTo,
-            continuationKey,
-          });
+          let providerTransactions: unknown[];
+          let responseContinuationKey: string | undefined;
 
-          if (!Array.isArray(response.transactions)) {
-            throw new Error("Enable Banking transactions response is invalid");
+          if (connection.provider === "yapily") {
+            if (!connection.providerAccessToken) {
+              throw new Error("Yapily bank connection is missing its consent token");
+            }
+            const offset = continuationKey == null ? 0 : Number(continuationKey);
+            if (!Number.isInteger(offset) || offset < 0) {
+              throw new Error("Invalid Yapily transaction pagination offset");
+            }
+            const response = await getYapilyAccountTransactions({
+              consentToken: connection.providerAccessToken,
+              accountId: account.accountId,
+              dateFrom,
+              dateTo,
+              limit: Math.min(remainingCapacity, 500),
+              offset,
+            });
+            providerTransactions = response.transactions;
+            responseContinuationKey =
+              response.nextOffset == null ? undefined : String(response.nextOffset);
+          } else {
+            const response = await getAccountTransactions({
+              accountId: account.accountId,
+              dateFrom,
+              dateTo,
+              continuationKey,
+            });
+            if (!Array.isArray(response.transactions)) {
+              throw new Error("Enable Banking transactions response is invalid");
+            }
+            providerTransactions = response.transactions;
+            const rawContinuationKey = response.continuation_key;
+            if (
+              rawContinuationKey != null &&
+              typeof rawContinuationKey !== "string"
+            ) {
+              throw new Error("Enable Banking transactions response is invalid");
+            }
+            responseContinuationKey = rawContinuationKey ?? undefined;
           }
 
-          const responseContinuationKey = response.continuation_key;
           const hasContinuation = responseContinuationKey != null;
-          if (hasContinuation && typeof responseContinuationKey !== "string") {
-            throw new Error("Enable Banking transactions response is invalid");
-          }
-
           if (
-            response.transactions.length > remainingCapacity &&
+            providerTransactions.length > remainingCapacity &&
             transactions.length > 0
           ) {
             hasMore = true;
@@ -375,13 +582,21 @@ export const syncTransactions = action({
             break syncLoop;
           }
 
-          for (const transaction of response.transactions) {
-            const normalized = normalizeEnableBankingTransaction({
-              transaction: transaction as EnableBankingTransactionLike,
-              accountId: account.accountId,
-              accountName: account.name,
-              fundId: account.fundId,
-            });
+          for (const transaction of providerTransactions) {
+            const normalized =
+              connection.provider === "yapily"
+                ? normalizeYapilyTransaction({
+                    transaction: transaction as YapilyTransactionLike,
+                    accountId: account.accountId,
+                    accountName: account.name,
+                    fundId: account.fundId,
+                  })
+                : normalizeEnableBankingTransaction({
+                    transaction: transaction as EnableBankingTransactionLike,
+                    accountId: account.accountId,
+                    accountName: account.name,
+                    fundId: account.fundId,
+                  });
             transactions.push({
               ...normalized,
               fundId: account.fundId ?? null,
@@ -432,7 +647,10 @@ export const syncTransactions = action({
       }
     } catch (error: any) {
       const message = error?.message || "Failed to sync bank transactions";
-      const isAuthorizationError = isEnableBankingExpiredSessionError(error);
+      const isAuthorizationError =
+        connection.provider === "yapily"
+          ? isYapilyAuthorizationError(error)
+          : isEnableBankingExpiredSessionError(error);
 
       if (isAuthorizationError) {
         await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
@@ -476,12 +694,18 @@ export const removeConnection = action({
     }
 
     try {
-      await closeSession(connection.providerConnectionId);
+      if (connection.provider === "yapily") {
+        await deleteYapilyConsent(connection.providerConnectionId);
+      } else {
+        await closeSession(connection.providerConnectionId);
+      }
     } catch (error: any) {
       if (
         !(
-          error instanceof EnableBankingApiError &&
+          ((error instanceof EnableBankingApiError ||
+            error instanceof YapilyApiError) &&
           error.status === 404
+          )
         )
       ) {
         throw error;

@@ -55,7 +55,10 @@ const getBankSettingsOrigin = (request: Request) => {
   }
 };
 
-const settingsBankUrl = (request: Request, result: "success" | "error") => {
+const settingsBankUrl = (
+  request: Request,
+  result: "success" | "error" | "processing"
+) => {
   const url = new URL("/settings", getBankSettingsOrigin(request));
   url.searchParams.set("tab", "bank");
   url.searchParams.set("bankConnection", result);
@@ -64,7 +67,7 @@ const settingsBankUrl = (request: Request, result: "success" | "error") => {
 
 const redirectToBankSettings = (
   request: Request,
-  result: "success" | "error"
+  result: "success" | "error" | "processing"
 ) => {
   let location: string;
   try {
@@ -505,7 +508,7 @@ http.route({
     // Expired states are marked as errors inside the claim mutation.
     const claim = await ctx.runMutation(
       internal.mutations.bankConnections.claimPendingState,
-      { state }
+      { state, provider: "enable_banking" }
     );
 
     if (!claim.claimed) {
@@ -568,6 +571,60 @@ http.route({
       );
       return redirectToBankSettings(request, "error");
     }
+  }),
+});
+
+// Yapily Connect sends the browser here with a short-lived one-time token.
+// Claim the state and redirect immediately; token exchange and account lookup
+// continue in a scheduled action so the callback stays below Yapily's 100 ms
+// user-experience target.
+http.route({
+  path: "/yapily/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const state = trimCallbackValue(url.searchParams.get("state"));
+    const oneTimeToken = trimCallbackValue(
+      url.searchParams.get("one-time-token") ||
+        url.searchParams.get("oneTimeToken")
+    );
+    const providerError = trimCallbackValue(url.searchParams.get("error"));
+
+    if (!state) {
+      return new Response("Yapily callback endpoint is ready.", {
+        status: 200,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+
+    const claim = await ctx.runMutation(
+      internal.mutations.bankConnections.claimPendingState,
+      { state, provider: "yapily" }
+    );
+    if (!claim.claimed) {
+      return redirectToBankSettings(request, "error");
+    }
+
+    if (providerError || !oneTimeToken) {
+      await ctx.runMutation(
+        internal.mutations.bankConnections.markPendingError,
+        {
+          state,
+          errorCode: providerError?.slice(0, 100) || "MISSING_ONE_TIME_TOKEN",
+          errorMessage: providerError
+            ? "Bank authorization was not completed"
+            : "Yapily callback did not include a one-time token",
+        }
+      );
+      return redirectToBankSettings(request, "error");
+    }
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.bankConnections.completeYapilyConnection,
+      { state, oneTimeToken }
+    );
+    return redirectToBankSettings(request, "processing");
   }),
 });
 

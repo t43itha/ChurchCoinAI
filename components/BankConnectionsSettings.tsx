@@ -20,22 +20,30 @@ interface BankConnectionsSettingsProps {
 }
 
 type AvailableInstitution = {
+  provider: BankProvider;
+  institutionId: string;
   name: string;
   country: string;
   logoUrl: string | null;
-  maximumConsentValiditySeconds: number;
+  maximumConsentValiditySeconds: number | null;
   beta: boolean;
+  environmentType: string | null;
 };
+
+type BankProvider = 'yapily' | 'enable_banking';
 
 type ReauthConnection = {
   _id: Id<"bankConnections">;
   institutionName: string;
   institutionCountry: string;
+  provider: BankProvider;
+  providerInstitutionId?: string;
 };
 
 const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
+  const latestAttempt = useQuery(api.queries.bankConnections.getLatestAttempt);
   const updateFundMapping = useMutation(api.mutations.bankConnections.updateAccountFundMapping);
   const listInstitutions = useAction(api.actions.bankConnections.listInstitutions);
   const startConnection = useAction(api.actions.bankConnections.startConnection);
@@ -46,6 +54,8 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
   const [isBankPickerOpen, setIsBankPickerOpen] = useState(false);
   const [availableInstitutions, setAvailableInstitutions] = useState<AvailableInstitution[]>([]);
   const [reauthConnection, setReauthConnection] = useState<ReauthConnection | undefined>();
+  const [selectedProvider, setSelectedProvider] = useState<BankProvider>('yapily');
+  const [isAwaitingCompletion, setIsAwaitingCompletion] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
@@ -58,7 +68,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     const searchParams = new URLSearchParams(window.location.search);
     const callbackResult = searchParams.get('bankConnection');
 
-    if (callbackResult !== 'success' && callbackResult !== 'error') {
+    if (callbackResult !== 'success' && callbackResult !== 'error' && callbackResult !== 'processing') {
       return;
     }
 
@@ -73,20 +83,40 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       return;
     }
 
+    if (callbackResult === 'processing') {
+      setConnectionError(null);
+      setIsAwaitingCompletion(true);
+      notify('Bank authorised', 'ChurchCoin is securely finishing the Yapily connection.');
+      return;
+    }
+
     const message = 'Bank connection was not completed. Please try connecting again.';
     setConnectionError(message);
     notify('Error', message);
   }, []);
 
-  const openBankPicker = async (existingConnection?: ReauthConnection) => {
-    setReauthConnection(existingConnection);
-    setIsBankPickerOpen(true);
+  useEffect(() => {
+    if (!isAwaitingCompletion || !latestAttempt) return;
+    if (latestAttempt.status === 'completed') {
+      setIsAwaitingCompletion(false);
+      setConnectionError(null);
+      notify('Success', `${latestAttempt.institutionName} connected successfully.`);
+    } else if (latestAttempt.status === 'error') {
+      const message = latestAttempt.errorMessage || 'Yapily could not finish the bank connection.';
+      setIsAwaitingCompletion(false);
+      setConnectionError(message);
+      notify('Error', message);
+    }
+  }, [isAwaitingCompletion, latestAttempt]);
+
+  const loadInstitutions = async (provider: BankProvider) => {
+    setSelectedProvider(provider);
     setIsLoadingInstitutions(true);
     setAvailableInstitutions([]);
     setConnectionError(null);
 
     try {
-      const institutions = await listInstitutions({});
+      const institutions = await listInstitutions({ provider });
       setAvailableInstitutions(institutions);
     } catch (error: any) {
       const message = error?.message || 'Failed to load supported UK banks';
@@ -97,14 +127,22 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     }
   };
 
+  const openBankPicker = async (existingConnection?: ReauthConnection) => {
+    setReauthConnection(existingConnection);
+    setIsBankPickerOpen(true);
+    await loadInstitutions(existingConnection?.provider || 'yapily');
+  };
+
   const handleConnectBank = async (institution: AvailableInstitution) => {
     setIsConnecting(true);
     setConnectionError(null);
 
     try {
       const { authorizationUrl } = await startConnection({
-        aspspName: institution.name,
-        aspspCountry: institution.country,
+        provider: institution.provider,
+        institutionId: institution.institutionId,
+        institutionName: institution.name,
+        institutionCountry: institution.country,
         existingConnectionId: reauthConnection?._id,
       });
       window.location.assign(authorizationUrl);
@@ -173,11 +211,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     );
   };
 
-  const getStatusBadge = (status: string, daysUntilExpiry?: number | null) => {
+  const getStatusBadge = (status: string, daysUntilReview?: number | null) => {
     switch (status) {
       case 'active':
-        if (daysUntilExpiry !== null && daysUntilExpiry !== undefined && daysUntilExpiry <= 7) {
-          return pillBadge('amber', `Expires in ${daysUntilExpiry}d`);
+        if (daysUntilReview !== null && daysUntilReview !== undefined && daysUntilReview <= 7) {
+          return pillBadge('amber', `Review in ${daysUntilReview}d`);
         }
         return pillBadge('sage', 'Connected');
       case 'error':
@@ -209,12 +247,21 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     ? availableInstitutions.filter(
         (institution) =>
           institution.country === reauthConnection.institutionCountry.toUpperCase() &&
-          institution.name === reauthConnection.institutionName
+          institution.name === reauthConnection.institutionName &&
+          institution.provider === reauthConnection.provider &&
+          (!reauthConnection.providerInstitutionId ||
+            institution.institutionId === reauthConnection.providerInstitutionId)
       )
     : availableInstitutions;
 
   return (
     <div className="space-y-6">
+      {isAwaitingCompletion && (
+        <div className="flex items-center gap-3 rounded-[10px] border border-[#cbd9e8] bg-[#f3f7fb] p-4 text-xs text-[#385a7a]">
+          <RefreshCw size={16} className="animate-spin shrink-0" />
+          Yapily authorisation received. Securely exchanging the one-time token and loading your accounts…
+        </div>
+      )}
       {itemsNeedingAttention.length > 0 && (
         <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] p-4">
           <div className="flex items-start gap-3">
@@ -230,6 +277,8 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     {item.status === 'error' && `Error: ${item.errorMessage || 'Unknown error'}`}
                     {item.daysUntilExpiry !== null && item.daysUntilExpiry <= 7 && item.status === 'active' &&
                       `Consent expires in ${item.daysUntilExpiry} days.`}
+                    {item.daysUntilReconfirmation !== null && item.daysUntilReconfirmation <= 7 && item.status === 'active' &&
+                      ` Please reconfirm access within ${item.daysUntilReconfirmation} days.`}
                   </li>
                 ))}
               </ul>
@@ -302,12 +351,16 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     </span>
                     <div className="min-w-0">
                       <h4 className="text-[14.5px] font-semibold text-ink truncate">{connection.institutionName}</h4>
+                      <p className="mt-0.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-grey-mid">
+                        {connection.provider === 'yapily' ? 'Yapily' : 'Enable Banking'}
+                      </p>
                       <div className="flex items-center gap-2 mt-1">
                         {getStatusBadge(
                           connection.status,
-                          connection.consentExpiresAt
-                            ? Math.ceil((connection.consentExpiresAt - Date.now()) / (24 * 60 * 60 * 1000))
-                            : null
+                          [connection.consentExpiresAt, connection.consentReconfirmBy]
+                            .filter((value): value is number => typeof value === 'number')
+                            .map((value) => Math.ceil((value - Date.now()) / (24 * 60 * 60 * 1000)))
+                            .sort((a, b) => a - b)[0] ?? null
                         )}
                         {connection.lastSyncAt && (
                           <span className="text-[12.5px] text-grey-mid whitespace-nowrap">
@@ -318,7 +371,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {(connection.status === 'consent_expired' || connection.status === 'pending_reauth' || connection.status === 'error') && (
+                    {(connection.status === 'consent_expired' ||
+                      connection.status === 'pending_reauth' ||
+                      connection.status === 'error' ||
+                      Boolean(connection.consentReconfirmBy && connection.consentReconfirmBy < Date.now() + 7 * 24 * 60 * 60 * 1000) ||
+                      Boolean(connection.consentExpiresAt && connection.consentExpiresAt < Date.now() + 7 * 24 * 60 * 60 * 1000)) && (
                       <ReauthButton
                         disabled={isConnecting || isLoadingInstitutions}
                         onClick={() => openBankPicker(connection)}
@@ -394,8 +451,8 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
       <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
         <p className="text-xs text-[#7a5a30] leading-relaxed">
-          <strong className="font-bold">UK Open Banking:</strong> Consent duration is set by each bank.
-          You'll be notified before access expires and can re-authenticate without losing your transaction history.
+          <strong className="font-bold">UK Open Banking:</strong> Connections are read-only and provider-specific.
+          You'll be notified before access needs reconfirmation or re-authorisation, without losing imported history or fund mappings.
         </p>
       </div>
 
@@ -418,7 +475,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     : 'Choose a UK bank'}
                 </h3>
                 <p className="mt-1 text-xs leading-relaxed text-grey-mid">
-                  Available business accounts are loaded live from Enable Banking.
+                  UK institutions are loaded live from {selectedProvider === 'yapily' ? 'Yapily' : 'Enable Banking'}.
                 </p>
               </div>
               <button
@@ -433,6 +490,29 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto p-5">
+              {!reauthConnection && (
+                <div className="mb-5 grid grid-cols-2 gap-2 rounded-[11px] bg-paper p-1.5" aria-label="Open Banking provider">
+                  {([
+                    ['yapily', 'Yapily', 'Recommended · broad UK coverage'],
+                    ['enable_banking', 'Enable Banking', 'Existing alternative'],
+                  ] as const).map(([provider, label, description]) => (
+                    <button
+                      key={provider}
+                      type="button"
+                      disabled={isConnecting || isLoadingInstitutions}
+                      onClick={() => loadInstitutions(provider)}
+                      className={`rounded-[9px] px-3 py-2.5 text-left transition-colors disabled:opacity-50 ${
+                        selectedProvider === provider
+                          ? 'bg-white text-ink shadow-sm ring-1 ring-ledger'
+                          : 'text-grey-mid hover:text-ink'
+                      }`}
+                    >
+                      <span className="block text-xs font-bold">{label}</span>
+                      <span className="mt-0.5 block text-[10.5px]">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {isLoadingInstitutions ? (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-grey-mid">
                   <RefreshCw size={16} className="animate-spin" />
@@ -446,20 +526,22 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                 <div className="rounded-[10px] border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-sm text-[#7a5a30]">
                   {reauthConnection
                     ? `${reauthConnection.institutionName} is not currently available under its saved name. Use Connect to create a fresh link if the bank has been renamed.`
-                    : 'No UK business banks are currently available for this Enable Banking application.'}
+                    : `No compatible UK banks are currently available for this ${selectedProvider === 'yapily' ? 'Yapily' : 'Enable Banking'} application.`}
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {selectableInstitutions.map((institution) => {
-                    const consentDays = Math.max(
-                      1,
-                      Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60))
-                    );
+                    const consentDays = institution.maximumConsentValiditySeconds == null
+                      ? null
+                      : Math.max(
+                          1,
+                          Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60))
+                        );
 
                     return (
                       <button
                         type="button"
-                        key={`${institution.country}:${institution.name}`}
+                        key={`${institution.provider}:${institution.institutionId}`}
                         onClick={() => handleConnectBank(institution)}
                         disabled={isConnecting}
                         className="group flex min-h-[112px] flex-col items-start rounded-[11px] border border-ledger bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-[3px_3px_0_#1c1c1c] disabled:translate-y-0 disabled:cursor-wait disabled:opacity-50 disabled:shadow-none"
@@ -483,8 +565,10 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                         </div>
                         <span className="mt-3 text-sm font-bold text-ink">{institution.name}</span>
                         <span className="mt-1 text-[11.5px] text-grey-mid">
-                          Business AISP · up to {consentDays} days
-                          {institution.beta ? ' · beta' : ''}
+                          {institution.provider === 'yapily' ? 'Yapily' : 'Business AISP'}
+                          {consentDays ? ` · up to ${consentDays} days` : ' · bank-managed consent'}
+                          {institution.environmentType === 'SANDBOX' ? ' · sandbox' : ''}
+                          {institution.beta && institution.environmentType !== 'SANDBOX' ? ' · beta' : ''}
                         </span>
                       </button>
                     );
@@ -495,7 +579,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
             <div className="border-t border-grey-light bg-[#fcfbf9] px-6 py-4">
               <p className="text-[11.5px] leading-relaxed text-grey-mid">
-                ChurchCoin requests read-only access to balances and transactions. Your bank credentials are entered with your bank, not ChurchCoin.
+                ChurchCoin requests read-only access to accounts and transactions through {selectedProvider === 'yapily' ? 'Yapily' : 'Enable Banking'}. Your bank credentials are entered with your bank, not ChurchCoin.
               </p>
             </div>
           </div>

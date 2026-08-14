@@ -4,7 +4,10 @@ import { requireRole } from "../lib/auth";
 import { isPendingStateExpired } from "../lib/bankConnectionUtils";
 import { assertValidTransactionDate } from "../lib/transactionValidation";
 
-const providerSchema = v.literal("enable_banking");
+const providerSchema = v.union(
+  v.literal("enable_banking"),
+  v.literal("yapily")
+);
 
 const statusSchema = v.union(
   v.literal("pending"),
@@ -51,6 +54,7 @@ export const createPending = internalMutation({
     state: v.string(),
     aspspCountry: v.string(),
     aspspName: v.string(),
+    providerInstitutionId: v.optional(v.string()),
     existingConnectionId: v.optional(v.id("bankConnections")),
     expiresAt: v.number(),
   },
@@ -71,6 +75,7 @@ export const createPending = internalMutation({
 export const claimPendingState = internalMutation({
   args: {
     state: v.string(),
+    provider: providerSchema,
   },
   handler: async (ctx, args) => {
     const pending = await ctx.db
@@ -78,7 +83,11 @@ export const claimPendingState = internalMutation({
       .withIndex("by_state", (q) => q.eq("state", args.state))
       .first();
 
-    if (!pending || pending.status !== "pending") {
+    if (
+      !pending ||
+      pending.provider !== args.provider ||
+      pending.status !== "pending"
+    ) {
       return { claimed: false as const };
     }
 
@@ -136,8 +145,10 @@ export const completePending = internalMutation({
   args: {
     state: v.string(),
     providerConnectionId: v.string(),
+    providerAccessToken: v.optional(v.string()),
     accounts: v.array(accountSchema),
     consentExpiresAt: v.optional(v.number()),
+    consentReconfirmBy: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const pending = await ctx.db
@@ -175,7 +186,7 @@ export const completePending = internalMutation({
           .withIndex("by_organization", (q) =>
             q.eq("organizationId", pending.organizationId)
           )
-          .collect();
+          .take(100);
 
         const matches = existingConnections.filter((connection) =>
           connection.accounts.some((account) =>
@@ -195,6 +206,9 @@ export const completePending = internalMutation({
       const existing = await ctx.db.get(connectionId);
       if (!existing || existing.organizationId !== pending.organizationId) {
         throw new Error("Existing bank connection not found");
+      }
+      if (existing.provider !== pending.provider) {
+        throw new Error("Bank connection provider does not match re-authorization");
       }
 
       const fundValidityCache = new Map<string, boolean>();
@@ -234,6 +248,8 @@ export const completePending = internalMutation({
 
       await ctx.db.patch(connectionId, {
         providerConnectionId: args.providerConnectionId,
+        providerAccessToken: args.providerAccessToken,
+        providerInstitutionId: pending.providerInstitutionId,
         institutionName: pending.aspspName,
         institutionCountry: pending.aspspCountry,
         accounts: updatedAccounts,
@@ -241,6 +257,7 @@ export const completePending = internalMutation({
         errorCode: undefined,
         errorMessage: undefined,
         consentExpiresAt: args.consentExpiresAt,
+        consentReconfirmBy: args.consentReconfirmBy,
         updatedAt: now,
       });
     } else {
@@ -248,11 +265,14 @@ export const completePending = internalMutation({
         organizationId: pending.organizationId,
         provider: pending.provider,
         providerConnectionId: args.providerConnectionId,
+        providerAccessToken: args.providerAccessToken,
+        providerInstitutionId: pending.providerInstitutionId,
         institutionName: pending.aspspName,
         institutionCountry: pending.aspspCountry,
         accounts: args.accounts,
         status: "active",
         consentExpiresAt: args.consentExpiresAt,
+        consentReconfirmBy: args.consentReconfirmBy,
         createdBy: pending.createdBy,
         createdAt: now,
         updatedAt: now,
