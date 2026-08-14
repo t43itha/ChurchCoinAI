@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
+import { makeFunctionReference } from "convex/server";
 import {
   AlertCircle,
   CheckCircle2,
@@ -16,7 +17,7 @@ import {
   TicketCheck,
   X,
 } from "lucide-react";
-import { api } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 import {
   SUPPORT_STATUS_LABELS,
   SupportTicketImpact,
@@ -30,6 +31,40 @@ type SupportCenterProps = {
   open: boolean;
   onClose: () => void;
 };
+
+type SupportTicketListItem = {
+  _id: Id<"supportTickets">;
+  reference: string;
+  type: SupportTicketType;
+  impact: SupportTicketImpact;
+  title: string;
+  description: string;
+  status: SupportTicketStatus;
+  createdAt: number;
+  updatedAt: number;
+};
+
+const submitSupportTicket = makeFunctionReference<
+  "mutation",
+  {
+    type: SupportTicketType;
+    impact: SupportTicketImpact;
+    title: string;
+    description: string;
+    expectedBehaviour?: string;
+    reproductionSteps?: string;
+    appPath: string;
+    appRelease: string;
+    browserSummary: string;
+  },
+  { ticketId: Id<"supportTickets">; reference: string }
+>("mutations/supportTickets:submit");
+
+const listMySupportTickets = makeFunctionReference<
+  "query",
+  Record<string, never>,
+  SupportTicketListItem[]
+>("queries/supportTickets:listMine");
 
 type SupportForm = {
   type: SupportTicketType;
@@ -99,11 +134,8 @@ const formatDate = (timestamp: number) =>
 
 const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
   const location = useLocation();
-  const submitTicket = useMutation(api.mutations.supportTickets.submit);
-  const tickets = useQuery(
-    api.queries.supportTickets.listMine,
-    open ? {} : "skip"
-  );
+  const submitTicket = useMutation(submitSupportTicket);
+  const tickets = useQuery(listMySupportTickets, open ? {} : "skip");
   const [view, setView] = useState<"new" | "requests">("new");
   const [form, setForm] = useState<SupportForm>(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);

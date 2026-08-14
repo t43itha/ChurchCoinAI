@@ -84,6 +84,16 @@ const ticketImpactLabel: Record<SupportTicketImpact, string> = {
 export const buildGithubIssueTitle = (reference: string, title: string) =>
   `[${reference}] ${escapeGithubText(title).replace(/\s+/g, " ").slice(0, 120)}`;
 
+export const githubSupportTicketMarker = (reference: string) =>
+  `<!-- churchcoin-support-ticket:${reference.replace(/[^A-Z0-9-]/gi, "")} -->`;
+
+export const isGithubIssueForSupportTicket = (
+  issue: { title: string; body?: string | null },
+  reference: string
+) =>
+  issue.body?.includes(githubSupportTicketMarker(reference)) === true ||
+  issue.title.startsWith(`[${reference}]`);
+
 export const buildGithubIssueBody = (ticket: {
   reference: string;
   type: SupportTicketType;
@@ -97,7 +107,9 @@ export const buildGithubIssueBody = (ticket: {
   appRelease: string;
   browserSummary: string;
   createdAt: number;
-}) => `## Customer report ${escapeGithubText(ticket.reference)}
+}) => `${githubSupportTicketMarker(ticket.reference)}
+
+## Customer report ${escapeGithubText(ticket.reference)}
 
 | Field | Value |
 | --- | --- |

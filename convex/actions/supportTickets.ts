@@ -1,7 +1,8 @@
 "use node";
 
+import { makeFunctionReference } from "convex/server";
 import { internalAction } from "../_generated/server";
-import { internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import {
   buildGithubIssueBody,
@@ -19,11 +20,41 @@ import {
 
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000];
 
+const claimForGithubSync = makeFunctionReference<
+  "mutation",
+  { ticketId: Id<"supportTickets"> },
+  | { claimed: false; ticket: null }
+  | { claimed: true; ticket: Doc<"supportTickets"> }
+>("mutations/supportTickets:claimForGithubSync");
+
+const markGithubSynced = makeFunctionReference<
+  "mutation",
+  {
+    ticketId: Id<"supportTickets">;
+    repository: string;
+    issueNumber: number;
+    issueUrl: string;
+  },
+  void
+>("mutations/supportTickets:markGithubSynced");
+
+const markGithubSyncFailed = makeFunctionReference<
+  "mutation",
+  { ticketId: Id<"supportTickets">; error: string; retryable: boolean },
+  { attempts: number }
+>("mutations/supportTickets:markGithubSyncFailed");
+
+const syncSupportTicketToGitHub = makeFunctionReference<
+  "action",
+  { ticketId: Id<"supportTickets"> },
+  void
+>("actions/supportTickets:syncToGitHub");
+
 export const syncToGitHub = internalAction({
   args: { ticketId: v.id("supportTickets") },
   handler: async (ctx, args): Promise<void> => {
     const claim = await ctx.runMutation(
-      internal.mutations.supportTickets.claimForGithubSync,
+      claimForGithubSync,
       { ticketId: args.ticketId }
     );
     if (!claim.claimed || !claim.ticket) return;
@@ -41,7 +72,8 @@ export const syncToGitHub = internalAction({
       const existing = await findExistingSupportIssue(
         config,
         token,
-        claim.ticket.reference
+        claim.ticket.reference,
+        claim.ticket.createdAt
       );
       const issue =
         existing ??
@@ -58,7 +90,7 @@ export const syncToGitHub = internalAction({
         }));
 
       await ctx.runMutation(
-        internal.mutations.supportTickets.markGithubSynced,
+        markGithubSynced,
         {
           ticketId: args.ticketId,
           repository: config.repository,
@@ -69,17 +101,17 @@ export const syncToGitHub = internalAction({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown GitHub sync failure";
-      const result = await ctx.runMutation(
-        internal.mutations.supportTickets.markGithubSyncFailed,
-        { ticketId: args.ticketId, error: message }
-      );
       const retryable =
         error instanceof GitHubSupportError ? error.retryable : true;
+      const result = await ctx.runMutation(
+        markGithubSyncFailed,
+        { ticketId: args.ticketId, error: message, retryable }
+      );
       const delay = RETRY_DELAYS_MS[result.attempts - 1];
       if (retryable && delay !== undefined) {
         await ctx.scheduler.runAfter(
           delay,
-          internal.actions.supportTickets.syncToGitHub,
+          syncSupportTicketToGitHub,
           { ticketId: args.ticketId }
         );
       }

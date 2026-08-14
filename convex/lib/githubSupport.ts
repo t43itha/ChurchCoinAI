@@ -1,4 +1,7 @@
 import { importPKCS8, SignJWT } from "jose";
+import {
+  isGithubIssueForSupportTicket,
+} from "../../lib/supportTickets";
 
 export type GitHubSupportConfig = {
   owner: string;
@@ -128,17 +131,57 @@ const parseGithubResponse = async <T>(response: Response): Promise<T> => {
 export const findExistingSupportIssue = async (
   config: GitHubSupportConfig,
   token: string,
-  reference: string
+  reference: string,
+  ticketCreatedAt: number
 ) => {
-  const query = `repo:${config.repository} is:issue in:title "[${reference}]"`;
-  const response = await fetch(
-    `https://api.github.com/search/issues?q=${encodeURIComponent(query)}&per_page=10`,
-    { headers: githubHeaders(token) }
+  // Repository issue listing is used instead of search because newly-created
+  // issues can take time to enter GitHub's search index. This closes the
+  // remote-create/local-persist recovery gap without creating a duplicate.
+  const earliestRelevantCreation = ticketCreatedAt - 5 * 60_000;
+  for (let page = 1; page <= 20; page += 1) {
+    const params = new URLSearchParams({
+      state: "all",
+      sort: "created",
+      direction: "desc",
+      per_page: "100",
+      page: String(page),
+    });
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/issues?${params}`,
+      { headers: githubHeaders(token) }
+    );
+    const issues = await parseGithubResponse<
+      Array<{
+        number: number;
+        html_url: string;
+        title: string;
+        body?: string | null;
+        created_at: string;
+        pull_request?: unknown;
+      }>
+    >(response);
+    const existing = issues.find(
+      (issue) =>
+        !issue.pull_request &&
+        isGithubIssueForSupportTicket(issue, reference)
+    );
+    if (existing) return existing;
+    if (issues.length < 100) return undefined;
+
+    const oldestCreatedAt = Date.parse(issues[issues.length - 1].created_at);
+    if (
+      Number.isFinite(oldestCreatedAt) &&
+      oldestCreatedAt < earliestRelevantCreation
+    ) {
+      return undefined;
+    }
+  }
+
+  throw new GitHubSupportError(
+    "GitHub support issue deduplication exceeded its safe page limit.",
+    undefined,
+    true
   );
-  const payload = await parseGithubResponse<{
-    items?: Array<{ number: number; html_url: string; title: string }>;
-  }>(response);
-  return payload.items?.find((item) => item.title.startsWith(`[${reference}]`));
 };
 
 export const assertPrivateSupportRepository = async (

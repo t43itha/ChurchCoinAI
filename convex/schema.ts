@@ -108,6 +108,7 @@ export default defineSchema({
     githubSyncAttempts: v.number(),
     githubSyncAttemptedAt: v.optional(v.number()),
     githubSyncError: v.optional(v.string()),
+    githubSyncRetryable: v.optional(v.boolean()),
     githubRepository: v.optional(v.string()),
     githubIssueNumber: v.optional(v.number()),
     githubIssueUrl: v.optional(v.string()),

@@ -3,6 +3,8 @@ import {
   buildGithubIssueBody,
   buildGithubIssueTitle,
   createSupportReference,
+  githubSupportTicketMarker,
+  isGithubIssueForSupportTicket,
   statusFromGithubIssue,
   validateSupportTicketInput,
 } from "../lib/supportTickets";
@@ -37,6 +39,19 @@ describe("support ticket helpers", () => {
     expect(body).not.toContain("@maintainer");
     expect(body).toContain("＠maintainer");
     expect(body).toContain("&lt;script&gt;");
+    expect(body).toContain(githubSupportTicketMarker("CC-123"));
+  });
+
+  it("recognises a mirrored issue even after its title is edited", () => {
+    expect(
+      isGithubIssueForSupportTicket(
+        {
+          title: "Investigating customer report",
+          body: `${githubSupportTicketMarker("CC-123")}\n\nDetails`,
+        },
+        "CC-123"
+      )
+    ).toBe(true);
   });
 
   it("maps private GitHub workflow labels to customer-safe statuses", () => {

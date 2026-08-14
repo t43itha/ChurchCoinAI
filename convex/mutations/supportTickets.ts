@@ -1,5 +1,6 @@
+import { makeFunctionReference } from "convex/server";
 import { internalMutation, mutation } from "../_generated/server";
-import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { requireMembership } from "../lib/auth";
 import {
@@ -15,6 +16,12 @@ const HOUR_MS = 60 * 60 * 1_000;
 const DAY_MS = 24 * HOUR_MS;
 const SYNC_STALE_AFTER_MS = 10 * 60 * 1_000;
 const MAX_AUTOMATIC_SYNC_ATTEMPTS = 8;
+
+const syncSupportTicketToGitHub = makeFunctionReference<
+  "action",
+  { ticketId: Id<"supportTickets"> },
+  void
+>("actions/supportTickets:syncToGitHub");
 
 const ticketTypeValidator = v.union(
   v.literal("bug"),
@@ -113,6 +120,7 @@ export const submit = mutation({
       status: "submitted",
       githubSyncStatus: "pending",
       githubSyncAttempts: 0,
+      githubSyncRetryable: true,
       createdAt: now,
       updatedAt: now,
     });
@@ -121,7 +129,7 @@ export const submit = mutation({
     await ctx.db.patch(ticketId, { reference });
     await ctx.scheduler.runAfter(
       0,
-      internal.actions.supportTickets.syncToGitHub,
+      syncSupportTicketToGitHub,
       { ticketId }
     );
 
@@ -133,7 +141,12 @@ export const claimForGithubSync = internalMutation({
   args: { ticketId: v.id("supportTickets") },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.ticketId);
-    if (!ticket || ticket.githubSyncStatus === "synced") {
+    if (
+      !ticket ||
+      ticket.githubSyncStatus === "synced" ||
+      (ticket.githubSyncStatus === "failed" &&
+        ticket.githubSyncRetryable === false)
+    ) {
       return { claimed: false as const, ticket: null };
     }
 
@@ -151,6 +164,7 @@ export const claimForGithubSync = internalMutation({
       githubSyncAttempts: ticket.githubSyncAttempts + 1,
       githubSyncAttemptedAt: now,
       githubSyncError: undefined,
+      githubSyncRetryable: true,
       updatedAt: now,
     });
     return {
@@ -176,6 +190,7 @@ export const markGithubSynced = internalMutation({
       githubIssueNumber: args.issueNumber,
       githubIssueUrl: args.issueUrl,
       githubSyncError: undefined,
+      githubSyncRetryable: undefined,
       updatedAt: Date.now(),
     });
   },
@@ -185,6 +200,7 @@ export const markGithubSyncFailed = internalMutation({
   args: {
     ticketId: v.id("supportTickets"),
     error: v.string(),
+    retryable: v.boolean(),
   },
   handler: async (ctx, args) => {
     const ticket = await ctx.db.get(args.ticketId);
@@ -192,6 +208,7 @@ export const markGithubSyncFailed = internalMutation({
     await ctx.db.patch(ticket._id, {
       githubSyncStatus: "failed",
       githubSyncError: args.error.slice(0, 300),
+      githubSyncRetryable: args.retryable,
       updatedAt: Date.now(),
     });
     return { attempts: ticket.githubSyncAttempts };
@@ -242,12 +259,14 @@ export const scheduleFailedGithubSyncs = internalMutation({
       .take(10);
 
     const retryable = [...failed, ...staleSyncing].filter(
-      (ticket) => ticket.githubSyncAttempts < MAX_AUTOMATIC_SYNC_ATTEMPTS
+      (ticket) =>
+        ticket.githubSyncRetryable !== false &&
+        ticket.githubSyncAttempts < MAX_AUTOMATIC_SYNC_ATTEMPTS
     );
     for (const ticket of retryable) {
       await ctx.scheduler.runAfter(
         0,
-        internal.actions.supportTickets.syncToGitHub,
+        syncSupportTicketToGitHub,
         { ticketId: ticket._id }
       );
     }

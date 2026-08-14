@@ -1,5 +1,11 @@
-import { cronJobs } from "convex/server";
+import { cronJobs, makeFunctionReference } from "convex/server";
 import { internal } from "./_generated/api";
+
+const scheduleFailedGithubSyncs = makeFunctionReference<
+  "mutation",
+  Record<string, never>,
+  { scheduled: number }
+>("mutations/supportTickets:scheduleFailedGithubSyncs");
 
 const crons = cronJobs();
 
@@ -24,7 +30,7 @@ crons.daily(
 crons.interval(
   "retry support tickets awaiting GitHub sync",
   { minutes: 30 },
-  internal.mutations.supportTickets.scheduleFailedGithubSyncs
+  scheduleFailedGithubSyncs
 );
 
 export default crons;
