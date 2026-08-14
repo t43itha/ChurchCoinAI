@@ -360,7 +360,6 @@ export const completeYapilyConnection = internalAction({
     const { internal } = await import("../_generated/api");
     let newConsentId: string | undefined;
     let previousConsentId: string | undefined;
-    let existingConnectionId: Id<"bankConnections"> | undefined;
     let completed = false;
 
     try {
@@ -374,7 +373,6 @@ export const completeYapilyConnection = internalAction({
       if (!pending || pending.provider !== "yapily") {
         throw new Error("Pending Yapily connection not found");
       }
-      existingConnectionId = pending.existingConnectionId;
 
       const consent = await exchangeYapilyOneTimeToken(args.oneTimeToken);
       newConsentId = consent.id;
@@ -437,18 +435,8 @@ export const completeYapilyConnection = internalAction({
           // from the Yapily console if the transient deletion also failed.
         }
       }
-      if (existingConnectionId && !completed) {
-        await ctx.runMutation(
-          internal.mutations.bankConnections.updateStatus,
-          {
-            bankConnectionId: existingConnectionId,
-            status: "pending_reauth",
-            errorCode: "YAPILY_REAUTH_FAILED",
-            errorMessage:
-              error?.message || "Failed to refresh the Yapily bank connection",
-          }
-        );
-      }
+      // The replacement never committed, so preserve the existing connection's
+      // credential and status. Only this authorization attempt has failed.
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
