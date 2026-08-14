@@ -27,6 +27,12 @@ type AvailableInstitution = {
   beta: boolean;
 };
 
+type ReauthConnection = {
+  _id: Id<"bankConnections">;
+  institutionName: string;
+  institutionCountry: string;
+};
+
 const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
@@ -39,7 +45,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
   const [isBankPickerOpen, setIsBankPickerOpen] = useState(false);
   const [availableInstitutions, setAvailableInstitutions] = useState<AvailableInstitution[]>([]);
-  const [reauthConnectionId, setReauthConnectionId] = useState<Id<"bankConnections"> | undefined>();
+  const [reauthConnection, setReauthConnection] = useState<ReauthConnection | undefined>();
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
@@ -72,8 +78,8 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     notify('Error', message);
   }, []);
 
-  const openBankPicker = async (existingConnectionId?: Id<"bankConnections">) => {
-    setReauthConnectionId(existingConnectionId);
+  const openBankPicker = async (existingConnection?: ReauthConnection) => {
+    setReauthConnection(existingConnection);
     setIsBankPickerOpen(true);
     setIsLoadingInstitutions(true);
     setAvailableInstitutions([]);
@@ -99,7 +105,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       const { authorizationUrl } = await startConnection({
         aspspName: institution.name,
         aspspCountry: institution.country,
-        existingConnectionId: reauthConnectionId,
+        existingConnectionId: reauthConnection?._id,
       });
       window.location.assign(authorizationUrl);
     } catch (error: any) {
@@ -113,7 +119,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
   const closeBankPicker = () => {
     if (isConnecting) return;
     setIsBankPickerOpen(false);
-    setReauthConnectionId(undefined);
+    setReauthConnection(undefined);
   };
 
   const handleRemoveConnection = async (connectionId: Id<"bankConnections">) => {
@@ -198,6 +204,14 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
     return details.length > 0 ? details.join(' - ') : 'Bank account';
   };
+
+  const selectableInstitutions = reauthConnection
+    ? availableInstitutions.filter(
+        (institution) =>
+          institution.country === reauthConnection.institutionCountry.toUpperCase() &&
+          institution.name === reauthConnection.institutionName
+      )
+    : availableInstitutions;
 
   return (
     <div className="space-y-6">
@@ -307,7 +321,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     {(connection.status === 'consent_expired' || connection.status === 'pending_reauth' || connection.status === 'error') && (
                       <ReauthButton
                         disabled={isConnecting || isLoadingInstitutions}
-                        onClick={() => openBankPicker(connection._id)}
+                        onClick={() => openBankPicker(connection)}
                       />
                     )}
                     <button
@@ -399,7 +413,9 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             <div className="flex items-start justify-between gap-4 border-b border-grey-light bg-[#fcfbf9] px-6 py-5">
               <div>
                 <h3 id="bank-picker-title" className="text-base font-bold text-ink">
-                  {reauthConnectionId ? 'Reconnect a UK bank' : 'Choose a UK bank'}
+                  {reauthConnection
+                    ? `Reconnect ${reauthConnection.institutionName}`
+                    : 'Choose a UK bank'}
                 </h3>
                 <p className="mt-1 text-xs leading-relaxed text-grey-mid">
                   Available business accounts are loaded live from Enable Banking.
@@ -426,13 +442,15 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                 <div className="rounded-[10px] border border-error/30 bg-error-light p-4 text-sm text-error">
                   {connectionError}
                 </div>
-              ) : availableInstitutions.length === 0 ? (
+              ) : selectableInstitutions.length === 0 ? (
                 <div className="rounded-[10px] border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-sm text-[#7a5a30]">
-                  No UK business banks are currently available for this Enable Banking application.
+                  {reauthConnection
+                    ? `${reauthConnection.institutionName} is not currently available under its saved name. Use Connect to create a fresh link if the bank has been renamed.`
+                    : 'No UK business banks are currently available for this Enable Banking application.'}
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {availableInstitutions.map((institution) => {
+                  {selectableInstitutions.map((institution) => {
                     const consentDays = Math.max(
                       1,
                       Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60))
