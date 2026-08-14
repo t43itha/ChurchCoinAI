@@ -28,8 +28,8 @@ the corresponding new Price ID:
 
 | Internal tier | Public plan | Monthly amount | Price environment variable |
 |---|---|---:|---|
-| `starter` | Essentials | £19 | `STRIPE_PRICE_STARTER` |
-| `growing` | Church | £29 | `STRIPE_PRICE_GROWING` |
+| `starter` | Core | £19 | `STRIPE_PRICE_STARTER` |
+| `growing` | Standard | £29 | `STRIPE_PRICE_GROWING` |
 | `thriving` | Plus | £49 | `STRIPE_PRICE_THRIVING` |
 
 The internal tier and environment-variable names remain unchanged for existing

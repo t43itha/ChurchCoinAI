@@ -51,8 +51,8 @@ describe("Stripe product mapping", () => {
     expect(
       PLANS.map(({ id, name, price }) => ({ id, name, price }))
     ).toEqual([
-      { id: "starter", name: "Essentials", price: 19 },
-      { id: "growing", name: "Church", price: 29 },
+      { id: "starter", name: "Core", price: 19 },
+      { id: "growing", name: "Standard", price: 29 },
       { id: "thriving", name: "Plus", price: 49 },
     ]);
 
