@@ -577,6 +577,7 @@ export default defineSchema({
   })
     .index("by_state", ["state"])
     .index("by_organization", ["organizationId"])
+    .index("by_organization_and_state", ["organizationId", "state"])
     .index("by_organization_status", ["organizationId", "status"])
     .index("by_status_expiresAt", ["status", "expiresAt"]),
 

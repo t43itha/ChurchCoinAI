@@ -133,8 +133,8 @@ export const getItemsNeedingAttention = query({
   },
 });
 
-export const getLatestAttempt = query({
-  args: {},
+export const getAttempt = query({
+  args: { state: v.string() },
   returns: v.union(
     v.null(),
     v.object({
@@ -152,15 +152,16 @@ export const getLatestAttempt = query({
       updatedAt: v.number(),
     })
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
-    const [attempt] = await ctx.db
+    const attempt = await ctx.db
       .query("pendingBankConnections")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
+      .withIndex("by_organization_and_state", (q) =>
+        q
+          .eq("organizationId", user.organizationId)
+          .eq("state", args.state)
       )
-      .order("desc")
-      .take(1);
+      .unique();
 
     if (!attempt) return null;
     return {
@@ -185,7 +186,10 @@ export const getForAction = internalQuery({
 });
 
 export const getPendingForAction = internalQuery({
-  args: { state: v.string() },
+  args: {
+    organizationId: v.id("organizations"),
+    state: v.string(),
+  },
   returns: v.union(
     v.null(),
     v.object({
@@ -215,6 +219,10 @@ export const getPendingForAction = internalQuery({
   handler: async (ctx, args) =>
     await ctx.db
       .query("pendingBankConnections")
-      .withIndex("by_state", (q) => q.eq("state", args.state))
-      .first(),
+      .withIndex("by_organization_and_state", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("state", args.state)
+      )
+      .unique(),
 });

@@ -40,10 +40,28 @@ type ReauthConnection = {
   providerInstitutionId?: string;
 };
 
+const getCallbackAttemptState = () => {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('bankConnectionState');
+};
+
+const clearBankCallbackParams = () => {
+  const searchParams = new URLSearchParams(window.location.search);
+  searchParams.delete('bankConnection');
+  searchParams.delete('bankConnectionState');
+  const nextSearch = searchParams.toString();
+  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+  window.history.replaceState(window.history.state, '', nextUrl);
+};
+
 const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
-  const latestAttempt = useQuery(api.queries.bankConnections.getLatestAttempt);
+  const [callbackAttemptState, setCallbackAttemptState] = useState<string | null>(getCallbackAttemptState);
+  const callbackAttempt = useQuery(
+    api.queries.bankConnections.getAttempt,
+    callbackAttemptState ? { state: callbackAttemptState } : 'skip'
+  );
   const updateFundMapping = useMutation(api.mutations.bankConnections.updateAccountFundMapping);
   const listInstitutions = useAction(api.actions.bankConnections.listInstitutions);
   const startConnection = useAction(api.actions.bankConnections.startConnection);
@@ -72,42 +90,71 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       return;
     }
 
-    searchParams.delete('bankConnection');
-    const nextSearch = searchParams.toString();
-    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-    window.history.replaceState(window.history.state, '', nextUrl);
-
     if (callbackResult === 'success') {
+      clearBankCallbackParams();
+      setCallbackAttemptState(null);
       setConnectionError(null);
       notify('Success', 'Bank connection completed successfully.');
       return;
     }
 
     if (callbackResult === 'processing') {
+      if (!callbackAttemptState) {
+        clearBankCallbackParams();
+        const message = 'Bank connection status could not be verified. Please try connecting again.';
+        setConnectionError(message);
+        notify('Error', message);
+        return;
+      }
+
+      searchParams.delete('bankConnection');
+      const nextSearch = searchParams.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+      window.history.replaceState(window.history.state, '', nextUrl);
       setConnectionError(null);
       setIsAwaitingCompletion(true);
       notify('Bank authorised', 'ChurchCoin is securely finishing the Yapily connection.');
       return;
     }
 
+    clearBankCallbackParams();
+    setCallbackAttemptState(null);
     const message = 'Bank connection was not completed. Please try connecting again.';
     setConnectionError(message);
     notify('Error', message);
-  }, []);
+  }, [callbackAttemptState]);
 
   useEffect(() => {
-    if (!isAwaitingCompletion || !latestAttempt) return;
-    if (latestAttempt.status === 'completed') {
+    if (!callbackAttemptState || callbackAttempt === undefined) return;
+
+    if (!callbackAttempt) {
+      clearBankCallbackParams();
+      setCallbackAttemptState(null);
+      setIsAwaitingCompletion(false);
+      const message = 'Bank connection status could not be verified. Please try connecting again.';
+      setConnectionError(message);
+      notify('Error', message);
+      return;
+    }
+
+    if (callbackAttempt.status === 'pending' || callbackAttempt.status === 'processing') {
+      setIsAwaitingCompletion(true);
+      return;
+    }
+
+    clearBankCallbackParams();
+    setCallbackAttemptState(null);
+    if (callbackAttempt.status === 'completed') {
       setIsAwaitingCompletion(false);
       setConnectionError(null);
-      notify('Success', `${latestAttempt.institutionName} connected successfully.`);
-    } else if (latestAttempt.status === 'error') {
-      const message = latestAttempt.errorMessage || 'Yapily could not finish the bank connection.';
+      notify('Success', `${callbackAttempt.institutionName} connected successfully.`);
+    } else if (callbackAttempt.status === 'error') {
+      const message = callbackAttempt.errorMessage || 'Yapily could not finish the bank connection.';
       setIsAwaitingCompletion(false);
       setConnectionError(message);
       notify('Error', message);
     }
-  }, [isAwaitingCompletion, latestAttempt]);
+  }, [callbackAttemptState, callbackAttempt]);
 
   const loadInstitutions = async (provider: BankProvider) => {
     setSelectedProvider(provider);

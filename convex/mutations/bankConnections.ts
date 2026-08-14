@@ -77,6 +77,13 @@ export const claimPendingState = internalMutation({
     state: v.string(),
     provider: providerSchema,
   },
+  returns: v.union(
+    v.object({ claimed: v.literal(false) }),
+    v.object({
+      claimed: v.literal(true),
+      organizationId: v.id("organizations"),
+    })
+  ),
   handler: async (ctx, args) => {
     const pending = await ctx.db
       .query("pendingBankConnections")
@@ -108,21 +115,30 @@ export const claimPendingState = internalMutation({
       updatedAt: now,
     });
 
-    return { claimed: true as const };
+    return {
+      claimed: true as const,
+      organizationId: pending.organizationId,
+    };
   },
 });
 
 export const markPendingError = internalMutation({
   args: {
+    organizationId: v.id("organizations"),
     state: v.string(),
     errorCode: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
   },
+  returns: v.union(v.null(), v.id("pendingBankConnections")),
   handler: async (ctx, args) => {
     const pending = await ctx.db
       .query("pendingBankConnections")
-      .withIndex("by_state", (q) => q.eq("state", args.state))
-      .first();
+      .withIndex("by_organization_and_state", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("state", args.state)
+      )
+      .unique();
 
     if (!pending) return null;
 
@@ -143,6 +159,7 @@ export const markPendingError = internalMutation({
 
 export const completePending = internalMutation({
   args: {
+    organizationId: v.id("organizations"),
     state: v.string(),
     providerConnectionId: v.string(),
     providerAccessToken: v.optional(v.string()),
@@ -150,11 +167,16 @@ export const completePending = internalMutation({
     consentExpiresAt: v.optional(v.number()),
     consentReconfirmBy: v.optional(v.number()),
   },
+  returns: v.id("bankConnections"),
   handler: async (ctx, args) => {
     const pending = await ctx.db
       .query("pendingBankConnections")
-      .withIndex("by_state", (q) => q.eq("state", args.state))
-      .first();
+      .withIndex("by_organization_and_state", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .eq("state", args.state)
+      )
+      .unique();
 
     if (
       !pending ||

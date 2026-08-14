@@ -57,21 +57,26 @@ const getBankSettingsOrigin = (request: Request) => {
 
 const settingsBankUrl = (
   request: Request,
-  result: "success" | "error" | "processing"
+  result: "success" | "error" | "processing",
+  attemptState?: string
 ) => {
   const url = new URL("/settings", getBankSettingsOrigin(request));
   url.searchParams.set("tab", "bank");
   url.searchParams.set("bankConnection", result);
+  if (attemptState) {
+    url.searchParams.set("bankConnectionState", attemptState);
+  }
   return url.toString();
 };
 
 const redirectToBankSettings = (
   request: Request,
-  result: "success" | "error" | "processing"
+  result: "success" | "error" | "processing",
+  attemptState?: string
 ) => {
   let location: string;
   try {
-    location = settingsBankUrl(request, result);
+    location = settingsBankUrl(request, result, attemptState);
   } catch (error: any) {
     console.error("Enable Banking callback redirect is not configured:", error?.message);
     return new Response("APP_BASE_URL not configured", { status: 500 });
@@ -519,6 +524,7 @@ http.route({
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: claim.organizationId,
           state,
           errorCode: providerError.slice(0, 100),
           errorMessage: safeErrorMessage(
@@ -534,6 +540,7 @@ http.route({
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: claim.organizationId,
           state,
           errorCode: "MISSING_CODE",
           errorMessage: "Bank authorization callback did not include a code",
@@ -552,6 +559,7 @@ http.route({
       await ctx.runMutation(
         internal.mutations.bankConnections.completePending,
         {
+          organizationId: claim.organizationId,
           state,
           providerConnectionId: session.session_id,
           accounts: session.accounts.map(normalizeEnableBankingAccount),
@@ -564,6 +572,7 @@ http.route({
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: claim.organizationId,
           state,
           errorCode: "SESSION_EXCHANGE_FAILED",
           errorMessage: "Failed to authorize bank session",
@@ -609,6 +618,7 @@ http.route({
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: claim.organizationId,
           state,
           errorCode: providerError?.slice(0, 100) || "MISSING_ONE_TIME_TOKEN",
           errorMessage: providerError
@@ -622,9 +632,13 @@ http.route({
     await ctx.scheduler.runAfter(
       0,
       internal.actions.bankConnections.completeYapilyConnection,
-      { state, oneTimeToken }
+      {
+        organizationId: claim.organizationId,
+        state,
+        oneTimeToken,
+      }
     );
-    return redirectToBankSettings(request, "processing");
+    return redirectToBankSettings(request, "processing", state);
   }),
 });
 

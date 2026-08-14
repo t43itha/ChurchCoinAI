@@ -326,6 +326,7 @@ export const startConnection = action({
     } catch (error: any) {
       try {
         await ctx.runMutation(internal.mutations.bankConnections.markPendingError, {
+          organizationId: user.organizationId,
           state,
           errorCode: "AUTHORIZATION_START_FAILED",
           errorMessage:
@@ -350,6 +351,7 @@ const optionalFutureTimestamp = (value: string | undefined) => {
 
 export const completeYapilyConnection = internalAction({
   args: {
+    organizationId: v.id("organizations"),
     state: v.string(),
     oneTimeToken: v.string(),
   },
@@ -357,13 +359,17 @@ export const completeYapilyConnection = internalAction({
   handler: async (ctx, args) => {
     const { internal } = await import("../_generated/api");
     let newConsentId: string | undefined;
+    let previousConsentId: string | undefined;
     let existingConnectionId: Id<"bankConnections"> | undefined;
     let completed = false;
 
     try {
       const pending = await ctx.runQuery(
         internal.queries.bankConnections.getPendingForAction,
-        { state: args.state }
+        {
+          organizationId: args.organizationId,
+          state: args.state,
+        }
       );
       if (!pending || pending.provider !== "yapily") {
         throw new Error("Pending Yapily connection not found");
@@ -393,19 +399,14 @@ export const completeYapilyConnection = internalAction({
           existing.organizationId === pending.organizationId &&
           existing.providerConnectionId !== consent.id
         ) {
-          try {
-            await deleteYapilyConsent(existing.providerConnectionId);
-          } catch (error) {
-            if (!(error instanceof YapilyApiError && error.status === 404)) {
-              throw error;
-            }
-          }
+          previousConsentId = existing.providerConnectionId;
         }
       }
 
       await ctx.runMutation(
         internal.mutations.bankConnections.completePending,
         {
+          organizationId: args.organizationId,
           state: args.state,
           providerConnectionId: consent.id,
           providerAccessToken: consent.consentToken,
@@ -415,6 +416,18 @@ export const completeYapilyConnection = internalAction({
         }
       );
       completed = true;
+
+      // Keep the old consent usable until the Convex transaction has committed
+      // the replacement. Provider cleanup must not roll back a working new link.
+      if (previousConsentId) {
+        try {
+          await deleteYapilyConsent(previousConsentId);
+        } catch (error) {
+          if (!(error instanceof YapilyApiError && error.status === 404)) {
+            console.error("Failed to revoke replaced Yapily consent:", error);
+          }
+        }
+      }
     } catch (error: any) {
       if (newConsentId && !completed) {
         try {
@@ -439,6 +452,7 @@ export const completeYapilyConnection = internalAction({
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: args.organizationId,
           state: args.state,
           errorCode: "YAPILY_CONNECTION_FAILED",
           errorMessage:
