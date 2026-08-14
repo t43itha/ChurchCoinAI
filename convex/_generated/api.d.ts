@@ -34,6 +34,7 @@ import type * as intelligence_categorizationMemory from "../intelligence/categor
 import type * as intelligence_generateInsights from "../intelligence/generateInsights.js";
 import type * as intelligence_index from "../intelligence/index.js";
 import type * as intelligence_ragIndexer from "../intelligence/ragIndexer.js";
+import type * as intelligence_ragIndexingProgress from "../intelligence/ragIndexingProgress.js";
 import type * as intelligence_rules_donorRules from "../intelligence/rules/donorRules.js";
 import type * as intelligence_rules_operationsRules from "../intelligence/rules/operationsRules.js";
 import type * as lib_access from "../lib/access.js";
@@ -46,6 +47,7 @@ import type * as lib_money from "../lib/money.js";
 import type * as lib_plaid from "../lib/plaid.js";
 import type * as lib_ragInstance from "../lib/ragInstance.js";
 import type * as lib_stripe from "../lib/stripe.js";
+import type * as lib_transactionEmbeddingModel from "../lib/transactionEmbeddingModel.js";
 import type * as lib_transactionValidation from "../lib/transactionValidation.js";
 import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as mutations_aiRateLimit from "../mutations/aiRateLimit.js";
@@ -118,6 +120,7 @@ declare const fullApi: ApiFromModules<{
   "intelligence/generateInsights": typeof intelligence_generateInsights;
   "intelligence/index": typeof intelligence_index;
   "intelligence/ragIndexer": typeof intelligence_ragIndexer;
+  "intelligence/ragIndexingProgress": typeof intelligence_ragIndexingProgress;
   "intelligence/rules/donorRules": typeof intelligence_rules_donorRules;
   "intelligence/rules/operationsRules": typeof intelligence_rules_operationsRules;
   "lib/access": typeof lib_access;
@@ -130,6 +133,7 @@ declare const fullApi: ApiFromModules<{
   "lib/plaid": typeof lib_plaid;
   "lib/ragInstance": typeof lib_ragInstance;
   "lib/stripe": typeof lib_stripe;
+  "lib/transactionEmbeddingModel": typeof lib_transactionEmbeddingModel;
   "lib/transactionValidation": typeof lib_transactionValidation;
   "lib/urlValidation": typeof lib_urlValidation;
   "mutations/aiRateLimit": typeof mutations_aiRateLimit;
