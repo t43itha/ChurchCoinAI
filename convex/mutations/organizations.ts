@@ -560,6 +560,9 @@ export const deleteDataBatch = internalMutation({
       case "invitations":
         records = await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
+      case "supportTickets":
+        records = await ctx.db.query("supportTickets").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
       case "funds":
         records = await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
@@ -636,6 +639,7 @@ export const finalizeDeletion = internalMutation({
     const organizationId = args.organizationId;
     const checks: Array<[string, unknown]> = [
       ["users", await ctx.db.query("users").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["supportTickets", await ctx.db.query("supportTickets").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["invitations", await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["funds", await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["donors", await ctx.db.query("donors").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],

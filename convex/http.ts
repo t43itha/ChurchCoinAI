@@ -6,6 +6,11 @@ import { getPlaid } from "./lib/plaid";
 import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
+import {
+  getGitHubSupportConfig,
+  verifyGitHubWebhookSignature,
+} from "./lib/githubSupport";
+import { statusFromGithubIssue } from "../lib/supportTickets";
 
 const http = httpRouter();
 
@@ -616,6 +621,94 @@ http.route({
       );
       return redirectToBankSettings(request, "error");
     }
+  }),
+});
+
+// Private GitHub support-repository webhook. Only customer-safe ticket status
+// is mirrored back into ChurchCoin; engineering comments remain internal.
+http.route({
+  path: "/github/support-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    let config;
+    try {
+      config = getGitHubSupportConfig();
+    } catch (error) {
+      console.error(
+        "GitHub support webhook is not configured:",
+        error instanceof Error ? error.message : error
+      );
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    if (!config.webhookSecret) {
+      console.error("GITHUB_WEBHOOK_SECRET not configured");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const rawBody = await request.text();
+    const validSignature = await verifyGitHubWebhookSignature(
+      rawBody,
+      request.headers.get("x-hub-signature-256"),
+      config.webhookSecret
+    );
+    if (!validSignature) {
+      return new Response("Invalid webhook signature", { status: 401 });
+    }
+
+    const event = request.headers.get("x-github-event");
+    if (event === "ping") {
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (event !== "issues") {
+      return new Response(JSON.stringify({ ignored: true }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let payload: {
+      repository?: { full_name?: unknown };
+      issue?: {
+        number?: unknown;
+        state?: unknown;
+        labels?: Array<string | { name?: unknown }>;
+      };
+    };
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    if (payload.repository?.full_name !== config.repository) {
+      return new Response("Unexpected repository", { status: 403 });
+    }
+    const issueNumber = payload.issue?.number;
+    const issueState = payload.issue?.state;
+    if (typeof issueNumber !== "number" || typeof issueState !== "string") {
+      return new Response("Invalid issue payload", { status: 400 });
+    }
+
+    const labels = (payload.issue?.labels ?? [])
+      .map((label) => (typeof label === "string" ? label : label.name))
+      .filter((label): label is string => typeof label === "string");
+    await ctx.runMutation(
+      internal.mutations.supportTickets.applyGithubStatus,
+      {
+        repository: config.repository,
+        issueNumber,
+        status: statusFromGithubIssue({ state: issueState, labels }),
+      }
+    );
+
+    return new Response(JSON.stringify({ received: true }), {
+      status: 202,
+      headers: { "Content-Type": "application/json" },
+    });
   }),
 });
 

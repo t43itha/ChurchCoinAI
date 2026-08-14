@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { Link, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon, Hourglass } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon, Hourglass, LifeBuoy } from 'lucide-react';
 import {
   clerkUserButtonAppearance,
   clerkUserProfileAppearance,
@@ -23,6 +23,7 @@ interface SidebarProps {
   currentUser: ConvexUser;
   isOpen: boolean;
   onClose: () => void;
+  onOpenSupport: () => void;
   access: {
     state: string;
     expiresAt: number | null;
@@ -30,7 +31,7 @@ interface SidebarProps {
   };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, access }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenSupport, access }) => {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -185,6 +186,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, access 
               )}
             </section>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              onOpenSupport();
+              onClose();
+            }}
+            className="flex min-h-10 w-full items-center gap-3 rounded-[10px] border border-ledger bg-[#fcfbf9] px-3 text-left text-[12px] font-semibold text-grey-dark transition-colors hover:border-grey-mid hover:bg-white hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+          >
+            <LifeBuoy size={16} className="text-amber-dark" strokeWidth={2} />
+            <span className="flex-1">Help & feedback</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-grey-mid">Support</span>
+          </button>
 
           <div className="flex items-center gap-3">
             <UserButton

@@ -7,6 +7,7 @@
 export const ORGANIZATION_DATA_TABLES = [
   "organizations",
   "users",
+  "supportTickets",
   "invitations",
   "funds",
   "donors",
@@ -60,5 +61,6 @@ export const ORGANIZATION_DELETION_TABLES = [
   "categories",
   "funds",
   "invitations",
+  "supportTickets",
   "users",
 ] as const satisfies readonly Exclude<OrganizationDataTable, "organizations">[];

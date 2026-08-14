@@ -1,5 +1,6 @@
 import React from "react";
 import { captureRenderError } from "../lib/monitoring";
+import { storeSupportDraft } from "../lib/supportDraft";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -27,6 +28,17 @@ class ErrorBoundary extends React.Component<
     captureRenderError(error, errorInfo);
   }
 
+  private reportProblem = () => {
+    const page = window.location.pathname || "/unknown";
+    storeSupportDraft({
+      type: "bug",
+      impact: "blocking",
+      title: "Application page stopped unexpectedly",
+      description: `ChurchCoin showed an unexpected error while opening ${page}. Please describe what you were doing immediately before this happened.`,
+    });
+    window.location.assign("/dashboard?support=1");
+  };
+
   render() {
     if (!this.state.hasError) {
       return this.props.children;
@@ -42,13 +54,22 @@ class ErrorBoundary extends React.Component<
           <p className="text-xs font-mono bg-paper border border-ledger rounded p-3 mb-5 break-words">
             {this.state.errorMessage}
           </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="btn-primary px-4 py-2 text-sm font-bold"
-          >
-            Reload Application
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={this.reportProblem}
+              className="btn-primary px-4 py-2 text-sm font-bold"
+            >
+              Report this problem
+            </button>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="btn-outline px-4 py-2 text-sm font-bold"
+            >
+              Reload application
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -21,9 +21,11 @@ import AppContentRoutes from "./components/app/AppContentRoutes";
 import AppNotificationToast, {
   AppNotification,
 } from "./components/app/AppNotificationToast";
+import SupportCenter from "./components/SupportCenter";
 import { subscribeToNotifications } from "./lib/notifications";
 import { getStoredInviteToken, storeInviteToken } from "./lib/inviteToken";
 import { setMonitoringContext } from "./lib/monitoring";
+import { hasSupportDraft } from "./lib/supportDraft";
 import {
   clearOnboardingIntent,
   getOnboardingIntent,
@@ -121,6 +123,28 @@ function App() {
   const [selectedPlan, setSelectedPlan] = useState<PlanTier | undefined>(
     () => getOnboardingIntent()?.selectedPlan
   );
+  const [isSupportOpen, setIsSupportOpen] = useState(
+    () =>
+      new URLSearchParams(window.location.search).has("support") ||
+      hasSupportDraft()
+  );
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has("support")) {
+      setIsSupportOpen(true);
+    }
+  }, [location.search]);
+
+  const closeSupport = useCallback(() => {
+    setIsSupportOpen(false);
+    const params = new URLSearchParams(location.search);
+    if (!params.has("support")) return;
+    params.delete("support");
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true }
+    );
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     if (access?.canUseApp) {
@@ -241,13 +265,17 @@ function App() {
 
   if (access === null || !access.canUseApp || checkoutVerificationPending) {
     return (
-      <SubscriptionRequired
-        organizationName={currentOrganization.name}
-        userRole={currentUser.role}
-        selectedPlan={selectedPlan ?? access?.plan ?? undefined}
-        accessState={access?.state ?? "access_revoked"}
-        accessReason={access?.reason}
-      />
+      <>
+        <SubscriptionRequired
+          organizationName={currentOrganization.name}
+          userRole={currentUser.role}
+          selectedPlan={selectedPlan ?? access?.plan ?? undefined}
+          accessState={access?.state ?? "access_revoked"}
+          accessReason={access?.reason}
+          onOpenSupport={() => setIsSupportOpen(true)}
+        />
+        <SupportCenter open={isSupportOpen} onClose={closeSupport} />
+      </>
     );
   }
 
@@ -279,7 +307,10 @@ function App() {
         access={access}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        onOpenSupport={() => setIsSupportOpen(true)}
       />
+
+      <SupportCenter open={isSupportOpen} onClose={closeSupport} />
 
       <main className="flex-1 md:ml-[248px] flex flex-col h-screen overflow-hidden">
         <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-sm sticky top-0 z-10">
