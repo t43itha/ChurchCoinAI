@@ -220,6 +220,15 @@ export const startConnection = action({
       ) {
         throw new Error("Bank connection not found");
       }
+
+      if (
+        existingConnection.institutionCountry.toUpperCase() !== aspspCountry ||
+        existingConnection.institutionName !== aspspName
+      ) {
+        throw new Error(
+          "Re-authorization must use the bank already linked to this connection"
+        );
+      }
     }
 
     await ctx.runMutation(internal.mutations.bankConnections.createPending, {
