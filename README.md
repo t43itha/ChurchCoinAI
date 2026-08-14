@@ -78,6 +78,29 @@ Set `VITE_SENTRY_DSN` and `VITE_SENTRY_ENVIRONMENT` in the frontend deployment t
 
 For backend exceptions, enable the native Sentry integration for each production Convex deployment under **Deployment Settings → Integrations**. This is a deployment-level setting and is not activated by the frontend DSN.
 
+### In-app support tickets
+
+Signed-in members can submit bugs, questions, and product ideas from **Help & feedback**. The report is stored in Convex first and then mirrored to GitHub in the background, so a GitHub outage cannot lose the customer's request.
+
+Create a separate **private** repository such as `ChurchCoinAI-Support`; never point this integration at the public source repository. Create a GitHub App installed only on the support repository with **Metadata: read** and **Issues: read/write** permissions, then set the `GITHUB_*` values documented in `.env.example` in the Convex deployment.
+
+Configure the GitHub App's webhook URL as:
+
+```text
+https://YOUR-CONVEX-DEPLOYMENT.convex.site/github/support-webhook
+```
+
+Subscribe it to **Issues** events and use the same secret as `GITHUB_WEBHOOK_SECRET`. The following optional labels drive the customer-visible workflow:
+
+- `customer-report`
+- `status:triage`
+- `status:under-review`
+- `status:in-progress`
+- `status:waiting-for-customer`
+- `status:resolved`
+
+GitHub comments remain internal. Only the issue state and explicit status labels are mirrored back to the customer's **My requests** view. The backend refuses to create customer issues if the configured repository is public.
+
 ### Banking and billing
 
 Set Enable Banking, Stripe, and callback variables listed in `.env.example`. `APP_BASE_URL` must be the deployed frontend origin. Keep all provider secrets in Convex—never place them in `VITE_*` values, which are shipped to browsers.
@@ -100,6 +123,7 @@ Deletion is not a substitute for a retention policy. UK charities generally need
 - Stripe webhooks verify signatures.
 - Enable Banking callback state is single-use and time-limited.
 - Preserved Plaid webhooks verify JWT signatures and request body hashes.
+- GitHub support webhooks verify HMAC signatures, and customer issue syncing is restricted to a private repository.
 - Financial values use shared money-precision helpers.
 - Provider secrets remain server-side and are excluded from data exports.
 

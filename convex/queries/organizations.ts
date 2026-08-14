@@ -30,6 +30,17 @@ const sanitizeExportRecord = (
     return safe;
   }
 
+  if (table === "supportTickets") {
+    const {
+      githubIssueUrl: _githubIssueUrl,
+      githubRepository: _githubRepository,
+      githubSyncError: _githubSyncError,
+      githubSyncAttemptedAt: _githubSyncAttemptedAt,
+      ...safe
+    } = record;
+    return safe;
+  }
+
   if (table === "subscriptions") {
     const {
       stripeCustomerId: _stripeCustomerId,
@@ -142,6 +153,9 @@ export const exportDataPage = query({
         break;
       case "invitations":
         result = await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
+      case "supportTickets":
+        result = await ctx.db.query("supportTickets").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
         break;
       case "funds":
         result = await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);

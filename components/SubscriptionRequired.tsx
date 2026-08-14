@@ -8,6 +8,7 @@ import {
   Clock3,
   Crown,
   Loader2,
+  LifeBuoy,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -27,6 +28,7 @@ interface SubscriptionRequiredProps {
   selectedPlan?: PlanTier;
   accessState: string;
   accessReason?: string;
+  onOpenSupport: () => void;
 }
 
 const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
@@ -35,6 +37,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   selectedPlan,
   accessState,
   accessReason,
+  onOpenSupport,
 }) => {
   const createCheckout = useAction(api.actions.stripe.createCheckoutSession);
   const reconcileCheckout = useAction(api.actions.stripe.reconcileCheckoutSession);
@@ -127,11 +130,21 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
           />
           <p className="text-xs text-grey-mid border-l border-ledger pl-3">{organizationName}</p>
         </div>
-        <UserButton
-          afterSignOutUrl="/"
-          appearance={clerkUserButtonAppearance}
-          userProfileProps={{ appearance: clerkUserProfileAppearance }}
-        />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenSupport}
+            className="btn-outline inline-flex min-h-9 items-center gap-2 px-3 text-[11px] font-bold"
+          >
+            <LifeBuoy size={14} />
+            <span className="hidden sm:inline">Help & feedback</span>
+          </button>
+          <UserButton
+            afterSignOutUrl="/"
+            appearance={clerkUserButtonAppearance}
+            userProfileProps={{ appearance: clerkUserProfileAppearance }}
+          />
+        </div>
       </div>
     </header>
   );

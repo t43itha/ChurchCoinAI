@@ -67,6 +67,63 @@ export default defineSchema({
     .index("by_clerkId_organization", ["clerkId", "organizationId"])
     .index("by_email", ["email"]),
 
+  // Customer support requests. Convex is the durable source of truth; a
+  // sanitised copy is mirrored to a separately configured private GitHub repo.
+  supportTickets: defineTable({
+    organizationId: v.id("organizations"),
+    createdBy: v.id("users"),
+    reference: v.string(),
+    type: v.union(
+      v.literal("bug"),
+      v.literal("question"),
+      v.literal("feature")
+    ),
+    impact: v.union(
+      v.literal("blocking"),
+      v.literal("difficult"),
+      v.literal("minor")
+    ),
+    title: v.string(),
+    description: v.string(),
+    expectedBehaviour: v.optional(v.string()),
+    reproductionSteps: v.optional(v.string()),
+    reporterRole: v.string(),
+    appPath: v.string(),
+    appRelease: v.string(),
+    browserSummary: v.string(),
+    status: v.union(
+      v.literal("submitted"),
+      v.literal("under_review"),
+      v.literal("in_progress"),
+      v.literal("waiting_for_reporter"),
+      v.literal("resolved"),
+      v.literal("closed")
+    ),
+    githubSyncStatus: v.union(
+      v.literal("pending"),
+      v.literal("syncing"),
+      v.literal("synced"),
+      v.literal("failed")
+    ),
+    githubSyncAttempts: v.number(),
+    githubSyncAttemptedAt: v.optional(v.number()),
+    githubSyncError: v.optional(v.string()),
+    githubSyncRetryable: v.optional(v.boolean()),
+    githubRepository: v.optional(v.string()),
+    githubIssueNumber: v.optional(v.number()),
+    githubIssueUrl: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_createdAt", ["organizationId", "createdAt"])
+    .index("by_createdBy_createdAt", ["createdBy", "createdAt"])
+    .index("by_githubSyncStatus_createdAt", ["githubSyncStatus", "createdAt"])
+    .index("by_github_repository_issue", [
+      "githubRepository",
+      "githubIssueNumber",
+    ]),
+
   // Pending invitations for users not yet registered
   invitations: defineTable({
     organizationId: v.id("organizations"),
