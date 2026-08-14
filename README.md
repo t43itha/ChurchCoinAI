@@ -8,7 +8,7 @@ The product is currently being prepared for a supervised pilot with a small numb
 
 - Tracks unrestricted, restricted, designated, and endowment funds.
 - Manages donors, Gift Aid indicators, pledges, campaigns, and in-person giving.
-- Imports UK Open Banking transactions through Yapily or Enable Banking.
+- Imports UK Open Banking transactions through Yapily.
 - Reconciles statements, cash collections, cheques, and bank deposits.
 - Suggests transaction categories using Gemini and organization-scoped RAG memory.
 - Produces trustee-friendly reports and PDF/Excel exports.
@@ -21,7 +21,7 @@ The product is currently being prepared for a supervised pilot with a small numb
 - Convex for the database, real-time queries, actions, and HTTP endpoints
 - Clerk for authentication
 - Google Gemini and Convex RAG for categorisation
-- Yapily (recommended) and Enable Banking for UK Open Banking connections
+- Yapily for UK Open Banking connections
 - Stripe for subscriptions
 - Resend for invitations
 - Sentry for browser error reporting, with Convex's native exception integration recommended for backend functions
@@ -116,19 +116,10 @@ stores the resulting consent credential only in Convex, and revokes the consent
 when a connection or organisation is deleted. The callback schedules account
 discovery before redirecting so it meets Yapily's fast-response guidance.
 
-To activate Enable Banking access:
+Transaction sync remains manual so imported entries can be reviewed before they
+reach the ledger.
 
-1. Register a sandbox or production API application in the Enable Banking control panel and retain its application ID and generated private key.
-2. Allowlist the exact Convex callback URL, `https://YOUR-CONVEX-DEPLOYMENT.convex.site/enable-banking/callback`, on that application.
-3. Set `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`, `ENABLE_BANKING_DEFAULT_COUNTRY=GB`, and `APP_BASE_URL` in the target Convex deployment. `ENABLE_BANKING_API_BASE_URL` is optional.
-4. Activate the production application. A restricted production application can be tested only with accounts linked in Enable Banking until commercial access is approved.
-5. In **Settings → Bank Connections**, choose a bank from the live business-AISP list, complete consent, and map each returned account to a ChurchCoin fund.
-
-ChurchCoin revalidates the selected bank immediately before starting consent,
-stores the expiry returned by the authorised session, and keeps transaction sync
-manual so imported entries can be reviewed before they reach the ledger.
-
-Set Yapily and/or Enable Banking, Stripe, and callback variables listed in `.env.example`. `APP_BASE_URL` must be the deployed frontend origin. Keep all provider secrets in Convex—never place them in `VITE_*` values, which are shipped to browsers.
+Set the Yapily, Stripe, and callback variables listed in `.env.example`. `APP_BASE_URL` must be the deployed frontend origin. Keep all provider secrets in Convex—never place them in `VITE_*` values, which are shipped to browsers.
 
 ## Data protection and retention
 
@@ -137,7 +128,7 @@ Organization admins can use **Settings → Data & Privacy** to:
 - download a paginated JSON export covering every organization-scoped table, with invitation, banking, and Stripe credentials removed; and
 - permanently delete an organization after an exact-name confirmation.
 
-Deletion first revokes Yapily, Enable Banking, and legacy Plaid access, removes the Stripe customer, clears organization RAG data, and then erases tenant records in bounded batches. The user's Clerk sign-in is retained so they can join or create another organization.
+Deletion first revokes Yapily and legacy Plaid access, removes the Stripe customer, clears organization RAG data, and then erases tenant records in bounded batches. The user's Clerk sign-in is retained so they can join or create another organization.
 
 Deletion is not a substitute for a retention policy. UK charities generally need accounting and Gift Aid records for at least six years. Pilot churches should export and retain legally required records before deletion and document their own retention schedule and data-processing responsibilities.
 
@@ -146,7 +137,7 @@ Deletion is not a substitute for a retention policy. UK charities generally need
 - Every application table is scoped by `organizationId`.
 - Server-side auth helpers derive identity from Clerk and enforce roles in Convex.
 - Stripe webhooks verify signatures.
-- Yapily and Enable Banking callback state is provider-bound, single-use, and time-limited; Yapily callbacks expose only a short-lived one-time token.
+- Yapily callback state is provider-bound, single-use, and time-limited; callbacks expose only a short-lived one-time token.
 - Preserved Plaid webhooks verify JWT signatures and request body hashes.
 - GitHub support webhooks verify HMAC signatures, and customer issue syncing is restricted to a private repository.
 - Financial values use shared money-precision helpers.
@@ -174,4 +165,4 @@ Build the frontend with `npm run build` and deploy `dist/` to the configured hos
 npx convex deploy
 ```
 
-Before inviting a pilot church, verify the production Resend sender, Sentry projects, Clerk JWT issuer, Stripe webhook, Yapily/Enable Banking callbacks, backup/export procedure, and the complete CI run.
+Before inviting a pilot church, verify the production Resend sender, Sentry projects, Clerk JWT issuer, Stripe webhook, Yapily callback, backup/export procedure, and the complete CI run.

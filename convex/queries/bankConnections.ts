@@ -113,6 +113,7 @@ export const getItemsNeedingAttention = query({
       })
       .map((connection) => ({
         _id: connection._id,
+        provider: connection.provider,
         institutionName: connection.institutionName,
         status: connection.status,
         errorCode: connection.errorCode,

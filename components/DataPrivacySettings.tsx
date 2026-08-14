@@ -208,7 +208,7 @@ const DataPrivacySettings: React.FC<DataPrivacySettingsProps> = ({
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <p className="text-xs text-grey-mid max-w-xl leading-relaxed">
-              This revokes Yapily, Enable Banking, and Plaid access, deletes the Stripe
+              This revokes Yapily and Plaid access, deletes the Stripe
               customer, removes AI memory, and erases all organization records.
               Your personal sign-in remains available for joining another church.
             </p>

@@ -2,9 +2,9 @@
 
 ## Decision
 
-ChurchCoin supports Yapily as the recommended UK Open Banking provider while
-retaining Enable Banking as an alternative. The first Yapily implementation
-uses the Direct API because ChurchCoin already owns the institution picker,
+ChurchCoin uses Yapily as its sole active UK Open Banking provider. The provider
+field remains in stored connection records only so historic rows can be identified
+and removed safely. The implementation uses the Direct API because ChurchCoin owns the institution picker,
 consent return, account-to-fund mapping, and transaction-review experience.
 Yapily Connect can supply delegated AISP licensing for the same API flow.
 
@@ -14,11 +14,11 @@ screens become preferable. They are not required for this integration.
 ## User journey and system events
 
 1. An Admin or Finance Team user opens **Settings → Bank Connections**.
-2. The user chooses **Yapily** (recommended) or **Enable Banking**.
-3. ChurchCoin asks the selected provider for its current UK institution list.
+2. ChurchCoin asks Yapily for its current UK institution list.
+3. The user chooses a bank.
    Yapily institutions must advertise `INITIATE_ACCOUNT_REQUEST`, `ACCOUNTS`, and
    `ACCOUNT_TRANSACTIONS` before they are shown.
-4. The user chooses a bank. ChurchCoin revalidates the institution, creates a
+4. ChurchCoin revalidates the institution, creates a
    provider-bound state token that expires after 15 minutes, and records the
    attempt as `pending`.
 5. ChurchCoin creates a Yapily account authorisation for read-only accounts and
@@ -42,7 +42,7 @@ screens become preferable. They are not required for this integration.
 12. When Yapily reports `401` or `403`, ChurchCoin marks the connection as needing
     re-authorisation. Expiry and `reconfirmBy` dates also surface advance prompts.
 13. Disconnecting revokes the Yapily consent before deleting the local record.
-    Organisation deletion revokes every Yapily, Enable Banking, and Plaid link
+    Organisation deletion revokes every Yapily and Plaid link
     before removing local credentials and tenant data.
 
 ## Operator actions required
@@ -71,6 +71,10 @@ screens become preferable. They are not required for this integration.
    protection owner before production launch. Confirm that naming Yapily and
    Yapily Connect as applicable processors/regulatory providers is sufficient for
    the final commercial arrangement.
+10. Before deploying over an installation that has historic non-Yapily connection
+    records, revoke those provider sessions using the previous deployment or the
+    provider console, then disconnect the legacy records in ChurchCoin. Remove all
+    obsolete provider secrets from Convex after confirming no sessions remain.
 
 ## Documentation sources
 

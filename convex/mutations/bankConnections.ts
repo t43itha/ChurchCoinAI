@@ -4,6 +4,8 @@ import { requireRole } from "../lib/auth";
 import { isPendingStateExpired } from "../lib/bankConnectionUtils";
 import { assertValidTransactionDate } from "../lib/transactionValidation";
 
+// The retired value remains valid only so historic records can be read and
+// removed safely. Public actions create Yapily connections exclusively.
 const providerSchema = v.union(
   v.literal("enable_banking"),
   v.literal("yapily")

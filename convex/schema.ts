@@ -512,6 +512,8 @@ export default defineSchema({
   // Provider-neutral bank connections
   bankConnections: defineTable({
     organizationId: v.id("organizations"),
+    // Keep the retired provider value readable until all historic rows have
+    // been disconnected. New connection flows create Yapily records only.
     provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
     providerConnectionId: v.string(),
     // Provider credential used for data access. Kept server-side and excluded
@@ -557,6 +559,7 @@ export default defineSchema({
   pendingBankConnections: defineTable({
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
+    // Retained for schema compatibility with any unexpired historic attempts.
     provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
     state: v.string(),
     status: v.union(

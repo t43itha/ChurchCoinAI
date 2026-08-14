@@ -3,8 +3,6 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getPlanFromStripeProduct, getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
-import { authorizeSession } from "./lib/enableBanking";
-import { normalizeEnableBankingAccount } from "./lib/bankConnectionUtils";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import {
@@ -26,9 +24,6 @@ const trimCallbackValue = (value: string | null) => {
   const trimmed = value?.trim();
   return trimmed || undefined;
 };
-
-const safeErrorMessage = (message: string, fallback: string) =>
-  (message.trim() || fallback).slice(0, 500);
 
 const isLocalCallbackOrigin = (origin: URL) =>
   origin.hostname === "localhost" ||
@@ -78,7 +73,7 @@ const redirectToBankSettings = (
   try {
     location = settingsBankUrl(request, result, attemptState);
   } catch (error: any) {
-    console.error("Enable Banking callback redirect is not configured:", error?.message);
+    console.error("Bank callback redirect is not configured:", error?.message);
     return new Response("APP_BASE_URL not configured", { status: 500 });
   }
 
@@ -483,103 +478,6 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  }),
-});
-
-// Enable Banking callback endpoint
-http.route({
-  path: "/enable-banking/callback",
-  method: "GET",
-  handler: httpAction(async (ctx, request) => {
-    const url = new URL(request.url);
-    const code = trimCallbackValue(url.searchParams.get("code"));
-    const state = trimCallbackValue(url.searchParams.get("state"));
-    const providerError = trimCallbackValue(url.searchParams.get("error"));
-    const providerErrorDescription = trimCallbackValue(
-      url.searchParams.get("error_description")
-    );
-
-    if (!state) {
-      return new Response("Enable Banking callback endpoint is ready.", {
-        status: 200,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
-    }
-
-    // Atomically consume the state token before doing anything else so a
-    // replayed, raced, or guessed callback URL can never re-enter the flow.
-    // Expired states are marked as errors inside the claim mutation.
-    const claim = await ctx.runMutation(
-      internal.mutations.bankConnections.claimPendingState,
-      { state, provider: "enable_banking" }
-    );
-
-    if (!claim.claimed) {
-      return redirectToBankSettings(request, "error");
-    }
-
-    if (providerError) {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          organizationId: claim.organizationId,
-          state,
-          errorCode: providerError.slice(0, 100),
-          errorMessage: safeErrorMessage(
-            providerErrorDescription || "",
-            "Bank authorization was not completed"
-          ),
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
-
-    if (!code) {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          organizationId: claim.organizationId,
-          state,
-          errorCode: "MISSING_CODE",
-          errorMessage: "Bank authorization callback did not include a code",
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
-
-    try {
-      const session = await authorizeSession(code);
-      const consentExpiresAt = Date.parse(session.access?.valid_until);
-      if (!Number.isFinite(consentExpiresAt) || consentExpiresAt <= Date.now()) {
-        throw new Error("Enable Banking session has invalid consent expiry");
-      }
-
-      await ctx.runMutation(
-        internal.mutations.bankConnections.completePending,
-        {
-          organizationId: claim.organizationId,
-          state,
-          providerConnectionId: session.session_id,
-          accounts: session.accounts.map(normalizeEnableBankingAccount),
-          consentExpiresAt,
-        }
-      );
-
-      return redirectToBankSettings(request, "success");
-    } catch {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          organizationId: claim.organizationId,
-          state,
-          errorCode: "SESSION_EXCHANGE_FAILED",
-          errorMessage: "Failed to authorize bank session",
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
   }),
 });
 

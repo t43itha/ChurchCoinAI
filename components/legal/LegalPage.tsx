@@ -20,7 +20,7 @@ const sections = {
       {
         heading: "Banking data",
         body:
-          "When an authorised user connects a bank account, ChurchCoinAI uses Yapily or Enable Banking to request read-only account and transaction access. We do not receive or store online banking passwords. Imported transactions are shown for manual review before they are added to the ledger.",
+          "When an authorised user connects a bank account, ChurchCoinAI uses Yapily to request read-only account and transaction access. We do not receive or store online banking passwords. Imported transactions are shown for manual review before they are added to the ledger.",
       },
       {
         heading: "How data is used",
@@ -30,7 +30,7 @@ const sections = {
       {
         heading: "Processors",
         body:
-          "The service uses trusted processors including Convex for application data hosting, Clerk for authentication, Stripe for subscription billing, Yapily (and Yapily Connect where applicable) and Enable Banking for open banking connectivity, and AI providers for categorisation features where enabled.",
+          "The service uses trusted processors including Convex for application data hosting, Clerk for authentication, Stripe for subscription billing, Yapily (and Yapily Connect where applicable) for open banking connectivity, and AI providers for categorisation features where enabled.",
       },
       {
         heading: "Retention and control",
@@ -62,7 +62,7 @@ const sections = {
       {
         heading: "Bank connections",
         body:
-          "Bank connections are read-only and require explicit user consent through Yapily or Enable Banking. You may disconnect a bank connection or allow consent to expire. Transaction sync is manual and reviewed before import.",
+          "Bank connections are read-only and require explicit user consent through Yapily. You may disconnect a bank connection or allow consent to expire. Transaction sync is manual and reviewed before import.",
       },
       {
         heading: "Subscriptions",

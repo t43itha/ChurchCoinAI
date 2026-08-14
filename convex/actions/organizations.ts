@@ -7,10 +7,6 @@ import {
   ORGANIZATION_DELETION_TABLES,
   type OrganizationDataTable,
 } from "../../lib/organizationData";
-import {
-  closeSession,
-  EnableBankingApiError,
-} from "../lib/enableBanking";
 import { getPlaid } from "../lib/plaid";
 import {
   deleteYapilyConsent,
@@ -50,19 +46,13 @@ export const deleteOrganization = action({
     // Revoke third-party access before deleting the local credentials needed
     // to do so. All provider operations are retry-safe for already-removed IDs.
     for (const connection of manifest.bankConnections) {
+      if (connection.provider !== "yapily") continue;
+
       try {
-        if (connection.provider === "yapily") {
-          await deleteYapilyConsent(connection.providerConnectionId);
-        } else {
-          await closeSession(connection.providerConnectionId);
-        }
+        await deleteYapilyConsent(connection.providerConnectionId);
       } catch (error) {
         if (
-          !(
-            (error instanceof EnableBankingApiError ||
-              error instanceof YapilyApiError) &&
-            error.status === 404
-          )
+          !(error instanceof YapilyApiError && error.status === 404)
         ) {
           throw error;
         }
