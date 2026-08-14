@@ -10,7 +10,8 @@ import {
   Trash2,
   Link2,
   Landmark,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 import { notify } from '../lib/notifications';
 
@@ -18,14 +19,27 @@ interface BankConnectionsSettingsProps {
   funds: Fund[];
 }
 
+type AvailableInstitution = {
+  name: string;
+  country: string;
+  logoUrl: string | null;
+  maximumConsentValiditySeconds: number;
+  beta: boolean;
+};
+
 const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
   const updateFundMapping = useMutation(api.mutations.bankConnections.updateAccountFundMapping);
+  const listInstitutions = useAction(api.actions.bankConnections.listInstitutions);
   const startConnection = useAction(api.actions.bankConnections.startConnection);
   const removeConnection = useAction(api.actions.bankConnections.removeConnection);
 
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
+  const [isBankPickerOpen, setIsBankPickerOpen] = useState(false);
+  const [availableInstitutions, setAvailableInstitutions] = useState<AvailableInstitution[]>([]);
+  const [reauthConnectionId, setReauthConnectionId] = useState<Id<"bankConnections"> | undefined>();
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
@@ -58,12 +72,35 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     notify('Error', message);
   }, []);
 
-  const handleConnectBank = async () => {
+  const openBankPicker = async (existingConnectionId?: Id<"bankConnections">) => {
+    setReauthConnectionId(existingConnectionId);
+    setIsBankPickerOpen(true);
+    setIsLoadingInstitutions(true);
+    setAvailableInstitutions([]);
+    setConnectionError(null);
+
+    try {
+      const institutions = await listInstitutions({});
+      setAvailableInstitutions(institutions);
+    } catch (error: any) {
+      const message = error?.message || 'Failed to load supported UK banks';
+      setConnectionError(message);
+      notify('Error', message);
+    } finally {
+      setIsLoadingInstitutions(false);
+    }
+  };
+
+  const handleConnectBank = async (institution: AvailableInstitution) => {
     setIsConnecting(true);
     setConnectionError(null);
 
     try {
-      const { authorizationUrl } = await startConnection({});
+      const { authorizationUrl } = await startConnection({
+        aspspName: institution.name,
+        aspspCountry: institution.country,
+        existingConnectionId: reauthConnectionId,
+      });
       window.location.assign(authorizationUrl);
     } catch (error: any) {
       const message = error?.message || 'Failed to start bank connection';
@@ -71,6 +108,12 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       notify('Error', message);
       setIsConnecting(false);
     }
+  };
+
+  const closeBankPicker = () => {
+    if (isConnecting) return;
+    setIsBankPickerOpen(false);
+    setReauthConnectionId(undefined);
   };
 
   const handleRemoveConnection = async (connectionId: Id<"bankConnections">) => {
@@ -193,11 +236,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </div>
           </div>
           <button
-            onClick={handleConnectBank}
-            disabled={isConnecting}
+            onClick={() => openBankPicker()}
+            disabled={isConnecting || isLoadingInstitutions}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
           >
-            {isConnecting ? (
+            {isLoadingInstitutions ? (
               <RefreshCw size={14} className="animate-spin" strokeWidth={2} />
             ) : (
               <Plus size={14} strokeWidth={2} />
@@ -222,11 +265,11 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
               Connect your UK bank accounts to sync transactions directly. This uses secure Open Banking technology.
             </p>
             <button
-              onClick={handleConnectBank}
-              disabled={isConnecting}
+              onClick={() => openBankPicker()}
+              disabled={isConnecting || isLoadingInstitutions}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
             >
-              {isConnecting ? (
+              {isLoadingInstitutions ? (
                 <RefreshCw size={14} className="animate-spin" />
               ) : (
                 <Plus size={14} />
@@ -262,7 +305,10 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                   </div>
                   <div className="flex items-center gap-2">
                     {(connection.status === 'consent_expired' || connection.status === 'pending_reauth' || connection.status === 'error') && (
-                      <ReauthButton bankConnectionId={connection._id} />
+                      <ReauthButton
+                        disabled={isConnecting || isLoadingInstitutions}
+                        onClick={() => openBankPicker(connection._id)}
+                      />
                     )}
                     <button
                       onClick={() => setEditingItem(editingItem === connection._id ? null : connection._id)}
@@ -334,36 +380,124 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
 
       <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
         <p className="text-xs text-[#7a5a30] leading-relaxed">
-          <strong className="font-bold">UK Open Banking:</strong> Bank connections require consent renewal every 90 days.
-          You'll be notified before consent expires and can re-authenticate without losing your transaction history.
+          <strong className="font-bold">UK Open Banking:</strong> Consent duration is set by each bank.
+          You'll be notified before access expires and can re-authenticate without losing your transaction history.
         </p>
       </div>
+
+      {isBankPickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bank-picker-title"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) closeBankPicker();
+          }}
+        >
+          <div className="w-full max-w-xl overflow-hidden rounded-[14px] border border-ledger bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-grey-light bg-[#fcfbf9] px-6 py-5">
+              <div>
+                <h3 id="bank-picker-title" className="text-base font-bold text-ink">
+                  {reauthConnectionId ? 'Reconnect a UK bank' : 'Choose a UK bank'}
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-grey-mid">
+                  Available business accounts are loaded live from Enable Banking.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBankPicker}
+                disabled={isConnecting}
+                aria-label="Close bank picker"
+                className="rounded-[8px] p-2 text-grey-mid transition-colors hover:bg-paper hover:text-ink disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              {isLoadingInstitutions ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-grey-mid">
+                  <RefreshCw size={16} className="animate-spin" />
+                  Checking supported banks...
+                </div>
+              ) : connectionError ? (
+                <div className="rounded-[10px] border border-error/30 bg-error-light p-4 text-sm text-error">
+                  {connectionError}
+                </div>
+              ) : availableInstitutions.length === 0 ? (
+                <div className="rounded-[10px] border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-sm text-[#7a5a30]">
+                  No UK business banks are currently available for this Enable Banking application.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {availableInstitutions.map((institution) => {
+                    const consentDays = Math.max(
+                      1,
+                      Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60))
+                    );
+
+                    return (
+                      <button
+                        type="button"
+                        key={`${institution.country}:${institution.name}`}
+                        onClick={() => handleConnectBank(institution)}
+                        disabled={isConnecting}
+                        className="group flex min-h-[112px] flex-col items-start rounded-[11px] border border-ledger bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-[3px_3px_0_#1c1c1c] disabled:translate-y-0 disabled:cursor-wait disabled:opacity-50 disabled:shadow-none"
+                      >
+                        <div className="flex w-full items-start justify-between gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[9px] border border-grey-light bg-paper">
+                            {institution.logoUrl ? (
+                              <img
+                                src={institution.logoUrl}
+                                alt=""
+                                className="h-full w-full object-contain p-1.5"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <Landmark size={17} className="text-grey-dark" />
+                            )}
+                          </span>
+                          {isConnecting && (
+                            <RefreshCw size={14} className="animate-spin text-grey-mid" />
+                          )}
+                        </div>
+                        <span className="mt-3 text-sm font-bold text-ink">{institution.name}</span>
+                        <span className="mt-1 text-[11.5px] text-grey-mid">
+                          Business AISP · up to {consentDays} days
+                          {institution.beta ? ' · beta' : ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-grey-light bg-[#fcfbf9] px-6 py-4">
+              <p className="text-[11.5px] leading-relaxed text-grey-mid">
+                ChurchCoin requests read-only access to balances and transactions. Your bank credentials are entered with your bank, not ChurchCoin.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const ReauthButton: React.FC<{ bankConnectionId: Id<"bankConnections"> }> = ({ bankConnectionId }) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const startConnection = useAction(api.actions.bankConnections.startConnection);
-
-  const handleReauth = async () => {
-    setIsLoading(true);
-    try {
-      const { authorizationUrl } = await startConnection({ existingConnectionId: bankConnectionId });
-      window.location.assign(authorizationUrl);
-    } catch (error: any) {
-      notify('Error', error?.message || 'Failed to start re-authentication');
-      setIsLoading(false);
-    }
-  };
-
+const ReauthButton: React.FC<{
+  disabled: boolean;
+  onClick: () => void;
+}> = ({ disabled, onClick }) => {
   return (
     <button
-      onClick={handleReauth}
-      disabled={isLoading}
+      onClick={onClick}
+      disabled={disabled}
       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.05em] border border-[#ecd8bd] text-[#a9743f] rounded-[8px] bg-white hover:bg-[#fcf7f0] transition-colors disabled:opacity-50"
     >
-      <RefreshCw size={10} className={isLoading ? 'animate-spin' : ''} />
+      <RefreshCw size={10} />
       Re-auth
     </button>
   );

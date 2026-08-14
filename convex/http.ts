@@ -3,7 +3,8 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getPlanFromStripeProduct, getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
-import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
+import { authorizeSession } from "./lib/enableBanking";
+import { normalizeEnableBankingAccount } from "./lib/bankConnectionUtils";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import {
@@ -20,27 +21,6 @@ const applyGithubSupportStatus = makeFunctionReference<
 >("mutations/supportTickets:applyGithubStatus");
 
 const http = httpRouter();
-
-type EnableBankingCallbackAccount = {
-  uid?: unknown;
-  identification_hash?: unknown;
-  identification_hashes?: unknown;
-  name?: unknown;
-  details?: {
-    name?: unknown;
-    currency?: unknown;
-    product?: unknown;
-    cash_account_type?: unknown;
-    iban?: unknown;
-    bban?: unknown;
-  };
-};
-
-const nonEmptyString = (value: unknown) => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-};
 
 const trimCallbackValue = (value: string | null) => {
   const trimmed = value?.trim();
@@ -100,49 +80,6 @@ const redirectToBankSettings = (
       Location: location,
     },
   });
-};
-
-const getAccountMask = (account: EnableBankingCallbackAccount) => {
-  const identifier =
-    nonEmptyString(account.details?.iban) || nonEmptyString(account.details?.bban);
-  if (!identifier) return undefined;
-  const compactIdentifier = identifier.replace(/\s+/g, "");
-  return compactIdentifier.slice(-4) || undefined;
-};
-
-const mapEnableBankingAccount = (account: EnableBankingCallbackAccount) => {
-  const accountId = nonEmptyString(account.uid);
-  if (!accountId) {
-    throw new Error("Enable Banking account is missing uid");
-  }
-
-  const identificationHashes = Array.isArray(account.identification_hashes)
-    ? account.identification_hashes
-        .map(nonEmptyString)
-        .filter((hash): hash is string => Boolean(hash))
-    : undefined;
-
-  const name =
-    nonEmptyString(account.name) ||
-    nonEmptyString(account.details?.name) ||
-    nonEmptyString(account.details?.product) ||
-    nonEmptyString(account.details?.iban) ||
-    nonEmptyString(account.details?.bban) ||
-    "Bank account";
-
-  return {
-    accountId,
-    providerAccountHash: nonEmptyString(account.identification_hash),
-    providerAccountHashes: identificationHashes?.length
-      ? identificationHashes
-      : undefined,
-    name,
-    mask: getAccountMask(account),
-    type:
-      nonEmptyString(account.details?.cash_account_type) ||
-      nonEmptyString(account.details?.product),
-    currency: nonEmptyString(account.details?.currency),
-  };
 };
 
 const bytesToHex = (bytes: Uint8Array) =>
@@ -604,14 +541,17 @@ http.route({
 
     try {
       const session = await authorizeSession(code);
-      const consentExpiresAt = new Date(getConsentValidUntil()).getTime();
+      const consentExpiresAt = Date.parse(session.access?.valid_until);
+      if (!Number.isFinite(consentExpiresAt) || consentExpiresAt <= Date.now()) {
+        throw new Error("Enable Banking session has invalid consent expiry");
+      }
 
       await ctx.runMutation(
         internal.mutations.bankConnections.completePending,
         {
           state,
           providerConnectionId: session.session_id,
-          accounts: session.accounts.map(mapEnableBankingAccount),
+          accounts: session.accounts.map(normalizeEnableBankingAccount),
           consentExpiresAt,
         }
       );

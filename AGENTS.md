@@ -82,7 +82,7 @@ The "Swiss Ledger" design system is defined via Tailwind config in `index.html` 
 **Backend** (set via Convex Dashboard or `npx convex env set`):
 - `GEMINI_API_KEY`, `CLERK_JWT_ISSUER_DOMAIN`
 - `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`, `APP_BASE_URL`
-- `ENABLE_BANKING_DEFAULT_COUNTRY`, `ENABLE_BANKING_DEFAULT_ASPSP`, optional `ENABLE_BANKING_API_BASE_URL`
+- `ENABLE_BANKING_DEFAULT_COUNTRY`, optional `ENABLE_BANKING_API_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).

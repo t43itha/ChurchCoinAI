@@ -98,17 +98,21 @@ Bank connection secrets are backend-only Convex environment variables:
 - `ENABLE_BANKING_REDIRECT_URL`
 - `APP_BASE_URL`
 - `ENABLE_BANKING_DEFAULT_COUNTRY`
-- `ENABLE_BANKING_DEFAULT_ASPSP`
 - Optional `ENABLE_BANKING_API_BASE_URL`
 
 Set them with `npx convex env set`. Do not expose these values through `VITE_*` variables.
 `APP_BASE_URL` is the public frontend origin used after Enable Banking redirects back to the Convex callback. It is required outside local development.
 
-The active v1 flow is manual sync:
+The active flow discovers currently supported business AISP banks directly from
+Enable Banking rather than relying on a configured bank name:
 
-1. Admin or Finance Team starts a connection from Settings > Bank Connections.
-2. Enable Banking redirects back to `/enable-banking/callback`.
-3. The returned account is mapped to a fund.
-4. Transactions are fetched on demand from the Transactions screen and reviewed before import.
+1. Admin or Finance Team opens Settings > Bank Connections.
+2. ChurchCoin fetches the current GB, business, AIS-capable bank list from `GET /aspsps`.
+3. The user selects a bank and is redirected through Enable Banking consent.
+4. Enable Banking redirects back to `/enable-banking/callback`; the callback stores the session and provider-confirmed consent expiry.
+5. Each returned account is mapped to a fund.
+6. Transactions are fetched on demand from the Transactions screen and reviewed before import.
 
-The first rollout is for internal validation with the linked Metro Bank account. Tenant-wide availability requires a separate commercial/compliance decision.
+Production applications must be active in Enable Banking. Restricted production
+applications can access only accounts linked in the control panel until the
+appropriate commercial agreement is in place.

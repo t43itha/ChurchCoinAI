@@ -1,18 +1,22 @@
 "use node";
 
 import { action, type ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import {
   closeSession,
   EnableBankingApiError,
   getAccountTransactions,
+  getAvailableInstitutions,
   getConsentValidUntil,
   getEnableBankingDefaults,
+  isEnableBankingExpiredSessionError,
   startAuthorization,
 } from "../lib/enableBanking";
 import {
   calculateDefaultSyncRange,
   normalizeEnableBankingTransaction,
+  type EnableBankingTransactionLike,
 } from "../lib/bankConnectionUtils";
 
 const requireUser = async (ctx: ActionCtx) => {
@@ -53,6 +57,32 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const MAX_TRANSACTION_PAGES_PER_ACCOUNT = 20;
 const MAX_SYNC_TRANSACTIONS = 500;
 
+const institutionSchema = v.object({
+  name: v.string(),
+  country: v.string(),
+  logoUrl: v.union(v.string(), v.null()),
+  maximumConsentValiditySeconds: v.number(),
+  beta: v.boolean(),
+});
+
+const syncCursorSchema = v.object({
+  dateFrom: v.string(),
+  dateTo: v.string(),
+  accountIndex: v.number(),
+  continuationKey: v.optional(v.string()),
+});
+
+const syncedTransactionSchema = v.object({
+  date: v.string(),
+  description: v.string(),
+  amount: v.number(),
+  type: v.union(v.literal("Income"), v.literal("Expenditure")),
+  accountId: v.string(),
+  accountName: v.string(),
+  fundId: v.union(v.id("funds"), v.null()),
+  providerTransactionId: v.string(),
+});
+
 type SyncTransactionsCursor = {
   dateFrom: string;
   dateTo: string;
@@ -67,7 +97,7 @@ type SyncedBankTransaction = {
   type: "Income" | "Expenditure";
   accountId: string;
   accountName: string;
-  fundId: string | null;
+  fundId: Id<"funds"> | null;
   providerTransactionId: string;
 };
 
@@ -131,16 +161,49 @@ const validateSyncCursor = (
   return cursor;
 };
 
+export const listInstitutions = action({
+  args: {},
+  returns: v.array(institutionSchema),
+  handler: async (ctx) => {
+    const user = await requireUser(ctx);
+    requireFinanceRole(user);
+
+    const { aspspCountry } = getEnableBankingDefaults();
+    return await getAvailableInstitutions(aspspCountry);
+  },
+});
+
 export const startConnection = action({
   args: {
+    aspspName: v.string(),
+    aspspCountry: v.string(),
     existingConnectionId: v.optional(v.id("bankConnections")),
   },
+  returns: v.object({ authorizationUrl: v.string() }),
   handler: async (ctx, args): Promise<{ authorizationUrl: string }> => {
     const user = await requireUser(ctx);
     requireFinanceRole(user);
 
     const { internal } = await import("../_generated/api");
     const defaults = getEnableBankingDefaults();
+    const aspspCountry = args.aspspCountry.trim().toUpperCase();
+    const aspspName = args.aspspName.trim();
+
+    if (!aspspName || aspspCountry !== defaults.aspspCountry.toUpperCase()) {
+      throw new Error("This bank is not available for UK Open Banking");
+    }
+
+    const availableInstitutions = await getAvailableInstitutions(aspspCountry);
+    const institution = availableInstitutions.find(
+      (candidate) =>
+        candidate.country === aspspCountry && candidate.name === aspspName
+    );
+    if (!institution) {
+      throw new Error(
+        "This bank is no longer available. Refresh the bank list and try again."
+      );
+    }
+
     const state = randomState();
     const expiresAt = Date.now() + 15 * 60 * 1000;
     const existingConnectionId = args.existingConnectionId;
@@ -164,8 +227,8 @@ export const startConnection = action({
       createdBy: user._id,
       provider: "enable_banking",
       state,
-      aspspCountry: defaults.aspspCountry,
-      aspspName: defaults.aspspName,
+      aspspCountry,
+      aspspName,
       existingConnectionId,
       expiresAt,
     });
@@ -173,10 +236,12 @@ export const startConnection = action({
     try {
       const response = await startAuthorization({
         state,
-        aspspCountry: defaults.aspspCountry,
-        aspspName: defaults.aspspName,
+        aspspCountry,
+        aspspName,
         redirectUrl: defaults.redirectUrl,
-        validUntil: getConsentValidUntil(),
+        validUntil: getConsentValidUntil(
+          institution.maximumConsentValiditySeconds
+        ),
       });
 
       return { authorizationUrl: assertValidAuthorizationUrl(response.url) };
@@ -200,15 +265,13 @@ export const startConnection = action({
 export const syncTransactions = action({
   args: {
     bankConnectionId: v.id("bankConnections"),
-    cursor: v.optional(
-      v.object({
-        dateFrom: v.string(),
-        dateTo: v.string(),
-        accountIndex: v.number(),
-        continuationKey: v.optional(v.string()),
-      })
-    ),
+    cursor: v.optional(syncCursorSchema),
   },
+  returns: v.object({
+    transactions: v.array(syncedTransactionSchema),
+    hasMore: v.boolean(),
+    nextCursor: v.optional(syncCursorSchema),
+  }),
   handler: async (
     ctx,
     args
@@ -304,14 +367,16 @@ export const syncTransactions = action({
           }
 
           for (const transaction of response.transactions) {
-            transactions.push(
-              normalizeEnableBankingTransaction({
-                transaction: transaction as any,
-                accountId: account.accountId,
-                accountName: account.name,
-                fundId: account.fundId as string,
-              })
-            );
+            const normalized = normalizeEnableBankingTransaction({
+              transaction: transaction as EnableBankingTransactionLike,
+              accountId: account.accountId,
+              accountName: account.name,
+              fundId: account.fundId,
+            });
+            transactions.push({
+              ...normalized,
+              fundId: account.fundId ?? null,
+            });
           }
 
           if (!hasContinuation) {
@@ -358,9 +423,7 @@ export const syncTransactions = action({
       }
     } catch (error: any) {
       const message = error?.message || "Failed to sync bank transactions";
-      const isAuthorizationError =
-        error instanceof EnableBankingApiError &&
-        (error.status === 401 || error.status === 403);
+      const isAuthorizationError = isEnableBankingExpiredSessionError(error);
 
       if (isAuthorizationError) {
         await ctx.runMutation(internal.mutations.bankConnections.updateStatus, {
@@ -386,6 +449,7 @@ export const removeConnection = action({
   args: {
     bankConnectionId: v.id("bankConnections"),
   },
+  returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args): Promise<{ success: boolean }> => {
     const user = await requireUser(ctx);
     if (user.role !== "Admin") {

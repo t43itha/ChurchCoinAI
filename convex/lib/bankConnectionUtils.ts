@@ -9,6 +9,105 @@ export type ChurchCoinPendingBankTransaction = {
   providerTransactionId: string;
 };
 
+export type EnableBankingAccountResourceLike = {
+  uid?: unknown;
+  identification_hash?: unknown;
+  identification_hashes?: unknown;
+  name?: unknown;
+  account_id?: {
+    iban?: unknown;
+    bban?: unknown;
+  };
+  all_account_ids?: Array<{
+    identification?: unknown;
+    scheme_name?: unknown;
+  }>;
+  account_servicer?: {
+    name?: unknown;
+  };
+  details?: unknown;
+  cash_account_type?: unknown;
+  product?: unknown;
+  currency?: unknown;
+};
+
+type LegacyEnableBankingAccountDetails = {
+  name?: unknown;
+  currency?: unknown;
+  product?: unknown;
+  cash_account_type?: unknown;
+  iban?: unknown;
+  bban?: unknown;
+};
+
+const nonEmptyString = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const getLegacyAccountDetails = (
+  account: EnableBankingAccountResourceLike
+): LegacyEnableBankingAccountDetails | undefined =>
+  account.details && typeof account.details === "object"
+    ? account.details as LegacyEnableBankingAccountDetails
+    : undefined;
+
+const getAccountIdentifier = (account: EnableBankingAccountResourceLike) => {
+  const legacyDetails = getLegacyAccountDetails(account);
+  return (
+    nonEmptyString(account.account_id?.iban) ||
+    nonEmptyString(account.account_id?.bban) ||
+    account.all_account_ids
+      ?.map((accountId) => nonEmptyString(accountId.identification))
+      .find(Boolean) ||
+    nonEmptyString(legacyDetails?.iban) ||
+    nonEmptyString(legacyDetails?.bban)
+  );
+};
+
+export const normalizeEnableBankingAccount = (
+  account: EnableBankingAccountResourceLike
+) => {
+  const accountId = nonEmptyString(account.uid);
+  if (!accountId) {
+    throw new Error("Enable Banking account is missing uid");
+  }
+
+  const identificationHashes = Array.isArray(account.identification_hashes)
+    ? account.identification_hashes
+        .map(nonEmptyString)
+        .filter((hash): hash is string => Boolean(hash))
+    : undefined;
+  const legacyDetails = getLegacyAccountDetails(account);
+  const identifier = getAccountIdentifier(account);
+
+  return {
+    accountId,
+    providerAccountHash: nonEmptyString(account.identification_hash),
+    providerAccountHashes: identificationHashes?.length
+      ? identificationHashes
+      : undefined,
+    name:
+      nonEmptyString(account.name) ||
+      nonEmptyString(account.product) ||
+      nonEmptyString(account.account_servicer?.name) ||
+      nonEmptyString(legacyDetails?.name) ||
+      nonEmptyString(legacyDetails?.product) ||
+      identifier ||
+      "Bank account",
+    mask: identifier?.replace(/\s+/g, "").slice(-4) || undefined,
+    type:
+      nonEmptyString(account.cash_account_type) ||
+      nonEmptyString(account.product) ||
+      nonEmptyString(legacyDetails?.cash_account_type) ||
+      nonEmptyString(legacyDetails?.product),
+    currency:
+      nonEmptyString(account.currency) ||
+      nonEmptyString(legacyDetails?.currency),
+  };
+};
+
 export type EnableBankingAmount = {
   amount?: string | number;
   currency?: string;

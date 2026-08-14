@@ -103,6 +103,18 @@ GitHub comments remain internal. Only the issue state and explicit status labels
 
 ### Banking and billing
 
+To activate Enable Banking access:
+
+1. Register a sandbox or production API application in the Enable Banking control panel and retain its application ID and generated private key.
+2. Allowlist the exact Convex callback URL, `https://YOUR-CONVEX-DEPLOYMENT.convex.site/enable-banking/callback`, on that application.
+3. Set `ENABLE_BANKING_APPLICATION_ID`, `ENABLE_BANKING_PRIVATE_KEY`, `ENABLE_BANKING_REDIRECT_URL`, `ENABLE_BANKING_DEFAULT_COUNTRY=GB`, and `APP_BASE_URL` in the target Convex deployment. `ENABLE_BANKING_API_BASE_URL` is optional.
+4. Activate the production application. A restricted production application can be tested only with accounts linked in Enable Banking until commercial access is approved.
+5. In **Settings → Bank Connections**, choose a bank from the live business-AISP list, complete consent, and map each returned account to a ChurchCoin fund.
+
+ChurchCoin revalidates the selected bank immediately before starting consent,
+stores the expiry returned by the authorised session, and keeps transaction sync
+manual so imported entries can be reviewed before they reach the ledger.
+
 Set Enable Banking, Stripe, and callback variables listed in `.env.example`. `APP_BASE_URL` must be the deployed frontend origin. Keep all provider secrets in Convex—never place them in `VITE_*` values, which are shipped to browsers.
 
 ## Data protection and retention

@@ -2,10 +2,55 @@ import { describe, expect, it } from "vitest";
 import {
   calculateDefaultSyncRange,
   isPendingStateExpired,
+  normalizeEnableBankingAccount,
   normalizeEnableBankingTransaction,
 } from "../convex/lib/bankConnectionUtils";
 
 describe("bank connection utils", () => {
+  it("normalizes the current Enable Banking account resource shape", () => {
+    expect(
+      normalizeEnableBankingAccount({
+        uid: "session-account-1",
+        identification_hash: "stable-hash",
+        identification_hashes: ["stable-hash", "alternate-hash"],
+        name: "Church current account",
+        account_id: { iban: "GB12 BARC 1234 5678 9012 34" },
+        cash_account_type: "CACC",
+        currency: "GBP",
+      })
+    ).toEqual({
+      accountId: "session-account-1",
+      providerAccountHash: "stable-hash",
+      providerAccountHashes: ["stable-hash", "alternate-hash"],
+      name: "Church current account",
+      mask: "1234",
+      type: "CACC",
+      currency: "GBP",
+    });
+  });
+
+  it("keeps compatibility with legacy nested account details", () => {
+    expect(
+      normalizeEnableBankingAccount({
+        uid: "legacy-account-1",
+        details: {
+          name: "Legacy savings",
+          bban: "12345678",
+          cash_account_type: "SVGS",
+          currency: "GBP",
+        },
+      })
+    ).toEqual({
+      accountId: "legacy-account-1",
+      providerAccountHash: undefined,
+      providerAccountHashes: undefined,
+      name: "Legacy savings",
+      mask: "5678",
+      type: "SVGS",
+      currency: "GBP",
+    });
+  });
+
   it("uses the day after lastSyncedThrough as the next sync start", () => {
     expect(
       calculateDefaultSyncRange({
