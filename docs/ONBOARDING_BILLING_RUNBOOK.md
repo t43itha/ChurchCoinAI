@@ -22,23 +22,21 @@
    - `invoice.payment_succeeded`
    - `invoice.payment_failed`
 
-If explicit Price IDs are absent, ChurchCoin looks up exactly one active monthly GBP price whose amount matches the tier under these products:
+Stripe recurring price amounts are immutable. Before deploying this catalogue,
+create new monthly GBP prices and set each deployment's environment variable to
+the corresponding new Price ID:
 
-| Tier | Amount | Stripe Product |
-|---|---:|---|
-| Starter | £29 | `prod_TaoILVcX3Js9gF` |
-| Growing | £59 | `prod_TaoJy477MupSeI` |
-| Thriving | £99 | `prod_TaoMzQFnBGlIm2` |
+| Internal tier | Public plan | Monthly amount | Price environment variable |
+|---|---|---:|---|
+| `starter` | Essentials | £19 | `STRIPE_PRICE_STARTER` |
+| `growing` | Church | £29 | `STRIPE_PRICE_GROWING` |
+| `thriving` | Plus | £49 | `STRIPE_PRICE_THRIVING` |
 
-Default recurring Prices:
-
-| Tier | Stripe Price |
-|---|---|
-| Starter | `price_1SdcgM3ta3s0o656P0DP6BD9` |
-| Growing | `price_1SdchC3ta3s0o656YOnYfii8` |
-| Thriving | `price_1SdcjP3ta3s0o656LO347Jgv` |
-
-Environment values override these defaults, allowing separate Stripe test and live configurations. If an explicit/default Price is unavailable, product-based discovery requires exactly one matching active monthly GBP price and otherwise fails closed.
+The internal tier and environment-variable names remain unchanged for existing
+subscription compatibility. Product IDs may continue to point at the existing
+Stripe products, but their names should be updated to match the public plans.
+Existing subscribers stay on their current prices unless they are migrated
+separately in Stripe; do not silently move them as part of this release.
 
 ## Existing-organisation migration
 

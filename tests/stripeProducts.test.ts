@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  PLAN_CONFIG,
   getPlanFromStripeProduct,
   getStripePriceId,
   getStripeProductId,
 } from "../convex/lib/stripe";
+import { PLANS } from "../lib/plans";
 
 describe("Stripe product mapping", () => {
   beforeEach(() => {
@@ -43,5 +45,22 @@ describe("Stripe product mapping", () => {
     expect(() => getStripePriceId("starter")).toThrow(
       "STRIPE_PRICE_STARTER not configured"
     );
+  });
+
+  it("keeps the customer-facing and Stripe plan catalogues aligned", () => {
+    expect(
+      PLANS.map(({ id, name, price }) => ({ id, name, price }))
+    ).toEqual([
+      { id: "starter", name: "Essentials", price: 19 },
+      { id: "growing", name: "Church", price: 29 },
+      { id: "thriving", name: "Plus", price: 49 },
+    ]);
+
+    for (const plan of PLANS) {
+      expect(PLAN_CONFIG[plan.id].name).toBe(plan.name);
+      expect(PLAN_CONFIG[plan.id].price).toBe(plan.price);
+      expect(PLAN_CONFIG[plan.id].maxDonors).toBe(Infinity);
+      expect(PLAN_CONFIG[plan.id].maxFunds).toBe(Infinity);
+    }
   });
 });
