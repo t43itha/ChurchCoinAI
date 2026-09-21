@@ -1,7 +1,12 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, requireRole } from "../lib/auth";
-import { isReportableIncomeTransaction } from "../../lib/reportableTransactions";
+import {
+  isReportableIncomeTransaction,
+  sumReportableIncome,
+} from "../../lib/reportableTransactions";
+import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
+import { roundMoney } from "../lib/money";
 
 // List all pledges
 export const list = query({
@@ -81,7 +86,7 @@ export const byDonor = query({
       .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
       .collect();
 
-    return pledges;
+    return pledges.filter((pledge) => pledge.organizationId === user.organizationId);
   },
 });
 
@@ -97,21 +102,21 @@ export const getWithProgress = query({
     }
 
     // Get transactions linked to this pledge
-    const linkedTransactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_pledge", (q) => q.eq("pledgeId", args.pledgeId))
-      .filter((q) => q.eq(q.field("type"), "Income"))
-      .collect();
-
-    const totalReceived = linkedTransactions.reduce(
-      (sum, t) => sum + t.amount,
-      0
+    const linkedTransactions = (
+      await ctx.db
+        .query("transactions")
+        .withIndex("by_pledge", (q) => q.eq("pledgeId", args.pledgeId))
+        .collect()
+    ).filter(
+      (transaction) =>
+        transaction.organizationId === user.organizationId &&
+        isReportableIncomeTransaction(transaction)
     );
 
+    const totalReceived = sumReportableIncome(linkedTransactions);
+    const target = pledgeFulfillmentTarget(pledge) ?? pledge.amount;
     const progress =
-      pledge.amount > 0
-        ? Math.min((totalReceived / pledge.amount) * 100, 100)
-        : 0;
+      target > 0 ? Math.min((totalReceived / target) * 100, 100) : 0;
 
     // Get fund name for display
     const fund = await ctx.db.get(pledge.fundId);
@@ -122,7 +127,7 @@ export const getWithProgress = query({
       linkedTransactions,
       totalReceived,
       progress,
-      remaining: Math.max(pledge.amount - totalReceived, 0),
+      remaining: Math.max(roundMoney(target - totalReceived), 0),
     };
   },
 });

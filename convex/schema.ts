@@ -211,6 +211,9 @@ export default defineSchema({
       v.literal("Completed"),
       v.literal("Cancelled")
     ),
+    // Set when a person marks the pledge completed. Automatic completion
+    // leaves this unset so a later shortfall can reopen it.
+    completionOverride: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
@@ -347,6 +350,11 @@ export default defineSchema({
       ),
       cashAmount: v.number(),
       chequeAmount: v.number(),
+      previousCategory: v.optional(v.string()),
+      previousDonorId: v.optional(v.id("donors")),
+      previousDonorName: v.optional(v.string()),
+      previousPledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+      previousGiftAidEligible: v.optional(v.boolean()),
     })),
     status: v.union(
       v.literal("draft"),
@@ -467,6 +475,9 @@ export default defineSchema({
     // Timestamp of the newest Stripe event applied; guards against retried
     // or out-of-order webhooks overwriting newer state
     lastStripeEventAt: v.optional(v.number()),
+    lastStripeEventSource: v.optional(
+      v.union(v.literal("invoice"), v.literal("subscription"))
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

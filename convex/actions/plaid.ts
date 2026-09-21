@@ -146,6 +146,15 @@ export const exchangePublicToken = action({
     });
 
     // Map accounts with fund IDs
+    const { api } = await import("../_generated/api");
+    const orgFunds = await ctx.runQuery(api.queries.funds.list, {});
+    const allowedFundIds = new Set((orgFunds ?? []).map((fund) => String(fund._id)));
+    for (const mapping of args.accountMappings) {
+      if (mapping.fundId && !allowedFundIds.has(String(mapping.fundId))) {
+        throw new Error("Invalid fund");
+      }
+    }
+
     const accounts = accountsResponse.data.accounts.map((acc) => {
       const mapping = args.accountMappings.find((m) => m.accountId === acc.account_id);
       return {
@@ -199,6 +208,7 @@ export const syncTransactions = action({
     hasMore: boolean;
   }> => {
     const user = await requireUser(ctx);
+    requireRole(user, ["Admin", "Finance Team"]);
     const { internal, api } = await import("../_generated/api");
 
     // Get item with access token
@@ -279,7 +289,8 @@ export const removeItem = action({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
-    await requireUser(ctx);
+    const user = await requireUser(ctx);
+    requireRole(user, ["Admin"]);
     const { internal } = await import("../_generated/api");
 
     // Get credentials for removal

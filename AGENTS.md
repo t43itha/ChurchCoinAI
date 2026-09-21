@@ -66,6 +66,8 @@ Every table has an `organizationId` field. All queries and mutations must scope 
 ### Role-Based Access
 Four roles with descending permissions: **Admin** > **Finance Team** > **Pastorate** > **Guest**. Admin and Finance Team can edit; Pastorate and Guest are read-only. Use `requireRole()` and `canEdit()` from `convex/lib/auth.ts`.
 
+Donor records are readable by Admin, Finance Team, and Pastorate within their own organization. Pastorate donor access is read-only; Guest cannot view donor records. Donor writes remain restricted to Admin and Finance Team, with deletion restricted to Admin.
+
 ### Design System
 The "Swiss Ledger" design system is defined via Tailwind config in `index.html` (not a separate tailwind.config file). Key tokens:
 - Colors: ink, paper, charcoal, sage, amber

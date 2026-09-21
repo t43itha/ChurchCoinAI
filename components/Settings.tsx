@@ -1,5 +1,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
+import { useConvex } from 'convex/react';
+import { api } from '../convex/_generated/api';
+import { Id } from '../convex/_generated/dataModel';
 import { useLocation } from 'react-router-dom';
 import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
 import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
@@ -77,7 +80,10 @@ interface SettingsProps {
   churchDetails: ChurchDetails;
   pendingInvitations: Invitation[];
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
-  onAddCategory: (category: string) => void;
+  onAddCategory: (
+    category: string,
+    transactionType: "Income" | "Expenditure"
+  ) => void;
   onRemoveCategory: (category: string) => void;
   onInviteUser: (invitation: InvitationCreateInput) => Promise<InvitationSendResult | null>;
   onResendInvitation: (invitationId: string) => Promise<InvitationSendResult | null>;
@@ -148,10 +154,13 @@ const Settings: React.FC<SettingsProps> = ({
 
   // Category State
   const [newCategory, setNewCategory] = useState('');
+  const [newCategoryType, setNewCategoryType] = useState<'Income' | 'Expenditure'>('Income');
 
   // Fund State
   const [showFundModal, setShowFundModal] = useState(false);
   const [editingFund, setEditingFund] = useState<Partial<Fund> | null>(null);
+
+  const convex = useConvex();
 
   // Access Control
   if (!['Admin', 'Finance Team'].includes(currentUser.role)) {
@@ -169,7 +178,7 @@ const Settings: React.FC<SettingsProps> = ({
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (newCategory.trim()) {
-      onAddCategory(newCategory.trim());
+      onAddCategory(newCategory.trim(), newCategoryType);
       setNewCategory('');
     }
   };
@@ -245,10 +254,23 @@ ${currentUser.name}`;
   };
 
   const handleCopyInvite = async (invitation: Invitation) => {
+    if (currentUser.role !== "Admin") {
+      notify("Restricted", "Only administrators can copy invite links.");
+      return;
+    }
+    let link: { token: string | undefined };
+    try {
+      link = await convex.query(api.queries.invitations.getInviteLink, {
+        invitationId: invitation._id as Id<"invitations">,
+      });
+    } catch (error) {
+      notify("Error", error instanceof Error ? error.message : "Could not copy the invite link.");
+      return;
+    }
     const message = generateInviteMessage(
       invitation.email,
       invitation.role,
-      buildInviteUrl(invitation.token)
+      buildInviteUrl(link.token)
     );
     try {
       await navigator.clipboard.writeText(message);
@@ -284,8 +306,8 @@ ${currentUser.name}`;
             notify("Error", "Unsupported image type. Please upload PNG/JPEG/WEBP/GIF (SVG is not allowed).");
             return;
         }
-        if (file.size > 5 * 1024 * 1024) {
-            notify("Error", "File size too large. Please upload an image under 5MB.");
+        if (file.size > 500 * 1024) {
+            notify("Error", "File size too large. Please upload an image under 500KB.");
             return;
         }
 
@@ -696,7 +718,7 @@ ${currentUser.name}`;
                         >
                             <div className="flex items-center gap-3 min-w-0">
                                 <span className="w-[38px] h-[38px] rounded-full bg-[#f1ede8] text-[#5b4a3f] inline-flex items-center justify-center text-[13px] font-bold font-mono shrink-0 overflow-hidden">
-                                    {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full rounded-full object-cover" /> : user.name.charAt(0)}
+                                    {user.avatarUrl ? <img src={user.avatarUrl} alt="" className="w-full h-full rounded-full object-cover" /> : user.name.charAt(0)}
                                 </span>
                                 <div className="min-w-0">
                                     <div className="text-[14.5px] font-semibold text-ink truncate">{user.name}</div>
@@ -796,6 +818,15 @@ ${currentUser.name}`;
                             placeholder="Add a category…"
                             className="flex-1 max-w-xs h-10 px-3.5 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none focus:ring-1 focus:ring-ink transition-shadow"
                         />
+                        <select
+                            aria-label="Category type"
+                            value={newCategoryType}
+                            onChange={(e) => setNewCategoryType(e.target.value as 'Income' | 'Expenditure')}
+                            className="h-10 px-3 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none"
+                        >
+                            <option value="Income">Income</option>
+                            <option value="Expenditure">Expenditure</option>
+                        </select>
                         <button
                             type="submit"
                             disabled={!newCategory.trim()}

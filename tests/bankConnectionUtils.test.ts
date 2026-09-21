@@ -5,14 +5,14 @@ import {
 } from "../convex/lib/bankConnectionUtils";
 
 describe("bank connection utils", () => {
-  it("uses the day after lastSyncedThrough as the next sync start", () => {
+  it("overlaps the previous sync by seven days", () => {
     expect(
       calculateDefaultSyncRange({
         today: "2026-05-14",
         lastSyncedThrough: "2026-05-10",
       })
     ).toEqual({
-      dateFrom: "2026-05-11",
+      dateFrom: "2026-05-03",
       dateTo: "2026-05-14",
     });
   });

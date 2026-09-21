@@ -96,10 +96,20 @@ const DonorsRoute: React.FC<RouteContext> = ({
   currentUser,
   churchDetails,
 }) => {
-  const donors = useQuery(api.queries.donors.list, {});
-  const transactions = useQuery(api.queries.transactions.list, {});
-  const pledges = useQuery(api.queries.pledges.list, {});
+  const canViewDonors = ["Admin", "Finance Team", "Pastorate"].includes(currentUser.role);
+  const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
+  const transactions = useQuery(api.queries.transactions.list, canViewDonors ? {} : "skip");
+  const pledges = useQuery(api.queries.pledges.list, canViewDonors ? {} : "skip");
   const actions = useDonorPledgeActions({ showNotification: notify });
+
+  if (!canViewDonors) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
+        <h2 className="text-lg font-bold text-ink mb-2">Restricted Access</h2>
+        <p className="text-sm max-w-sm text-center">Donor records are available to Administrators, Finance Team members, and Pastorate. Pastorate access is read-only.</p>
+      </div>
+    );
+  }
 
   if (
     donors === undefined ||
@@ -127,15 +137,16 @@ const DonorsRoute: React.FC<RouteContext> = ({
 };
 
 const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
+  const canViewDonors = ["Admin", "Finance Team", "Pastorate"].includes(currentUser.role);
   const pledges = useQuery(api.queries.pledges.list, {});
   const transactions = useQuery(api.queries.transactions.list, {});
-  const donors = useQuery(api.queries.donors.list, {});
+  const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
   const actions = useDonorPledgeActions({ showNotification: notify });
 
   if (
     pledges === undefined ||
     transactions === undefined ||
-    donors === undefined
+    (canViewDonors && donors === undefined)
   ) {
     return financialDataLoader;
   }
@@ -145,7 +156,7 @@ const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
       funds={funds}
       pledges={pledges}
       transactions={transactions}
-      donors={donors}
+      donors={donors ?? []}
       onAddPledge={actions.handleAddPledge}
       onUpdatePledge={actions.handleUpdatePledge}
       onBulkAddPledges={actions.handleBulkAddPledges}
@@ -181,8 +192,15 @@ const SettingsRoute: React.FC<RouteContext> = ({
   funds,
   categories,
 }) => {
-  const users = useQuery(api.queries.users.listByOrganization, {});
-  const pendingInvitations = useQuery(api.queries.invitations.listPending, {});
+  const canManageSettings = currentUser.role === "Admin" || currentUser.role === "Finance Team";
+  const users = useQuery(
+    api.queries.users.listByOrganization,
+    canManageSettings ? {} : "skip"
+  );
+  const pendingInvitations = useQuery(
+    api.queries.invitations.listPending,
+    canManageSettings ? {} : "skip"
+  );
   const adminActions = useOrganizationAdminActions({
     showNotification: notify,
   });
@@ -191,18 +209,18 @@ const SettingsRoute: React.FC<RouteContext> = ({
     showNotification: notify,
   });
 
-  if (users === undefined || pendingInvitations === undefined) {
+  if (canManageSettings && (users === undefined || pendingInvitations === undefined)) {
     return <LoadingSpinner message="Loading settings data..." />;
   }
 
   return (
     <Settings
       currentUser={currentUser}
-      users={users}
+      users={users ?? []}
       categories={categories.map((category) => category.name)}
       funds={funds}
       churchDetails={churchDetails}
-      pendingInvitations={pendingInvitations as Invitation[]}
+      pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
       onUpdateUserRole={adminActions.handleUpdateUserRole}
       onAddCategory={fundCategoryActions.handleAddCategory}
       onRemoveCategory={fundCategoryActions.handleRemoveCategory}

@@ -36,7 +36,7 @@ export const calculateDefaultSyncRange = ({
   today,
   lastSyncedThrough,
 }: CalculateSyncRangeArgs) => ({
-  dateFrom: lastSyncedThrough ? addDays(lastSyncedThrough, 1) : addDays(today, -30),
+  dateFrom: lastSyncedThrough ? addDays(lastSyncedThrough, -7) : addDays(today, -30),
   dateTo: today,
 });
 

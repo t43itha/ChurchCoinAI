@@ -47,9 +47,18 @@ const RULES: RuleDefinition[] = [
     reason: "Giving reference matched tithe or first fruit.",
   },
   {
+    id: "thanksgiving",
+    transactionType: "Income",
+    pattern: /\bthanksgivings?\b/,
+    category: "Thanksgiving",
+    confidence: 0.9,
+    giftAidEligible: true,
+    reason: "Giving reference matched thanksgiving.",
+  },
+  {
     id: "offerings",
     transactionType: "Income",
-    pattern: /\b(?:offering|offerings|thanksgiving|donation)\b/,
+    pattern: /\b(?:offering|offerings|donation)\b/,
     category: "Offerings",
     confidence: 0.86,
     giftAidEligible: true,
@@ -57,13 +66,28 @@ const RULES: RuleDefinition[] = [
   },
 ];
 
+const selectFund = (description: string, funds: FundLike[]) => {
+  const normalized = normalizeDescription(description);
+  const mentioned = funds
+    .filter((fund) => {
+      const fundName = normalizeDescription(fund.name);
+      return fundName.length > 0 && normalized.includes(fundName);
+    })
+    .sort((left, right) => right.name.length - left.name.length);
+  if (mentioned[0]) return mentioned[0];
+  return (
+    funds.find((fund) => normalizeDescription(fund.name) === "general fund") ??
+    null
+  );
+};
+
 export const applyDeterministicRules = (
   transaction: CategorizationInput,
   categories: CategoryLike[],
   funds: FundLike[]
 ): CategorizationSuggestion | null => {
   const normalized = normalizeDescription(transaction.description);
-  const defaultFund = funds[0];
+  const defaultFund = selectFund(transaction.description, funds);
   if (!defaultFund) return null;
 
   for (const rule of RULES) {

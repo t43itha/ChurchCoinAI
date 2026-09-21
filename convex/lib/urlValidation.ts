@@ -14,10 +14,12 @@ export const validateRedirectUrl = (
     throw new Error(`${fieldName} must use HTTP or HTTPS`);
   }
 
-  if (appBaseUrl) {
-    const allowedHost = new URL(appBaseUrl).host;
-    if (parsed.host !== allowedHost) {
-      throw new Error(`${fieldName} host is not allowed`);
-    }
+  if (!appBaseUrl) {
+    throw new Error("APP_BASE_URL is not configured");
+  }
+
+  const allowedHost = new URL(appBaseUrl).host;
+  if (parsed.host !== allowedHost) {
+    throw new Error(`${fieldName} host is not allowed`);
   }
 };

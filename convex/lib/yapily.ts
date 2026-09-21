@@ -44,6 +44,7 @@ export type YapilyTransactionLike = {
   transactionAmount?: unknown;
   reference?: unknown;
   description?: unknown;
+  status?: unknown;
   transactionInformation?: unknown;
   enrichment?: unknown;
 };

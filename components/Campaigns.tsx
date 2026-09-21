@@ -4,6 +4,7 @@ import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search, ChevronDown } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { sumReportableIncome } from '../lib/reportableTransactions';
 
 interface CampaignsProps {
@@ -91,7 +92,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     const [pledgeForm, setPledgeForm] = useState<Partial<Pledge>>({
         frequency: 'Monthly',
         status: 'Active',
-        startDate: new Date().toISOString().split('T')[0]
+        startDate: formatLocalDateInputValue(new Date())
     });
 
     // CSV Import State
@@ -201,7 +202,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             // Simple robust check for UK international format
             const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
             const url = `https://wa.me/${formatted}?text=${encodeURIComponent(thankYouModal.text)}`;
-            window.open(url, '_blank');
+            window.open(url, '_blank', 'noopener');
         } else {
             notify("Notice", "No phone number found for this donor.");
         }
@@ -213,7 +214,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     };
 
     const handleAddPledgeClick = () => {
-        setPledgeForm({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+        setPledgeForm({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
         setShowAddModal(true);
     }
 
@@ -242,7 +243,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 amount: Number(pledgeForm.amount),
                 fundId: currentFundId,
                 frequency: (pledgeForm.frequency as PledgeCreateInput["frequency"]) || 'Monthly',
-                startDate: pledgeForm.startDate || new Date().toISOString().split('T')[0],
+                startDate: pledgeForm.startDate || formatLocalDateInputValue(new Date()),
                 endDate: pledgeForm.endDate,
                 status: (pledgeForm.status as PledgeCreateInput["status"]) || 'Active'
             };
@@ -447,7 +448,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 amount,
                 fundId: currentFundId,
                 frequency,
-                startDate: new Date().toISOString().split('T')[0],
+                startDate: formatLocalDateInputValue(new Date()),
                 status: 'Active'
             });
         });

@@ -90,7 +90,11 @@ export const byDonor = query({
       .order("desc")
       .collect();
 
-    return filterReportableTransactions(transactions);
+    return filterReportableTransactions(
+      transactions.filter(
+        (transaction) => transaction.organizationId === user.organizationId
+      )
+    );
   },
 });
 
@@ -303,14 +307,14 @@ export const listUnlinkedIncome = query({
 
 // Get monthly summary (for dashboard chart)
 export const monthlySummary = query({
-  args: { months: v.optional(v.number()) },
+  args: { months: v.optional(v.number()), today: v.string() },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     const monthsBack = args.months ?? 6;
-
-    // Calculate start date
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1, 1);
+    const [yearText, monthText] = args.today.split("-");
+    const startDate = new Date(
+      Date.UTC(Number(yearText), Number(monthText) - monthsBack, 1)
+    );
     const startDateStr = startDate.toISOString().split("T")[0];
 
     const transactions = await ctx.db

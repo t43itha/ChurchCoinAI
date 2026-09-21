@@ -4,23 +4,8 @@ import { internal } from "../_generated/api";
 import { getIdentity, requireAuth, isAdmin } from "../lib/auth";
 import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
-
-// Default categories for new organizations
-const DEFAULT_CATEGORIES = [
-  "Tithe",
-  "Donations",
-  "Grants",
-  "Fundraising",
-  "Investment Income",
-  "Gift Aid",
-  "Utilities",
-  "Salaries",
-  "Maintenance",
-  "Ministry",
-  "Mission Giving",
-  "Administration",
-  "Sundries",
-];
+import { getRCICategorySeedData } from "../../constants/rciCategories";
+import { seedOrganizationCategories } from "../lib/categoryIntegrity";
 
 const DEMO_SEED_VERSION = "uk-church-v1";
 
@@ -29,15 +14,7 @@ async function seedDemoOrganization(
   organizationId: any,
   now: number
 ) {
-  const categoryIds = new Map<string, any>();
-  for (const categoryName of DEFAULT_CATEGORIES) {
-    const categoryId = await ctx.db.insert("categories", {
-      organizationId,
-      name: categoryName,
-      createdAt: now,
-    });
-    categoryIds.set(categoryName, categoryId);
-  }
+  await seedOrganizationCategories(ctx, organizationId, now);
 
   const generalFundId = await ctx.db.insert("funds", {
     organizationId,
@@ -141,7 +118,7 @@ async function seedDemoOrganization(
       description: `Standing order — ${donorDefinitions[donorIndex][0]}`,
       amount: monthlyIncome,
       type: "Income",
-      category: "Tithe",
+      category: "Tithes & First Fruits",
       fundId: generalFundId,
       isReconciled: month > 0,
       isGiftAidEligible: true,
@@ -176,7 +153,7 @@ async function seedDemoOrganization(
       description: month % 2 === 0 ? "Building appeal gift" : "Youth activity costs",
       amount: month % 2 === 0 ? 650 + month * 20 : 180 + month * 5,
       type: month % 2 === 0 ? "Income" : "Expenditure",
-      category: month % 2 === 0 ? "Donations" : "Ministry",
+      category: month % 2 === 0 ? "Offerings" : "Church Provisions",
       fundId: month % 2 === 0 ? buildingFundId : youthFundId,
       isReconciled: month > 1,
       isGiftAidEligible: month % 2 === 0,
@@ -191,7 +168,7 @@ async function seedDemoOrganization(
 
   return {
     funds: 3,
-    categories: categoryIds.size,
+    categories: getRCICategorySeedData().length,
     donors: donorIds.length,
     pledges: pledgeIds.length,
     transactions: transactionCount,
@@ -275,14 +252,7 @@ export const create = mutation({
       createdAt: now,
     });
 
-    // Create default categories
-    for (const categoryName of DEFAULT_CATEGORIES) {
-      await ctx.db.insert("categories", {
-        organizationId,
-        name: categoryName,
-        createdAt: now,
-      });
-    }
+    await seedOrganizationCategories(ctx, organizationId, now);
 
     // Create default General Fund
     await ctx.db.insert("funds", {

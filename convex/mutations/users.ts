@@ -144,7 +144,24 @@ export const updateProfile = mutation({
 
     const updates: Record<string, any> = {};
     if (args.name !== undefined) updates.name = args.name;
-    if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
+    if (args.avatarUrl !== undefined) {
+      const avatarUrl = args.avatarUrl.trim();
+      if (avatarUrl.length > 2048) {
+        throw new Error("Avatar URL is too long");
+      }
+      if (avatarUrl) {
+        let parsed: URL;
+        try {
+          parsed = new URL(avatarUrl);
+        } catch {
+          throw new Error("Avatar URL is not valid");
+        }
+        if (!["https:", "http:"].includes(parsed.protocol)) {
+          throw new Error("Avatar URL must use HTTP or HTTPS");
+        }
+      }
+      updates.avatarUrl = avatarUrl || undefined;
+    }
 
     await ctx.db.patch(user._id, updates);
 

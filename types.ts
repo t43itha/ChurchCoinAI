@@ -63,7 +63,7 @@ export type InvitationStatus = 'pending' | 'accepted' | 'expired';
 
 export interface AppUser {
   _id: string;
-  clerkId: string;
+  clerkId?: string;
   name: string;
   email: string;
   role: UserRole;

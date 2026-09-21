@@ -166,6 +166,13 @@ export const updateAccountFundMapping = mutation({
       throw new Error("Access denied");
     }
 
+    if (args.fundId) {
+      const fund = await ctx.db.get(args.fundId);
+      if (!fund || fund.organizationId !== user.organizationId) {
+        throw new Error("Invalid fund");
+      }
+    }
+
     // Update the fund mapping for the specific account
     const updatedAccounts = item.accounts.map((account) => {
       if (account.accountId === args.accountId) {

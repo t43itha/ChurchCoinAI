@@ -227,6 +227,7 @@ export const createPortalSession = action({
     if (org?.accessMode === "demo" || org?.dataMode === "synthetic") {
       throw new Error("Demo organizations do not use Stripe billing");
     }
+    validateRedirectUrl(args.returnUrl, "returnUrl", process.env.APP_BASE_URL);
     if (!org?.stripeCustomerId) {
       throw new Error("No active subscription found");
     }

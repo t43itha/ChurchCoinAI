@@ -7,9 +7,9 @@ import {
   calculateReconciliationSummary,
   normalizeBankTransactionSplits,
 } from "../../lib/cashChequeBanking";
-import { sumReportableIncome } from "../../lib/reportableTransactions";
+import { refreshPledgeStatus as refreshSharedPledgeStatus } from "../lib/pledgeStatus";
 import { isActiveTransaction } from "../../lib/voidedTransactions";
-import { meetsMoneyTarget, roundMoney } from "../lib/money";
+import { roundMoney } from "../lib/money";
 
 type BankingMedium = "cash" | "cheque" | "mixed";
 type VarianceType =
@@ -237,27 +237,7 @@ async function refreshPledgeStatus(
   organizationId: Id<"organizations">,
   pledgeId: Id<"pledges">
 ) {
-  const pledge = await ctx.db.get(pledgeId);
-  if (
-    !pledge ||
-    pledge.organizationId !== organizationId ||
-    (pledge.status !== "Active" && pledge.status !== "Completed")
-  ) {
-    return;
-  }
-
-  const linkedTransactions = await ctx.db
-    .query("transactions")
-    .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
-    .collect();
-  const totalReceived = sumReportableIncome(linkedTransactions);
-  const nextStatus = meetsMoneyTarget(totalReceived, pledge.amount)
-    ? "Completed"
-    : "Active";
-
-  if (pledge.status !== nextStatus) {
-    await ctx.db.patch(pledgeId, { status: nextStatus });
-  }
+  await refreshSharedPledgeStatus(ctx, pledgeId, organizationId);
 }
 
 async function calculateCollectionBankingState(
@@ -589,11 +569,23 @@ export const complete = mutation({
 
     for (const transaction of currentBankDeposits) {
       if (!finalBankTransactionIds.has(transaction._id)) {
+        const snapshot = reconciliation.bankTransactionSplits.find(
+          (split) => split.transactionId === transaction._id
+        );
         await ctx.db.patch(transaction._id, {
           cashBankingReconciliationId: undefined,
           cashBankingRole: undefined,
           bankingMedium: undefined,
           isReconciled: false,
+          ...(snapshot?.previousCategory !== undefined
+            ? {
+                category: snapshot.previousCategory,
+                donorId: snapshot.previousDonorId,
+                donorName: snapshot.previousDonorName,
+                pledgeId: snapshot.previousPledgeId,
+                isGiftAidEligible: snapshot.previousGiftAidEligible ?? false,
+              }
+            : {}),
         });
       }
     }
@@ -605,7 +597,23 @@ export const complete = mutation({
       }
     }
 
+    const snapshottedSplits = [];
     for (const split of reconciliation.bankTransactionSplits) {
+      const transaction = bankTransactions.find(
+        (candidate) => candidate._id === split.transactionId
+      );
+      const snapshotted =
+        split.previousCategory !== undefined
+          ? split
+          : {
+              ...split,
+              previousCategory: transaction?.category ?? "",
+              previousDonorId: transaction?.donorId,
+              previousDonorName: transaction?.donorName,
+              previousPledgeId: transaction?.pledgeId ?? null,
+              previousGiftAidEligible: transaction?.isGiftAidEligible,
+            };
+      snapshottedSplits.push(snapshotted);
       await ctx.db.patch(split.transactionId, {
         category: "Cash/cheque banking",
         cashBankingReconciliationId: args.reconciliationId,
@@ -618,6 +626,9 @@ export const complete = mutation({
         isReconciled: true,
       });
     }
+    await ctx.db.patch(args.reconciliationId, {
+      bankTransactionSplits: snapshottedSplits,
+    });
 
     for (const pledgeId of affectedPledgeIds) {
       await refreshPledgeStatus(ctx, user.organizationId, pledgeId);
@@ -762,6 +773,25 @@ export const reopen = mutation({
             : remainingCashAmount === 0 && remainingChequeAmount === 0
               ? "banked"
               : "partially_banked",
+      });
+    }
+
+    for (const split of reconciliation.bankTransactionSplits) {
+      const restoreCategory = split.previousCategory !== undefined;
+      await ctx.db.patch(split.transactionId, {
+        ...(restoreCategory
+          ? {
+              category: split.previousCategory,
+              donorId: split.previousDonorId,
+              donorName: split.previousDonorName,
+              pledgeId: split.previousPledgeId,
+              isGiftAidEligible: split.previousGiftAidEligible ?? false,
+            }
+          : {}),
+        cashBankingReconciliationId: undefined,
+        cashBankingRole: undefined,
+        bankingMedium: undefined,
+        isReconciled: false,
       });
     }
 

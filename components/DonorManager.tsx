@@ -5,6 +5,7 @@ import { Id } from '../convex/_generated/dataModel';
 import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { filterReportableTransactions, sumReportableIncome } from '../lib/reportableTransactions';
 
 // WhatsApp message template types
@@ -125,7 +126,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   // Forms state
   const [formData, setFormData] = useState<Partial<Donor>>({});
   const [newDonorData, setNewDonorData] = useState<Partial<Donor>>({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
-  const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+  const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
 
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
   const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
@@ -178,7 +179,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     };
   }, [donors, transactions, donorStats]);
 
-  // After all hooks (Rules of Hooks) — read-only roles see a notice instead
+  // After all hooks (Rules of Hooks) — Guests cannot view donor records.
   if (!canView) {
       return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
@@ -327,7 +328,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     if (!selectedDonor?.phone || !generatedMessage) return;
     const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
     const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
-    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(generatedMessage)}`, '_blank');
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(generatedMessage)}`, '_blank', 'noopener');
   };
 
   const handleEditClick = () => { if (selectedDonor && canEdit) { setFormData(selectedDonor); setIsEditing(true); } };
@@ -358,7 +359,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     if (!selectedDonor) return null;
 
     let filteredPledges = donorPledges;
-    let filteredTransactions = donorTransactions;
+    let filteredTransactions = reportableDonorTransactions;
     let logoOverride: string | undefined;
     let campaignName: string | undefined;
 
@@ -437,6 +438,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       if (didSave) setShowExportModal(false);
     } catch (e) {
       console.error('PDF export failed:', e);
+      notify("Error", e instanceof Error ? e.message : "Could not create the donor schedule.");
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -601,13 +603,13 @@ ${churchDetails?.name || 'Church'} Finance Team
             amount: Number(newPledgeData.amount),
             fundId: newPledgeData.fundId,
             frequency: newPledgeData.frequency as any,
-            startDate: newPledgeData.startDate || new Date().toISOString().split('T')[0],
+            startDate: newPledgeData.startDate || formatLocalDateInputValue(new Date()),
             endDate: newPledgeData.endDate,
             status: 'Active'
         };
         onAddPledge(pledge);
         setShowAddPledgeModal(false);
-        setNewPledgeData({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+        setNewPledgeData({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
     }
   };
 

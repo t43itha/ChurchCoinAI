@@ -89,6 +89,7 @@ export const update = mutation({
         .collect();
 
       for (const t of transactionsByDonorId) {
+        if (t.organizationId !== user.organizationId) continue;
         await ctx.db.patch(t._id, { donorName: newName });
       }
 
@@ -113,6 +114,7 @@ export const update = mutation({
         .collect();
 
       for (const p of pledgesByDonorId) {
+        if (p.organizationId !== user.organizationId) continue;
         await ctx.db.patch(p._id, { donorName: newName });
       }
 
@@ -481,6 +483,7 @@ export const merge = mutation({
         .collect();
 
       for (const t of transactions) {
+        if (t.organizationId !== user.organizationId) continue;
         await ctx.db.patch(t._id, {
           donorId: args.primaryDonorId,
           donorName: primaryDonor.name,
@@ -517,6 +520,7 @@ export const merge = mutation({
         .collect();
 
       for (const p of pledges) {
+        if (p.organizationId !== user.organizationId) continue;
         await ctx.db.patch(p._id, {
           donorId: args.primaryDonorId,
           donorName: primaryDonor.name,
@@ -637,13 +641,13 @@ export const findDuplicates = query({
                 .query("transactions")
                 .withIndex("by_donor", (q) => q.eq("donorId", d._id))
                 .collect()
-            ).length;
+            ).filter((transaction) => transaction.organizationId === d.organizationId).length;
             const pledgeCount = (
               await ctx.db
                 .query("pledges")
                 .withIndex("by_donor", (q) => q.eq("donorId", d._id))
                 .collect()
-            ).length;
+            ).filter((pledge) => pledge.organizationId === d.organizationId).length;
             return {
               donor: d,
               score: txCount + pledgeCount * 2, // Weight pledges more
@@ -709,6 +713,7 @@ export const remove = mutation({
       .collect();
 
     for (const t of transactions) {
+      if (t.organizationId !== user.organizationId) continue;
       await ctx.db.patch(t._id, { donorId: undefined });
     }
 
@@ -718,6 +723,7 @@ export const remove = mutation({
       .collect();
 
     for (const p of pledges) {
+      if (p.organizationId !== user.organizationId) continue;
       await ctx.db.patch(p._id, { donorId: undefined });
     }
 

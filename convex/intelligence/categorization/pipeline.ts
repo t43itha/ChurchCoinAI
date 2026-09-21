@@ -54,23 +54,6 @@ const unresolvedSuggestion = (
   ],
 });
 
-const hasMatchingRawDescription = (
-  rawSuggestion: Record<string, unknown>,
-  transaction: CategorizationInput
-): boolean => {
-  if (
-    typeof rawSuggestion.description !== "string" ||
-    !rawSuggestion.description.trim()
-  ) {
-    return false;
-  }
-
-  return (
-    normalizeDescription(rawSuggestion.description) ===
-    normalizeDescription(transaction.description)
-  );
-};
-
 export const categorizeWithoutExternalAI = async (
   ctx: PipelineCtx,
   organizationId: Id<"organizations">,
@@ -137,16 +120,20 @@ export const mergeAIFallback = (
   funds: FundLike[],
   predictionSource: AIPredictionSource
 ): CategorizationSuggestion[] => {
-  let aiIndex = 0;
+  const queues = new Map<string, Record<string, unknown>[]>();
+  for (const rawSuggestion of rawAISuggestions) {
+    const description =
+      typeof rawSuggestion.description === "string"
+        ? normalizeDescription(rawSuggestion.description)
+        : "";
+    if (!description) continue;
+    const queue = queues.get(description) ?? [];
+    queue.push(rawSuggestion);
+    queues.set(description, queue);
+  }
 
   return currentSuggestions.map((suggestion, index) => {
     if (suggestion.predictionSource !== "none") {
-      return suggestion;
-    }
-
-    const rawSuggestion = rawAISuggestions[aiIndex];
-    aiIndex += 1;
-    if (!rawSuggestion) {
       return suggestion;
     }
 
@@ -155,7 +142,10 @@ export const mergeAIFallback = (
       return suggestion;
     }
 
-    if (!hasMatchingRawDescription(rawSuggestion, transaction)) {
+    const rawSuggestion = queues
+      .get(normalizeDescription(transaction.description))
+      ?.shift();
+    if (!rawSuggestion) {
       return suggestion;
     }
 
