@@ -168,6 +168,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isFetchingMoreBankTransactions, setIsFetchingMoreBankTransactions] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const bulkCategoryNames = useMemo(() => {
+    const selectedTypes = new Set(
+      transactions
+        .filter((transaction) => selectedIds.has(transaction._id))
+        .map((transaction) => transaction.type)
+    );
+    if (selectedTypes.size !== 1) {
+      return categories
+        .filter((category) => !category.transactionType)
+        .map((category) => category.name);
+    }
+    const type = [...selectedTypes][0];
+    return categories
+      .filter(
+        (category) =>
+          !category.transactionType || category.transactionType === type
+      )
+      .map((category) => category.name);
+  }, [categories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
@@ -439,7 +458,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           setSelectedIds(new Set());
       } catch (error) {
           console.error("Bulk update failed:", error);
-          notify("Error", "Failed to update transactions.");
+          notify(
+            "Error",
+            error instanceof Error ? error.message : "Failed to update transactions."
+          );
       }
   };
 
@@ -1741,12 +1763,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   </button>
                   {/* Inline Category Dropdown */}
                   <select
-                      className="bg-white/[0.07] text-white text-xs font-semibold rounded-lg px-2.5 py-[7px] border border-white/[0.16] cursor-pointer outline-none"
+                      className="bg-white/[0.07] text-white text-xs font-semibold rounded-lg px-2.5 py-[7px] border border-white/[0.16] cursor-pointer outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       value=""
+                      disabled={bulkCategoryNames.length === 0}
+                      title={bulkCategoryNames.length === 0 ? "Select income or expenditure on its own to change category" : undefined}
                       onChange={(e) => e.target.value && executeBulkUpdate({ category: e.target.value })}
                   >
                       <option value="" className="text-ink">Category…</option>
-                      {categoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
+                      {bulkCategoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
                   </select>
                   {/* Inline Fund Dropdown */}
                   <select

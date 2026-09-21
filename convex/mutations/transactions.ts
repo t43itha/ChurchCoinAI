@@ -535,14 +535,23 @@ export const bulkUpdate = mutation({
     }
 
     let updatedCount = 0;
+    const categories =
+      args.updates.category !== undefined
+        ? await ensureTypedCategories(ctx, user.organizationId)
+        : [];
 
     for (const transactionId of args.transactionIds) {
       const transaction = await ctx.db.get(transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
         await assertNotLockedByReconciliation(ctx, transaction);
         const updates: Record<string, any> = {};
-        if (args.updates.category !== undefined)
-          updates.category = args.updates.category;
+        if (args.updates.category !== undefined) {
+          updates.category = requireCanonicalCategory(
+            categories,
+            args.updates.category,
+            transaction.type
+          );
+        }
         if (args.updates.fundId !== undefined)
           updates.fundId = args.updates.fundId;
         if (args.updates.isGiftAidEligible !== undefined)
