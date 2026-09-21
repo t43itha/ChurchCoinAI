@@ -31,6 +31,9 @@ export const create = mutation({
     if (existing) {
       throw new Error(`Category "${args.name}" already exists`);
     }
+    if (!args.transactionType) {
+      throw new Error("Choose whether this category is income or expenditure");
+    }
 
     const categoryId = await ctx.db.insert("categories", {
       organizationId: user.organizationId,

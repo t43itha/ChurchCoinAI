@@ -211,6 +211,9 @@ export default defineSchema({
       v.literal("Completed"),
       v.literal("Cancelled")
     ),
+    // Set when a person marks the pledge completed. Automatic completion
+    // leaves this unset so a later shortfall can reopen it.
+    completionOverride: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])

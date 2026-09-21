@@ -1,4 +1,4 @@
-import { roundMoney } from "../convex/lib/money";
+import { roundMoney, meetsMoneyTarget } from "../convex/lib/money";
 
 export type PledgeFrequency = "One-off" | "Weekly" | "Monthly" | "Annual";
 
@@ -59,4 +59,24 @@ export const pledgeFulfillmentTarget = (pledge: {
     pledge.amount *
       countPledgeInstalments(pledge.frequency, pledge.startDate, pledge.endDate)
   );
+};
+
+// Null means a receipt must not change the stored status: the pledge is
+// cancelled, explicitly completed, or open-ended.
+export const automaticPledgeStatus = (
+  pledge: {
+    status: "Active" | "Completed" | "Cancelled";
+    completionOverride?: boolean;
+    amount: number;
+    frequency: PledgeFrequency;
+    startDate: string;
+    endDate?: string;
+  },
+  totalReceived: number
+): "Active" | "Completed" | null => {
+  if (pledge.status === "Cancelled") return null;
+  if (pledge.completionOverride && pledge.status === "Completed") return null;
+  const target = pledgeFulfillmentTarget(pledge);
+  if (target === null) return null;
+  return meetsMoneyTarget(totalReceived, target) ? "Completed" : "Active";
 };

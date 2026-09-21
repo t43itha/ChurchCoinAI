@@ -80,7 +80,10 @@ interface SettingsProps {
   churchDetails: ChurchDetails;
   pendingInvitations: Invitation[];
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
-  onAddCategory: (category: string) => void;
+  onAddCategory: (
+    category: string,
+    transactionType: "Income" | "Expenditure"
+  ) => void;
   onRemoveCategory: (category: string) => void;
   onInviteUser: (invitation: InvitationCreateInput) => Promise<InvitationSendResult | null>;
   onResendInvitation: (invitationId: string) => Promise<InvitationSendResult | null>;
@@ -151,6 +154,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   // Category State
   const [newCategory, setNewCategory] = useState('');
+  const [newCategoryType, setNewCategoryType] = useState<'Income' | 'Expenditure'>('Income');
 
   // Fund State
   const [showFundModal, setShowFundModal] = useState(false);
@@ -174,7 +178,7 @@ const Settings: React.FC<SettingsProps> = ({
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (newCategory.trim()) {
-      onAddCategory(newCategory.trim());
+      onAddCategory(newCategory.trim(), newCategoryType);
       setNewCategory('');
     }
   };
@@ -814,6 +818,15 @@ ${currentUser.name}`;
                             placeholder="Add a category…"
                             className="flex-1 max-w-xs h-10 px-3.5 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none focus:ring-1 focus:ring-ink transition-shadow"
                         />
+                        <select
+                            aria-label="Category type"
+                            value={newCategoryType}
+                            onChange={(e) => setNewCategoryType(e.target.value as 'Income' | 'Expenditure')}
+                            className="h-10 px-3 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none"
+                        >
+                            <option value="Income">Income</option>
+                            <option value="Expenditure">Expenditure</option>
+                        </select>
                         <button
                             type="submit"
                             disabled={!newCategory.trim()}

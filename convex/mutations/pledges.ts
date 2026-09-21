@@ -52,6 +52,7 @@ export const create = mutation({
       startDate: args.startDate,
       endDate: args.endDate,
       status: args.status ?? "Active",
+      completionOverride: args.status === "Completed" ? true : undefined,
       createdAt: Date.now(),
     });
 
@@ -112,7 +113,10 @@ export const update = mutation({
     if (args.frequency !== undefined) updates.frequency = args.frequency;
     if (args.startDate !== undefined) updates.startDate = args.startDate;
     if (args.endDate !== undefined) updates.endDate = args.endDate;
-    if (args.status !== undefined) updates.status = args.status;
+    if (args.status !== undefined) {
+      updates.status = args.status;
+      updates.completionOverride = args.status === "Completed";
+    }
 
     await ctx.db.patch(args.pledgeId, updates);
 
@@ -197,6 +201,7 @@ export const bulkCreate = mutation({
         startDate: pledge.startDate,
         endDate: pledge.endDate,
         status: pledge.status ?? "Active",
+        completionOverride: pledge.status === "Completed" ? true : undefined,
         createdAt: Date.now(),
       });
 

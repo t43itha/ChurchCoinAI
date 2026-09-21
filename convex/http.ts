@@ -330,6 +330,7 @@ http.route({
               stripeSubscriptionId: subscriptionId,
               status: "past_due",
               eventTimestamp: event.created * 1000,
+              source: "invoice",
             });
           }
           break;

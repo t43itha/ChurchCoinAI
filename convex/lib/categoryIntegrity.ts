@@ -34,30 +34,34 @@ export async function ensureTypedCategories(
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .collect();
 
-  if (existing.some((category) => category.transactionType)) return existing;
-
   const now = Date.now();
+  let changed = false;
   for (const seed of getRCICategorySeedData()) {
     const match = existing.find(
       (category) => category.name.trim().toLowerCase() === seed.name.toLowerCase()
     );
     if (match) {
+      if (match.transactionType) continue;
+      changed = true;
       await ctx.db.patch(match._id, {
         mainCategory: seed.mainCategory,
         transactionType: seed.transactionType,
         displayOrder: seed.displayOrder,
       });
-    } else {
-      await ctx.db.insert("categories", {
-        organizationId,
-        name: seed.name,
-        mainCategory: seed.mainCategory,
-        transactionType: seed.transactionType,
-        displayOrder: seed.displayOrder,
-        createdAt: now,
-      });
+      continue;
     }
+    changed = true;
+    await ctx.db.insert("categories", {
+      organizationId,
+      name: seed.name,
+      mainCategory: seed.mainCategory,
+      transactionType: seed.transactionType,
+      displayOrder: seed.displayOrder,
+      createdAt: now,
+    });
   }
+
+  if (!changed) return existing;
 
   return await ctx.db
     .query("categories")

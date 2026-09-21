@@ -668,6 +668,8 @@ export const linkToPledge = mutation({
       throw new Error("Pledge not found");
     }
 
+    await assertNotLockedByReconciliation(ctx, transaction);
+
     const previousPledgeId = transaction.pledgeId;
     await ctx.db.patch(args.transactionId, { pledgeId: args.pledgeId });
     if (previousPledgeId && previousPledgeId !== args.pledgeId) {
@@ -697,6 +699,8 @@ export const unlinkFromPledge = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
+
+    await assertNotLockedByReconciliation(ctx, transaction);
 
     const oldPledgeId = transaction.pledgeId;
     if (!oldPledgeId) {

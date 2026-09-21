@@ -124,6 +124,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
+  const typedCategoryNames = categories
+    .filter((category) => category.transactionType)
+    .map((category) => category.name);
+  const categoryNamesFor = (type?: string) =>
+    categories
+      .filter((category) => category.transactionType === type)
+      .map((category) => category.name);
   const fundNamesById = useMemo(
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
     [funds]
@@ -1739,7 +1746,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       onChange={(e) => e.target.value && executeBulkUpdate({ category: e.target.value })}
                   >
                       <option value="" className="text-ink">Category…</option>
-                      {categoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
+                      {typedCategoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
                   </select>
                   {/* Inline Fund Dropdown */}
                   <select
@@ -2021,7 +2028,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+                                {categoryNamesFor(newTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
@@ -2041,7 +2048,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
                              <select
                                 value={newTransaction.type}
-                                onChange={(e) => setNewTransaction({...newTransaction, type: e.target.value as TransactionType})}
+                                onChange={(e) => {
+                                    const type = e.target.value as TransactionType;
+                                    const categoryStillValid = categories.some((category) => category.name === newTransaction.category && category.transactionType === type);
+                                    setNewTransaction({
+                                        ...newTransaction,
+                                        type,
+                                        category: categoryStillValid ? newTransaction.category : '',
+                                    });
+                                }}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="Income">Income</option>
@@ -2194,7 +2209,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
-                                {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+                                {categoryNamesFor(editingTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
@@ -2214,7 +2229,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
                              <select
                                 value={editingTransaction.type}
-                                onChange={(e) => setEditingTransaction({...editingTransaction, type: e.target.value as TransactionType})}
+                                onChange={(e) => {
+                                    const type = e.target.value as TransactionType;
+                                    const categoryStillValid = categories.some((category) => category.name === editingTransaction.category && category.transactionType === type);
+                                    setEditingTransaction({
+                                        ...editingTransaction,
+                                        type,
+                                        category: categoryStillValid ? editingTransaction.category : '',
+                                    });
+                                }}
                                 className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
                             >
                                 <option value="Income">Income</option>
@@ -2448,7 +2471,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     onChange={(event) => updatePendingTransactionAt(index, { category: event.target.value })}
                                   >
                                     <option value="">Select...</option>
-                                    {categoryNames.map((category) => <option key={category} value={category}>{category}</option>)}
+                                    {categoryNamesFor(transaction.type).map((category) => <option key={category} value={category}>{category}</option>)}
                                   </select>
                                 </label>
                                 <label className="min-w-0">
@@ -2514,7 +2537,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                       <div className="truncate" title={t.description}>{t.description}</div>
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categories.filter((category) => !category.transactionType || category.transactionType === t.type).map((category) => <option key={category._id} value={category.name}>{category.name}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categories.filter((category) => category.transactionType === t.type).map((category) => <option key={category._id} value={category.name}>{category.name}</option>)}</select></td>
                                     <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (

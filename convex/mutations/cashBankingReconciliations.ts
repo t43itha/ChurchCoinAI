@@ -577,7 +577,7 @@ export const complete = mutation({
           cashBankingRole: undefined,
           bankingMedium: undefined,
           isReconciled: false,
-          ...(snapshot?.previousCategory
+          ...(snapshot?.previousCategory !== undefined
             ? {
                 category: snapshot.previousCategory,
                 donorId: snapshot.previousDonorId,
@@ -607,7 +607,7 @@ export const complete = mutation({
           ? split
           : {
               ...split,
-              previousCategory: transaction?.category,
+              previousCategory: transaction?.category ?? "",
               previousDonorId: transaction?.donorId,
               previousDonorName: transaction?.donorName,
               previousPledgeId: transaction?.pledgeId ?? null,
@@ -777,13 +777,17 @@ export const reopen = mutation({
     }
 
     for (const split of reconciliation.bankTransactionSplits) {
-      if (!split.previousCategory) continue;
+      const restoreCategory = split.previousCategory !== undefined;
       await ctx.db.patch(split.transactionId, {
-        category: split.previousCategory,
-        donorId: split.previousDonorId,
-        donorName: split.previousDonorName,
-        pledgeId: split.previousPledgeId,
-        isGiftAidEligible: split.previousGiftAidEligible ?? false,
+        ...(restoreCategory
+          ? {
+              category: split.previousCategory,
+              donorId: split.previousDonorId,
+              donorName: split.previousDonorName,
+              pledgeId: split.previousPledgeId,
+              isGiftAidEligible: split.previousGiftAidEligible ?? false,
+            }
+          : {}),
         cashBankingReconciliationId: undefined,
         cashBankingRole: undefined,
         bankingMedium: undefined,
