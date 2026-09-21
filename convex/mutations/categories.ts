@@ -14,7 +14,7 @@ export const create = mutation({
   args: {
     name: v.string(),
     mainCategory: v.optional(v.string()),
-    transactionType: v.optional(v.union(v.literal("Income"), v.literal("Expenditure"))),
+    transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
     displayOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -30,9 +30,6 @@ export const create = mutation({
 
     if (existing) {
       throw new Error(`Category "${args.name}" already exists`);
-    }
-    if (!args.transactionType) {
-      throw new Error("Choose whether this category is income or expenditure");
     }
 
     const categoryId = await ctx.db.insert("categories", {
@@ -134,6 +131,7 @@ export const rename = mutation({
 export const bulkCreate = mutation({
   args: {
     names: v.array(v.string()),
+    transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
   },
   handler: async (ctx, args) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -156,6 +154,7 @@ export const bulkCreate = mutation({
         await ctx.db.insert("categories", {
           organizationId: user.organizationId,
           name,
+          transactionType: args.transactionType,
           createdAt: Date.now(),
         });
         created.push(name);

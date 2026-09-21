@@ -133,7 +133,7 @@ export const updateStatus = internalMutation({
     ),
     eventTimestamp: v.optional(v.number()),
     amountPaid: v.optional(v.number()),
-    source: v.optional(v.union(v.literal("invoice"), v.literal("subscription"))),
+    source: v.union(v.literal("invoice"), v.literal("subscription")),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
@@ -161,7 +161,7 @@ export const updateStatus = internalMutation({
             ? subscription.pastDueSince ?? Date.now()
             : undefined,
         lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
-        lastStripeEventSource: args.source ?? subscription.lastStripeEventSource,
+        lastStripeEventSource: args.source,
         updatedAt: Date.now(),
       });
       await markProductTrialConverted(

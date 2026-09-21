@@ -23,8 +23,9 @@ export async function seedOrganizationCategories(
 }
 
 // Older organisations were seeded with names only. The categoriser ignores a
-// category that has no transaction type, so the first write backfills the
-// canonical catalogue without renaming ledger history.
+// category that has no transaction type, so each write backfills canonical
+// rows. User-created categories that still have no type stay usable: the
+// resolver accepts an exact untyped name instead of blocking the write.
 export async function ensureTypedCategories(
   ctx: MutationCtx,
   organizationId: Id<"organizations">

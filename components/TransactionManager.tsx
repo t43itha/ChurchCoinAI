@@ -124,12 +124,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
-  const typedCategoryNames = categories
-    .filter((category) => category.transactionType)
-    .map((category) => category.name);
   const categoryNamesFor = (type?: string) =>
     categories
-      .filter((category) => category.transactionType === type)
+      .filter(
+        (category) =>
+          !category.transactionType || category.transactionType === type
+      )
       .map((category) => category.name);
   const fundNamesById = useMemo(
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
@@ -1746,7 +1746,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       onChange={(e) => e.target.value && executeBulkUpdate({ category: e.target.value })}
                   >
                       <option value="" className="text-ink">Category…</option>
-                      {typedCategoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
+                      {categoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
                   </select>
                   {/* Inline Fund Dropdown */}
                   <select
@@ -2050,7 +2050,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 value={newTransaction.type}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
-                                    const categoryStillValid = categories.some((category) => category.name === newTransaction.category && category.transactionType === type);
+                                    const categoryStillValid = categories.some((category) => category.name === newTransaction.category && (!category.transactionType || category.transactionType === type));
                                     setNewTransaction({
                                         ...newTransaction,
                                         type,
@@ -2231,7 +2231,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 value={editingTransaction.type}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
-                                    const categoryStillValid = categories.some((category) => category.name === editingTransaction.category && category.transactionType === type);
+                                    const categoryStillValid = categories.some((category) => category.name === editingTransaction.category && (!category.transactionType || category.transactionType === type));
                                     setEditingTransaction({
                                         ...editingTransaction,
                                         type,
@@ -2537,7 +2537,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                       <div className="truncate" title={t.description}>{t.description}</div>
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categories.filter((category) => category.transactionType === t.type).map((category) => <option key={category._id} value={category.name}>{category.name}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
                                     <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
