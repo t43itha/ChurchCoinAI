@@ -11,9 +11,15 @@ import {
 } from "../../lib/dashboardKpis";
 
 // Get dashboard summary data (KPIs)
+const monthKey = (isoDate: string, monthOffset = 0) => {
+  const [yearText, monthText] = isoDate.split("-");
+  const shifted = new Date(Date.UTC(Number(yearText), Number(monthText) - 1 + monthOffset, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+};
+
 export const summary = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { today: v.string() },
+  handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
     // Get all funds
@@ -24,18 +30,13 @@ export const summary = query({
       )
       .collect();
 
-    // Current month calculations
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
-
-    // Fetch only YTD transactions (covers current month + last month).
-    const yearStart = `${now.getFullYear()}-01-01`;
+    const currentMonth = monthKey(args.today);
+    const lastMonthStr = monthKey(args.today, -1);
+    const yearStart = `${args.today.slice(0, 4)}-01-01`;
     const transactions = await ctx.db
       .query("transactions")
-      .withIndex("by_organization_date", (q) =>
-        q.eq("organizationId", user.organizationId).gte("date", yearStart)
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
       )
       .collect();
     const reportableTransactions = filterReportableTransactions(transactions);
@@ -131,13 +132,11 @@ export const summary = query({
 
 // Get data for 6-month trend chart
 export const trendData = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { today: v.string() },
+  handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    const now = new Date();
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    const startDate = sixMonthsAgo.toISOString().split("T")[0];
+    const startDate = `${monthKey(args.today, -5)}-01`;
 
     const transactions = await ctx.db
       .query("transactions")
@@ -152,8 +151,7 @@ export const trendData = query({
 
     // Initialize all 6 months
     for (let i = 0; i < 6; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
-      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const month = monthKey(args.today, -5 + i);
       monthly[month] = { income: 0, expenditure: 0 };
     }
 
@@ -184,6 +182,7 @@ export const trendData = query({
 
 export const executiveSummary = query({
   args: {
+    today: v.string(),
     periodKey: v.optional(
       v.union(
         v.literal("currentMonth"),
@@ -244,8 +243,10 @@ export const executiveSummary = query({
         .collect(),
     ]);
 
+    const [yearText, monthText, dayText] = args.today.split("-");
     return buildExecutiveDashboardSummary({
       periodKey,
+      now: new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText), 12)),
       funds: funds.map((fund) => ({
         _id: String(fund._id),
         name: fund.name,

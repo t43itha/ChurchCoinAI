@@ -8,11 +8,22 @@ import { Id, Doc } from "../_generated/dataModel";
 // and does not guarantee delivery order).
 const isStaleStripeEvent = (
   subscription: Doc<"subscriptions">,
-  eventTimestamp?: number
-) =>
-  eventTimestamp !== undefined &&
-  subscription.lastStripeEventAt !== undefined &&
-  eventTimestamp < subscription.lastStripeEventAt;
+  eventTimestamp?: number,
+  source?: "invoice" | "subscription"
+) => {
+  if (
+    eventTimestamp === undefined ||
+    subscription.lastStripeEventAt === undefined
+  ) {
+    return false;
+  }
+  if (eventTimestamp < subscription.lastStripeEventAt) return true;
+  return (
+    eventTimestamp === subscription.lastStripeEventAt &&
+    source === "invoice" &&
+    subscription.lastStripeEventSource === "subscription"
+  );
+};
 
 const markProductTrialConverted = async (
   ctx: MutationCtx,
@@ -63,7 +74,7 @@ export const upsert = internalMutation({
     const now = Date.now();
 
     if (existing) {
-      if (isStaleStripeEvent(existing, args.eventTimestamp)) {
+      if (isStaleStripeEvent(existing, args.eventTimestamp, "subscription")) {
         return existing._id;
       }
       await ctx.db.patch(existing._id, {
@@ -79,6 +90,7 @@ export const upsert = internalMutation({
             ? existing.pastDueSince ?? now
             : undefined,
         lastStripeEventAt: args.eventTimestamp,
+        lastStripeEventSource: "subscription",
         updatedAt: now,
       });
       await markProductTrialConverted(ctx, args.organizationId, args.status);
@@ -95,6 +107,7 @@ export const upsert = internalMutation({
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
         pastDueSince: args.status === "past_due" ? now : undefined,
         lastStripeEventAt: args.eventTimestamp,
+        lastStripeEventSource: "subscription",
         createdAt: now,
         updatedAt: now,
       });
@@ -119,6 +132,8 @@ export const updateStatus = internalMutation({
       v.literal("paused")
     ),
     eventTimestamp: v.optional(v.number()),
+    amountPaid: v.optional(v.number()),
+    source: v.optional(v.union(v.literal("invoice"), v.literal("subscription"))),
   },
   handler: async (ctx, args) => {
     const subscription = await ctx.db
@@ -128,7 +143,17 @@ export const updateStatus = internalMutation({
       )
       .first();
 
-    if (subscription && !isStaleStripeEvent(subscription, args.eventTimestamp)) {
+    if (
+      subscription &&
+      !isStaleStripeEvent(subscription, args.eventTimestamp, args.source)
+    ) {
+      const ignoreZeroTrialInvoice =
+        args.source === "invoice" &&
+        args.status === "active" &&
+        subscription.status === "trialing" &&
+        (args.amountPaid ?? 0) === 0;
+      if (ignoreZeroTrialInvoice) return;
+
       await ctx.db.patch(subscription._id, {
         status: args.status,
         pastDueSince:
@@ -136,6 +161,7 @@ export const updateStatus = internalMutation({
             ? subscription.pastDueSince ?? Date.now()
             : undefined,
         lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
+        lastStripeEventSource: args.source ?? subscription.lastStripeEventSource,
         updatedAt: Date.now(),
       });
       await markProductTrialConverted(
@@ -161,10 +187,11 @@ export const markCanceled = internalMutation({
       )
       .first();
 
-    if (subscription && !isStaleStripeEvent(subscription, args.eventTimestamp)) {
+    if (subscription && !isStaleStripeEvent(subscription, args.eventTimestamp, "subscription")) {
       await ctx.db.patch(subscription._id, {
         status: "canceled",
         lastStripeEventAt: args.eventTimestamp ?? subscription.lastStripeEventAt,
+        lastStripeEventSource: "subscription",
         updatedAt: Date.now(),
       });
     }

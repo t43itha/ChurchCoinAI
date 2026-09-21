@@ -1,7 +1,16 @@
-import { mutation } from "../_generated/server";
+import { mutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
+import { roundMoney } from "../lib/money";
+import {
+  assertValidTransactionAmount,
+  assertValidTransactionDate,
+} from "../lib/transactionValidation";
+import {
+  ensureTypedCategories,
+  requireCanonicalCategory,
+} from "../lib/categoryIntegrity";
 
 // Helper to normalize donor names for matching
 const normalizeName = (name: string): string => {
@@ -13,6 +22,48 @@ const normalizeName = (name: string): string => {
 };
 
 const validNamedDonationPaymentMethods = new Set(["Cash", "Cheque", "Card"]);
+
+const positiveAmount = (amount: number) => {
+  const rounded = roundMoney(amount);
+  if (rounded <= 0) return null;
+  assertValidTransactionAmount(rounded);
+  return rounded;
+};
+
+async function assertCollectionUnlocked(
+  ctx: MutationCtx,
+  collection: Doc<"cashCollections">
+) {
+  if (
+    collection.status === "banked" ||
+    collection.cashBankingStatus === "banked" ||
+    collection.cashBankingStatus === "partially_banked" ||
+    collection.cashBankingLastReconciliationId
+  ) {
+    throw new Error("Cannot change a collection that has been banked");
+  }
+
+  const transactions = await ctx.db
+    .query("transactions")
+    .withIndex("by_cashCollection", (q) =>
+      q.eq("cashCollectionId", collection._id)
+    )
+    .collect();
+  const orgTransactions = transactions.filter(
+    (transaction) => transaction.organizationId === collection.organizationId
+  );
+  if (
+    orgTransactions.some(
+      (transaction) =>
+        transaction.cashBankingReconciliationId ||
+        transaction.cashBankingRole ||
+        transaction.reconciliationSessionId
+    )
+  ) {
+    throw new Error("Cannot change a collection that has been banked");
+  }
+  return orgTransactions;
+}
 
 const serviceRowValidator = v.object({
   serviceDate: v.string(),
@@ -155,13 +206,15 @@ export const submitCollection = mutation({
       ];
 
       for (const method of methods) {
-        if (method.amount <= 0) continue;
+        const amount = positiveAmount(method.amount);
+        if (amount === null) continue;
+        assertValidTransactionDate(row.serviceDate);
 
         const transactionId = await ctx.db.insert("transactions", {
           organizationId: user.organizationId,
           date: row.serviceDate,
           description: `${serviceNote} - ${method.label}`,
-          amount: method.amount,
+          amount,
           type: "Income",
           category: "Offerings",
           fundId: row.fundId,
@@ -203,12 +256,22 @@ export const submitCollection = mutation({
         matchedName = donorMatch.matchedName;
       }
 
-      const category = donation.category.trim();
+      const categories = await ensureTypedCategories(ctx, user.organizationId);
+      const category = requireCanonicalCategory(
+        categories,
+        donation.category.trim(),
+        "Income"
+      );
+      const amount = positiveAmount(donation.amount);
+      if (amount === null) {
+        throw new Error("Transaction amount must be greater than 0");
+      }
+      assertValidTransactionDate(args.weekEndingDate);
       const transactionId = await ctx.db.insert("transactions", {
         organizationId: user.organizationId,
         date: args.weekEndingDate,
         description: `${category} - ${matchedName}`,
-        amount: donation.amount,
+        amount,
         type: "Income",
         category,
         fundId: donation.fundId,
@@ -250,9 +313,7 @@ export const replaceCollectionEntries = mutation({
       throw new Error("Cash collection not found");
     }
 
-    if (collection.status === "banked") {
-      throw new Error("Cannot update a banked collection");
-    }
+    const existingTransactions = await assertCollectionUnlocked(ctx, collection);
 
     const validRows = args.serviceRows.filter(
       (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
@@ -269,13 +330,6 @@ export const replaceCollectionEntries = mutation({
     if (validRows.length === 0 && validNamedDonations.length === 0) {
       throw new Error("Please add at least one service row or named donation with an amount.");
     }
-
-    const existingTransactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_cashCollection", (q) =>
-        q.eq("cashCollectionId", args.cashCollectionId)
-      )
-      .collect();
 
     for (const transaction of existingTransactions) {
       await ctx.db.delete(transaction._id);
@@ -304,13 +358,15 @@ export const replaceCollectionEntries = mutation({
       ];
 
       for (const method of methods) {
-        if (method.amount <= 0) continue;
+        const amount = positiveAmount(method.amount);
+        if (amount === null) continue;
+        assertValidTransactionDate(row.serviceDate);
 
         const transactionId = await ctx.db.insert("transactions", {
           organizationId: user.organizationId,
           date: row.serviceDate,
           description: `${serviceNote} - ${method.label}`,
-          amount: method.amount,
+          amount,
           type: "Income",
           category: "Offerings",
           fundId: row.fundId,
@@ -352,12 +408,22 @@ export const replaceCollectionEntries = mutation({
         matchedName = donorMatch.matchedName;
       }
 
-      const category = donation.category.trim();
+      const categories = await ensureTypedCategories(ctx, user.organizationId);
+      const category = requireCanonicalCategory(
+        categories,
+        donation.category.trim(),
+        "Income"
+      );
+      const amount = positiveAmount(donation.amount);
+      if (amount === null) {
+        throw new Error("Transaction amount must be greater than 0");
+      }
+      assertValidTransactionDate(args.weekEndingDate);
       const transactionId = await ctx.db.insert("transactions", {
         organizationId: user.organizationId,
         date: args.weekEndingDate,
         description: `${category} - ${matchedName}`,
-        amount: donation.amount,
+        amount,
         type: "Income",
         category,
         fundId: donation.fundId,
@@ -435,17 +501,7 @@ export const deleteCollection = mutation({
       throw new Error("Cash collection not found");
     }
 
-    if (collection.status === "banked") {
-      throw new Error("Cannot delete a banked collection");
-    }
-
-    // Delete all linked transactions
-    const transactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_cashCollection", (q) =>
-        q.eq("cashCollectionId", args.cashCollectionId)
-      )
-      .collect();
+    const transactions = await assertCollectionUnlocked(ctx, collection);
 
     for (const t of transactions) {
       await ctx.db.delete(t._id);

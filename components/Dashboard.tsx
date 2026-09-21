@@ -11,6 +11,7 @@ import DashboardLeadershipAlerts from "./dashboard/DashboardLeadershipAlerts";
 import DashboardReadinessStrip from "./dashboard/DashboardReadinessStrip";
 import DashboardTrendPanel from "./dashboard/DashboardTrendPanel";
 import type { DashboardPeriodKey } from "./dashboard/types";
+import { formatLocalDateInputValue } from "../lib/dateUtils";
 import LoadingSpinner from "./LoadingSpinner";
 
 interface DashboardProps {
@@ -30,7 +31,10 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
   const [periodKey, setPeriodKey] = useState<DashboardPeriodKey>("previousMonth");
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
   const canEdit = ["Admin", "Finance Team"].includes(currentUser.role);
-  const summary = useQuery(api.queries.dashboard.executiveSummary, { periodKey });
+  const summary = useQuery(api.queries.dashboard.executiveSummary, {
+    periodKey,
+    today: formatLocalDateInputValue(new Date()),
+  });
   const selectedPeriodLabel =
     summary?.period.label ?? PERIOD_OPTIONS.find((period) => period.key === periodKey)?.label;
 

@@ -71,7 +71,9 @@ const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
 // Check if API key is configured
 export const hasApiKey = action({
   args: {},
-  handler: async () => {
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
     const provider =
       process.env.CATEGORIZATION_AI_PROVIDER?.trim().toLowerCase();
     if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;

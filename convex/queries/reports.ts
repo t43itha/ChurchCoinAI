@@ -79,7 +79,11 @@ export const weeklyCashSummary = query({
         )
         .filter((q) => q.neq(q.field("isVoided"), true))
         .collect();
-      allTransactions.push(...transactions);
+      allTransactions.push(
+        ...transactions.filter(
+          (transaction) => transaction.organizationId === collection.organizationId
+        )
+      );
     }
 
     // Get fund details for enriching the report
@@ -253,7 +257,11 @@ export const monthlyCashBreakdown = query({
           )
           .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
-        allTransactions.push(...transactions);
+        allTransactions.push(
+          ...transactions.filter(
+            (transaction) => transaction.organizationId === collection.organizationId
+          )
+        );
       }
 
       const incomeTransactions = allTransactions.filter(
@@ -332,12 +340,13 @@ export const monthlyCashBreakdown = query({
 
 // Get current week ending date (next Sunday)
 export const getCurrentWeekEnding = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { today: v.string() },
+  handler: async (ctx, args) => {
     await requireRole(ctx, ["Admin", "Finance Team"]);
-
-    const today = new Date();
-    return getWeekEndingDate(today);
+    const [yearText, monthText, dayText] = args.today.split("-");
+    return getWeekEndingDate(
+      new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText), 12))
+    );
   },
 });
 

@@ -220,7 +220,7 @@ http.route({
       event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     } catch (err: any) {
       console.error("Webhook signature verification failed:", err.message);
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+      return new Response("Invalid webhook", { status: 400 });
     }
 
     // Handle the event
@@ -347,6 +347,8 @@ http.route({
               stripeSubscriptionId: subscriptionId,
               status: "active",
               eventTimestamp: event.created * 1000,
+              amountPaid: invoice.amount_paid ?? 0,
+              source: "invoice",
             });
           }
           break;
@@ -366,7 +368,7 @@ http.route({
       console.error(`Error handling event ${event.type}:`, err.message);
       // Return 500 so Stripe will retry the webhook
       return new Response(
-        JSON.stringify({ error: err.message }),
+        JSON.stringify({ error: "Webhook handler failed" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -469,7 +471,7 @@ http.route({
     } catch (err: any) {
       console.error(`Error handling Plaid webhook ${webhook_type}/${webhook_code}:`, err.message);
       return new Response(
-        JSON.stringify({ error: err.message }),
+        JSON.stringify({ error: "Webhook handler failed" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }

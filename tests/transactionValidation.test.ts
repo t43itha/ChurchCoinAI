@@ -26,12 +26,21 @@ describe("transaction validation", () => {
     expect(() => assertValidTransactionDate("2026-02-18")).not.toThrow();
   });
 
+  it("rejects amounts that round to zero", () => {
+    expect(() => assertValidTransactionAmount(0.001)).toThrow(
+      "Transaction amount must be greater than 0"
+    );
+  });
+
   it("rejects invalid date formats", () => {
     expect(() => assertValidTransactionDate("18-02-2026")).toThrow(
       "Transaction date must use YYYY-MM-DD format"
     );
     expect(() => assertValidTransactionDate("2026/02/18")).toThrow(
       "Transaction date must use YYYY-MM-DD format"
+    );
+    expect(() => assertValidTransactionDate("2026-02-31")).toThrow(
+      "Transaction date is not a real calendar date"
     );
   });
 });

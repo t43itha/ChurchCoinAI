@@ -73,7 +73,11 @@ export const getWithTransactions = query({
         q.eq("cashCollectionId", args.cashCollectionId)
       )
       .collect();
-    const activeTransactions = filterActiveTransactions(transactions);
+    const activeTransactions = filterActiveTransactions(
+      transactions.filter(
+        (transaction) => transaction.organizationId === user.organizationId
+      )
+    );
 
     // Get the user who recorded this
     const recordedByUser = await ctx.db.get(collection.recordedBy);

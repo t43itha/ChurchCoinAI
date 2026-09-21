@@ -47,7 +47,7 @@ export const listByOrganization = query({
       )
       .collect();
 
-    return users;
+    return users.map(({ clerkId: _clerkId, ...safeUser }) => safeUser);
   },
 });
 
@@ -62,6 +62,7 @@ export const getById = query({
       return null;
     }
 
-    return user;
+    const { clerkId: _clerkId, ...safeUser } = user;
+    return safeUser;
   },
 });

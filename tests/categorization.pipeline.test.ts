@@ -300,7 +300,7 @@ describe("categorization pipeline", () => {
     });
   });
 
-  it("keeps unresolved suggestions when same-type Gemini rows are reordered", () => {
+  it("matches reordered Gemini rows by description", () => {
     const firstIncome = {
       description: "Mystery gift A",
       amount: 40,
@@ -339,8 +339,16 @@ describe("categorization pipeline", () => {
       funds
     );
 
-    expect(merged[0]).toBe(currentSuggestions[0]);
-    expect(merged[1]).toBe(currentSuggestions[1]);
+    expect(merged[0]).toMatchObject({
+      description: firstIncome.description,
+      donorName: "First Donor",
+      predictionSource: "gemini",
+    });
+    expect(merged[1]).toMatchObject({
+      description: secondIncome.description,
+      donorName: "Second Donor",
+      predictionSource: "gemini",
+    });
   });
 
   it("keeps unresolved suggestions for missing descriptions and missing Gemini rows", () => {

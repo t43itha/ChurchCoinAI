@@ -1,6 +1,7 @@
 import { CATEGORY_ALIASES, RCI_INCOME_CATEGORIES } from "../constants/rciCategories";
 import { filterReportableTransactions } from "./reportableTransactions";
 import { filterActiveTransactions, sumActiveSigned } from "./voidedTransactions";
+import { meetsMoneyTarget, roundMoney } from "../convex/lib/money";
 
 export type DashboardPeriodKey = "currentMonth" | "previousMonth" | "quarter" | "ytd";
 
@@ -388,7 +389,7 @@ function countCashBankingPendingWeeks(
       .filter((split) => split.cashCollectionId === collection._id)
       .reduce((sum, split) => sum + (split.cashAmount ?? 0) + (split.chequeAmount ?? 0), 0);
 
-    return coveredTotal < expectedTotal;
+    return !meetsMoneyTarget(roundMoney(coveredTotal), roundMoney(expectedTotal));
   }).length;
 }
 

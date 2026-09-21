@@ -509,6 +509,14 @@ export const syncTransactions = action({
           }
 
           for (const transaction of providerTransactions) {
+            const providerStatus =
+              transaction &&
+              typeof transaction === "object" &&
+              "status" in transaction &&
+              typeof transaction.status === "string"
+                ? transaction.status.trim().toUpperCase()
+                : "";
+            if (providerStatus && providerStatus !== "BOOKED") continue;
             const normalized = normalizeYapilyTransaction({
               transaction: transaction as YapilyTransactionLike,
               accountId: account.accountId,

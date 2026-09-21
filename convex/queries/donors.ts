@@ -72,14 +72,20 @@ export const getWithHistory = query({
       .query("pledges")
       .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
       .collect();
+    const orgPledges = pledges.filter(
+      (pledge) => pledge.organizationId === user.organizationId
+    );
 
     // Get transactions for this donor
     const transactions = await ctx.db
       .query("transactions")
       .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
       .collect();
+    const orgTransactions = transactions.filter(
+      (transaction) => transaction.organizationId === user.organizationId
+    );
 
-    const reportableTransactions = filterReportableTransactions(transactions);
+    const reportableTransactions = filterReportableTransactions(orgTransactions);
 
     // Calculate total giving
     const totalGiving = reportableTransactions
@@ -88,7 +94,7 @@ export const getWithHistory = query({
 
     return {
       ...donor,
-      pledges,
+      pledges: orgPledges,
       transactions: reportableTransactions,
       totalGiving,
     };

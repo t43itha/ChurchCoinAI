@@ -33,3 +33,6 @@ nul
 *.sw?
 
 .vercel
+tmp/
+.preview/
+evals/categorization/results/*.json

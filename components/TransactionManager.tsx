@@ -9,6 +9,8 @@ import CashTakingsEntry from './CashTakingsEntry';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
+import { formatLocalDateInputValue } from '../lib/dateUtils';
+import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/csvImport';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
@@ -16,6 +18,7 @@ import ImportCategorizationProgress from './ImportCategorizationProgress';
 interface Category {
   _id: string;
   name: string;
+  transactionType?: "Income" | "Expenditure";
 }
 
 interface TransactionManagerProps {
@@ -172,9 +175,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isVoiding, setIsVoiding] = useState(false);
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
       type: 'Income' as TransactionType,
-      date: new Date().toISOString().split('T')[0],
+      date: formatLocalDateInputValue(new Date()),
       isGiftAidEligible: false,
-      category: categoryNames[0] || 'Donation',
+      category: '',
       fundId: funds[0]?._id
   });
 
@@ -511,6 +514,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               if (pledgeMatches.length <= 1) setShowMatchModal(false);
           } catch (error) {
               console.error("Failed to link transaction:", error);
+              notify("Error", error instanceof Error ? error.message : "Failed to link this transaction to the pledge.");
           }
       } else {
           console.error("Could not find transaction or pledge for match:", match);
@@ -589,12 +593,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const parseAmountString = (str: string) => {
-      if (!str) return 0;
-      const clean = str.replace(/[£$,\s]/g, '');
-      const val = parseFloat(clean);
-      return isNaN(val) ? 0 : val;
-  };
+  const parseAmountString = (str: string) => parseImportedAmount(str);
 
   const handleProcessMapping = () => {
       const dateIdx = csvHeaders.indexOf(columnMapping.date);
@@ -619,57 +618,83 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
          }
       }
 
-      const parsed: PendingReviewTransaction[] = csvRows.map(row => {
-          // Parse Date (Attempt standard ISO or UK DD/MM/YYYY)
-          let dateStr = row[dateIdx] || '';
-          if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-              const [d, m, y] = dateStr.split('/');
-              dateStr = `${y}-${m}-${d}`;
-          } else if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
-               const [d, m, y] = dateStr.split('-');
-               dateStr = `${y}-${m}-${d}`;
-          }
+      if (!funds[0]) {
+          notify("Error", "Add a fund before importing transactions.");
+          return;
+      }
+      const defaultFundId = funds[0]._id;
+
+      const parsed: PendingReviewTransaction[] = [];
+      let skippedInvalidAmounts = 0;
+      csvRows.forEach((row) => {
+          const description = row[descIdx];
+          if (!description) return;
+          const dateStr = parseImportedDate(row[dateIdx] || "") ?? (row[dateIdx] || "");
 
           let amount = 0;
-          let type = 'Income' as TransactionType;
+          let type = "Income" as TransactionType;
+          let sawAmount = false;
 
           if (useSplitAmount) {
-              const inStr = amountInIdx !== -1 ? (row[amountInIdx] || '') : '';
-              const outStr = amountOutIdx !== -1 ? (row[amountOutIdx] || '') : '';
-              const inVal = parseAmountString(inStr);
-              const outVal = parseAmountString(outStr);
-
-              if (inVal > 0) {
+              const inStr = amountInIdx !== -1 ? (row[amountInIdx] || "") : "";
+              const outStr = amountOutIdx !== -1 ? (row[amountOutIdx] || "") : "";
+              const inVal = inStr.trim() ? parseAmountString(inStr) : null;
+              const outVal = outStr.trim() ? parseAmountString(outStr) : null;
+              if ((inStr.trim() && inVal === null) || (outStr.trim() && outVal === null)) {
+                  skippedInvalidAmounts += 1;
+                  return;
+              }
+              if (inVal !== null && inVal > 0) {
                   amount = inVal;
-                  type = 'Income' as TransactionType;
-              } else if (outVal > 0) {
-                  amount = outVal;
-                  type = 'Expenditure' as TransactionType;
+                  type = "Income";
+                  sawAmount = true;
+              } else if (outVal !== null && outVal !== 0) {
+                  amount = Math.abs(outVal);
+                  type = "Expenditure";
+                  sawAmount = true;
               }
           } else {
-              // Single column logic
-              let amountStr = row[amountIdx] || '0';
-              // Check for DR/CR suffix in some strings (rare but possible)
-              const isDebit = amountStr.toLowerCase().includes('dr');
-              amount = parseAmountString(amountStr);
-              
-              if (isDebit) amount = -Math.abs(amount);
-
-              type = amount >= 0 ? 'Income' : 'Expenditure';
-              amount = Math.abs(amount);
+              const amountStr = row[amountIdx] || "";
+              if (!amountStr.trim()) return;
+              const parsedAmount = parseAmountString(amountStr);
+              if (parsedAmount === null || parsedAmount === 0) {
+                  skippedInvalidAmounts += 1;
+                  return;
+              }
+              type = parsedAmount >= 0 ? "Income" : "Expenditure";
+              amount = Math.abs(parsedAmount);
+              sawAmount = true;
           }
 
-          return {
+          if (!sawAmount || amount === 0) return;
+          parsed.push({
               date: dateStr,
-              description: row[descIdx],
-              amount: amount,
+              description,
+              amount,
               type,
-              category: '',
-              fundId: funds[0]._id // Default to General
-          };
-      }).filter(t => t.description && t.amount !== 0); // Filter out empty rows
+              category: "",
+              fundId: defaultFundId,
+          });
+      });
 
-      setDuplicateWarnings(new Set());
+      if (skippedInvalidAmounts > 0) {
+          notify("Invalid amounts", `${skippedInvalidAmounts} row${skippedInvalidAmounts === 1 ? "" : "s"} had an amount that could not be read and ${skippedInvalidAmounts === 1 ? "was" : "were"} left out.`);
+      }
+
+      const duplicateIndexes = new Set<number>();
+      const seenRows = new Map<string, number>();
+      parsed.forEach((row, index) => {
+          const key = `${row.date}|${row.amount}|${row.description}`;
+          const previous = seenRows.get(key);
+          if (previous !== undefined) {
+              duplicateIndexes.add(previous);
+              duplicateIndexes.add(index);
+          } else {
+              seenRows.set(key, index);
+          }
+      });
+
+      setDuplicateWarnings(duplicateIndexes);
       setNextBankSyncCursor(null);
       setNextBankSyncConnectionId(null);
       setBankSyncReviewConnectionId(null);
@@ -718,7 +743,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       amount: tx.amount,
       type: tx.type,
       fundId: tx.fundId || funds[0]?._id,
-      category: tx.type === 'Income' ? 'Donation' : 'Operating Expenses',
+      category: '',
       isGiftAidEligible: false,
       source: 'bank',
       providerTransactionId: tx.providerTransactionId,
@@ -910,34 +935,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
     } catch (error) {
         console.error("AI Error", error);
-        // Fallback to simple categorization if RAG fails
-        try {
-            const descriptions = pendingTransactions.map(t => t.description || '');
-            const fallbackSuggestions = await categorizeTransactionsAI({
-                descriptions,
-                fundNames: funds.map(f => f.name),
-                categories: categoryNames
-            });
-
-            const updatedPending = pendingTransactions.map((t, idx) => {
-                const suggestion = fallbackSuggestions[idx];
-                if (!suggestion) return t;
-                const suggestedFund = funds.find(f => f.name === suggestion.fundName);
-
-                return {
-                    ...t,
-                    category: suggestion.category,
-                    fundId: suggestedFund ? suggestedFund._id : funds[0]._id,
-                    isGiftAidEligible: suggestion.isGiftAidEligible,
-                    donorName: suggestion.donorName || undefined,
-                    notes: `AI Confidence: ${suggestion.confidence}`,
-                };
-            });
-            setPendingTransactions(updatedPending);
-            terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
-        } catch (fallbackError) {
-            console.error("Fallback AI Error", fallbackError);
-        }
+        notify(
+          "Error",
+          error instanceof Error ? error.message : "Failed to auto-categorize. Please check API connection."
+        );
     } finally {
         setIsProcessingAI(false);
         setCategorizationStatusMessage(terminalStatus);
@@ -956,17 +957,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
       return;
     }
+    if (!funds[0]) {
+      notify("Error", "Add a fund before importing transactions.");
+      return;
+    }
+    if (pendingTransactions.some((transaction) => !transaction.category || !isRealIsoDate(transaction.date || ""))) {
+      notify("Error", "Every row needs a real date and a category before import.");
+      return;
+    }
 
     try {
         // Build transactions - NO auto-donor creation or pledge linking
         // Just store the extracted donor name as text for manual linking later
         const transactionsToCreate = pendingTransactions.map((pt: any) => {
             return {
-                date: pt.date || new Date().toISOString().split('T')[0],
+                date: pt.date,
                 description: pt.description || '',
                 amount: pt.amount || 0,
                 type: (pt.type || 'Income') as 'Income' | 'Expenditure',
-                category: pt.category || categoryNames[0] || 'Donation',
+                category: pt.category,
                 fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
                 isGiftAidEligible: pt.isGiftAidEligible || false,
                 donorName: pt.donorName, // Keep extracted name for reference
@@ -1018,7 +1027,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         aiConfidence: prediction.confidence,
                         predictionSource: prediction.predictionSource,
                         ragScore: prediction.ragScore,
-                        finalCategory: pt.category || categoryNames[0] || 'Donation',
+                        finalCategory: pt.category || '',
                         aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,
                         aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
                         aiPredictedDonorName: prediction.donorName || undefined,
@@ -1058,20 +1067,20 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         clearBankSyncReviewState();
     } catch (error) {
         console.error("Import failed:", error);
-        notify("Error", "Failed to import transactions.");
+        notify("Error", error instanceof Error ? error.message : "Failed to import transactions.");
     }
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newTransaction.amount && newTransaction.description && newTransaction.fundId) {
+    if (newTransaction.amount && newTransaction.description && newTransaction.fundId && newTransaction.category) {
         try {
             const result = await createTransaction({
                 date: newTransaction.date!,
                 description: newTransaction.description!,
                 amount: Number(newTransaction.amount),
                 type: newTransaction.type! as 'Income' | 'Expenditure',
-                category: newTransaction.category || categoryNames[0],
+                category: newTransaction.category,
                 fundId: newTransaction.fundId as Id<"funds">,
                 isGiftAidEligible: newTransaction.isGiftAidEligible,
                 donorName: newTransaction.donorName,
@@ -1085,14 +1094,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             // Reset
             setNewTransaction({
                 type: 'Income' as TransactionType,
-                date: new Date().toISOString().split('T')[0],
+                date: formatLocalDateInputValue(new Date()),
                 isGiftAidEligible: false,
-                category: categoryNames[0] || 'Donation',
+                category: '',
                 fundId: funds[0]?._id
             });
         } catch (error) {
             console.error("Failed to create transaction:", error);
-            notify("Error", "Failed to create transaction.");
+            notify("Error", error instanceof Error ? error.message : "Failed to create transaction.");
         }
     }
   };
@@ -1432,7 +1441,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             t.isVoided && <X size={14} className="mx-auto text-error/60" />
                           )}
                       </td>
-                      <td className="px-4 py-3.5 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                      <td className="px-4 py-3.5 text-right opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                           {canEdit && (
                               <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-ink transition-colors p-1" title="Edit">
                                   <Edit2 size={15} strokeWidth={1.9} />
@@ -2505,7 +2514,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                       <div className="truncate" title={t.description}>{t.description}</div>
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNames.map(c => <option key={c} value={c}>{c}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categories.filter((category) => !category.transactionType || category.transactionType === t.type).map((category) => <option key={category._id} value={category.name}>{category.name}</option>)}</select></td>
                                     <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
