@@ -258,7 +258,7 @@ ${currentUser.name}`;
       notify("Restricted", "Only administrators can copy invite links.");
       return;
     }
-    let link: { token: string };
+    let link: { token: string | undefined };
     try {
       link = await convex.query(api.queries.invitations.getInviteLink, {
         invitationId: invitation._id as Id<"invitations">,

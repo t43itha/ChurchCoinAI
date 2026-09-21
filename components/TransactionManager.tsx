@@ -11,6 +11,7 @@ import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/csvImport';
+import { categoryNamesForTransactionTypes } from '../lib/transactionCategories';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
@@ -124,13 +125,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
-  const categoryNamesFor = (type?: string) =>
-    categories
-      .filter(
-        (category) =>
-          !category.transactionType || category.transactionType === type
-      )
-      .map((category) => category.name);
+  const categoryNamesFor = (type?: TransactionType) =>
+    categoryNamesForTransactionTypes(categories, [type]);
   const fundNamesById = useMemo(
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
     [funds]
@@ -174,18 +170,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         .filter((transaction) => selectedIds.has(transaction._id))
         .map((transaction) => transaction.type)
     );
-    if (selectedTypes.size !== 1) {
-      return categories
-        .filter((category) => !category.transactionType)
-        .map((category) => category.name);
-    }
-    const type = [...selectedTypes][0];
-    return categories
-      .filter(
-        (category) =>
-          !category.transactionType || category.transactionType === type
-      )
-      .map((category) => category.name);
+    return categoryNamesForTransactionTypes(categories, selectedTypes);
   }, [categories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
