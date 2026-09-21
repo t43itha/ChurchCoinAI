@@ -41,7 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
   }, [access.state]);
 
   // Permission Logic
-  const canViewDonors = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canViewDonors = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
   const canViewSettings = ['Admin', 'Finance Team'].includes(currentUser.role);
 
   const menuItems = [

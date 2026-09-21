@@ -129,7 +129,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
 
   const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
-  const canView = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
 
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -179,7 +179,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     };
   }, [donors, transactions, donorStats]);
 
-  // After all hooks (Rules of Hooks) — read-only roles see a notice instead
+  // After all hooks (Rules of Hooks) — Guests cannot view donor records.
   if (!canView) {
       return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">

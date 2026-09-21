@@ -96,7 +96,7 @@ const DonorsRoute: React.FC<RouteContext> = ({
   currentUser,
   churchDetails,
 }) => {
-  const canViewDonors = currentUser.role === "Admin" || currentUser.role === "Finance Team";
+  const canViewDonors = ["Admin", "Finance Team", "Pastorate"].includes(currentUser.role);
   const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
   const transactions = useQuery(api.queries.transactions.list, canViewDonors ? {} : "skip");
   const pledges = useQuery(api.queries.pledges.list, canViewDonors ? {} : "skip");
@@ -106,7 +106,7 @@ const DonorsRoute: React.FC<RouteContext> = ({
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
         <h2 className="text-lg font-bold text-ink mb-2">Restricted Access</h2>
-        <p className="text-sm max-w-sm text-center">Donor records are available to Administrators and Finance Team members.</p>
+        <p className="text-sm max-w-sm text-center">Donor records are available to Administrators, Finance Team members, and Pastorate. Pastorate access is read-only.</p>
       </div>
     );
   }
@@ -137,7 +137,7 @@ const DonorsRoute: React.FC<RouteContext> = ({
 };
 
 const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
-  const canViewDonors = currentUser.role === "Admin" || currentUser.role === "Finance Team";
+  const canViewDonors = ["Admin", "Finance Team", "Pastorate"].includes(currentUser.role);
   const pledges = useQuery(api.queries.pledges.list, {});
   const transactions = useQuery(api.queries.transactions.list, {});
   const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
