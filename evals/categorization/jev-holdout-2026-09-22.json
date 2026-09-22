@@ -1,0 +1,716 @@
+{
+  "description": "Fresh synthetic holdout authored before running v3. No customer data. Pipeline classification, defaults and donor extraction; excludes Gift Aid eligibility claims.",
+  "categories": [
+    {
+      "name": "Tithes & First Fruits",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Offerings",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Thanksgiving",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Building Fund",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Charity Fund",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Gender Ministries",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Merchandise",
+      "transactionType": "Income"
+    },
+    {
+      "name": "Uncategorised",
+      "transactionType": "Income"
+    },
+    {
+      "name": "MP Honorarium",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "MP Accommodation",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "MP Refreshments",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Church Provisions",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Travel & Transport",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Gross Salary",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Allowances",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Rent",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Rent - Premises for Worship",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Premises - Manse",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Utilities",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Missions-Tithe",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Mission Support",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Bank Charges",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "IT Costs",
+      "transactionType": "Expenditure"
+    },
+    {
+      "name": "Love Gifts",
+      "transactionType": "Expenditure"
+    }
+  ],
+  "funds": [
+    {
+      "_id": "fund-0",
+      "name": "General Fund",
+      "description": "Unrestricted church activity"
+    },
+    {
+      "_id": "fund-1",
+      "name": "Building Fund",
+      "description": "Restricted building and roof repairs"
+    },
+    {
+      "_id": "fund-2",
+      "name": "Youth Ministry Fund",
+      "description": "Youth ministry and youth community projects"
+    },
+    {
+      "_id": "fund-3",
+      "name": "Missions Fund",
+      "description": "Overseas mission and relief work"
+    },
+    {
+      "_id": "fund-4",
+      "name": "Women's Ministry Fund",
+      "description": "Women ministry activities"
+    }
+  ],
+  "cases": [
+    {
+      "rowId": "holdout-01",
+      "description": "BACS credit ref XR902",
+      "amount": 0.01,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-02",
+      "description": "Unspecified transfer 740",
+      "amount": 1,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-03",
+      "description": "Cash deposit without details",
+      "amount": 7.5,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-04",
+      "description": "Mobile transfer ref QX12",
+      "amount": 19.99,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-05",
+      "description": "Incoming credit ZZ",
+      "amount": 29.99,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-06",
+      "description": "Unidentified credit Sept",
+      "amount": 30,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-07",
+      "description": "ZOOM VIDEO COMMUNICATIONS ANNUAL LICENCE",
+      "amount": 175.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-08",
+      "description": "CANVA PRO DESIGN SUBSCRIPTION",
+      "amount": 120.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-09",
+      "description": "MICROSOFT BUSINESS EMAIL LICENCES",
+      "amount": 64.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-10",
+      "description": "DOMAIN RENEWAL CHURCH WEBSITE",
+      "amount": 38.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-11",
+      "description": "RAIL TICKETS FOR TRUSTEE TRAINING",
+      "amount": 98.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Travel & Transport",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-12",
+      "description": "COACH HIRE CONGREGATION DAY TRIP",
+      "amount": 640.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Travel & Transport",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-13",
+      "description": "SEPTEMBER PAYROLL GROSS WAGES",
+      "amount": 2100.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Gross Salary",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-14",
+      "description": "CARETAKER MONTHLY SALARY",
+      "amount": 890.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Gross Salary",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-15",
+      "description": "VISITING CONVENTION SPEAKER HONORARIUM",
+      "amount": 400.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "MP Honorarium",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-16",
+      "description": "HOTEL FOR ANNUAL PROGRAMME GUEST SPEAKER",
+      "amount": 285.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "MP Accommodation",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-17",
+      "description": "CATERING ANNUAL CHURCH CONVENTION",
+      "amount": 530.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "MP Refreshments",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-18",
+      "description": "PAPER TOWELS AND CLEANING SUPPLIES",
+      "amount": 56.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Church Provisions",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-19",
+      "description": "RENTAL OF STORAGE LOCKER",
+      "amount": 130.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Rent",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-20",
+      "description": "SCHOOL HALL HIRE SUNDAY WORSHIP",
+      "amount": 340.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Rent - Premises for Worship",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-21",
+      "description": "MINISTERS MANSE COUNCIL TAX",
+      "amount": 180.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Premises - Manse",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-22",
+      "description": "WATER ACCOUNT AT MANSE",
+      "amount": 42.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Premises - Manse",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-23",
+      "description": "ELECTRICITY FOR WORSHIP BUILDING",
+      "amount": 260.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Utilities",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-24",
+      "description": "BANK SERVICE CHARGES SEPTEMBER",
+      "amount": 12.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Bank Charges",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-25",
+      "description": "CHURCH TITHE ALLOCATION TO MISSIONS",
+      "amount": 350.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Missions-Tithe",
+        "fundName": "Missions Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-26",
+      "description": "SUPPORT FOR OVERSEAS MISSION WORKERS",
+      "amount": 450.0,
+      "type": "Expenditure",
+      "expected": {
+        "category": "Mission Support",
+        "fundName": "Missions Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-27",
+      "description": "TOM WILSON GIFT FOR ROOF REPLACEMENT",
+      "amount": 140.0,
+      "type": "Income",
+      "expected": {
+        "category": "Building Fund",
+        "fundName": "Building Fund",
+        "donorName": "Tom Wilson"
+      }
+    },
+    {
+      "rowId": "holdout-28",
+      "description": "COMMUNITY TRUST CHURCH STRUCTURAL RENOVATION GRANT",
+      "amount": 6000.0,
+      "type": "Income",
+      "expected": {
+        "category": "Building Fund",
+        "fundName": "Building Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-29",
+      "description": "ANNA REED SUPPORT FOR WOMENS MINISTRY",
+      "amount": 80.0,
+      "type": "Income",
+      "expected": {
+        "category": "Gender Ministries",
+        "fundName": "Women's Ministry Fund",
+        "donorName": "Anna Reed"
+      }
+    },
+    {
+      "rowId": "holdout-30",
+      "description": "WOMENS FELLOWSHIP CONFERENCE TICKET RECEIPTS",
+      "amount": 470.0,
+      "type": "Income",
+      "expected": {
+        "category": "Gender Ministries",
+        "fundName": "Women's Ministry Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-31",
+      "description": "YOUTH COMMUNITY MENTORING COUNCIL GRANT",
+      "amount": 2700.0,
+      "type": "Income",
+      "expected": {
+        "category": "Charity Fund",
+        "fundName": "Youth Ministry Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-32",
+      "description": "MAYA SINGH GIFT TO YOUTH MINISTRY OUTREACH",
+      "amount": 110.0,
+      "type": "Income",
+      "expected": {
+        "category": "Charity Fund",
+        "fundName": "Youth Ministry Fund",
+        "donorName": "Maya Singh"
+      }
+    },
+    {
+      "rowId": "holdout-33",
+      "description": "OVERSEAS EMERGENCY RELIEF CHARITABLE TRUST GRANT",
+      "amount": 4000.0,
+      "type": "Income",
+      "expected": {
+        "category": "Charity Fund",
+        "fundName": "Missions Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-34",
+      "description": "PETER DAVIES OVERSEAS MISSION RELIEF GIFT",
+      "amount": 150.0,
+      "type": "Income",
+      "expected": {
+        "category": "Charity Fund",
+        "fundName": "Missions Fund",
+        "donorName": "Peter Davies"
+      }
+    },
+    {
+      "rowId": "holdout-35",
+      "description": "COMMUNITY FOOD PARCEL PROJECT GRANT",
+      "amount": 2300.0,
+      "type": "Income",
+      "expected": {
+        "category": "Charity Fund",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-36",
+      "description": "BOOKSTALL SALES CARD SETTLEMENT",
+      "amount": 185.0,
+      "type": "Income",
+      "expected": {
+        "category": "Merchandise",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-37",
+      "description": "CHURCH TSHIRT SALES PROCEEDS",
+      "amount": 270.0,
+      "type": "Income",
+      "expected": {
+        "category": "Merchandise",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-38",
+      "description": "ONLINE SERMON BOOK SALES",
+      "amount": 330.0,
+      "type": "Income",
+      "expected": {
+        "category": "Merchandise",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-39",
+      "description": "THANKSGIVING SERVICE CASH COLLECTION",
+      "amount": 615.0,
+      "type": "Income",
+      "expected": {
+        "category": "Thanksgiving",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-40",
+      "description": "SUNDAY OFFERINGS CASH TOTAL",
+      "amount": 920.0,
+      "type": "Income",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-41",
+      "description": "TITHES CASH ENVELOPES TOTAL",
+      "amount": 1050.0,
+      "type": "Income",
+      "expected": {
+        "category": "Tithes & First Fruits",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-42",
+      "description": "SOFTWARE SUPPLIER REFUND DUPLICATE CHARGE",
+      "amount": 72.0,
+      "type": "Income",
+      "expected": {
+        "category": "Uncategorised",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-43",
+      "description": "ENERGY SUPPLIER CREDIT REFUND",
+      "amount": 180.0,
+      "type": "Income",
+      "expected": {
+        "category": "Uncategorised",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-44",
+      "description": "STORAGE RENT OVERPAYMENT RETURNED",
+      "amount": 95.0,
+      "type": "Income",
+      "expected": {
+        "category": "Uncategorised",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-45",
+      "description": "Known book receipt",
+      "amount": 25,
+      "type": "Income",
+      "category": "Merchandise",
+      "fundId": "fund-0",
+      "expected": {
+        "category": "Merchandise",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-46",
+      "description": "Existing restricted gift",
+      "amount": 28,
+      "type": "Income",
+      "fundId": "fund-1",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "Building Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-47",
+      "description": "Existing offering unnamed",
+      "amount": 22,
+      "type": "Income",
+      "category": "Offerings",
+      "fundId": "missing-fund",
+      "expected": {
+        "category": "Offerings",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-48",
+      "description": "MS EMAIL SERVICES",
+      "amount": 52,
+      "type": "Expenditure",
+      "category": "IT Costs",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-49",
+      "description": "CHURCH WEBSITE HOSTING",
+      "amount": 49,
+      "type": "Expenditure",
+      "fundId": "fund-0",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    },
+    {
+      "rowId": "holdout-50",
+      "description": "JULIA PRICE ROOF APPEAL GIFT",
+      "amount": 200,
+      "type": "Income",
+      "category": "Building Fund",
+      "donorName": "Julia Price",
+      "expected": {
+        "category": "Building Fund",
+        "fundName": "Building Fund",
+        "donorName": "Julia Price"
+      }
+    },
+    {
+      "rowId": "holdout-51",
+      "description": "TIM ROSS WOMENS MINISTRY SUPPORT",
+      "amount": 160,
+      "type": "Income",
+      "fundId": "fund-4",
+      "donorName": "Tim Ross",
+      "expected": {
+        "category": "Gender Ministries",
+        "fundName": "Women's Ministry Fund",
+        "donorName": "Tim Ross"
+      }
+    },
+    {
+      "rowId": "holdout-52",
+      "description": "SOFTWARE LICENCE RENEWAL",
+      "amount": 88,
+      "type": "Expenditure",
+      "category": "Offerings",
+      "fundId": "foreign-fund",
+      "expected": {
+        "category": "IT Costs",
+        "fundName": "General Fund",
+        "donorName": null
+      }
+    }
+  ],
+  "labelReview": "After the initial evaluation, fund labels for holdout-25 and holdout-26 were corrected from General Fund to Missions Fund to match the existing mission-boundary labels in focused-cases.json and the supplied fund criteria. Original metrics remain in jev-pipeline-v3-2026-09-22.json. This reviewed fixture is not an untouched final holdout."
+}

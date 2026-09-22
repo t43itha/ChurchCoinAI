@@ -1,6 +1,6 @@
 "use node";
 
-import { action, type ActionCtx } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -20,6 +20,10 @@ import {
 } from "../intelligence/categorization/gemini";
 import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
+import { categorizeWithJev, jevFallbackInput, jevModeForOrganization, jevRoutingMetrics, mergeJevSuggestions } from "../intelligence/categorization/jev";
+import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
+import { effectiveCategories } from "../../lib/smallIncomeDefaults";
+import { preserveCategorizationFields } from "../intelligence/categorization/pipeline";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
@@ -151,41 +155,50 @@ export const categorizeTransactions = action({
 // Preview the categorization pipeline, using the configured AI only for unresolved rows.
 export const categorizeWithPipelinePreview = action({
   args: {
-    transactions: v.array(
-      v.object({
-        description: v.string(),
-        amount: v.number(),
-        type: v.union(v.literal("Income"), v.literal("Expenditure")),
-      })
-    ),
+    transactions: v.array(categorizationInputValidator),
   },
+  returns: v.array(categorizationSuggestionValidator),
   handler: async (ctx, args) => {
+    if (args.transactions.length > 500 || args.transactions.some((row) => !Number.isFinite(row.amount) || row.amount <= 0 || row.description.length > 4000 || (row.rowId?.length ?? 0) > 100)) throw new Error("Invalid categorisation batch (maximum 500 rows)");
+    const transactions = args.transactions.map((row, index) => ({ ...row, rowId: row.rowId ?? `row-${index}` }));
+    if (transactions.some((row) => !row.rowId.trim()) || new Set(transactions.map((row) => row.rowId)).size !== transactions.length) throw new Error("Missing or duplicate categorisation row IDs");
     const startedAt = performance.now();
     const user = await requireUser(ctx);
     const authenticatedAt = performance.now();
+    const jevMode = jevModeForOrganization(String(user.organizationId));
     const { internal } = (await import("../_generated/api")) as any;
     const pipelineContext = await ctx.runQuery(
       internal.intelligence.categorizationMemory.getPipelineContext,
       {
         organizationId: user.organizationId,
-        signatures: categorizationSignatures(args.transactions),
+        signatures: categorizationSignatures(transactions),
+        includeKnownDonors: jevMode === "assist" && ["Admin", "Finance Team", "Pastorate"].includes(user.role) && transactions.some((row) => row.type === "Income" && row.amount > 30 && !row.donorName?.trim()),
       }
     );
     const contextLoadedAt = performance.now();
-    const categoryDetails = pipelineContext.categories;
+    const categoryDetails = effectiveCategories(pipelineContext.categories);
     const funds = pipelineContext.funds;
-    const initialSuggestions = categorizeFromContext(
-      args.transactions,
+    let initialSuggestions = categorizeFromContext(
+      transactions,
       categoryDetails,
       funds,
       pipelineContext.memories
     );
     const locallyCategorizedAt = performance.now();
+    const jevInputs = transactions.map((row, index) => ({ ...row,
+      ...(initialSuggestions[index].category ? { category: initialSuggestions[index].category } : {}),
+      ...(initialSuggestions[index].fundId ? { fundId: initialSuggestions[index].fundId } : {}),
+    })).filter((_, index) => initialSuggestions[index].predictionSource === "none");
+    if (jevMode === "assist" && jevInputs.length) {
+      const result = await categorizeWithJev(jevInputs, categoryDetails, funds, { knownDonors: pipelineContext.knownDonorNames ?? [] });
+      initialSuggestions = mergeJevSuggestions(initialSuggestions, result.decisions, transactions, result.failures).map((suggestion, index) => preserveCategorizationFields(suggestion, transactions[index], categoryDetails, funds));
+      console.info("categorization_jev_usage", { model: result.model, latencyMs: result.latencyMs, inputTokens: result.inputTokens, costUsd: result.costUsd, failedBatches: result.failedBatches, ...jevRoutingMetrics(result), requested: jevInputs.length });
+    }
     const unresolvedTransactions = initialSuggestions
       .map((suggestion, index) =>
-        suggestion.predictionSource === "none" ? args.transactions[index] : null
+        suggestion.predictionSource === "none" ? jevFallbackInput(transactions[index], suggestion) : null
       )
-      .filter((transaction): transaction is (typeof args.transactions)[number] =>
+      .filter((transaction): transaction is NonNullable<typeof transaction> =>
         Boolean(transaction)
       );
 
@@ -301,15 +314,16 @@ export const categorizeWithPipelinePreview = action({
                 items: {
                   type: Type.OBJECT,
                   properties: {
+                    rowId: { type: Type.STRING },
                     description: { type: Type.STRING },
-                    category: { type: Type.STRING },
-                    fundName: { type: Type.STRING },
+                    category: { type: Type.STRING, nullable: true },
+                    fundName: { type: Type.STRING, nullable: true },
                     confidence: {
                       type: Type.STRING,
                       description: "High, Medium, or Low",
                     },
                     isGiftAidEligible: { type: Type.BOOLEAN },
-                    donorName: { type: Type.STRING },
+                    donorName: { type: Type.STRING, nullable: true },
                     evidence: { type: Type.STRING },
                   },
                 },
@@ -330,7 +344,7 @@ export const categorizeWithPipelinePreview = action({
           modelMs = Math.round(performance.now() - modelStartedAt);
         }
       },
-      args.transactions,
+      transactions,
       categoryDetails,
       funds,
       (error) => {
@@ -362,7 +376,31 @@ export const categorizeWithPipelinePreview = action({
       totalMs: Math.round(performance.now() - startedAt),
     });
 
+    if (jevMode === "shadow" && jevInputs.length) {
+      try {
+        await ctx.scheduler.runAfter(0, internal.actions.ai.evaluateJevShadow, {
+          organizationId: user.organizationId, transactions: jevInputs,
+          baseline: mergedSuggestions.filter((row) => jevInputs.some((input) => input.rowId === row.rowId)).map((row) => ({ rowId: row.rowId!, category: row.category, fundId: row.fundId ?? "" })),
+        });
+      } catch {
+        console.warn("categorization_jev_shadow_schedule_failed");
+      }
+    }
     return mergedSuggestions;
+  },
+});
+
+export const evaluateJevShadow = internalAction({
+  args: { organizationId: v.id("organizations"), transactions: v.array(categorizationInputValidator), baseline: v.array(v.object({ rowId: v.string(), category: v.string(), fundId: v.string() })) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (jevModeForOrganization(String(args.organizationId)) !== "shadow" || args.transactions.length > 500) return null;
+    const { internal } = (await import("../_generated/api")) as any;
+    const context = await ctx.runQuery(internal.intelligence.categorizationMemory.getPipelineContext, { organizationId: args.organizationId, signatures: [] });
+    const result = await categorizeWithJev(args.transactions, effectiveCategories(context.categories), context.funds);
+    const baseline = new Map(args.baseline.map((row) => [row.rowId, row]));
+    console.info("categorization_jev_shadow", { model: result.model, rows: args.transactions.length, ...jevRoutingMetrics(result), disagreements: result.decisions.filter((row) => { const other = baseline.get(row.rowId); return other && ((row.categoryAccepted && other.category !== row.category) || (row.fundAccepted && other.fundId !== row.fundId)); }).length, latencyMs: result.latencyMs, inputTokens: result.inputTokens, costUsd: result.costUsd, failedBatches: result.failedBatches });
+    return null;
   },
 });
 

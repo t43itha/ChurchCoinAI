@@ -15,23 +15,10 @@ import {
 export const CATEGORIZATION_MODEL = "gemini-2.5-flash-lite";
 export const COMPLEX_AI_MODEL = "gemini-2.5-flash";
 
-export const CATEGORIZATION_RULES = `Rules:
-- Income transactions must use only income categories.
-- Expenditure transactions must use only expenditure categories.
-- Do not invent category or fund names.
-- Charity Fund is for explicit charitable activity, outreach, relief, community, youth charity, or overseas mission income, not a generic donation.
-- Gender Ministries is for explicit women's or men's ministry income.
-- Building Fund is for explicit building, roof, renovation, or premises appeals and their fundraising receipts.
-- Thanksgiving is only for an explicit thanksgiving gift or service; generic donations and offerings use Offerings.
-- Premises - Manse is for costs tied explicitly to the minister's residence, including its utilities and council tax.
-- Rent - Premises for Worship is for hired worship space. Generic non-worship rent uses Rent.
-- MP categories are major-program costs: speaker honoraria, guest accommodation, and event refreshments.
-- Missions-Tithe is an explicit church tithe allocation to missions. Other mission payments use Mission Support.
-- A merchandise customer is not a donor and a purchase is not Gift Aid eligible.
-- Expenditure is never Gift Aid eligible and supplier, employee, pastor, or speaker names are not donors.
-- If uncertain, choose an allowed category and mark confidence Low.`;
+export { CATEGORIZATION_RULES } from "../../../lib/categorizationPolicy";
+import { accountingCriteria } from "../../../lib/categorizationPolicy";
 
-const confidenceFromModelLabel = (label: unknown): number => {
+export const confidenceFromModelLabel = (label: unknown): number => {
   if (typeof label !== "string") return 0.65;
 
   switch (label.trim().toLowerCase()) {
@@ -75,13 +62,13 @@ export const buildGeminiCategorizationPrompt = (
   const evidenceReasons = evidence.map((item) => item.reason);
 
   return `You are a UK church finance categorisation assistant.
-Return strict JSON suggestions for the provided transactions.
+Return strict JSON suggestions for the provided transactions. Copy each rowId exactly; never match rows by description.
 
 Income categories: ${incomeCategories.join(", ")}
 Expenditure categories: ${expenditureCategories.join(", ")}
 Funds: ${fundNames.join(", ")}
 
-${CATEGORIZATION_RULES}
+${accountingCriteria(categories, funds)}
 
 Relevant evidence reasons:
 ${evidenceReasons.map((reason) => `- ${reason}`).join("\n")}
@@ -139,6 +126,7 @@ export const validateGeminiSuggestion = (
   }
 
   return {
+    ...(transaction.rowId ? { rowId: transaction.rowId } : {}),
     description: transaction.description,
     amount: transaction.amount,
     type: transaction.type,

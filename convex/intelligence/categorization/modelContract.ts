@@ -1,5 +1,5 @@
 import { categoryNamesForPrompt } from "./categoryResolver";
-import { CATEGORIZATION_RULES } from "./gemini";
+import { accountingCriteria } from "../../../lib/categorizationPolicy";
 import {
   CategoryLike,
   CategorizationEvidence,
@@ -11,20 +11,21 @@ export const categorizationModelInstructions = (
   funds: FundLike[],
   evidence: CategorizationEvidence[]
 ): string => `You are a UK church finance categorisation assistant.
-Return exactly one strict JSON prediction for every supplied transaction.
+Return exactly one strict JSON prediction for every supplied transaction, copying its rowId exactly. Never match rows by description.
 
 Income categories: ${categoryNamesForPrompt(categories, "Income").join(", ")}
 Expenditure categories: ${categoryNamesForPrompt(categories, "Expenditure").join(", ")}
 Funds: ${funds.map((fund) => fund.name).join(", ")}
 
-${CATEGORIZATION_RULES}
+${accountingCriteria(categories, funds)}
 
 Relevant evidence reasons:
 ${evidence.map((item) => `- ${item.reason}`).join("\n")}`;
 
 export const categorizationOutputSchema = (
   categories: CategoryLike[],
-  funds: FundLike[]
+  funds: FundLike[],
+  selective = false
 ) => ({
   type: "object",
   properties: {
@@ -33,34 +34,35 @@ export const categorizationOutputSchema = (
       items: {
         type: "object",
         properties: {
-          description: { type: "string" },
+          rowId: { type: "string" },
+          ...(selective ? {} : { description: { type: "string" } }),
           category: {
-            type: "string",
+            type: selective ? ["string", "null"] : "string",
             enum: [
               ...categoryNamesForPrompt(categories, "Income"),
               ...categoryNamesForPrompt(categories, "Expenditure"),
+              ...(selective ? [null] : []),
             ],
           },
           fundName: {
-            type: "string",
-            enum: funds.map((fund) => fund.name),
+            type: selective ? ["string", "null"] : "string",
+            enum: [...funds.map((fund) => fund.name), ...(selective ? [null] : [])],
           },
           confidence: {
             type: "string",
             enum: ["High", "Medium", "Low"],
           },
-          isGiftAidEligible: { type: "boolean" },
+          ...(selective ? {} : { isGiftAidEligible: { type: "boolean" } }),
           donorName: { type: ["string", "null"] },
-          evidence: { type: "string" },
+          ...(selective ? {} : { evidence: { type: "string" } }),
         },
         required: [
-          "description",
+          "rowId",
           "category",
           "fundName",
           "confidence",
-          "isGiftAidEligible",
           "donorName",
-          "evidence",
+          ...(selective ? [] : ["description", "isGiftAidEligible", "evidence"]),
         ],
         additionalProperties: false,
       },

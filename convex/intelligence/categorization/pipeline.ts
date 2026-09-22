@@ -4,6 +4,9 @@ import { validateGeminiSuggestion } from "./gemini";
 import { buildMemorySuggestion } from "./memory";
 import { normalizeDescription, normalizeTransaction } from "./normalize";
 import { applyDeterministicRules } from "./rules";
+import { applySmallIncomeDefaults, effectiveCategories, isSmallIncome } from "../../../lib/smallIncomeDefaults";
+import { resolveCategoryForTransaction } from "./categoryResolver";
+import { mergeSelectiveFallback } from "./selectiveFallback";
 import {
   CategoryLike,
   CategorizationInput,
@@ -77,6 +80,7 @@ export const categorizeFromContext = (
   funds: FundLike[],
   memories: any[]
 ): CategorizationSuggestion[] => {
+  categories = effectiveCategories(categories);
   const normalizedTransactions = transactions.map((transaction) =>
     normalizeTransaction(transaction)
   );
@@ -86,6 +90,12 @@ export const categorizeFromContext = (
   const suggestions: CategorizationSuggestion[] = [];
 
   for (const normalized of normalizedTransactions) {
+    const preservedCategory = resolveCategoryForTransaction(normalized.category ?? "", normalized.type, categories);
+    const preservedFund = funds.find((fund) => String(fund._id) === normalized.fundId);
+    if (preservedCategory && preservedFund) {
+      suggestions.push({ ...unresolvedSuggestion(normalized), category: preservedCategory.name, categoryTransactionType: normalized.type, fundId: String(preservedFund._id), fundName: preservedFund.name, predictionSource: "rule", donorName: normalized.donorName ?? null, evidence: [{ source: "rule", reason: "Preserved existing category and fund." }] });
+      continue;
+    }
     const memory = memoryBySignature.get(normalized.signature);
     const memorySuggestion = memory
       ? buildMemorySuggestion(memory, normalized, categories, funds)
@@ -101,11 +111,25 @@ export const categorizeFromContext = (
       categories,
       funds
     );
-    suggestions.push(ruleSuggestion ?? unresolvedSuggestion(normalized));
+    if (ruleSuggestion) {
+      suggestions.push(ruleSuggestion);
+      continue;
+    }
+    const defaults = applySmallIncomeDefaults(normalized, categories, funds.map((fund) => ({ ...fund, _id: String(fund._id) })));
+    const defaultFund = funds.find((fund) => String(fund._id) === defaults.fundId);
+    if (isSmallIncome(normalized) && defaults.category && defaultFund) {
+      suggestions.push({ ...unresolvedSuggestion(normalized), category: defaults.category, categoryTransactionType: normalized.type, fundId: String(defaultFund._id), fundName: defaultFund.name, predictionSource: "rule", donorName: normalized.donorName ?? null, evidence: [{ source: "rule", reason: "Income of £30 or less: defaulted missing category/fund to Offerings and General Fund." }] });
+    } else suggestions.push(unresolvedSuggestion(normalized));
   }
 
-  return suggestions;
+  return suggestions.map((suggestion, index) => preserveCategorizationFields(suggestion, transactions[index], categories, funds));
 };
+
+export function preserveCategorizationFields(suggestion: CategorizationSuggestion, input: CategorizationInput, categories: CategoryLike[], funds: FundLike[]): CategorizationSuggestion {
+  const category = resolveCategoryForTransaction(input.category ?? "", input.type, categories);
+  const fund = funds.find((item) => String(item._id) === input.fundId);
+  return { ...suggestion, ...(input.rowId ? { rowId: input.rowId } : {}), ...(category ? { category: category.name, categoryTransactionType: input.type } : {}), ...(fund ? { fundId: String(fund._id), fundName: fund.name } : {}), ...(input.donorName ? { donorName: input.donorName } : {}) };
+}
 
 type AIPredictionSource = Extract<
   CategorizationSource,
@@ -120,8 +144,14 @@ export const mergeAIFallback = (
   funds: FundLike[],
   predictionSource: AIPredictionSource
 ): CategorizationSuggestion[] => {
+  const byId = new Map<string, Record<string, unknown>[]>();
   const queues = new Map<string, Record<string, unknown>[]>();
   for (const rawSuggestion of rawAISuggestions) {
+    if (typeof rawSuggestion.rowId === "string") {
+      const matches = byId.get(rawSuggestion.rowId) ?? [];
+      matches.push(rawSuggestion);
+      byId.set(rawSuggestion.rowId, matches);
+    }
     const description =
       typeof rawSuggestion.description === "string"
         ? normalizeDescription(rawSuggestion.description)
@@ -142,22 +172,26 @@ export const mergeAIFallback = (
       return suggestion;
     }
 
-    const rawSuggestion = queues
-      .get(normalizeDescription(transaction.description))
-      ?.shift();
+    const identified = transaction.rowId ? byId.get(transaction.rowId) : undefined;
+    const rawSuggestion = transaction.rowId
+      ? (identified?.length === 1 ? identified[0] : undefined)
+      : queues.get(normalizeDescription(transaction.description))?.shift();
     if (!rawSuggestion) {
       return suggestion;
     }
 
-    return (
-      validateGeminiSuggestion(
+    if (suggestion.decisionMetadata?.fieldSources) {
+      return mergeSelectiveFallback(suggestion, rawSuggestion, transaction, categories, funds, predictionSource);
+    }
+
+    const validated = validateGeminiSuggestion(
         rawSuggestion,
         transaction,
         categories,
         funds,
         predictionSource
-      ) ?? suggestion
-    );
+      );
+    return validated ? preserveCategorizationFields(validated, transaction, categories, funds) : suggestion;
   });
 };
 
