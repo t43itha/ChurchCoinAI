@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { decisionMetadataValidator } from "./intelligence/categorization/validators";
 
 export default defineSchema({
   // Multi-tenancy: Each organization is a separate tenant
@@ -603,6 +604,8 @@ export default defineSchema({
     aiPredictedCategory: v.string(),
     aiConfidence: v.string(),
     predictionSource: v.union(
+      v.literal("rule"),
+      v.literal("jev"),
       v.literal("gemini"),
       v.literal("openrouter"),
       v.literal("openai"),
@@ -611,6 +614,7 @@ export default defineSchema({
       v.literal("none")
     ),
     ragScore: v.optional(v.number()),
+    decisionMetadata: v.optional(decisionMetadataValidator),
     finalCategory: v.string(),
     wasCorrect: v.boolean(),
     createdAt: v.number(),
@@ -641,11 +645,13 @@ export default defineSchema({
     .index("by_organization_lastAccepted", ["organizationId", "lastAcceptedAt"]),
 
   categorizationFeedbackEvents: defineTable({
+    decisionMetadata: v.optional(decisionMetadataValidator),
     organizationId: v.id("organizations"),
     transactionId: v.id("transactions"),
     signature: v.string(),
     transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
     source: v.union(
+      v.literal("jev"),
       v.literal("memory"),
       v.literal("rule"),
       v.literal("rag"),

@@ -5,8 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { loadTypeScript } from "./lib/load-typescript.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// Load the exact dependency-free decision contract used by the backend.
+const { buildJevRequest, parseJevDecisions, JEV_URL, JEV_MODEL } = await loadTypeScript(path.join(ROOT, "lib", "jevDecisions.ts"));
 const DEFAULT_CASES_PATH = path.join(ROOT, "evals", "categorization", "cases.json");
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
@@ -128,8 +131,12 @@ function parseArgs(argv) {
     throw new Error("--limit must be a positive integer");
   }
   if (options.models.length === 0) throw new Error("At least one model is required");
-  if (!["openrouter", "openai", "openai-chat"].includes(options.provider)) {
-    throw new Error("--provider must be openrouter, openai, or openai-chat");
+  if (!["openrouter", "openai", "openai-chat", "jev", "jev-hybrid"].includes(options.provider)) {
+    throw new Error("--provider must be openrouter, openai, openai-chat, jev, or jev-hybrid");
+  }
+  if (options.provider.startsWith("jev")) {
+    options.models = [{ id: JEV_MODEL, reasoning: null }];
+    if (options.chunkSize > 20) throw new Error("Jev supports at most 20 rows per evaluation batch");
   }
   return options;
 }
@@ -358,6 +365,46 @@ async function callOpenRouter(apiKey, body, attempt = 0) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function callJevEvaluation(apiKey, chunk, options) {
+  const started = performance.now();
+  const rows = chunk.map((row) => ({ rowId: row.id, description: row.description, amount: row.amount, type: row.type }));
+  const categories = [...INCOME_CATEGORIES.map((name) => ({ name, transactionType: "Income" })), ...EXPENDITURE_CATEGORIES.map((name) => ({ name, transactionType: "Expenditure" }))];
+  const funds = FUNDS.map((name) => ({ _id: name, name }));
+  const request = buildJevRequest(rows, categories, funds);
+  if (options.zdr) request.body.provider.zdr = true;
+  let payload = {}, decisions = [], jevError = null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(JEV_URL, { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify(request.body), signal: controller.signal });
+    payload = await response.json();
+    if (!response.ok) throw new Error(`Jev HTTP ${response.status}`);
+    decisions = parseJevDecisions(payload, rows, request);
+  } catch (error) {
+    jevError = error instanceof Error ? error.message : String(error);
+    if (options.provider === "jev") throw error;
+  } finally { clearTimeout(timer); }
+  const usable = options.provider === "jev-hybrid" ? decisions.filter((decision) => decision.accepted) : decisions.filter((decision) => decision.category && decision.fundName);
+  const predictions = usable.map((decision) => ({ rowId: decision.rowId, category: decision.category, fundName: decision.fundName, isGiftAidEligible: false, donorName: null, confidence: "High", evidence: "Jev category/fund decision" }));
+  const acceptedIds = new Set(predictions.map((row) => row.rowId));
+  const remaining = chunk.filter((row) => !acceptedIds.has(row.id));
+  let fallbackUsage = {};
+  if (options.provider === "jev-hybrid" && remaining.length) {
+    const fallback = await callOpenRouter(apiKey, requestBody({ id: "openai/gpt-5.6-luna", reasoning: "none" }, remaining, options));
+    fallbackUsage = fallback.payload.usage ?? {};
+    predictions.push(...JSON.parse(fallback.payload.choices[0].message.content).predictions);
+  }
+  const inputTokens = payload.usage?.input_tokens ?? 0;
+  return { latencyMs: performance.now() - started, payload: { id: payload.id, provider: "OpenRouter Decisions",
+    decisionDiagnostics: { requestedModel: JEV_MODEL, resolvedModel: payload.model ?? null, answers: payload.answers ?? null, decisions },
+    choices: [{ message: { content: JSON.stringify({ predictions }) } }], usage: {
+    prompt_tokens: inputTokens + (fallbackUsage.prompt_tokens ?? 0), completion_tokens: fallbackUsage.completion_tokens ?? 0,
+    cost: (payload.usage?.cost ?? inputTokens * 0.042 / 1_000_000) + (fallbackUsage.cost ?? 0),
+    jevInputTokens: inputTokens, jevAccepted: usable.filter((decision) => decision.accepted).length, fallbackRows: options.provider === "jev-hybrid" ? remaining.length : 0,
+    costEstimated: payload.usage?.cost == null, jevError,
+  } } };
 }
 
 function openAIOutputText(payload) {
@@ -619,6 +666,8 @@ async function main() {
   console.log(`Validated ${cases.length} synthetic cases across ${caseChunks.length} chunks.`);
   console.log(`Models: ${options.models.map((model) => model.id).join(", ")}`);
   console.log(`Provider: ${options.provider}`);
+  if (options.provider === "jev") console.log("Jev-only measures category/fund decisions; donor/Gift Aid fields are not inferred and all-fields accuracy is not equivalent to a complete pipeline.");
+  if (options.provider === "jev-hybrid") console.log("Hybrid includes Luna fallback/extraction for uncertain decisions. This is a model-stage eval, not a full import benchmark.");
   console.log(`Planned API requests: ${totalRequests}`);
   if (options.dryRun) {
     console.log("Dry run complete; no external requests were made.");
@@ -643,7 +692,9 @@ async function main() {
         const chunk = caseChunks[chunkIndex];
         process.stdout.write(`  run ${run}/${options.runs}, chunk ${chunkIndex + 1}/${caseChunks.length} ... `);
         try {
-          const { payload, latencyMs } = options.provider === "openai"
+          const { payload, latencyMs } = options.provider.startsWith("jev")
+            ? await callJevEvaluation(apiKey, chunk, options)
+            : options.provider === "openai"
             ? await callOpenAIDirect(apiKey, openAIDirectBody(model, chunk))
             : options.provider === "openai-chat"
               ? await callOpenAIChat(apiKey, openAIChatBody(model, chunk, options))
@@ -667,6 +718,7 @@ async function main() {
               : payload.usage || {},
             predictions: Array.isArray(parsed?.predictions) ? parsed.predictions : [],
             generationId: payload.id || null,
+            ...(payload.decisionDiagnostics ? { decisionDiagnostics: payload.decisionDiagnostics } : {}),
           });
           console.log(`${Math.round(latencyMs)} ms`);
         } catch (error) {

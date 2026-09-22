@@ -25,6 +25,7 @@ export const defaultConfidenceForSource = (
     case "gemini":
     case "openrouter":
     case "openai":
+    case "jev":
       return 0.72;
     case "none":
       return 0;

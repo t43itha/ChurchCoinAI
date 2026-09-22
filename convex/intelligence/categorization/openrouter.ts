@@ -117,7 +117,7 @@ const categorizeOpenRouterBatch = async (
           json_schema: {
             name: "churchcoin_transaction_categorization",
             strict: true,
-            schema: categorizationOutputSchema(categories, funds),
+            schema: categorizationOutputSchema(categories, funds, transactions.some((row) => row.requestedFields !== undefined)),
           },
         },
         max_tokens: Math.min(

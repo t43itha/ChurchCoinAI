@@ -36,6 +36,14 @@ const categories: CategoryLike[] = [
 const funds: FundLike[] = [{ _id: "fund1", name: "General Fund" }];
 
 describe("deterministic categorization rules", () => {
+  it.each([
+    ["Women's ministry donation", "Income"],
+    ["Mission relief donation", "Income"],
+    ["British Gas Manse direct debit", "Expenditure"],
+    ["Manse water bill Thames Water", "Expenditure"],
+  ] as const)("defers the ambiguous generic rule for %s", (description, type) => {
+    expect(applyDeterministicRules({ description, amount: 100, type }, categories, funds)).toBeNull();
+  });
   it("categorizes bank charges as expenditure only", () => {
     const suggestion = applyDeterministicRules(
       { description: "Monthly bank charge", amount: 5, type: "Expenditure" },
@@ -110,7 +118,7 @@ describe("deterministic categorization rules", () => {
     }
   });
 
-  it("uses the fund named in the description", () => {
+  it("defers restricted-purpose giving instead of applying a generic offering rule", () => {
     const suggestion = applyDeterministicRules(
       { description: "Building Fund offering", amount: 50, type: "Income" },
       categories,
@@ -119,8 +127,7 @@ describe("deterministic categorization rules", () => {
         { _id: "building", name: "Building Fund" },
       ]
     );
-    expect(suggestion?.fundName).toBe("Building Fund");
-    expect(suggestion?.category).toBe("Offerings");
+    expect(suggestion).toBeNull();
   });
 
   it("does not match utility substrings inside unrelated expenditure descriptions", () => {
