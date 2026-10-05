@@ -65,10 +65,93 @@ export const categoryType = {
   },
 };
 
+// Fields that hold pounds. Summing them as floats drifts by fractions of a penny.
+const MONEY_FIELDS = new Set([
+  "amount",
+  "balance",
+  "total",
+  "targetAmount",
+  "cashAmount",
+  "chequeAmount",
+  "totalDonation",
+]);
+
+const isMoneyMember = (node) =>
+  node?.type === "MemberExpression" && MONEY_FIELDS.has(memberName(node));
+
+const containsMoneyArithmetic = (node) => {
+  let found = false;
+  const visit = (current) => {
+    if (found || !current || typeof current.type !== "string") return;
+    if (
+      current.type === "BinaryExpression" &&
+      (current.operator === "+" || current.operator === "-") &&
+      (isMoneyMember(current.left) || isMoneyMember(current.right))
+    ) {
+      found = true;
+      return;
+    }
+    for (const key of Object.keys(current)) {
+      if (key === "parent") continue;
+      const child = current[key];
+      if (Array.isArray(child)) child.forEach(visit);
+      else if (child && typeof child.type === "string") visit(child);
+    }
+  };
+  visit(node);
+  return found;
+};
+
+export const moneyArithmetic = {
+  meta: {
+    type: "problem",
+    docs: {
+      description: "Money totals use sumMoney and targets use meetsMoneyTarget from convex/lib/money.",
+    },
+    messages: {
+      sum: "Raw float money sum. Use sumMoney(items, getAmount) from convex/lib/money.ts; float accumulation drifts by fractions of a penny (see a7cfd70).",
+      compare:
+        "Compare a money total with a target using meetsMoneyTarget(total, target) from convex/lib/money.ts; a raw comparison fails on float drift (see 809c966).",
+    },
+    schema: [],
+  },
+  create(context) {
+    return {
+      CallExpression(node) {
+        if (node.callee.type !== "MemberExpression" || memberName(node.callee) !== "reduce") return;
+        const callback = node.arguments[0];
+        if (
+          callback &&
+          (callback.type === "ArrowFunctionExpression" || callback.type === "FunctionExpression") &&
+          containsMoneyArithmetic(callback.body)
+        ) {
+          context.report({ node, messageId: "sum" });
+        }
+      },
+      AssignmentExpression(node) {
+        if ((node.operator === "+=" || node.operator === "-=") && isMoneyMember(node.right)) {
+          context.report({ node, messageId: "sum" });
+        }
+      },
+      BinaryExpression(node) {
+        if (!["<", ">=", "<=", ">"].includes(node.operator)) return;
+        const target = [node.left, node.right].find(
+          (side) => side.type === "MemberExpression" && ["amount", "targetAmount"].includes(memberName(side))
+        );
+        const other = target === node.left ? node.right : node.left;
+        if (target && other.type !== "Literal" && other.type !== "UnaryExpression" && !isMoneyMember(other)) {
+          context.report({ node, messageId: "compare" });
+        }
+      },
+    };
+  },
+};
+
 export default {
   meta: { name: "churchcoin" },
   rules: {
     "reportable-transactions": reportableTransactions,
     "category-type": categoryType,
+    "money-arithmetic": moneyArithmetic,
   },
 };
