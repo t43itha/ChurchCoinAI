@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
@@ -144,19 +145,20 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   const [reopenReason, setReopenReason] = useState("");
   const [isReopening, setIsReopening] = useState(false);
 
+  const canComplete = can(currentUser.role, "reconciliation.manage");
   const awaitingCollections = useQuery(
     api.queries.cashBankingReconciliations.getAwaitingBanking,
-    {}
+    canComplete ? {} : "skip"
   ) as AwaitingCollection[] | undefined;
   const candidateBankCredits = useQuery(
     api.queries.cashBankingReconciliations.getCandidateBankCredits,
-    editingReconciliationId
+    !canComplete ? "skip" : editingReconciliationId
       ? { includeReconciliationId: editingReconciliationId }
       : {}
   ) as CandidateBankCredit[] | undefined;
   const reconciliationHistory = useQuery(
     api.queries.cashBankingReconciliations.list,
-    {}
+    canComplete ? {} : "skip"
   ) as ReconciliationRecord[] | undefined;
 
   const createDraft = useMutation(
@@ -172,7 +174,6 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
     api.mutations.cashBankingReconciliations.reopen
   );
 
-  const canComplete = ["Admin", "Finance Team"].includes(currentUser.role);
   const collections = awaitingCollections ?? [];
   const bankCredits = candidateBankCredits ?? [];
   const history = reconciliationHistory ?? [];

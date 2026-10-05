@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Fund, Transaction, FundType, TransactionType } from '../types';
 import { ArrowRight, Wallet, TrendingUp, Activity } from 'lucide-react';
-import { filterActiveTransactions } from '../lib/voidedTransactions';
+import { filterReportableTransactions } from '../lib/reportableTransactions';
 
 interface FundManagerProps {
   funds: Fund[];
@@ -46,7 +46,7 @@ const TypeBadge: React.FC<{ type: string }> = ({ type }) => {
 };
 
 const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLedger }) => {
-  const activeTransactions = useMemo(() => filterActiveTransactions(transactions), [transactions]);
+  const reportableTransactions = useMemo(() => filterReportableTransactions(transactions), [transactions]);
   const now = new Date();
 
   const inCurrentMonth = (iso: string) => {
@@ -58,7 +58,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
   const { moveByFund, monthExpByFund } = useMemo(() => {
     const move: Record<string, number> = {};
     const exp: Record<string, number> = {};
-    activeTransactions.forEach((t) => {
+    reportableTransactions.forEach((t) => {
       if (!inCurrentMonth(t.date)) return;
       const signed = t.type === TransactionType.INCOME ? t.amount : -t.amount;
       move[t.fundId] = (move[t.fundId] || 0) + signed;
@@ -66,7 +66,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
     });
     return { moveByFund: move, monthExpByFund: exp };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTransactions]);
+  }, [reportableTransactions]);
 
   const sumBy = (type?: string) =>
     funds.filter((f) => !type || f.type === type).reduce((acc, f) => acc + f.balance, 0);
@@ -97,7 +97,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
         .sort((a, b) => b.value - a.value)
         .slice(0, 5);
     };
-    const generalExp = activeTransactions.filter(
+    const generalExp = reportableTransactions.filter(
       (t) => generalFundIds.has(t.fundId) && t.type === TransactionType.EXPENDITURE
     );
     const monthExp = generalExp.filter((t) => inCurrentMonth(t.date));
@@ -106,7 +106,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
       ? { expenditureData: topCategories(monthExp), expenditureLabel: `Top categories · ${monthLabel}` }
       : { expenditureData: topCategories(generalExp), expenditureLabel: 'Top categories · All time' };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTransactions, generalFundIds]);
+  }, [reportableTransactions, generalFundIds]);
   const maxExpenditure = Math.max(...expenditureData.map((e) => e.value), 1);
 
   const allocation = Object.keys(ALLOCATION_COLORS)

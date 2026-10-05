@@ -1,3 +1,4 @@
+import { ROLES } from "./lib/permissions";
 import { Fund, FundType, Transaction, TransactionType, Pledge, Donor, AppUser } from './types';
 
 export const INITIAL_FUNDS: Fund[] = [
@@ -39,7 +40,7 @@ export const MOCK_USERS: AppUser[] = [
     clerkId: 'user_mock_u1',
     name: 'Sarah Treasurer', 
     email: 'sarah.t@church.org', 
-    role: 'Admin', 
+    role: ROLES[0],
     avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150&h=150' 
   },
   { 
@@ -47,7 +48,7 @@ export const MOCK_USERS: AppUser[] = [
     clerkId: 'user_mock_u2',
     name: 'David Finance', 
     email: 'david.f@church.org', 
-    role: 'Finance Team',
+    role: ROLES[1],
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150&h=150'
   },
   { 
@@ -55,14 +56,14 @@ export const MOCK_USERS: AppUser[] = [
     clerkId: 'user_mock_u3',
     name: 'Rev. John Doe', 
     email: 'john.doe@church.org', 
-    role: 'Pastorate' 
+    role: ROLES[2]
   },
   { 
     _id: 'u4', 
     clerkId: 'user_mock_u4',
     name: 'Ext. Auditor', 
     email: 'audit@firm.com', 
-    role: 'Guest' 
+    role: ROLES[3]
   }
 ];
 

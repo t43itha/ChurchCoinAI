@@ -1,6 +1,7 @@
 "use node";
 
 import { action } from "../_generated/server";
+import { assertCapability } from "../lib/auth";
 import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 import {
@@ -27,9 +28,11 @@ export const deleteOrganization = action({
     }
 
     const user = await ctx.runQuery(api.queries.users.current, {});
-    if (!user || user.role !== "Admin") {
+    if (!user) {
       throw new Error("Forbidden: only organization admins can delete data");
     }
+
+    assertCapability(user, "organization.delete");
 
     const manifest = await ctx.runQuery(
       internal.queries.organizations.getDeletionManifest,

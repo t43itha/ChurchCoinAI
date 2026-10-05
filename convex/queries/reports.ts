@@ -1,7 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
 import {
   filterReportableTransactions,
@@ -53,7 +53,7 @@ function getSundaysInMonth(year: number, month: number): string[] {
 export const weeklyCashSummary = query({
   args: { weekEndingDate: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "reports.read");
 
     // Get all cash collections for this week
     const collections = await ctx.db
@@ -191,7 +191,7 @@ export const monthlyCashBreakdown = query({
     month: v.number(), // 0-indexed (0 = January)
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "reports.read");
 
     // Get all Sundays in the month
     const sundays = getSundaysInMonth(args.year, args.month);
@@ -342,7 +342,7 @@ export const monthlyCashBreakdown = query({
 export const getCurrentWeekEnding = query({
   args: { today: v.string() },
   handler: async (ctx, args) => {
-    await requireRole(ctx, ["Admin", "Finance Team"]);
+    await requireCapability(ctx, "reports.read");
     const [yearText, monthText, dayText] = args.today.split("-");
     return getWeekEndingDate(
       new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText), 12))
@@ -357,7 +357,7 @@ export const monthlyReportData = query({
     month: v.number(), // 0-indexed (0 = January)
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "reports.read");
 
     // Calculate date range for the month
     const startDate = new Date(args.year, args.month, 1);
@@ -674,7 +674,7 @@ export const annualReportData = query({
     year: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "reports.read");
 
     // Calculate date range for the year
     const startDate = `${args.year}-01-01`;

@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
-import { Fund } from "../types";
+import { Fund, TransactionType } from "../types";
+import { categoryNamesForTransactionTypes } from "../lib/transactionCategories";
 import DonorSearchInput from "./DonorSearchInput";
 import { InPersonGivingLedger } from "../lib/inPersonGiving";
 import { formatLocalDateInputValue, getWeekEndingSunday } from "../lib/dateUtils";
@@ -22,6 +23,7 @@ import {
 interface Category {
   _id: string;
   name: string;
+  transactionType?: TransactionType;
 }
 
 interface ServiceRowEntry {
@@ -95,7 +97,13 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const today = formatLocalDateInputValue(new Date());
   const unrestrictedFund = funds.find((fund) => fund.type === "Unrestricted");
   const defaultFundId = unrestrictedFund?._id || funds[0]?._id || "";
-  const defaultNamedDonationCategory = getDefaultDonationCategory(categories);
+  // Cash takings are always saved as Income, so offer only categories the
+  // server will accept for Income (after its legacy-category backfill).
+  const incomeCategories = useMemo(() => {
+    const valid = new Set(categoryNamesForTransactionTypes(categories, [TransactionType.INCOME]));
+    return categories.filter((category) => valid.has(category.name));
+  }, [categories]);
+  const defaultNamedDonationCategory = getDefaultDonationCategory(incomeCategories);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -651,8 +659,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                   onChange={(e) => updateNamedDonation(row.id, { category: e.target.value })}
                                   className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
                                 >
-                                  {categories.length === 0 && <option value="Donation">Donation</option>}
-                                  {categories.map((category) => (
+                                  {incomeCategories.length === 0 && <option value="Donation">Donation</option>}
+                                  {incomeCategories.map((category) => (
                                     <option key={category._id} value={category.name}>
                                       {category.name}
                                     </option>
@@ -778,8 +786,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                   onChange={(e) => updateNamedDonation(row.id, { category: e.target.value })}
                                   className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
                                 >
-                                  {categories.length === 0 && <option value="Donation">Donation</option>}
-                                  {categories.map((category) => (
+                                  {incomeCategories.length === 0 && <option value="Donation">Donation</option>}
+                                  {incomeCategories.map((category) => (
                                     <option key={category._id} value={category.name}>
                                       {category.name}
                                     </option>

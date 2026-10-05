@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Codex and other coding agents when working with code in this repository. Keep it in sync with CLAUDE.md.
 
 ## Project Overview
 
@@ -13,8 +13,12 @@ npm run dev        # Start Vite dev server on localhost:3000
 npm run build      # Production build
 npx convex dev     # Start Convex backend dev server (run alongside Vite)
 npx convex deploy  # Deploy backend to production
-npx tsc            # Type-check (no test framework or linter configured)
+npm run typecheck  # Type-check (tsc --noEmit)
+npm run lint       # ESLint (rules-of-hooks as errors; see eslint.config.js)
+npm test           # Vitest unit tests (tests/ covers lib + categorization logic)
 ```
+
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, and tests on pushes and PRs.
 
 Both `npm run dev` and `npx convex dev` must run simultaneously during development.
 
@@ -27,17 +31,20 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - **AI:** Google Gemini 2.5 Flash + Convex RAG for transaction categorization
 - **Banking:** Yapily for manual UK Open Banking transaction sync, with a provider discriminator retained only for legacy-record compatibility
 - **Payments:** Stripe (subscription billing with webhook handling)
-- **Styling:** Tailwind CSS via CDN with custom "Swiss Ledger" design system defined in `index.html`
-- **Exports:** html2canvas + jsPDF for PDF, XLSX for Excel
+- **Styling:** Tailwind CSS via PostCSS (`tailwind.config.cjs` + `styles.css`) with the "Refined Ledger" design system
+- **Exports:** html2canvas + jsPDF for PDF, XLSX (SheetJS 0.20.x from cdn.sheetjs.com) for Excel
 
 ### Frontend Structure
-- `App.tsx` — Root component with tab-based routing via `activeTab` state (no router library)
-- `components/` — All UI components (~46 files), flat structure
-- `components/landing/` — Marketing site components
-- `hooks/` — Custom hooks for frontend workflows
+- `index.tsx` — Entry: Clerk + Convex providers, `BrowserRouter`
+- `App.tsx` — Auth/onboarding gates and app shell; fetches only shared reference data (funds, categories)
+- `components/app/AppContentRoutes.tsx` — react-router routes; each route wrapper fetches its own data (transactions, donors, pledges, users) so only the active page subscribes to it
+- `components/app/actions/` — Mutation-wrapping hooks (donor/pledge, fund/category, org admin) used by route wrappers; they surface toasts via `lib/notifications.notify`
+- `components/` — UI components, flat structure; `components/landing/` marketing site; `components/legal/` privacy/terms
+- `lib/` — Shared pure logic (dates, money-adjacent filters like `reportableTransactions`, notifications)
 - `services/` — PDF and Excel export utilities
 - `types.ts` — Shared TypeScript interfaces
-- Navigation tabs: dashboard, transactions, funds, donors, campaigns, reports, copilot, settings
+- `tests/` — Vitest unit tests for lib and categorization logic
+- Routes: /dashboard, /transactions, /funds, /donors, /campaigns, /reports, /copilot, /settings (+ public /privacy, /terms)
 
 ### Backend Structure (convex/)
 - `schema.ts` — 17 tables, all scoped to `organizationId` for multi-tenancy
@@ -46,7 +53,9 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `actions/` — Server-side async operations (AI calls, Stripe, bank connection flows)
 - `intelligence/` — AI insight generation and RAG indexing
 - `http.ts` — HTTP routes for Stripe webhooks, the Yapily callback, and preserved Plaid webhook compatibility
-- `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireRole()`, `canEdit()`
+- `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections
+- `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireCapability()`, `assertCapability()`, `roleValidator`, `redactDonorFields()`
+- `lib/money.ts` — Money helpers: amounts are pounds as floats; total them with `sumMoney()`, round single values with `roundMoney()`, and compare targets with `meetsMoneyTarget()`
 
 ### Data Patterns
 ```typescript
@@ -64,15 +73,15 @@ const categorize = useAction(api.actions.ai.categorizeTransactions);
 Every table has an `organizationId` field. All queries and mutations must scope data to the current user's organization. Auth helpers in `convex/lib/auth.ts` enforce this.
 
 ### Role-Based Access
-Four roles with descending permissions: **Admin** > **Finance Team** > **Pastorate** > **Guest**. Admin and Finance Team can edit; Pastorate and Guest are read-only. Use `requireRole()` and `canEdit()` from `convex/lib/auth.ts`.
+Four roles with descending permissions: **Admin** > **Finance Team** > **Pastorate** > **Guest**. Admin and Finance Team can edit; Pastorate and Guest are read-only. `lib/permissions.ts` is the single policy: it owns the role names, the `UserRole` type, and the capability grants. Check access with `can(role, capability)` in components and `requireCapability()` / `assertCapability()` from `convex/lib/auth.ts` on the server; use `roleValidator` for role validators. To change who can do something, edit `CAPABILITIES`, never an inline role list.
 
-Donor records are readable by Admin, Finance Team, and Pastorate within their own organization. Pastorate donor access is read-only; Guest cannot view donor records. Donor writes remain restricted to Admin and Finance Team, with deletion restricted to Admin.
+Donor records are readable by Admin, Finance Team, and Pastorate within their own organization. Pastorate donor access is read-only; Guest cannot view donor records, and queries returning transactions or pledges pass rows through `redactDonorFields()` so Guests see them without donor identity. Donor writes remain restricted to Admin and Finance Team, with deletion restricted to Admin. Only Admin manages users, invitations, billing, the organisation profile, fund/category deletion, and bank connection removal; reconciliation is Admin and Finance Team only; Guest has no Reports access.
 
 ### Design System
-The "Swiss Ledger" design system is defined via Tailwind config in `index.html` (not a separate tailwind.config file). Key tokens:
+The "Refined Ledger" design system is defined in `tailwind.config.cjs` and `styles.css`. Key tokens:
 - Colors: ink, paper, charcoal, sage, amber
 - Fonts: DM Sans (body), JetBrains Mono (code)
-- Shadow style: hard offset shadows (2px-8px)
+- Borders/shadows: `border-ledger` + soft shadows (`shadow-soft`)
 - Custom classes: `swiss-card`, `ledger-table`, `btn-primary`, `btn-secondary`, `badge-*`
 
 ## Environment Variables
@@ -86,15 +95,35 @@ The "Swiss Ledger" design system is defined via Tailwind config in `index.html` 
 - `YAPILY_APPLICATION_ID`, `YAPILY_APPLICATION_SECRET`, `YAPILY_CALLBACK_URL`, optional `YAPILY_API_BASE_URL`
 - `APP_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
+- `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, `STRIPE_PRODUCT_THRIVING`
+- `RESEND_API_KEY` (invitation emails), optional `RESEND_FROM_EMAIL` (defaults to `ChurchCoin <onboarding@resend.dev>`; set a verified-domain sender for production)
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).
-`APP_BASE_URL` is the public frontend origin used after Open Banking redirects return to Convex; set it for deployed environments.
+`APP_BASE_URL` is the public frontend origin used after Yapily redirects back to Convex; set it for deployed environments.
 
 ## Key Conventions
 
 - Path alias: `@/*` maps to project root (configured in `tsconfig.json` and `vite.config.ts`)
-- Convex auto-generates types in `convex/_generated/` — never edit these files
+- `convex/_generated/` is generated output: never hand-edit it. When you add, remove, or rename a module under `convex/`, run `npx convex codegen` (needs a dev deployment) and commit the regenerated files in the same change. Don't work around stale bindings with `makeFunctionReference`. `tests/convexGeneratedApi.test.ts` fails when `api.d.ts` and `convex/` disagree.
 - HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Yapily at `/yapily/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
 - Reuse existing Convex queries and mutations rather than creating duplicates
+
+## Enforced rules
+
+Mistakes reviewers caught more than once, and what now stops them. When you're corrected for a mistake, fix it and add a row here. If the row already exists and nothing enforces it, that's a repeat: enforce it in the same change. Delete a row once its mistake can't happen.
+
+| Rule | Enforced by |
+|---|---|
+| Totals, reports, and matching use `lib/reportableTransactions` (excludes voided rows and cash banking deposits) | ESLint `churchcoin/reportable-transactions` + `no-restricted-imports` on `lib/voidedTransactions` |
+| Category validity for a transaction type goes through `categoryNamesForTransactionTypes` (client) or `ensureTypedCategories` + `requireCanonicalCategory` (server) | ESLint `churchcoin/category-type` |
+| Every `transactions` patch/delete goes through `convex/lib/transactionWrites` so the completed-reconciliation lock runs; bypasses name a `lockOverride` reason | `tests/transactionWriteOwnership.test.ts` |
+| `convex/_generated/api.d.ts` matches the modules in `convex/`; regenerate with `npx convex codegen`, never hand-edit | `tests/convexGeneratedApi.test.ts` (shrink-only `KNOWN_STALE` baseline) |
+| Money totals use `sumMoney`; targets use `meetsMoneyTarget` (`convex/lib/money.ts`) | `tests/moneyArithmetic.test.ts` per-file ratchet (`churchcoin/money-arithmetic`) |
+| Role names, types, defaults, and capability grants live only in `lib/permissions.ts`; UI uses `can()`, server uses `requireCapability()` / `assertCapability()`, validators use `roleValidator` | ESLint `churchcoin/role-literal` + `tests/permissions*.test.ts` (full role × capability table) |
+| Multi-step external workflows (indexing sweeps, GitHub sync, Yapily consent) persist progress before side effects, only mark completion after children finish, and keep retryable and permanent failures distinct | Docs only: judgment call; review against this rule |
+| Async results in the import flow are keyed by stable row IDs and checked against current state before they update or announce anything | Docs only: judgment call |
+| Pledge removal, duplicate cleanup, and collection banking respect completed reconciliation locks; each reconciliation keeps the rows it owns, source giving stays locked while any completed cash banking reconciliation uses its collection, and bank and cash banking reconciliations respect each other's locks | `tests/reconciliationLocks.test.ts` + `getCompletedReconciliationLock` in `convex/lib/transactionWrites.ts` |
+| Readers without `donors.read` get neutral descriptions and no notes or void reasons on donor-linked rows; never redact by matching current donor values (names change) | `tests/permissions.test.ts` + `tests/permissionsAccess.test.ts` |
+| Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |

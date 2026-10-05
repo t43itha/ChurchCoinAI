@@ -1,5 +1,5 @@
 import { query } from "../_generated/server";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, redactDonorFields } from "../lib/auth";
 import { filterReportableTransactions } from "../../lib/reportableTransactions";
 
 const AI_CONTEXT_MONTH_WINDOW = 24;
@@ -47,6 +47,7 @@ export const getAIContext = query({
     transactions.push(
       ...filterReportableTransactions(rawTransactions)
         .slice(0, AI_CONTEXT_MAX_TRANSACTIONS)
+        .map((transaction) => redactDonorFields(user, transaction))
         .map((transaction) => ({
           date: transaction.date,
           amount: transaction.amount,

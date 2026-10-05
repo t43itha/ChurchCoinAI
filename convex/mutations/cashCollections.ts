@@ -1,6 +1,6 @@
 import { mutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Doc, Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
 import {
@@ -11,6 +11,7 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
+import { assertNotLockedByReconciliation, deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to normalize donor names for matching
 const normalizeName = (name: string): string => {
@@ -34,6 +35,10 @@ async function assertCollectionUnlocked(
   ctx: MutationCtx,
   collection: Doc<"cashCollections">
 ) {
+  await assertNotLockedByReconciliation(ctx, {
+    organizationId: collection.organizationId,
+    cashCollectionId: collection._id,
+  });
   if (
     collection.status === "banked" ||
     collection.cashBankingStatus === "banked" ||
@@ -162,7 +167,7 @@ export const submitCollection = mutation({
     namedDonations: v.optional(v.array(namedDonationValidator)),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.write");
     const validRows = args.serviceRows.filter(
       (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
     );
@@ -306,7 +311,7 @@ export const replaceCollectionEntries = mutation({
     namedDonations: v.optional(v.array(namedDonationValidator)),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.write");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -332,7 +337,7 @@ export const replaceCollectionEntries = mutation({
     }
 
     for (const transaction of existingTransactions) {
-      await ctx.db.delete(transaction._id);
+      await deleteTransaction(ctx, transaction._id, { lockOverride: "reconciliation-owner" });
     }
 
     await ctx.db.patch(args.cashCollectionId, {
@@ -453,7 +458,7 @@ export const markAsBanked = mutation({
     bankedDate: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.write");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -464,9 +469,9 @@ export const markAsBanked = mutation({
       throw new Error("Collection is already marked as banked");
     }
 
-    await ctx.db.patch(args.cashCollectionId, {
-      status: "banked",
-      bankedDate: args.bankedDate,
+    await assertNotLockedByReconciliation(ctx, {
+      organizationId: collection.organizationId,
+      cashCollectionId: collection._id,
     });
 
     // Also mark all linked transactions as reconciled
@@ -478,7 +483,14 @@ export const markAsBanked = mutation({
       .collect();
 
     for (const t of transactions) {
-      await ctx.db.patch(t._id, { isReconciled: true });
+      await assertNotLockedByReconciliation(ctx, t);
+    }
+    await ctx.db.patch(args.cashCollectionId, {
+      status: "banked",
+      bankedDate: args.bankedDate,
+    });
+    for (const t of transactions) {
+      await patchTransaction(ctx, t, { isReconciled: true });
     }
 
     return {
@@ -494,7 +506,7 @@ export const deleteCollection = mutation({
     cashCollectionId: v.id("cashCollections"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "cashCollections.delete");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -504,7 +516,7 @@ export const deleteCollection = mutation({
     const transactions = await assertCollectionUnlocked(ctx, collection);
 
     for (const t of transactions) {
-      await ctx.db.delete(t._id);
+      await deleteTransaction(ctx, t._id, { lockOverride: "reconciliation-owner" });
     }
 
     // Delete the collection

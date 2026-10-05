@@ -1,6 +1,6 @@
 import { query, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, isAdmin } from "../lib/auth";
+import { requireAuth, assertCapability } from "../lib/auth";
 import { Id, Doc } from "../_generated/dataModel";
 
 // True when a webhook event is older than the newest one already applied,
@@ -203,9 +203,7 @@ export const getForCancel = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
-    if (!isAdmin(user)) {
-      throw new Error("Only admins can manage subscriptions");
-    }
+    assertCapability(user, "billing.manage");
 
     const subscription = await ctx.db
       .query("subscriptions")

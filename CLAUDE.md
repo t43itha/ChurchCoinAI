@@ -54,8 +54,8 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `intelligence/` — AI insight generation and RAG indexing
 - `http.ts` — HTTP routes for Stripe webhooks, the Yapily callback, and preserved Plaid webhook compatibility
 - `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections
-- `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireRole()`, `canEdit()`
-- `lib/money.ts` — Money helpers: amounts are pounds as floats; always round sums with `roundMoney()` and compare targets with `meetsMoneyTarget()`
+- `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireCapability()`, `assertCapability()`, `roleValidator`, `redactDonorFields()`
+- `lib/money.ts` — Money helpers: amounts are pounds as floats; total them with `sumMoney()`, round single values with `roundMoney()`, and compare targets with `meetsMoneyTarget()`
 
 ### Data Patterns
 ```typescript
@@ -73,9 +73,9 @@ const categorize = useAction(api.actions.ai.categorizeTransactions);
 Every table has an `organizationId` field. All queries and mutations must scope data to the current user's organization. Auth helpers in `convex/lib/auth.ts` enforce this.
 
 ### Role-Based Access
-Four roles with descending permissions: **Admin** > **Finance Team** > **Pastorate** > **Guest**. Admin and Finance Team can edit; Pastorate and Guest are read-only. Use `requireRole()` and `canEdit()` from `convex/lib/auth.ts`.
+Four roles with descending permissions: **Admin** > **Finance Team** > **Pastorate** > **Guest**. Admin and Finance Team can edit; Pastorate and Guest are read-only. `lib/permissions.ts` is the single policy: it owns the role names, the `UserRole` type, and the capability grants. Check access with `can(role, capability)` in components and `requireCapability()` / `assertCapability()` from `convex/lib/auth.ts` on the server; use `roleValidator` for role validators. To change who can do something, edit `CAPABILITIES`, never an inline role list.
 
-Donor records are readable by Admin, Finance Team, and Pastorate within their own organization. Pastorate donor access is read-only; Guest cannot view donor records. Donor writes remain restricted to Admin and Finance Team, with deletion restricted to Admin.
+Donor records are readable by Admin, Finance Team, and Pastorate within their own organization. Pastorate donor access is read-only; Guest cannot view donor records, and queries returning transactions or pledges pass rows through `redactDonorFields()` so Guests see them without donor identity. Donor writes remain restricted to Admin and Finance Team, with deletion restricted to Admin. Only Admin manages users, invitations, billing, the organisation profile, fund/category deletion, and bank connection removal; reconciliation is Admin and Finance Team only; Guest has no Reports access.
 
 ### Design System
 The "Refined Ledger" design system is defined in `tailwind.config.cjs` and `styles.css`. Key tokens:
@@ -104,8 +104,26 @@ Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the
 ## Key Conventions
 
 - Path alias: `@/*` maps to project root (configured in `tsconfig.json` and `vite.config.ts`)
-- Convex auto-generates types in `convex/_generated/` — never edit these files
+- `convex/_generated/` is generated output: never hand-edit it. When you add, remove, or rename a module under `convex/`, run `npx convex codegen` (needs a dev deployment) and commit the regenerated files in the same change. Don't work around stale bindings with `makeFunctionReference`. `tests/convexGeneratedApi.test.ts` fails when `api.d.ts` and `convex/` disagree.
 - HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Yapily at `/yapily/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
 - Reuse existing Convex queries and mutations rather than creating duplicates
+
+## Enforced rules
+
+Mistakes reviewers caught more than once, and what now stops them. When you're corrected for a mistake, fix it and add a row here. If the row already exists and nothing enforces it, that's a repeat: enforce it in the same change. Delete a row once its mistake can't happen.
+
+| Rule | Enforced by |
+|---|---|
+| Totals, reports, and matching use `lib/reportableTransactions` (excludes voided rows and cash banking deposits) | ESLint `churchcoin/reportable-transactions` + `no-restricted-imports` on `lib/voidedTransactions` |
+| Category validity for a transaction type goes through `categoryNamesForTransactionTypes` (client) or `ensureTypedCategories` + `requireCanonicalCategory` (server) | ESLint `churchcoin/category-type` |
+| Every `transactions` patch/delete goes through `convex/lib/transactionWrites` so the completed-reconciliation lock runs; bypasses name a `lockOverride` reason | `tests/transactionWriteOwnership.test.ts` |
+| `convex/_generated/api.d.ts` matches the modules in `convex/`; regenerate with `npx convex codegen`, never hand-edit | `tests/convexGeneratedApi.test.ts` (shrink-only `KNOWN_STALE` baseline) |
+| Money totals use `sumMoney`; targets use `meetsMoneyTarget` (`convex/lib/money.ts`) | `tests/moneyArithmetic.test.ts` per-file ratchet (`churchcoin/money-arithmetic`) |
+| Role names, types, defaults, and capability grants live only in `lib/permissions.ts`; UI uses `can()`, server uses `requireCapability()` / `assertCapability()`, validators use `roleValidator` | ESLint `churchcoin/role-literal` + `tests/permissions*.test.ts` (full role × capability table) |
+| Multi-step external workflows (indexing sweeps, GitHub sync, Yapily consent) persist progress before side effects, only mark completion after children finish, and keep retryable and permanent failures distinct | Docs only: judgment call; review against this rule |
+| Async results in the import flow are keyed by stable row IDs and checked against current state before they update or announce anything | Docs only: judgment call |
+| Pledge removal, duplicate cleanup, and collection banking respect completed reconciliation locks; each reconciliation keeps the rows it owns, source giving stays locked while any completed cash banking reconciliation uses its collection, and bank and cash banking reconciliations respect each other's locks | `tests/reconciliationLocks.test.ts` + `getCompletedReconciliationLock` in `convex/lib/transactionWrites.ts` |
+| Readers without `donors.read` get neutral descriptions and no notes or void reasons on donor-linked rows; never redact by matching current donor values (names change) | `tests/permissions.test.ts` + `tests/permissionsAccess.test.ts` |
+| Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |

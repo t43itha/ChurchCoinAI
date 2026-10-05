@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "convex/react";
@@ -30,7 +31,7 @@ const PERIOD_OPTIONS: Array<{ key: DashboardPeriodKey; label: string }> = [
 const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser }) => {
   const [periodKey, setPeriodKey] = useState<DashboardPeriodKey>("previousMonth");
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
-  const canEdit = ["Admin", "Finance Team"].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "cashCollections.write");
   const summary = useQuery(api.queries.dashboard.executiveSummary, {
     periodKey,
     today: formatLocalDateInputValue(new Date()),

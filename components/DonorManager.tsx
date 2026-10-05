@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState, useMemo } from 'react';
 import { useConvex, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -7,6 +8,7 @@ import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Walle
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { filterReportableTransactions, sumReportableIncome } from '../lib/reportableTransactions';
+import { meetsMoneyTarget } from '../convex/lib/money';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -128,8 +130,8 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [newDonorData, setNewDonorData] = useState<Partial<Donor>>({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
   const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
 
-  const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
-  const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "donors.write");
+  const canView = can(currentUser.role, "donors.read");
 
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -628,11 +630,11 @@ ${churchDetails?.name || 'Church'} Finance Team
       // Check if unlinking should reactivate a completed pledge
       const pledge = pledges.find(p => p._id === oldPledgeId);
       if (pledge && pledge.status === 'Completed') {
-           const remainingSum = transactions
-              .filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
-              .reduce((sum, t) => sum + t.amount, 0);
+           const remainingSum = sumReportableIncome(
+              transactions.filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
+           );
 
-           if (remainingSum < pledge.amount) {
+           if (!meetsMoneyTarget(remainingSum, pledge.amount)) {
                 onUpdatePledge({ ...pledge, status: 'Active' });
            }
       }

@@ -1,4 +1,4 @@
-import { httpRouter, makeFunctionReference } from "convex/server";
+import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getPlanFromStripeProduct, getStripe } from "./lib/stripe";
@@ -10,13 +10,6 @@ import {
   verifyGitHubWebhookSignature,
 } from "./lib/githubSupport";
 import { statusFromGithubIssue } from "../lib/supportTickets";
-import type { SupportTicketStatus } from "../lib/supportTickets";
-
-const applyGithubSupportStatus = makeFunctionReference<
-  "mutation",
-  { repository: string; issueNumber: number; status: SupportTicketStatus },
-  { updated: boolean }
->("mutations/supportTickets:applyGithubStatus");
 
 const http = httpRouter();
 
@@ -616,7 +609,7 @@ http.route({
       .map((label) => (typeof label === "string" ? label : label.name))
       .filter((label): label is string => typeof label === "string");
     await ctx.runMutation(
-      applyGithubSupportStatus,
+      internal.mutations.supportTickets.applyGithubStatus,
       {
         repository: config.repository,
         issueNumber,

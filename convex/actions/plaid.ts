@@ -1,6 +1,7 @@
 "use node";
 
 import { action, type ActionCtx } from "../_generated/server";
+import { assertCapability } from "../lib/auth";
 import { v } from "convex/values";
 import { getPlaid, PLAID_CONFIG, getPlaidWebhookUrl } from "../lib/plaid";
 import { Products } from "plaid";
@@ -33,21 +34,12 @@ const requireUser = async (ctx: ActionCtx) => {
   return currentUser;
 };
 
-const requireRole = (
-  user: { role: "Admin" | "Finance Team" | "Pastorate" | "Guest" },
-  allowed: string[]
-) => {
-  if (!allowed.includes(user.role)) {
-    throw new Error("Forbidden: this action requires Admin or Finance Team role");
-  }
-};
-
 // Create a Link token for Plaid Link initialization
 export const createLinkToken = action({
   args: {},
   handler: async (ctx): Promise<{ linkToken: string }> => {
     const user = await requireUser(ctx);
-    requireRole(user, ["Admin", "Finance Team"]);
+    assertCapability(user, "bank.manage");
 
     const plaid = getPlaid();
 
@@ -73,7 +65,7 @@ export const createUpdateLinkToken = action({
   },
   handler: async (ctx, args): Promise<{ linkToken: string }> => {
     const user = await requireUser(ctx);
-    requireRole(user, ["Admin", "Finance Team"]);
+    assertCapability(user, "bank.manage");
     const { api } = await import("../_generated/api");
 
     // Get the item to re-authenticate
@@ -127,7 +119,7 @@ export const exchangePublicToken = action({
   },
   handler: async (ctx, args): Promise<{ success: boolean; itemId: string }> => {
     const user = await requireUser(ctx);
-    requireRole(user, ["Admin", "Finance Team"]);
+    assertCapability(user, "bank.manage");
     const { internal } = await import("../_generated/api");
 
     const plaid = getPlaid();
@@ -208,7 +200,7 @@ export const syncTransactions = action({
     hasMore: boolean;
   }> => {
     const user = await requireUser(ctx);
-    requireRole(user, ["Admin", "Finance Team"]);
+    assertCapability(user, "bank.manage");
     const { internal, api } = await import("../_generated/api");
 
     // Get item with access token
@@ -290,7 +282,7 @@ export const removeItem = action({
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
     const user = await requireUser(ctx);
-    requireRole(user, ["Admin"]);
+    assertCapability(user, "bank.remove");
     const { internal } = await import("../_generated/api");
 
     // Get credentials for removal

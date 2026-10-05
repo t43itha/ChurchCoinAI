@@ -1,6 +1,10 @@
 import { CATEGORY_ALIASES, RCI_INCOME_CATEGORIES } from "../constants/rciCategories";
-import { filterReportableTransactions } from "./reportableTransactions";
-import { filterActiveTransactions, sumActiveSigned } from "./voidedTransactions";
+import { filterReportableTransactions, sumReportableSigned } from "./reportableTransactions";
+// Operational KPIs (reconciled/categorised %, evidence) deliberately count every
+// non-voided row, including cash banking deposits. Money totals below use the
+// reportable helpers.
+// eslint-disable-next-line no-restricted-imports
+import { filterActiveTransactions } from "./voidedTransactions";
 import { meetsMoneyTarget, roundMoney } from "../convex/lib/money";
 
 export type DashboardPeriodKey = "currentMonth" | "previousMonth" | "quarter" | "ytd";
@@ -237,7 +241,7 @@ export function buildExecutiveDashboardSummary({
     ).length + cashBankingPendingWeeks;
   const trends = buildSixMonthTrend(period, reportableTransactions, unrestrictedFundIds);
   const generalFundBalance = roundCurrency(
-    sumActiveSigned(
+    sumReportableSigned(
       reportableTransactions.filter((transaction) =>
         isUnrestrictedTransaction(transaction, unrestrictedFundIds)
       )
@@ -543,7 +547,7 @@ function buildCampaignProgress(funds: DashboardFund[], transactions: DashboardTr
     return undefined;
   }
 
-  const balance = roundCurrency(sumActiveSigned(transactions.filter((transaction) => transaction.fundId === campaign._id)));
+  const balance = roundCurrency(sumReportableSigned(transactions.filter((transaction) => transaction.fundId === campaign._id)));
 
   return {
     fundId: campaign._id,
@@ -559,7 +563,7 @@ function buildLowBalanceFunds(funds: DashboardFund[], transactions: DashboardTra
     .map((fund) => ({
       fundId: fund._id,
       name: fund.name,
-      balance: roundCurrency(sumActiveSigned(transactions.filter((transaction) => transaction.fundId === fund._id))),
+      balance: roundCurrency(sumReportableSigned(transactions.filter((transaction) => transaction.fundId === fund._id))),
       targetAmount: fund.targetAmount,
     }))
     .filter((fund) => fund.balance < 1000 || (fund.targetAmount ? percent(fund.balance, fund.targetAmount) < 25 : false))

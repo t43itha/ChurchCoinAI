@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 
 // Create a new fund
 export const create = mutation({
@@ -18,7 +18,7 @@ export const create = mutation({
     logoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "funds.write");
 
     // Check for duplicate fund name
     const existing = await ctx.db
@@ -67,7 +67,7 @@ export const update = mutation({
     logoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "funds.write");
 
     const fund = await ctx.db.get(args.fundId);
     if (!fund || fund.organizationId !== user.organizationId) {
@@ -109,7 +109,7 @@ export const remove = mutation({
     fundId: v.id("funds"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "funds.delete");
 
     const fund = await ctx.db.get(args.fundId);
     if (!fund || fund.organizationId !== user.organizationId) {

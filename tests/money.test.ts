@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { meetsMoneyTarget, roundMoney } from "../convex/lib/money";
+import { meetsMoneyTarget, roundMoney, sumMoney } from "../convex/lib/money";
 
 describe("roundMoney", () => {
   it("rounds to two decimal places", () => {
@@ -35,5 +35,24 @@ describe("meetsMoneyTarget", () => {
   it("is not met when genuinely short", () => {
     expect(meetsMoneyTarget(99.99, 100)).toBe(false);
     expect(meetsMoneyTarget(0, 100)).toBe(false);
+  });
+});
+
+describe("sumMoney", () => {
+  it("adds in whole pence so totals don't drift", () => {
+    expect(sumMoney([0.1, 0.2], (amount) => amount)).toBe(0.3);
+    expect(sumMoney(Array(10).fill(0.1), (amount) => amount)).toBe(1);
+  });
+
+  it("supports signed totals", () => {
+    const rows = [
+      { type: "Income", amount: 100.1 },
+      { type: "Expenditure", amount: 0.2 },
+    ];
+    expect(sumMoney(rows, (row) => (row.type === "Income" ? row.amount : -row.amount))).toBe(99.9);
+  });
+
+  it("returns 0 for no rows", () => {
+    expect(sumMoney([], (amount: number) => amount)).toBe(0);
   });
 });
