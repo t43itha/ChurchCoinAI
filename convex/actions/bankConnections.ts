@@ -2,6 +2,7 @@
 
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { assertCapability } from "../lib/auth";
 import { v } from "convex/values";
 import {
   calculateDefaultSyncRange,
@@ -42,14 +43,6 @@ const requireUser = async (ctx: ActionCtx) => {
   }
 
   return currentUser;
-};
-
-const requireFinanceRole = (
-  user: { role: "Admin" | "Finance Team" | "Pastorate" | "Guest" }
-) => {
-  if (user.role !== "Admin" && user.role !== "Finance Team") {
-    throw new Error("Forbidden: this action requires Admin or Finance Team role");
-  }
 };
 
 const randomState = () => crypto.randomUUID();
@@ -171,7 +164,7 @@ export const listInstitutions = action({
   returns: v.array(institutionSchema),
   handler: async (ctx) => {
     const user = await requireUser(ctx);
-    requireFinanceRole(user);
+    assertCapability(user, "bank.manage");
 
     const institutions = await getYapilyInstitutions();
     return institutions.map((institution) => ({
@@ -193,7 +186,7 @@ export const startConnection = action({
   returns: v.object({ authorizationUrl: v.string() }),
   handler: async (ctx, args): Promise<{ authorizationUrl: string }> => {
     const user = await requireUser(ctx);
-    requireFinanceRole(user);
+    assertCapability(user, "bank.manage");
 
     const { internal } = await import("../_generated/api");
     const aspspCountry = args.institutionCountry.trim().toUpperCase();
@@ -414,7 +407,7 @@ export const syncTransactions = action({
     nextCursor?: SyncTransactionsCursor;
   }> => {
     const user = await requireUser(ctx);
-    requireFinanceRole(user);
+    assertCapability(user, "bank.manage");
 
     const { internal } = await import("../_generated/api");
     const connection = await ctx.runQuery(
@@ -602,9 +595,7 @@ export const removeConnection = action({
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args): Promise<{ success: boolean }> => {
     const user = await requireUser(ctx);
-    if (user.role !== "Admin") {
-      throw new Error("Forbidden: this action requires Admin role");
-    }
+    assertCapability(user, "bank.remove");
 
     const { internal } = await import("../_generated/api");
     const connection = await ctx.runQuery(

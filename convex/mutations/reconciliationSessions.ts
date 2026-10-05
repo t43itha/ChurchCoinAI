@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import {
   computeDifferencePence,
   canCompleteSession,
@@ -17,7 +17,7 @@ export const create = mutation({
     statementClosingBalance: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const fund = await ctx.db.get(args.fundId);
     if (!fund || fund.organizationId !== user.organizationId) {
@@ -78,7 +78,7 @@ export const updateBalances = mutation({
     periodEnd: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -111,7 +111,7 @@ export const setCleared = mutation({
     cleared: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -155,7 +155,7 @@ export const setCleared = mutation({
 export const complete = mutation({
   args: { sessionId: v.id("reconciliationSessions") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -215,7 +215,7 @@ export const reopen = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -253,7 +253,7 @@ export const reopen = mutation({
 export const remove = mutation({
   args: { sessionId: v.id("reconciliationSessions") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");

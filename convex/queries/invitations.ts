@@ -1,13 +1,13 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, requireRole, getIdentity } from "../lib/auth";
+import { requireAuth, requireCapability, getIdentity } from "../lib/auth";
 
 // List all open invitations for the organization (including time-expired
 // ones, so admins can see and resend them)
 export const listPending = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "invitations.read");
 
     const invitations = await ctx.db
       .query("invitations")
@@ -24,7 +24,7 @@ export const listPending = query({
 export const getInviteLink = query({
   args: { invitationId: v.id("invitations") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "invitations.manage");
     const invitation = await ctx.db.get(args.invitationId);
     if (
       !invitation ||

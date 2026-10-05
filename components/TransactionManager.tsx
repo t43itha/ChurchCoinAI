@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
@@ -221,7 +222,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
   }, [initialFundId]);
 
-  const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "ledger.write");
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -1132,7 +1133,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
-  if (showReconciliation) {
+  if (showReconciliation && can(currentUser.role, "reconciliation.manage")) {
     return <Reconciliation onBack={() => setShowReconciliation(false)} />;
   }
 
@@ -1190,13 +1191,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         onChange={handleFileUpload}
                     />
                 </button>
-                <button
-                    onClick={() => setShowReconciliation(true)}
-                    className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
-                >
-                    <Scale size={16} strokeWidth={1.9} className="text-grey-mid" />
-                    Reconcile
-                </button>
+                {can(currentUser.role, "reconciliation.manage") && (
+                    <button
+                        onClick={() => setShowReconciliation(true)}
+                        className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
+                    >
+                        <Scale size={16} strokeWidth={1.9} className="text-grey-mid" />
+                        Reconcile
+                    </button>
+                )}
                 <button
                     onClick={() => startTransition(() => setShowCashTakingsModal(true))}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-[18px] py-[11px] rounded-xl bg-ink text-white text-sm font-semibold hover:bg-charcoal transition-colors shadow-[0_6px_16px_-8px_rgba(28,25,23,0.5)]"
@@ -1251,17 +1254,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         >
           In-Person Giving
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveTransactionTab('cashChequeBanking')}
-          className={`px-4 py-[11px] text-xs font-bold uppercase tracking-[0.06em] border-b-2 transition-colors ${
-            activeTransactionTab === 'cashChequeBanking'
-              ? 'border-ink text-ink'
-              : 'border-transparent text-grey-mid hover:text-ink'
-          }`}
-        >
-          Cash/cheque Banking
-        </button>
+        {can(currentUser.role, "reconciliation.manage") && (
+            <button
+              type="button"
+              onClick={() => setActiveTransactionTab('cashChequeBanking')}
+              className={`px-4 py-[11px] text-xs font-bold uppercase tracking-[0.06em] border-b-2 transition-colors ${
+                activeTransactionTab === 'cashChequeBanking'
+                  ? 'border-ink text-ink'
+                  : 'border-transparent text-grey-mid hover:text-ink'
+              }`}
+            >
+              Cash/cheque Banking
+            </button>
+        )}
       </div>
 
       {activeTransactionTab === 'all' && (
@@ -1734,7 +1739,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         </>
       )}
 
-      {activeTransactionTab === 'cashChequeBanking' && (
+      {activeTransactionTab === 'cashChequeBanking' && can(currentUser.role, "reconciliation.manage") && (
         <CashChequeBanking funds={funds} currentUser={currentUser} />
       )}
 

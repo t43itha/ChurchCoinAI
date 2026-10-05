@@ -1,3 +1,4 @@
+import { can, type UserRole } from "../lib/permissions";
 import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { Link, NavLink } from 'react-router-dom';
@@ -15,7 +16,7 @@ interface ConvexUser {
   _id: string;
   name: string;
   email: string;
-  role: 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
+  role: UserRole;
   avatarUrl?: string;
 }
 
@@ -41,8 +42,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
   }, [access.state]);
 
   // Permission Logic
-  const canViewDonors = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
-  const canViewSettings = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canViewDonors = can(currentUser.role, "donors.read");
+  const canViewSettings = can(currentUser.role, "settings.view");
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -50,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
     { path: '/funds', label: 'Funds & Balances', icon: Wallet },
     { path: '/donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
     { path: '/campaigns', label: 'Campaigns', icon: HeartHandshake },
-    { path: '/reports', label: 'Reports', icon: PieChart },
+    { path: '/reports', label: 'Reports', icon: PieChart, hidden: !can(currentUser.role, "reports.read") },
     { path: '/settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
     { path: '/copilot', label: 'Ask Ward', icon: Sparkles },
   ];
@@ -171,7 +172,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
                 </span>
               </div>
 
-              {currentUser.role === 'Admin' ? (
+              {can(currentUser.role, "billing.manage") ? (
                 <Link
                   to="/settings?tab=billing"
                   onClick={onClose}

@@ -1,7 +1,7 @@
 import { query } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
-import { requireAuth } from "../lib/auth";
+import { requireCapability, redactDonorFields } from "../lib/auth";
 import {
   calculateCollectionBankingTotals,
   getCollectionBankingStatus,
@@ -42,7 +42,7 @@ export const list = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const reconciliations = args.status
       ? await ctx.db
@@ -65,7 +65,7 @@ export const list = query({
 export const getById = query({
   args: { reconciliationId: v.id("cashBankingReconciliations") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const reconciliation = await ctx.db.get(args.reconciliationId);
     if (!reconciliation || reconciliation.organizationId !== user.organizationId) {
@@ -79,7 +79,7 @@ export const getById = query({
 export const getAwaitingBanking = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const [collections, transactions, reconciliations] = await Promise.all([
       ctx.db
@@ -164,7 +164,7 @@ export const getCandidateBankCredits = query({
     includeReconciliationId: v.optional(v.id("cashBankingReconciliations")),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const transactions =
       args.startDate && args.endDate
@@ -234,6 +234,7 @@ export const getCandidateBankCredits = query({
           new Date(b.date).getTime() - new Date(a.date).getTime();
         if (dateComparison !== 0) return dateComparison;
         return b.createdAt - a.createdAt;
-      });
+      })
+      .map((transaction) => redactDonorFields(user, transaction));
   },
 });

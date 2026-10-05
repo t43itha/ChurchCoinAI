@@ -1,3 +1,5 @@
+import type { UserRole } from "./permissions";
+
 export type SupportTicketType = "bug" | "question" | "feature";
 export type SupportTicketImpact = "blocking" | "difficult" | "minor";
 export type SupportTicketStatus =
@@ -98,7 +100,7 @@ export const buildGithubIssueBody = (ticket: {
   reference: string;
   type: SupportTicketType;
   impact: SupportTicketImpact;
-  reporterRole: string;
+  reporterRole: UserRole;
   title: string;
   description: string;
   expectedBehaviour?: string;

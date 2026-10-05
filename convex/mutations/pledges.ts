@@ -1,6 +1,6 @@
 import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
 import { refreshPledgeStatus } from "../lib/pledgeStatus";
@@ -27,7 +27,7 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     // Verify fund belongs to organization
     const fund = await ctx.db.get(args.fundId);
@@ -84,7 +84,7 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     const pledge = await ctx.db.get(args.pledgeId);
     if (!pledge || pledge.organizationId !== user.organizationId) {
@@ -159,7 +159,7 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     const pledgeIds: string[] = [];
 
@@ -219,7 +219,7 @@ export const checkCompletion = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
     const result = await refreshPledgeStatus(
       ctx,
       args.pledgeId,
@@ -252,7 +252,7 @@ export const reactivateIfNeeded = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
     const before = await ctx.db.get(args.pledgeId);
     if (!before || before.organizationId !== user.organizationId) {
       return { reactivated: false };
@@ -276,7 +276,7 @@ export const remove = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "pledges.delete");
 
     const pledge = await ctx.db.get(args.pledgeId);
     if (!pledge || pledge.organizationId !== user.organizationId) {

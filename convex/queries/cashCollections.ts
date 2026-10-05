@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, requireRole } from "../lib/auth";
+import { requireAuth, requireCapability, redactDonorFields } from "../lib/auth";
 import { filterReportableTransactions } from "../../lib/reportableTransactions";
 
 // List all cash collections for the organization
@@ -44,7 +44,7 @@ export const list = query({
 export const getById = query({
   args: { cashCollectionId: v.id("cashCollections") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.read");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -59,7 +59,7 @@ export const getById = query({
 export const getWithTransactions = query({
   args: { cashCollectionId: v.id("cashCollections") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.read");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -111,9 +111,9 @@ export const getWithTransactions = query({
     return {
       ...collection,
       recordedByName: recordedByUser?.name || "Unknown",
-      transactions,
-      incomeTransactions,
-      expenditureTransactions,
+      transactions: transactions.map((transaction) => redactDonorFields(user, transaction)),
+      incomeTransactions: incomeTransactions.map((transaction) => redactDonorFields(user, transaction)),
+      expenditureTransactions: expenditureTransactions.map((transaction) => redactDonorFields(user, transaction)),
       summary: {
         grossIncome,
         pettyCashTotal,
@@ -130,7 +130,7 @@ export const getWithTransactions = query({
 export const getByWeekEnding = query({
   args: { weekEndingDate: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.read");
 
     const collections = await ctx.db
       .query("cashCollections")
@@ -149,7 +149,7 @@ export const getByWeekEnding = query({
 export const getRecent = query({
   args: { weeks: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.read");
     const weeksToFetch = args.weeks || 4;
 
     const collections = await ctx.db

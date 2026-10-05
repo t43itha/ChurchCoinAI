@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { patchTransaction } from "../lib/transactionWrites";
 
@@ -18,7 +18,7 @@ export const backfillDonorIdsFromDonorName = mutation({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
     const dryRun = args.dryRun ?? true;
     const limit = args.limit ?? 2000;
 

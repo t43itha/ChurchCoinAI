@@ -1,6 +1,6 @@
 import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import {
   RCI_INCOME_CATEGORIES,
   RCI_EXPENDITURE_CATEGORIES,
@@ -19,7 +19,7 @@ export const create = mutation({
     displayOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "categories.write");
 
     // Check for duplicate
     const existing = await ctx.db
@@ -52,7 +52,7 @@ export const remove = mutation({
     categoryId: v.id("categories"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "categories.delete");
 
     const category = await ctx.db.get(args.categoryId);
     if (!category || category.organizationId !== user.organizationId) {
@@ -87,7 +87,7 @@ export const rename = mutation({
     newName: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "categories.write");
 
     const category = await ctx.db.get(args.categoryId);
     if (!category || category.organizationId !== user.organizationId) {
@@ -135,7 +135,7 @@ export const bulkCreate = mutation({
     transactionType: v.union(v.literal("Income"), v.literal("Expenditure")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "categories.write");
 
     const created: string[] = [];
     const skipped: string[] = [];
@@ -175,7 +175,7 @@ export const update = mutation({
     displayOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "categories.write");
 
     const category = await ctx.db.get(args.categoryId);
     if (!category || category.organizationId !== user.organizationId) {
@@ -197,7 +197,7 @@ export const update = mutation({
 export const seedRCICategories = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "categories.migrate");
 
     const created: string[] = [];
     const skipped: string[] = [];
@@ -336,7 +336,7 @@ export const seedRCICategories = mutation({
 export const migrateToMainCategories = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "categories.migrate");
 
     // Get all categories for this organization
     const categories = await ctx.db
@@ -408,7 +408,7 @@ export const migrateToMainCategories = mutation({
 export const backfillCategoryTransactionTypes = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "categories.migrate");
 
     const categories = await ctx.db
       .query("categories")
@@ -780,7 +780,7 @@ export const seedRCICategoriesInternal = internalMutation({
 // One-time migration: rename orphaned transaction categories to canonical RCI names
 // and ensure all RCI categories exist with correct mainCategory mappings.
 // Idempotent — safe to run multiple times.
-// NOTE: Temporarily set to internalMutation for dashboard execution. Revert to mutation + requireRole after running.
+// NOTE: Temporarily set to internalMutation for dashboard execution. Revert to mutation + requireCapability after running.
 export const migrateTransactionCategories = internalMutation({
   args: {
     organizationId: v.id("organizations"),

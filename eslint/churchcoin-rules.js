@@ -1,5 +1,26 @@
 // Repo-specific lint rules. Each rule encodes a mistake that reviewers caught
 // more than once; the message names the fix. See "Enforced rules" in CLAUDE.md.
+import { ROLES } from "../lib/permissions.ts";
+
+export const roleLiteral = {
+  meta: {
+    type: "problem",
+    docs: { description: "Role literals belong only in the shared permissions policy." },
+    messages: {
+      inline: "Use can() / requireCapability() / ROLES / roleValidator instead of role literals. Add or adjust a capability in lib/permissions.ts.",
+    },
+    schema: [],
+  },
+  create(context) {
+    return {
+      Literal(node) {
+        if (ROLES.includes(node.value)) {
+          context.report({ node, messageId: "inline" });
+        }
+      },
+    };
+  },
+};
 
 const memberName = (node) =>
   !node.computed && node.property.type === "Identifier" ? node.property.name : null;
@@ -176,6 +197,7 @@ export const noFunctionReferenceStrings = {
 export default {
   meta: { name: "churchcoin" },
   rules: {
+    "role-literal": roleLiteral,
     "reportable-transactions": reportableTransactions,
     "category-type": categoryType,
     "money-arithmetic": moneyArithmetic,

@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState, useRef, useEffect } from 'react';
 import { AppUser, Donor, DonorCreateInput, Fund, FundType, Pledge, PledgeCreateInput, Transaction } from '../types';
 import { useAction } from 'convex/react';
@@ -121,7 +122,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         skippedRows: { row: number; reason: string }[];
     } | null>(null);
 
-    const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+    const canEdit = can(currentUser.role, "pledges.write");
     const [pledgeSearch, setPledgeSearch] = useState('');
 
     // Show empty state if no campaign funds exist

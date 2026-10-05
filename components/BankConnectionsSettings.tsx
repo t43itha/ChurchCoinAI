@@ -1,8 +1,9 @@
+import { can } from "../lib/permissions";
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
-import { Fund } from '../types';
+import { Fund, AppUser } from '../types';
 import {
   Plus,
   RefreshCw,
@@ -17,6 +18,7 @@ import { notify } from '../lib/notifications';
 
 interface BankConnectionsSettingsProps {
   funds: Fund[];
+  currentUser: AppUser;
 }
 
 type AvailableInstitution = {
@@ -54,7 +56,7 @@ const clearBankCallbackParams = () => {
   window.history.replaceState(window.history.state, '', nextUrl);
 };
 
-const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
+const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds, currentUser }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
   const [callbackAttemptState, setCallbackAttemptState] = useState<string | null>(getCallbackAttemptState);
@@ -447,17 +449,20 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                         className={`transform transition-transform ${editingItem === connection._id ? 'rotate-90' : ''}`}
                       />
                     </button>
-                    <button
-                      onClick={() => handleRemoveConnection(connection._id)}
-                      disabled={isRemoving === connection._id}
-                      className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded transition-colors disabled:opacity-50"
-                    >
-                      {isRemoving === connection._id ? (
-                        <RefreshCw size={14} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={14} />
-                      )}
-                    </button>
+                    {can(currentUser.role, "bank.remove") && (
+                        <button
+                          aria-label={`Remove ${connection.institutionName} connection`}
+                          onClick={() => handleRemoveConnection(connection._id)}
+                          disabled={isRemoving === connection._id}
+                          className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded transition-colors disabled:opacity-50"
+                        >
+                          {isRemoving === connection._id ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={14} />
+                          )}
+                        </button>
+                    )}
                   </div>
                 </div>
 

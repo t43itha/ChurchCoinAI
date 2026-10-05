@@ -1,3 +1,4 @@
+import { can } from "../../lib/permissions";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 
@@ -42,13 +43,13 @@ export async function resolveOrganizationAccess(
   // retain access until they are explicitly classified and backfilled.
   const accessMode = organization.accessMode ?? "legacy";
   const dataMode = organization.dataMode ?? "live";
-  const canManageBilling = user.role === "Admin" && accessMode === "subscription";
+  const canManageBilling = can(user.role, "billing.manage") && accessMode === "subscription";
 
   if (accessMode === "legacy") {
     return {
       state: "legacy_grant" as const,
       canUseApp: true,
-      canManageBilling: user.role === "Admin",
+      canManageBilling: can(user.role, "billing.manage"),
       reason: "legacy_migration_grant",
       accessMode,
       dataMode,

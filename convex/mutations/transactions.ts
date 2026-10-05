@@ -1,6 +1,6 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
@@ -79,7 +79,7 @@ export const create = mutation({
     cashCollectionId: v.optional(v.id("cashCollections")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     assertValidTransactionAmount(args.amount);
     assertValidTransactionDate(args.date);
 
@@ -168,7 +168,7 @@ export const update = mutation({
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -298,7 +298,7 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     if (args.transactions.length > 500) {
       throw new Error("Cannot import more than 500 transactions at once");
     }
@@ -479,7 +479,7 @@ export const bulkUpdate = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     // Verify new fund if provided
     if (args.updates.fundId) {
@@ -537,7 +537,7 @@ export const batchUpdate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     let updatedCount = 0;
     const pledgesToCheck = new Set<string>();
@@ -614,7 +614,7 @@ export const linkToPledge = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -654,7 +654,7 @@ export const unlinkFromPledge = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -689,7 +689,7 @@ export const remove = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "ledger.delete");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -714,7 +714,7 @@ export const voidTransaction = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     const reason = args.reason.trim();
     if (reason.length < 3) {
       throw new Error("Void reason must be at least 3 characters");
@@ -745,7 +745,7 @@ export const unvoidTransaction = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -772,7 +772,7 @@ export const toggleVoided = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -832,7 +832,7 @@ export const recordCorrections = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     const categories = await ctx.db
       .query("categories")
       .withIndex("by_organization", (q) =>
@@ -987,7 +987,7 @@ export const recordCorrections = mutation({
 export const getCategorizationStats = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const allCorrections = await ctx.db
       .query("categorizationCorrections")

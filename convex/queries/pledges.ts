@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, requireRole } from "../lib/auth";
+import { redactDonorFields, requireCapability } from "../lib/auth";
 import {
   isReportableIncomeTransaction,
   sumReportableIncome,
@@ -12,7 +12,7 @@ import { roundMoney } from "../lib/money";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "pledges.read");
 
     const pledges = await ctx.db
       .query("pledges")
@@ -21,7 +21,7 @@ export const list = query({
       )
       .collect();
 
-    return pledges;
+    return pledges.map((pledge) => redactDonorFields(user, pledge));
   },
 });
 
@@ -35,7 +35,7 @@ export const listByStatus = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "pledges.read");
 
     const pledges = await ctx.db
       .query("pledges")
@@ -44,7 +44,7 @@ export const listByStatus = query({
       )
       .collect();
 
-    return pledges;
+    return pledges.map((pledge) => redactDonorFields(user, pledge));
   },
 });
 
@@ -52,7 +52,7 @@ export const listByStatus = query({
 export const byFund = query({
   args: { fundId: v.id("funds") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "pledges.read");
 
     // Verify fund belongs to organization
     const fund = await ctx.db.get(args.fundId);
@@ -65,7 +65,7 @@ export const byFund = query({
       .withIndex("by_fund", (q) => q.eq("fundId", args.fundId))
       .collect();
 
-    return pledges;
+    return pledges.map((pledge) => redactDonorFields(user, pledge));
   },
 });
 
@@ -73,7 +73,7 @@ export const byFund = query({
 export const byDonor = query({
   args: { donorId: v.id("donors") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.read");
 
     // Verify donor belongs to organization
     const donor = await ctx.db.get(args.donorId);
@@ -86,7 +86,8 @@ export const byDonor = query({
       .withIndex("by_donor", (q) => q.eq("donorId", args.donorId))
       .collect();
 
-    return pledges.filter((pledge) => pledge.organizationId === user.organizationId);
+    return pledges.filter((pledge) => pledge.organizationId === user.organizationId)
+      .map((pledge) => redactDonorFields(user, pledge));
   },
 });
 
@@ -94,7 +95,7 @@ export const byDonor = query({
 export const getWithProgress = query({
   args: { pledgeId: v.id("pledges") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "pledges.read");
     const pledge = await ctx.db.get(args.pledgeId);
 
     if (!pledge || pledge.organizationId !== user.organizationId) {
@@ -122,9 +123,9 @@ export const getWithProgress = query({
     const fund = await ctx.db.get(pledge.fundId);
 
     return {
-      ...pledge,
+      ...redactDonorFields(user, pledge),
       fundName: fund?.name ?? "Unknown Fund",
-      linkedTransactions,
+      linkedTransactions: linkedTransactions.map((transaction) => redactDonorFields(user, transaction)),
       totalReceived,
       progress,
       remaining: Math.max(roundMoney(target - totalReceived), 0),
@@ -136,7 +137,7 @@ export const getWithProgress = query({
 export const getUnlinkedIncomeForMatching = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     const unlinkedIncome = await ctx.db
       .query("transactions")
@@ -148,6 +149,6 @@ export const getUnlinkedIncomeForMatching = query({
 
     return unlinkedIncome.filter(
       (t) => t.pledgeId == null && isReportableIncomeTransaction(t)
-    );
+    ).map((transaction) => redactDonorFields(user, transaction));
   },
 });

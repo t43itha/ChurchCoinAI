@@ -38,6 +38,14 @@ export default tseslint.config(
   // Repo rules for mistakes reviewers kept catching. Each block lists the
   // files that legitimately own the pattern; everything else gets the error.
   {
+    files: ["**/*.{js,mjs,ts,tsx}"],
+    ignores: ["lib/permissions.ts", "tests/**"],
+    plugins: { churchcoin },
+    rules: {
+      "churchcoin/role-literal": "error",
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     ignores: [
       "lib/voidedTransactions.ts",

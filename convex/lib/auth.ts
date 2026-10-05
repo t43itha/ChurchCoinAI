@@ -1,8 +1,12 @@
 import { QueryCtx, MutationCtx } from "../_generated/server";
+import { v } from "convex/values";
+import { can, ROLES, type Capability, type UserRole } from "../../lib/permissions";
 import { Doc } from "../_generated/dataModel";
 import { requireOrganizationAccess } from "./access";
 
-export type UserRole = "Admin" | "Finance Team" | "Pastorate" | "Guest";
+export type { UserRole } from "../../lib/permissions";
+
+export const roleValidator = v.union(...ROLES.map((role) => v.literal(role)));
 
 /**
  * Get the current authenticated user from the database
@@ -48,32 +52,47 @@ export async function requireAuth(ctx: QueryCtx | MutationCtx) {
   return user;
 }
 
-/**
- * Require specific role(s) - throws if not authorized
- */
-export async function requireRole(
+/** Require a capability after authentication and organization access checks. */
+export async function requireCapability(
   ctx: QueryCtx | MutationCtx,
-  allowedRoles: UserRole[]
+  capability: Capability
 ) {
   const user = await requireAuth(ctx);
-  if (!allowedRoles.includes(user.role)) {
-    throw new Error(
-      `Forbidden: This action requires one of these roles: ${allowedRoles.join(", ")}`
-    );
-  }
+  assertCapability(user, capability);
   return user;
 }
 
-/**
- * Check if user can edit (Admin or Finance Team)
- */
-export function canEdit(user: Doc<"users">) {
-  return user.role === "Admin" || user.role === "Finance Team";
+/** Actions call this after their membership/access checks (billing permits recovery). */
+export function assertCapability(user: { role: UserRole }, capability: Capability) {
+  if (!can(user.role, capability)) {
+    throw new Error(`Forbidden: This action requires ${capability}`);
+  }
 }
 
-/**
- * Check if user is Admin
- */
-export function isAdmin(user: Doc<"users">) {
-  return user.role === "Admin";
+/** Keep ledger rows usable without disclosing donor identity to restricted readers. */
+export function redactDonorFields<T extends { donorName?: string; donorId?: string }>(
+  user: Pick<Doc<"users">, "role">,
+  row: T
+): T {
+  if (can(user.role, "donors.read")) return row;
+  const redacted = { ...row, donorName: "" };
+  const fields = redacted as Record<string, unknown>;
+  // Cash collection descriptions include the donor name. Remove known donor
+  // values from display text as well as the dedicated identity fields.
+  for (const [key, value] of Object.entries(row)) {
+    if (!/^donor/i.test(key) || typeof value !== "string" || !value) continue;
+    const pattern = new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+    for (const field of ["description", "notes"]) {
+      if (typeof fields[field] === "string") {
+        fields[field] = fields[field].replace(pattern, "[redacted]");
+      }
+    }
+  }
+  // Also strips donor contact projections if a query adds them in future.
+  for (const key of Object.keys(redacted)) {
+    if (/^donor/i.test(key) && key !== "donorName") {
+      delete fields[key];
+    }
+  }
+  return redacted;
 }

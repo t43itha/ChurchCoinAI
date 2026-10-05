@@ -1,6 +1,6 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { patchTransaction } from "../lib/transactionWrites";
 
 // Create a new donor
@@ -19,7 +19,7 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     const donorId = await ctx.db.insert("donors", {
       organizationId: user.organizationId,
@@ -56,7 +56,7 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     const donor = await ctx.db.get(args.donorId);
     if (!donor || donor.organizationId !== user.organizationId) {
@@ -154,7 +154,7 @@ export const bulkUpsert = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     const results: { id: string; name: string; isNew: boolean }[] = [];
 
@@ -212,7 +212,7 @@ export const linkOrphanedRecords = mutation({
     oldName: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     const donor = await ctx.db.get(args.donorId);
     if (!donor || donor.organizationId !== user.organizationId) {
@@ -276,7 +276,7 @@ export const findOrCreate = mutation({
     isGiftAidEligible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     if (!args.name || args.name.trim().length < 2) {
       return { donorId: null, isNew: false, matchedName: null };
@@ -348,7 +348,7 @@ export const bulkFindOrCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     // Get all existing donors once
     const existingDonors = await ctx.db
@@ -457,7 +457,7 @@ export const merge = mutation({
     duplicateDonorIds: v.array(v.id("donors")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     // Verify primary donor exists and belongs to org
     const primaryDonor = await ctx.db.get(args.primaryDonorId);
@@ -586,7 +586,7 @@ export const merge = mutation({
 export const findDuplicates = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.write");
 
     const donors = await ctx.db
       .query("donors")
@@ -699,7 +699,7 @@ export const remove = mutation({
     donorId: v.id("donors"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "donors.delete");
 
     const donor = await ctx.db.get(args.donorId);
     if (!donor || donor.organizationId !== user.organizationId) {

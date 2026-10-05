@@ -1,6 +1,6 @@
 import { mutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Doc, Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
 import {
@@ -163,7 +163,7 @@ export const submitCollection = mutation({
     namedDonations: v.optional(v.array(namedDonationValidator)),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.write");
     const validRows = args.serviceRows.filter(
       (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
     );
@@ -307,7 +307,7 @@ export const replaceCollectionEntries = mutation({
     namedDonations: v.optional(v.array(namedDonationValidator)),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.write");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -454,7 +454,7 @@ export const markAsBanked = mutation({
     bankedDate: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "cashCollections.write");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {
@@ -497,7 +497,7 @@ export const deleteCollection = mutation({
     cashCollectionId: v.id("cashCollections"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "cashCollections.delete");
 
     const collection = await ctx.db.get(args.cashCollectionId);
     if (!collection || collection.organizationId !== user.organizationId) {

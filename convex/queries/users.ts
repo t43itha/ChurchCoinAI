@@ -1,6 +1,7 @@
+import { can } from "../../lib/permissions";
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { getCurrentUser, getIdentity, requireAuth } from "../lib/auth";
+import { getCurrentUser, getIdentity, requireAuth, requireCapability } from "../lib/auth";
 import { resolveOrganizationAccess } from "../lib/access";
 
 // Get the current authenticated user
@@ -38,7 +39,7 @@ export const identity = query({
 export const listByOrganization = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "users.list");
 
     const users = await ctx.db
       .query("users")
@@ -62,6 +63,9 @@ export const getById = query({
       return null;
     }
 
+    if (!can(currentUser.role, "users.list")) {
+      return { _id: user._id, name: user.name };
+    }
     const { clerkId: _clerkId, ...safeUser } = user;
     return safeUser;
   },

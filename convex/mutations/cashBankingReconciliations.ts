@@ -1,7 +1,7 @@
 import { mutation, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import {
   calculateCollectionBankingTotals,
   calculateReconciliationSummary,
@@ -391,7 +391,7 @@ function assertVarianceDetails(
 export const createDraft = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const now = Date.now();
 
     const reconciliationId = await ctx.db.insert("cashBankingReconciliations", {
@@ -426,7 +426,7 @@ export const updateDraft = mutation({
     varianceNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const reconciliation = await ctx.db.get(args.reconciliationId);
     if (!reconciliation || reconciliation.organizationId !== user.organizationId) {
@@ -498,7 +498,7 @@ export const complete = mutation({
     reconciliationId: v.id("cashBankingReconciliations"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const reconciliation = await ctx.db.get(args.reconciliationId);
     if (!reconciliation || reconciliation.organizationId !== user.organizationId) {
@@ -715,7 +715,7 @@ export const reopen = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const reason = args.reason.trim();
 
     if (reason.length < 3) {

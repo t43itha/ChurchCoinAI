@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState, useMemo } from 'react';
 import { useConvex, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -129,8 +130,8 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const [newDonorData, setNewDonorData] = useState<Partial<Donor>>({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
   const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
 
-  const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
-  const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "donors.write");
+  const canView = can(currentUser.role, "donors.read");
 
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
 

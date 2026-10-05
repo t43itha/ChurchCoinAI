@@ -1,3 +1,4 @@
+import { can, type UserRole } from "../lib/permissions";
 import React, { useEffect, useMemo, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { UserButton } from "@clerk/clerk-react";
@@ -24,7 +25,7 @@ import { PLANS } from "../lib/plans";
 
 interface SubscriptionRequiredProps {
   organizationName: string;
-  userRole: string;
+  userRole: UserRole;
   selectedPlan?: PlanTier;
   accessState: string;
   accessReason?: string;
@@ -61,7 +62,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   }, [isProcessing]);
 
   useEffect(() => {
-    if (!returnedFromCheckout || !checkoutSessionId || userRole !== "Admin") return;
+    if (!returnedFromCheckout || !checkoutSessionId || !can(userRole, "billing.manage")) return;
     const timer = window.setTimeout(() => {
       void reconcileCheckout({ sessionId: checkoutSessionId }).catch((error) => {
         console.error("Checkout reconciliation failed:", error);
@@ -205,7 +206,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
     );
   }
 
-  if (userRole !== "Admin") {
+  if (!can(userRole, "billing.manage")) {
     return (
       <div className="min-h-screen bg-paper flex flex-col">
         {header}
