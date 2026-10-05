@@ -93,7 +93,7 @@ Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the
 ## Key Conventions
 
 - Path alias: `@/*` maps to project root (configured in `tsconfig.json` and `vite.config.ts`)
-- Convex auto-generates types in `convex/_generated/` — never edit these files
+- `convex/_generated/` is generated output: never hand-edit it. When you add, remove, or rename a module under `convex/`, run `npx convex codegen` (needs a dev deployment) and commit the regenerated files in the same change. Don't work around stale bindings with `makeFunctionReference`. `tests/convexGeneratedApi.test.ts` fails when `api.d.ts` and `convex/` disagree.
 - HTTP integration endpoints live in `convex/http.ts` (Stripe at `/stripe/webhook`, Yapily at `/yapily/callback`, preserved Plaid webhook at `/plaid/webhook` for backend compatibility)
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
