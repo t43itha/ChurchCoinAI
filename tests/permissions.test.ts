@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ESLint } from "eslint";
-import { CAPABILITIES, DEFAULT_INVITE_ROLE, OWNER_ROLE, ROLES, can, type Capability } from "../lib/permissions";
+import { CAPABILITIES, DEFAULT_INVITE_ROLE, OWNER_ROLE, ROLES, can, type Capability, type UserRole } from "../lib/permissions";
 import { assertCapability, redactDonorFields, roleValidator } from "../convex/lib/auth";
 
 // Independent, exhaustive policy expectations: Admin, Finance Team, Pastorate, Guest.
@@ -65,11 +65,60 @@ it("redacts donor identity and contacts without changing the financial row or or
     amount: 25, fundId: "fund-1", date: "2026-01-10",
   };
   expect(redactDonorFields({ role: "Guest" }, row)).toEqual({
-    donorName: "", description: "Tithes - [redacted]", notes: "Contact [redacted]",
+    donorName: "", description: "Donation",
     amount: 25, fundId: "fund-1", date: "2026-01-10",
   });
   expect(row.donorName).toBe("Alex (A.) Smith");
   expect(redactDonorFields({ role: "Pastorate" }, row)).toBe(row);
+});
+
+describe("donor display text redaction", () => {
+  const row = {
+    donorId: "primary-donor", donorName: "Alex Smith",
+    description: "Tithes - Robin Jones", notes: "Contact Robin Jones at robin@example.invalid",
+    voidReason: "Robin Jones requested a correction", isVoided: true,
+    amount: 25, fundId: "fund-1", date: "2026-01-10", category: "Tithes", paymentMethod: "Cash",
+  };
+
+  it.each([
+    { name: "donor ID", donorId: "primary-donor" },
+    { name: "donor name", donorName: "Alex Smith" },
+    { name: "donor contact projection", donorEmail: "alex@example.invalid" },
+    { name: "donor marker", donorMatched: true },
+    { name: "pledge link", pledgeId: "pledge-1" },
+    { name: "Gift Aid eligibility", isGiftAidEligible: true },
+  ])("replaces all donor-bearing text when only $name remains", ({ name: _name, ...marker }) => {
+    const original = { ...row, donorId: undefined, donorName: "", ...marker };
+    const result = redactDonorFields({ role: "Guest" }, original);
+    expect(result).toMatchObject({
+      donorName: "", description: "Donation", isVoided: true,
+      amount: 25, fundId: "fund-1", date: "2026-01-10", category: "Tithes", paymentMethod: "Cash",
+    });
+    expect(result).not.toHaveProperty("donorId");
+    expect(result).not.toHaveProperty("donorEmail");
+    expect(result).not.toHaveProperty("donorMatched");
+    expect(result).not.toHaveProperty("notes");
+    expect(result).not.toHaveProperty("voidReason");
+    expect(JSON.stringify(result)).not.toMatch(/Robin Jones|Alex Smith|@example\.invalid/);
+    expect(original.description).toBe(row.description);
+    expect(original.notes).toBe(row.notes);
+    expect(original.voidReason).toBe(row.voidReason);
+  });
+
+  it.each(["Cash", "Cheque", "Card"])("redacts a named cash collection donation paid by %s", (paymentMethod) => {
+    const result = redactDonorFields({ role: "Guest" }, { ...row, cashCollectionId: "collection-1", paymentMethod });
+    expect(result.description).toBe("Donation");
+    expect(result).not.toHaveProperty("notes");
+    expect(result).toMatchObject({ cashCollectionId: "collection-1", paymentMethod, category: "Tithes", amount: 25 });
+  });
+
+  it.each<UserRole>(["Admin", "Finance Team", "Pastorate"])("preserves everything for %s while restricting Guest display text", (role) => {
+    const original = structuredClone(row);
+    expect(redactDonorFields({ role }, row)).toBe(row);
+    expect(row).toEqual(original);
+    expect(redactDonorFields({ role: "Guest" }, row).description).toBe("Donation");
+    expect(row).toEqual(original);
+  });
 });
 
 describe("role-literal enforcement", () => {

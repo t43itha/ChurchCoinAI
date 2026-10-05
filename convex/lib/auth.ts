@@ -77,16 +77,15 @@ export function redactDonorFields<T extends { donorName?: string; donorId?: stri
   if (can(user.role, "donors.read")) return row;
   const redacted = { ...row, donorName: "" };
   const fields = redacted as Record<string, unknown>;
-  // Cash collection descriptions include the donor name. Remove known donor
-  // values from display text as well as the dedicated identity fields.
-  for (const [key, value] of Object.entries(row)) {
-    if (!/^donor/i.test(key) || typeof value !== "string" || !value) continue;
-    const pattern = new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-    for (const field of ["description", "notes"]) {
-      if (typeof fields[field] === "string") {
-        fields[field] = fields[field].replace(pattern, "[redacted]");
-      }
-    }
+  const hasDonorIdentity = Object.entries(row).some(
+    ([key, value]) => /^donor/i.test(key) && Boolean(value)
+  ) || Boolean(fields.pledgeId) || fields.isGiftAidEligible === true;
+  // Named donation text can retain old identities after renames or merges.
+  // Never derive restricted display text from those free-text fields.
+  if (hasDonorIdentity) {
+    if (typeof fields.description === "string") fields.description = "Donation";
+    delete fields.notes;
+    delete fields.voidReason;
   }
   // Also strips donor contact projections if a query adds them in future.
   for (const key of Object.keys(redacted)) {

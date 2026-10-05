@@ -84,6 +84,55 @@ describe.each(rowQueries)("$name privacy", ({ fn, args }) => {
   });
 });
 
+describe.each([
+  { change: "rename", donorId: "donor", donorName: "Robin Jones" },
+  { change: "merge", donorId: "primary-donor", donorName: "Morgan Brown" },
+])("donor $change privacy", ({ donorId, donorName }) => {
+  it.each(rowQueries.filter(
+    ({ name }) => name.startsWith("transactions.") || name === "pledges.getWithProgress"
+  ))("keeps old donor names out of Guest $name results", async ({ fn, args }) => {
+    const { ctx, records } = fixture("Guest");
+    // Renames and merges update donor fields but leave the original display text.
+    Object.assign(records.transactions[0], {
+      donorId, donorName, notes: "Donation from Alex Smith; contact alex@example.invalid",
+      category: "Tithes", paymentMethod: "Cash", cashCollectionId: "collection",
+    });
+    Object.assign(records.pledges[0], { donorId, donorName });
+    const originalTransaction = structuredClone(records.transactions[0]);
+    const result = await invoke(fn, ctx, args);
+    const rows = Array.isArray(result) ? result : result.page ?? [result];
+    const text = JSON.stringify(result);
+    expect(text).not.toContain("Alex Smith");
+    expect(text).not.toContain(donorName);
+    expect(text).not.toContain("alex@example.invalid");
+    expect(text).not.toContain('"donorId"');
+    expect(rows[0]).toMatchObject({ donorName: "", fundId: "fund" });
+    if (fn === pledges.getWithProgress) {
+      expect(result).toMatchObject({ amount: 100, totalReceived: 25, progress: 25, remaining: 75 });
+      expect(result.linkedTransactions[0]).toMatchObject({ description: "Donation", category: "Tithes", amount: 25 });
+      expect(result.linkedTransactions[0]).not.toHaveProperty("notes");
+    } else {
+      expect(rows[0]).toMatchObject({ description: "Donation", amount: 25, category: "Tithes", paymentMethod: "Cash", cashCollectionId: "collection" });
+      expect(rows[0]).not.toHaveProperty("notes");
+    }
+    expect(records.transactions[0]).toEqual(originalTransaction);
+  });
+});
+
+it.each([
+  { description: "DIRECT DEBIT - Electricity", notes: "Meter reading 1234", type: "Expenditure", category: "Utilities", paymentMethod: "Bank", pledgeId: null, isGiftAidEligible: false },
+  { description: "Sunday Service - Cash", notes: "service:Sunday Service", type: "Income", category: "Offerings", paymentMethod: "Cash", cashCollectionId: "collection", donorName: "" },
+])("preserves non-donor text ($description) alongside a redacted donation", async (fields) => {
+  const { ctx, records } = fixture("Guest");
+  Object.assign(records.transactions[0], { donorName: "Robin Jones", notes: "Donation from Alex Smith" });
+  const nonDonorRow = { _id: "non-donor", organizationId: "org", fundId: "fund", amount: 10, date: "2026-01-10", ...fields };
+  records.transactions.push(nonDonorRow);
+  const result = await invoke(transactions.list, ctx);
+  expect(result.find((row: Row) => row._id === "non-donor")).toEqual({ ...nonDonorRow, donorName: "" });
+  expect(JSON.stringify(result)).not.toContain("Alex Smith");
+  expect(result.find((row: Row) => row._id === "transaction")).not.toHaveProperty("notes");
+});
+
 describe.each([transactions.byDonor, pledges.byDonor])("donor-linked reads", (fn) => {
   it.each<UserRole>(["Admin", "Finance Team", "Pastorate"])("allows %s within their organization", async (role) => {
     const { ctx } = fixture(role);
