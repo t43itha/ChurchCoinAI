@@ -11,15 +11,7 @@ const convexDir = path.resolve(__dirname, "..", "convex");
 // Modules already missing from the committed bindings. Shrink-only: run
 // `npx convex codegen` (or `npx convex dev --once`), commit convex/_generated,
 // and delete the entries it fixes. Never add to this list.
-const KNOWN_STALE = new Set([
-  "actions/supportTickets",
-  "lib/categoryIntegrity",
-  "lib/githubSupport",
-  "lib/pledgeStatus",
-  "lib/transactionWrites",
-  "mutations/supportTickets",
-  "queries/supportTickets",
-]);
+const KNOWN_STALE = new Set<string>([]);
 
 function convexModules(dir = convexDir): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
