@@ -98,3 +98,19 @@ Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the
 - PDF export uses client-side rendering: html2canvas captures DOM, jsPDF converts to A4
 - AI categorization uses Gemini JSON mode and stores correction feedback in `categorizationCorrections` for RAG learning
 - Reuse existing Convex queries and mutations rather than creating duplicates
+
+## Enforced rules
+
+Mistakes reviewers caught more than once, and what now stops them. When you're corrected for a mistake, fix it and add a row here. If the row already exists and nothing enforces it, that's a repeat: enforce it in the same change. Delete a row once its mistake can't happen.
+
+| Rule | Enforced by |
+|---|---|
+| Totals, reports, and matching use `lib/reportableTransactions` (excludes voided rows and cash banking deposits) | ESLint `churchcoin/reportable-transactions` + `no-restricted-imports` on `lib/voidedTransactions` |
+| Category validity for a transaction type goes through `categoryNamesForTransactionTypes` (client) or `ensureTypedCategories` + `requireCanonicalCategory` (server) | ESLint `churchcoin/category-type` |
+| Every `transactions` patch/delete goes through `convex/lib/transactionWrites` so the completed-reconciliation lock runs; bypasses name a `lockOverride` reason | `tests/transactionWriteOwnership.test.ts` |
+| `convex/_generated/api.d.ts` matches the modules in `convex/`; regenerate with `npx convex codegen`, never hand-edit | `tests/convexGeneratedApi.test.ts` (shrink-only `KNOWN_STALE` baseline) |
+| Money totals use `sumMoney`; targets use `meetsMoneyTarget` (`convex/lib/money.ts`) | `tests/moneyArithmetic.test.ts` per-file ratchet (`churchcoin/money-arithmetic`) |
+| Role checks agree between UI and server | Docs only: role lists are written inline in about 160 places; owner decision pending on a shared `lib/permissions.ts` |
+| Multi-step external workflows (indexing sweeps, GitHub sync, Yapily consent) persist progress before side effects, only mark completion after children finish, and keep retryable and permanent failures distinct | Docs only: judgment call; review against this rule |
+| Async results in the import flow are keyed by stable row IDs and checked against current state before they update or announce anything | Docs only: judgment call |
+| `lockOverride: "needs-owner-decision"` marks existing bypasses (`pledges.remove`, `pledges.cleanupDuplicates`, `cashCollections.markAsBanked`) awaiting a decision; don't add new uses | Code review |
