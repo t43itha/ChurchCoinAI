@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
+import churchcoin from "./eslint/churchcoin-rules.js";
 
 // Focused config: hook correctness and cheap correctness rules only.
 // The codebase predates linting, so stylistic rules stay off to keep
@@ -32,6 +33,37 @@ export default tseslint.config(
       ],
       "no-empty": ["error", { allowEmptyCatch: true }],
       "prefer-const": "warn",
+    },
+  },
+  // Repo rules for mistakes reviewers kept catching. Each block lists the
+  // files that legitimately own the pattern; everything else gets the error.
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: [
+      "lib/voidedTransactions.ts",
+      "lib/reportableTransactions.ts",
+      "lib/cashChequeBanking.ts",
+      "convex/schema.ts",
+      "convex/mutations/**",
+      "convex/queries/cashBankingReconciliations.ts",
+      "convex/queries/reconciliationSessions.ts",
+      "tests/**",
+    ],
+    plugins: { churchcoin },
+    rules: {
+      "churchcoin/reportable-transactions": "error",
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/voidedTransactions"],
+              message:
+                "Void-only helpers keep cash banking deposits, so totals double count. Use filterReportableTransactions / sumReportableIncome / sumReportableSigned from lib/reportableTransactions.",
+            },
+          ],
+        },
+      ],
     },
   }
 );

@@ -9,6 +9,13 @@ export type ReportableTransaction = {
   category?: string;
 };
 
+// For display and filtering by void status only. Totals, reports, and matching
+// must use isReportableTransaction / filterReportableTransactions, which also
+// exclude cash banking deposits.
+export function isVoidedTransaction(transaction: { isVoided?: boolean }) {
+  return !isActiveTransaction(transaction);
+}
+
 export function isCashBankingDeposit(transaction: {
   cashBankingRole?: "source_giving" | "bank_deposit";
 }) {

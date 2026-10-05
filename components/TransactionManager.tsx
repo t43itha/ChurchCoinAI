@@ -12,6 +12,8 @@ import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/csvImport';
 import { categoryNamesForTransactionTypes } from '../lib/transactionCategories';
+import { isVoidedTransaction, sumReportableIncome, sumReportableSigned } from '../lib/reportableTransactions';
+import { roundMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
@@ -248,8 +250,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (filterFund && t.fundId !== filterFund) return false;
 
       // Status
-      if (filterStatus === 'active' && t.isVoided) return false;
-      if (filterStatus === 'voided' && !t.isVoided) return false;
+      if (filterStatus === 'active' && isVoidedTransaction(t)) return false;
+      if (filterStatus === 'voided' && !isVoidedTransaction(t)) return false;
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
@@ -259,18 +261,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
-  // Summary strip totals for the current filtered view (voided excluded)
+  // Summary strip totals for the current filtered view. Totals use the
+  // reportable rule (no voided rows, no cash banking deposits) so banked cash
+  // isn't counted twice; the review count covers every non-voided row.
   const stripTotals = useMemo(() => {
-    let totalIn = 0;
-    let totalOut = 0;
-    let needsReview = 0;
-    for (const t of filteredTransactions) {
-      if (t.isVoided) continue;
-      if (t.type === 'Income') totalIn += t.amount;
-      else totalOut += t.amount;
-      if (!t.isReconciled || !t.category) needsReview++;
-    }
-    return { totalIn, totalOut, net: totalIn - totalOut, needsReview };
+    const totalIn = sumReportableIncome(filteredTransactions);
+    const net = sumReportableSigned(filteredTransactions);
+    const needsReview = filteredTransactions.filter(
+      (t) => !isVoidedTransaction(t) && (!t.isReconciled || !t.category)
+    ).length;
+    return { totalIn, totalOut: roundMoney(totalIn - net), net, needsReview };
   }, [filteredTransactions]);
 
   const stripPeriodLabel =
@@ -1391,7 +1391,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
 
                   return (
-                    <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : t.isVoided ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
+                    <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : isVoidedTransaction(t) ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
                       <td className="pl-6 pr-2 py-3.5">
                           {canEdit && (
                                <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-[18px] h-[18px] align-middle rounded-md border-[#cfc9c1] accent-[#a9743f] cursor-pointer" />
@@ -1402,7 +1402,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           <div className="flex items-center gap-2">
                              <div className="font-semibold text-ink text-[14.5px] truncate max-w-[280px]">{t.description}</div>
                              {t.pledgeId && <LinkIcon size={13} strokeWidth={2} className="text-[#6b8e6b] shrink-0" />}
-                             {t.isVoided && (
+                             {isVoidedTransaction(t) && (
                               <span
                                 className="px-1.5 py-0.5 rounded-[5px] border border-error/30 bg-error-light text-[9.5px] font-bold text-error uppercase tracking-[0.08em] shrink-0"
                                 title={t.voidReason ? `Void reason: ${t.voidReason}` : "Voided transaction"}
@@ -1432,7 +1432,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       </td>
                       <td className="px-4 py-3.5 text-center">
                           {canEdit ? (
-                            t.isVoided ? (
+                            isVoidedTransaction(t) ? (
                               <button
                                 type="button"
                                 onClick={() => handleUnvoidTransaction(t)}
@@ -1452,7 +1452,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                               </button>
                             )
                           ) : (
-                            t.isVoided && <X size={14} className="mx-auto text-error/60" />
+                            isVoidedTransaction(t) && <X size={14} className="mx-auto text-error/60" />
                           )}
                       </td>
                       <td className="px-4 py-3.5 text-right opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
@@ -2312,7 +2312,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
 
-                        {editingTransaction.isVoided && (
+                        {isVoidedTransaction(editingTransaction) && (
                           <div className="flex items-center gap-2 text-sm text-error">
                             <X size={14} />
                             <span>

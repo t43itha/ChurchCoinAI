@@ -7,6 +7,7 @@ import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Walle
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { filterReportableTransactions, sumReportableIncome } from '../lib/reportableTransactions';
+import { meetsMoneyTarget } from '../convex/lib/money';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -628,11 +629,11 @@ ${churchDetails?.name || 'Church'} Finance Team
       // Check if unlinking should reactivate a completed pledge
       const pledge = pledges.find(p => p._id === oldPledgeId);
       if (pledge && pledge.status === 'Completed') {
-           const remainingSum = transactions
-              .filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
-              .reduce((sum, t) => sum + t.amount, 0);
+           const remainingSum = sumReportableIncome(
+              transactions.filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
+           );
 
-           if (remainingSum < pledge.amount) {
+           if (!meetsMoneyTarget(remainingSum, pledge.amount)) {
                 onUpdatePledge({ ...pledge, status: 'Active' });
            }
       }
