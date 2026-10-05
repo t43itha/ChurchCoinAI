@@ -147,11 +147,38 @@ export const moneyArithmetic = {
   },
 };
 
+export const noFunctionReferenceStrings = {
+  meta: {
+    type: "problem",
+    docs: {
+      description: "Convex function calls must use the generated typed references.",
+    },
+    messages: {
+      untyped:
+        "Use typed api/internal refs from convex/_generated/api instead of makeFunctionReference. Run `npx convex codegen` if a function is missing.",
+    },
+    schema: [],
+  },
+  create(context) {
+    return {
+      CallExpression(node) {
+        if (
+          (node.callee.type === "Identifier" && node.callee.name === "makeFunctionReference") ||
+          (node.callee.type === "MemberExpression" && memberName(node.callee) === "makeFunctionReference")
+        ) {
+          context.report({ node, messageId: "untyped" });
+        }
+      },
+    };
+  },
+};
+
 export default {
   meta: { name: "churchcoin" },
   rules: {
     "reportable-transactions": reportableTransactions,
     "category-type": categoryType,
     "money-arithmetic": moneyArithmetic,
+    "no-function-reference-strings": noFunctionReferenceStrings,
   },
 };

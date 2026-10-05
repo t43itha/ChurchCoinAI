@@ -1,4 +1,3 @@
-import { makeFunctionReference } from "convex/server";
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
@@ -17,21 +16,6 @@ import {
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
 import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
-
-const upsertAcceptedCategorizationMemory = makeFunctionReference<
-  "mutation",
-  {
-    organizationId: Id<"organizations">;
-    signature: string;
-    descriptionExample: string;
-    transactionType: "Income" | "Expenditure";
-    category: string;
-    fundId: Id<"funds">;
-    isGiftAidEligible?: boolean;
-    donorName?: string;
-    sourceTransactionId?: Id<"transactions">;
-  }
->("intelligence/categorizationMemory:upsertAccepted");
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {
@@ -934,7 +918,7 @@ export const recordCorrections = mutation({
       if (learned) {
         await ctx.scheduler.runAfter(
           0,
-          upsertAcceptedCategorizationMemory,
+          internal.intelligence.categorizationMemory.upsertAccepted,
           {
             organizationId: user.organizationId,
             signature: feedbackEvent.signature,

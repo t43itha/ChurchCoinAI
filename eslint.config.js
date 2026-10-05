@@ -82,5 +82,13 @@ export default tseslint.config(
     rules: {
       "churchcoin/category-type": "error",
     },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["tests/**"],
+    plugins: { churchcoin },
+    rules: {
+      "churchcoin/no-function-reference-strings": "error",
+    },
   }
 );

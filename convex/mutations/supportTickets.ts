@@ -1,6 +1,5 @@
-import { makeFunctionReference } from "convex/server";
 import { internalMutation, mutation } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { requireMembership } from "../lib/auth";
 import {
@@ -16,12 +15,6 @@ const HOUR_MS = 60 * 60 * 1_000;
 const DAY_MS = 24 * HOUR_MS;
 const SYNC_STALE_AFTER_MS = 10 * 60 * 1_000;
 const MAX_AUTOMATIC_SYNC_ATTEMPTS = 8;
-
-const syncSupportTicketToGitHub = makeFunctionReference<
-  "action",
-  { ticketId: Id<"supportTickets"> },
-  void
->("actions/supportTickets:syncToGitHub");
 
 const ticketTypeValidator = v.union(
   v.literal("bug"),
@@ -129,7 +122,7 @@ export const submit = mutation({
     await ctx.db.patch(ticketId, { reference });
     await ctx.scheduler.runAfter(
       0,
-      syncSupportTicketToGitHub,
+      internal.actions.supportTickets.syncToGitHub,
       { ticketId }
     );
 
@@ -266,7 +259,7 @@ export const scheduleFailedGithubSyncs = internalMutation({
     for (const ticket of retryable) {
       await ctx.scheduler.runAfter(
         0,
-        syncSupportTicketToGitHub,
+        internal.actions.supportTickets.syncToGitHub,
         { ticketId: ticket._id }
       );
     }
