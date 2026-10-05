@@ -65,5 +65,22 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: [
+      "lib/transactionCategories.ts",
+      "convex/lib/categoryIntegrity.ts",
+      "convex/mutations/categories.ts",
+      // Categorisation reads categories already resolved by categoryResolver,
+      // and its memory rows have their own transactionType field.
+      "convex/intelligence/**",
+      "convex/schema.ts",
+      "tests/**",
+    ],
+    plugins: { churchcoin },
+    rules: {
+      "churchcoin/category-type": "error",
+    },
   }
 );

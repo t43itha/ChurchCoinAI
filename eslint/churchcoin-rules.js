@@ -38,9 +38,37 @@ export const reportableTransactions = {
   },
 };
 
+export const categoryType = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Category validity for a transaction type must go through the shared resolver, not category.transactionType.",
+    },
+    messages: {
+      direct:
+        "Don't read category.transactionType directly: legacy categories stay untyped until the server backfill runs, and names can be aliases. Use categoryNamesForTransactionTypes from lib/transactionCategories (client) or ensureTypedCategories + requireCanonicalCategory from convex/lib/categoryIntegrity (server writes).",
+    },
+    schema: [],
+  },
+  create(context) {
+    return {
+      MemberExpression(node) {
+        if (memberName(node) !== "transactionType") return;
+        // Validated function arguments and plain field copies are fine.
+        if (node.object.type === "Identifier" && node.object.name === "args") return;
+        if (isCopiedIntoObject(node)) return;
+        if (node.parent.type === "AssignmentExpression" && node.parent.left === node) return;
+        context.report({ node, messageId: "direct" });
+      },
+    };
+  },
+};
+
 export default {
   meta: { name: "churchcoin" },
   rules: {
     "reportable-transactions": reportableTransactions,
+    "category-type": categoryType,
   },
 };

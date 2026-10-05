@@ -470,7 +470,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             updates.push({
               transactionId: t._id as Id<"transactions">,
               changes: {
-                category: suggestion.category,
+                // The server rejects the whole batch if one category doesn't
+                // fit its transaction's type, so drop mismatched suggestions.
+                category: categoryNamesFor(t.type).includes(suggestion.category)
+                  ? suggestion.category
+                  : undefined,
                 isGiftAidEligible: suggestion.isGiftAidEligible,
                 fundId: suggestedFund?._id ? (suggestedFund._id as Id<"funds">) : undefined,
                 donorName: suggestion.donorName || undefined,
@@ -2059,7 +2063,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 value={newTransaction.type}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
-                                    const categoryStillValid = categories.some((category) => category.name === newTransaction.category && (!category.transactionType || category.transactionType === type));
+                                    const categoryStillValid = categoryNamesFor(type).includes(newTransaction.category ?? '');
                                     setNewTransaction({
                                         ...newTransaction,
                                         type,
@@ -2240,7 +2244,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 value={editingTransaction.type}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
-                                    const categoryStillValid = categories.some((category) => category.name === editingTransaction.category && (!category.transactionType || category.transactionType === type));
+                                    const categoryStillValid = categoryNamesFor(type).includes(editingTransaction.category);
                                     setEditingTransaction({
                                         ...editingTransaction,
                                         type,
