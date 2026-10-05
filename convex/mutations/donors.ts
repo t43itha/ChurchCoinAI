@@ -1,6 +1,7 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireRole } from "../lib/auth";
+import { patchTransaction } from "../lib/transactionWrites";
 
 // Create a new donor
 export const create = mutation({
@@ -90,7 +91,7 @@ export const update = mutation({
 
       for (const t of transactionsByDonorId) {
         if (t.organizationId !== user.organizationId) continue;
-        await ctx.db.patch(t._id, { donorName: newName });
+        await patchTransaction(ctx, t._id, { donorName: newName }, { lockOverride: "donor-cascade" });
       }
 
       // Update transactions linked by old donorName (but no donorId)
@@ -104,7 +105,7 @@ export const update = mutation({
         .collect();
 
       for (const t of transactionsByName) {
-        await ctx.db.patch(t._id, { donorName: newName, donorId: args.donorId });
+        await patchTransaction(ctx, t._id, { donorName: newName, donorId: args.donorId }, { lockOverride: "donor-cascade" });
       }
 
       // Update pledges linked by donorId
@@ -234,7 +235,7 @@ export const linkOrphanedRecords = mutation({
       .collect();
 
     for (const t of transactions) {
-      await ctx.db.patch(t._id, { donorName: donor.name, donorId: args.donorId });
+      await patchTransaction(ctx, t._id, { donorName: donor.name, donorId: args.donorId }, { lockOverride: "donor-cascade" });
       linkedTransactions++;
     }
 
@@ -484,10 +485,10 @@ export const merge = mutation({
 
       for (const t of transactions) {
         if (t.organizationId !== user.organizationId) continue;
-        await ctx.db.patch(t._id, {
+        await patchTransaction(ctx, t._id, {
           donorId: args.primaryDonorId,
           donorName: primaryDonor.name,
-        });
+        }, { lockOverride: "donor-cascade" });
         mergedTransactions++;
       }
 
@@ -506,10 +507,10 @@ export const merge = mutation({
         .collect();
 
       for (const t of transactionsByName) {
-        await ctx.db.patch(t._id, {
+        await patchTransaction(ctx, t._id, {
           donorId: args.primaryDonorId,
           donorName: primaryDonor.name,
-        });
+        }, { lockOverride: "donor-cascade" });
         mergedTransactions++;
       }
 
@@ -714,7 +715,7 @@ export const remove = mutation({
 
     for (const t of transactions) {
       if (t.organizationId !== user.organizationId) continue;
-      await ctx.db.patch(t._id, { donorId: undefined });
+      await patchTransaction(ctx, t._id, { donorId: undefined }, { lockOverride: "donor-cascade" });
     }
 
     const pledges = await ctx.db

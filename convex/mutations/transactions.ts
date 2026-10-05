@@ -16,6 +16,7 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
+import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 const upsertAcceptedCategorizationMemory = makeFunctionReference<
   "mutation",
@@ -68,35 +69,6 @@ export function shouldUpdateCategorizationRagIndex(args: {
   const donorNameChanged = args.predictedDonorName !== args.finalDonorName;
 
   return categoryChanged || fundChanged || giftAidChanged || donorNameChanged;
-}
-
-// Block changes to transactions locked by a completed reconciliation.
-async function assertNotLockedByReconciliation(
-  ctx: any,
-  transaction: {
-    reconciliationSessionId?: Id<"reconciliationSessions"> | null;
-    cashBankingReconciliationId?: Id<"cashBankingReconciliations"> | null;
-  }
-) {
-  if (transaction.reconciliationSessionId) {
-    const session = await ctx.db.get(transaction.reconciliationSessionId);
-    if (session && session.status === "completed") {
-      throw new Error(
-        "This transaction is part of a completed reconciliation. " +
-          "Reopen that reconciliation session before changing it."
-      );
-    }
-  }
-
-  if (transaction.cashBankingReconciliationId) {
-    const reconciliation = await ctx.db.get(transaction.cashBankingReconciliationId);
-    if (reconciliation && reconciliation.status === "completed") {
-      throw new Error(
-        "This transaction is part of a completed cash banking reconciliation. " +
-          "Reopen that reconciliation before changing it."
-      );
-    }
-  }
 }
 
 // Create a new transaction
@@ -218,7 +190,6 @@ export const update = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     if (args.amount !== undefined) {
       assertValidTransactionAmount(args.amount);
@@ -284,7 +255,7 @@ export const update = mutation({
       updates.pledgeId = args.pledgeId;
     }
 
-    await ctx.db.patch(args.transactionId, updates);
+    await patchTransaction(ctx, transaction, updates);
 
     const nextPledgeId =
       finalType === "Income"
@@ -543,7 +514,6 @@ export const bulkUpdate = mutation({
     for (const transactionId of args.transactionIds) {
       const transaction = await ctx.db.get(transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
-        await assertNotLockedByReconciliation(ctx, transaction);
         const updates: Record<string, any> = {};
         if (args.updates.category !== undefined) {
           updates.category = requireCanonicalCategory(
@@ -557,7 +527,7 @@ export const bulkUpdate = mutation({
         if (args.updates.isGiftAidEligible !== undefined)
           updates.isGiftAidEligible = args.updates.isGiftAidEligible;
 
-        await ctx.db.patch(transactionId, updates);
+        await patchTransaction(ctx, transaction, updates);
         updatedCount++;
       }
     }
@@ -592,7 +562,6 @@ export const batchUpdate = mutation({
     for (const update of args.updates) {
       const transaction = await ctx.db.get(update.transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
-        await assertNotLockedByReconciliation(ctx, transaction);
         const changes: Record<string, any> = {};
         if (transaction.pledgeId) pledgesToCheck.add(transaction.pledgeId);
 
@@ -632,7 +601,7 @@ export const batchUpdate = mutation({
           }
         }
 
-        await ctx.db.patch(update.transactionId, changes);
+        await patchTransaction(ctx, transaction, changes);
         updatedCount++;
       }
     }
@@ -677,10 +646,9 @@ export const linkToPledge = mutation({
       throw new Error("Pledge not found");
     }
 
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const previousPledgeId = transaction.pledgeId;
-    await ctx.db.patch(args.transactionId, { pledgeId: args.pledgeId });
+    await patchTransaction(ctx, transaction, { pledgeId: args.pledgeId });
     if (previousPledgeId && previousPledgeId !== args.pledgeId) {
       await refreshPledgeStatus(ctx, previousPledgeId, user.organizationId);
     }
@@ -709,7 +677,6 @@ export const unlinkFromPledge = mutation({
       throw new Error("Transaction not found");
     }
 
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const oldPledgeId = transaction.pledgeId;
     if (!oldPledgeId) {
@@ -718,7 +685,7 @@ export const unlinkFromPledge = mutation({
 
     const oldPledge = await ctx.db.get(oldPledgeId);
     const wasCompleted = oldPledge?.status === "Completed";
-    await ctx.db.patch(args.transactionId, { pledgeId: null });
+    await patchTransaction(ctx, transaction, { pledgeId: null });
     const result = await refreshPledgeStatus(
       ctx,
       oldPledgeId,
@@ -744,11 +711,10 @@ export const remove = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const pledgeId = transaction.pledgeId;
 
-    await ctx.db.delete(args.transactionId);
+    await deleteTransaction(ctx, transaction);
 
     if (pledgeId) {
       await refreshPledgeStatus(ctx, pledgeId, user.organizationId);
@@ -774,9 +740,8 @@ export const voidTransaction = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: true,
       voidReason: reason,
       voidedAt: Date.now(),
@@ -802,9 +767,8 @@ export const unvoidTransaction = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: false,
       unvoidedAt: Date.now(),
       unvoidedBy: user._id,
@@ -830,10 +794,9 @@ export const toggleVoided = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const nextVoided = !transaction.isVoided;
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: nextVoided,
       ...(nextVoided
         ? {

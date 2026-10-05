@@ -5,6 +5,7 @@ import {
   computeDifferencePence,
   canCompleteSession,
 } from "../../lib/reconciliation";
+import { patchTransaction } from "../lib/transactionWrites";
 
 // Start a new statement reconciliation session for a fund/period
 export const create = mutation({
@@ -135,15 +136,15 @@ export const setCleared = mutation({
       if (transaction.isVoided) {
         throw new Error("Voided transactions cannot be reconciled");
       }
-      await ctx.db.patch(args.transactionId, {
+      await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: args.sessionId,
-      });
+      }, { lockOverride: "reconciliation-owner" });
     } else {
       if (transaction.reconciliationSessionId !== args.sessionId) return;
-      await ctx.db.patch(args.transactionId, {
+      await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: undefined,
         isReconciled: false,
-      });
+      }, { lockOverride: "reconciliation-owner" });
     }
   },
 });
@@ -194,7 +195,7 @@ export const complete = mutation({
     }
 
     for (const t of cleared) {
-      await ctx.db.patch(t._id, { isReconciled: true });
+      await patchTransaction(ctx, t._id, { isReconciled: true }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.patch(args.sessionId, {
       status: "completed",
@@ -231,7 +232,7 @@ export const reopen = mutation({
       )
       .collect();
     for (const t of cleared) {
-      await ctx.db.patch(t._id, { isReconciled: false });
+      await patchTransaction(ctx, t._id, { isReconciled: false }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.patch(args.sessionId, {
       status: "reopened",
@@ -262,10 +263,10 @@ export const remove = mutation({
       )
       .collect();
     for (const t of cleared) {
-      await ctx.db.patch(t._id, {
+      await patchTransaction(ctx, t._id, {
         reconciliationSessionId: undefined,
         isReconciled: false,
-      });
+      }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.delete(args.sessionId);
     return args.sessionId;

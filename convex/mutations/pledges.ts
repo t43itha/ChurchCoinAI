@@ -5,6 +5,7 @@ import { Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
 import { refreshPledgeStatus } from "../lib/pledgeStatus";
 import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
+import { patchTransaction } from "../lib/transactionWrites";
 
 // Create a new pledge
 export const create = mutation({
@@ -289,7 +290,7 @@ export const remove = mutation({
       .collect();
 
     for (const t of linkedTransactions) {
-      await ctx.db.patch(t._id, { pledgeId: null });
+      await patchTransaction(ctx, t._id, { pledgeId: null }, { lockOverride: "needs-owner-decision" });
     }
 
     await ctx.db.delete(args.pledgeId);
@@ -357,7 +358,7 @@ export const cleanupDuplicates = internalMutation({
               .collect();
 
             for (const t of linkedTransactions) {
-              await ctx.db.patch(t._id, { pledgeId: null });
+              await patchTransaction(ctx, t._id, { pledgeId: null }, { lockOverride: "needs-owner-decision" });
             }
 
             await ctx.db.delete(pledge._id);

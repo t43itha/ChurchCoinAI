@@ -11,6 +11,7 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
+import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to normalize donor names for matching
 const normalizeName = (name: string): string => {
@@ -332,7 +333,7 @@ export const replaceCollectionEntries = mutation({
     }
 
     for (const transaction of existingTransactions) {
-      await ctx.db.delete(transaction._id);
+      await deleteTransaction(ctx, transaction._id, { lockOverride: "reconciliation-owner" });
     }
 
     await ctx.db.patch(args.cashCollectionId, {
@@ -478,7 +479,7 @@ export const markAsBanked = mutation({
       .collect();
 
     for (const t of transactions) {
-      await ctx.db.patch(t._id, { isReconciled: true });
+      await patchTransaction(ctx, t._id, { isReconciled: true }, { lockOverride: "needs-owner-decision" });
     }
 
     return {
@@ -504,7 +505,7 @@ export const deleteCollection = mutation({
     const transactions = await assertCollectionUnlocked(ctx, collection);
 
     for (const t of transactions) {
-      await ctx.db.delete(t._id);
+      await deleteTransaction(ctx, t._id, { lockOverride: "reconciliation-owner" });
     }
 
     // Delete the collection

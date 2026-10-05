@@ -8,6 +8,7 @@ import {
   EXPENDITURE_MAIN_CATEGORY_ORDER,
   CATEGORY_ALIASES,
 } from "../../constants/rciCategories";
+import { patchTransaction } from "../lib/transactionWrites";
 
 // Create a new category
 export const create = mutation({
@@ -120,7 +121,7 @@ export const rename = mutation({
       .collect();
 
     for (const t of transactions) {
-      await ctx.db.patch(t._id, { category: args.newName });
+      await patchTransaction(ctx, t._id, { category: args.newName }, { lockOverride: "category-rename-cascade" });
     }
 
     return { categoryId: args.categoryId, updatedTransactions: transactions.length };
@@ -836,7 +837,7 @@ export const migrateTransactionCategories = internalMutation({
     for (const t of transactions) {
       const canonical = ALIASES[t.category];
       if (canonical) {
-        await ctx.db.patch(t._id, { category: canonical });
+        await patchTransaction(ctx, t._id, { category: canonical }, { lockOverride: "category-rename-cascade" });
         summary.transactionsRenamed++;
         if (!summary.details[t.category]) {
           summary.details[t.category] = { from: t.category, count: 0 };
