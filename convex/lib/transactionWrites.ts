@@ -15,15 +15,11 @@ export type LockOverride =
   | "reconciliation-owner"
   // Renaming a category or donor relabels history, including locked rows.
   | "category-rename-cascade"
-  | "donor-cascade"
-  // Existing bypasses that still need an owner decision; see CLAUDE.md
-  // "Enforced rules". Don't add new uses.
-  | "needs-owner-decision";
+  | "donor-cascade";
 
 export type TransactionWriteOptions = { lockOverride?: LockOverride };
 
-// Block changes to transactions locked by a completed reconciliation.
-export async function assertNotLockedByReconciliation(
+export async function getCompletedReconciliationLock(
   ctx: Pick<MutationCtx, "db">,
   transaction: {
     reconciliationSessionId?: Id<"reconciliationSessions"> | null;
@@ -33,21 +29,36 @@ export async function assertNotLockedByReconciliation(
   if (transaction.reconciliationSessionId) {
     const session = await ctx.db.get(transaction.reconciliationSessionId);
     if (session && session.status === "completed") {
-      throw new Error(
-        "This transaction is part of a completed reconciliation. " +
-          "Reopen that reconciliation session before changing it."
-      );
+      return "bank" as const;
     }
   }
 
   if (transaction.cashBankingReconciliationId) {
     const reconciliation = await ctx.db.get(transaction.cashBankingReconciliationId);
     if (reconciliation && reconciliation.status === "completed") {
-      throw new Error(
-        "This transaction is part of a completed cash banking reconciliation. " +
-          "Reopen that reconciliation before changing it."
-      );
+      return "cash" as const;
     }
+  }
+  return null;
+}
+
+// Block changes to transactions locked by a completed reconciliation.
+export async function assertNotLockedByReconciliation(
+  ctx: Pick<MutationCtx, "db">,
+  transaction: Parameters<typeof getCompletedReconciliationLock>[1]
+) {
+  const lock = await getCompletedReconciliationLock(ctx, transaction);
+  if (lock === "bank") {
+    throw new Error(
+      "This transaction is part of a completed reconciliation. " +
+        "Reopen that reconciliation session before changing it."
+    );
+  }
+  if (lock === "cash") {
+    throw new Error(
+      "This transaction is part of a completed cash banking reconciliation. " +
+        "Reopen that reconciliation before changing it."
+    );
   }
 }
 

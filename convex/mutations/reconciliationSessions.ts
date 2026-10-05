@@ -5,7 +5,7 @@ import {
   computeDifferencePence,
   canCompleteSession,
 } from "../../lib/reconciliation";
-import { patchTransaction } from "../lib/transactionWrites";
+import { getCompletedReconciliationLock, patchTransaction } from "../lib/transactionWrites";
 
 // Start a new statement reconciliation session for a fund/period
 export const create = mutation({
@@ -143,7 +143,9 @@ export const setCleared = mutation({
       if (transaction.reconciliationSessionId !== args.sessionId) return;
       await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: undefined,
-        isReconciled: false,
+        isReconciled: await getCompletedReconciliationLock(ctx, {
+          cashBankingReconciliationId: transaction.cashBankingReconciliationId,
+        }) !== null,
       }, { lockOverride: "reconciliation-owner" });
     }
   },
@@ -232,7 +234,10 @@ export const reopen = mutation({
       )
       .collect();
     for (const t of cleared) {
-      await patchTransaction(ctx, t._id, { isReconciled: false }, { lockOverride: "reconciliation-owner" });
+      const cashLocked = await getCompletedReconciliationLock(ctx, {
+        cashBankingReconciliationId: t.cashBankingReconciliationId,
+      }) !== null;
+      await patchTransaction(ctx, t._id, { isReconciled: cashLocked }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.patch(args.sessionId, {
       status: "reopened",
@@ -265,7 +270,9 @@ export const remove = mutation({
     for (const t of cleared) {
       await patchTransaction(ctx, t._id, {
         reconciliationSessionId: undefined,
-        isReconciled: false,
+        isReconciled: await getCompletedReconciliationLock(ctx, {
+          cashBankingReconciliationId: t.cashBankingReconciliationId,
+        }) !== null,
       }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.delete(args.sessionId);

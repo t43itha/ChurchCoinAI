@@ -10,7 +10,7 @@ import {
 import { refreshPledgeStatus as refreshSharedPledgeStatus } from "../lib/pledgeStatus";
 import { isActiveTransaction } from "../../lib/voidedTransactions";
 import { roundMoney } from "../lib/money";
-import { patchTransaction } from "../lib/transactionWrites";
+import { assertNotLockedByReconciliation, patchTransaction } from "../lib/transactionWrites";
 
 type BankingMedium = "cash" | "cheque" | "mixed";
 type VarianceType =
@@ -132,6 +132,10 @@ async function getAndValidateBankTransactions(
     if (!transaction || transaction.organizationId !== organizationId) {
       throw new Error("Bank transaction not found");
     }
+
+    await assertNotLockedByReconciliation(ctx, {
+      reconciliationSessionId: transaction.reconciliationSessionId,
+    });
 
     if (!isActiveTransaction(transaction)) {
       throw new Error("Voided transactions cannot be used as bank deposits");
@@ -569,6 +573,12 @@ export const complete = mutation({
     );
 
     for (const transaction of currentBankDeposits) {
+      await assertNotLockedByReconciliation(ctx, {
+        reconciliationSessionId: transaction.reconciliationSessionId,
+      });
+    }
+
+    for (const transaction of currentBankDeposits) {
       if (!finalBankTransactionIds.has(transaction._id)) {
         const snapshot = reconciliation.bankTransactionSplits.find(
           (split) => split.transactionId === transaction._id
@@ -652,6 +662,8 @@ export const complete = mutation({
       for (const transaction of sourceTransactions) {
         if (
           transaction.organizationId === user.organizationId &&
+          (!transaction.cashBankingReconciliationId ||
+            transaction.cashBankingReconciliationId === args.reconciliationId) &&
           isActiveTransaction(transaction) &&
           transaction.type === "Income" &&
           (transaction.paymentMethod === "Cash" ||
@@ -719,6 +731,23 @@ export const reopen = mutation({
       throw new Error("Only completed reconciliations can be reopened");
     }
 
+    const ownedBankSplits = [];
+    for (const split of reconciliation.bankTransactionSplits) {
+      const transaction = await ctx.db.get(split.transactionId);
+      if (transaction?.cashBankingReconciliationId === args.reconciliationId) {
+        ownedBankSplits.push(split);
+      }
+    }
+    await getAndValidateBankTransactions(
+      ctx,
+      user.organizationId,
+      ownedBankSplits.map((split) => ({
+        ...split,
+        transactionAmount: split.cashAmount + split.chequeAmount,
+      })),
+      args.reconciliationId
+    );
+
     const completedReconciliations = await getCompletedReconciliations(
       ctx,
       user.organizationId,
@@ -777,7 +806,7 @@ export const reopen = mutation({
       });
     }
 
-    for (const split of reconciliation.bankTransactionSplits) {
+    for (const split of ownedBankSplits) {
       const restoreCategory = split.previousCategory !== undefined;
       await patchTransaction(ctx, split.transactionId, {
         ...(restoreCategory

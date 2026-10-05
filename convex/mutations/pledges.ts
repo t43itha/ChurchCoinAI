@@ -5,7 +5,7 @@ import { Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
 import { refreshPledgeStatus } from "../lib/pledgeStatus";
 import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
-import { patchTransaction } from "../lib/transactionWrites";
+import { assertNotLockedByReconciliation, getCompletedReconciliationLock, patchTransaction } from "../lib/transactionWrites";
 
 // Create a new pledge
 export const create = mutation({
@@ -290,7 +290,10 @@ export const remove = mutation({
       .collect();
 
     for (const t of linkedTransactions) {
-      await patchTransaction(ctx, t._id, { pledgeId: null }, { lockOverride: "needs-owner-decision" });
+      await assertNotLockedByReconciliation(ctx, t);
+    }
+    for (const t of linkedTransactions) {
+      await patchTransaction(ctx, t, { pledgeId: null });
     }
 
     await ctx.db.delete(args.pledgeId);
@@ -318,6 +321,7 @@ export const cleanupDuplicates = internalMutation({
     }
 
     let totalDeleted = 0;
+    let totalSkipped = 0;
     const allDeletedIds: string[] = [];
 
     for (const orgId of orgIds) {
@@ -357,8 +361,16 @@ export const cleanupDuplicates = internalMutation({
               .withIndex("by_pledge", (q) => q.eq("pledgeId", pledge._id))
               .collect();
 
+            const locks = await Promise.all(
+              linkedTransactions.map((t) => getCompletedReconciliationLock(ctx, t))
+            );
+            if (locks.some((lock) => lock !== null)) {
+              totalSkipped++;
+              continue;
+            }
+
             for (const t of linkedTransactions) {
-              await patchTransaction(ctx, t._id, { pledgeId: null }, { lockOverride: "needs-owner-decision" });
+              await patchTransaction(ctx, t, { pledgeId: null });
             }
 
             await ctx.db.delete(pledge._id);
@@ -371,6 +383,7 @@ export const cleanupDuplicates = internalMutation({
 
     return {
       duplicatesDeleted: totalDeleted,
+      duplicatesSkipped: totalSkipped,
       deletedIds: allDeletedIds,
     };
   },

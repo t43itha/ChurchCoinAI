@@ -11,7 +11,7 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
-import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
+import { assertNotLockedByReconciliation, deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to normalize donor names for matching
 const normalizeName = (name: string): string => {
@@ -465,11 +465,6 @@ export const markAsBanked = mutation({
       throw new Error("Collection is already marked as banked");
     }
 
-    await ctx.db.patch(args.cashCollectionId, {
-      status: "banked",
-      bankedDate: args.bankedDate,
-    });
-
     // Also mark all linked transactions as reconciled
     const transactions = await ctx.db
       .query("transactions")
@@ -479,7 +474,14 @@ export const markAsBanked = mutation({
       .collect();
 
     for (const t of transactions) {
-      await patchTransaction(ctx, t._id, { isReconciled: true }, { lockOverride: "needs-owner-decision" });
+      await assertNotLockedByReconciliation(ctx, t);
+    }
+    await ctx.db.patch(args.cashCollectionId, {
+      status: "banked",
+      bankedDate: args.bankedDate,
+    });
+    for (const t of transactions) {
+      await patchTransaction(ctx, t, { isReconciled: true });
     }
 
     return {
