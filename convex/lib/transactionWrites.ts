@@ -22,6 +22,8 @@ export type TransactionWriteOptions = { lockOverride?: LockOverride };
 export async function getCompletedReconciliationLock(
   ctx: Pick<MutationCtx, "db">,
   transaction: {
+    organizationId?: Id<"organizations">;
+    cashCollectionId?: Id<"cashCollections">;
     reconciliationSessionId?: Id<"reconciliationSessions"> | null;
     cashBankingReconciliationId?: Id<"cashBankingReconciliations"> | null;
   }
@@ -36,6 +38,25 @@ export async function getCompletedReconciliationLock(
   if (transaction.cashBankingReconciliationId) {
     const reconciliation = await ctx.db.get(transaction.cashBankingReconciliationId);
     if (reconciliation && reconciliation.status === "completed") {
+      return "cash" as const;
+    }
+  }
+
+  // A collection may be banked across several reconciliations. Its source rows
+  // stay locked even when reopening their recorded owner clears that claim.
+  const { organizationId, cashCollectionId } = transaction;
+  if (organizationId && cashCollectionId) {
+    const reconciliations = await ctx.db
+      .query("cashBankingReconciliations")
+      .withIndex("by_organization_status", (q) =>
+        q.eq("organizationId", organizationId).eq("status", "completed")
+      )
+      .collect();
+    if (reconciliations.some((reconciliation) =>
+      reconciliation.cashCollectionSplits.some(
+        (split) => split.cashCollectionId === cashCollectionId
+      )
+    )) {
       return "cash" as const;
     }
   }

@@ -35,6 +35,10 @@ async function assertCollectionUnlocked(
   ctx: MutationCtx,
   collection: Doc<"cashCollections">
 ) {
+  await assertNotLockedByReconciliation(ctx, {
+    organizationId: collection.organizationId,
+    cashCollectionId: collection._id,
+  });
   if (
     collection.status === "banked" ||
     collection.cashBankingStatus === "banked" ||
@@ -464,6 +468,11 @@ export const markAsBanked = mutation({
     if (collection.status === "banked") {
       throw new Error("Collection is already marked as banked");
     }
+
+    await assertNotLockedByReconciliation(ctx, {
+      organizationId: collection.organizationId,
+      cashCollectionId: collection._id,
+    });
 
     // Also mark all linked transactions as reconciled
     const transactions = await ctx.db

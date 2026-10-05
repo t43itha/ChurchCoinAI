@@ -144,7 +144,8 @@ export const setCleared = mutation({
       await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: undefined,
         isReconciled: await getCompletedReconciliationLock(ctx, {
-          cashBankingReconciliationId: transaction.cashBankingReconciliationId,
+          ...transaction,
+          reconciliationSessionId: undefined,
         }) !== null,
       }, { lockOverride: "reconciliation-owner" });
     }
@@ -235,7 +236,8 @@ export const reopen = mutation({
       .collect();
     for (const t of cleared) {
       const cashLocked = await getCompletedReconciliationLock(ctx, {
-        cashBankingReconciliationId: t.cashBankingReconciliationId,
+        ...t,
+        reconciliationSessionId: undefined,
       }) !== null;
       await patchTransaction(ctx, t._id, { isReconciled: cashLocked }, { lockOverride: "reconciliation-owner" });
     }
@@ -271,7 +273,8 @@ export const remove = mutation({
       await patchTransaction(ctx, t._id, {
         reconciliationSessionId: undefined,
         isReconciled: await getCompletedReconciliationLock(ctx, {
-          cashBankingReconciliationId: t.cashBankingReconciliationId,
+          ...t,
+          reconciliationSessionId: undefined,
         }) !== null,
       }, { lockOverride: "reconciliation-owner" });
     }

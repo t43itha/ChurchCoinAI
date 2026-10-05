@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { MutationCtx } from "../convex/_generated/server";
 import type { Id } from "../convex/_generated/dataModel";
 import * as pledges from "../convex/mutations/pledges";
-import { markAsBanked } from "../convex/mutations/cashCollections";
+import { deleteCollection, markAsBanked, replaceCollectionEntries } from "../convex/mutations/cashCollections";
 import * as cashBanking from "../convex/mutations/cashBankingReconciliations";
 import * as bankSessions from "../convex/mutations/reconciliationSessions";
-import { patchTransaction } from "../convex/lib/transactionWrites";
+import { deleteTransaction, getCompletedReconciliationLock, patchTransaction } from "../convex/lib/transactionWrites";
 
 type Row = { _id: string } & Record<string, unknown>;
 
@@ -44,6 +44,12 @@ function fixture(extra: Record<string, Row[]> = {}) {
       if (!row) throw new Error(`Missing row: ${id}`);
       Object.assign(row, value);
     }),
+    insert: vi.fn(async (table: string, value: Record<string, unknown>) => {
+      const rows = records[table] ??= [];
+      const id = `new-${table}-${rows.length}`;
+      rows.push({ ...value, _id: id });
+      return id;
+    }),
     delete: vi.fn(async (id: string) => {
       for (const rows of Object.values(records)) {
         const index = rows.findIndex((row) => row._id === id);
@@ -81,7 +87,7 @@ describe.each(lockCases)("pledges and collections locked by $name", ({ fields })
   function lockedFixture() {
     return fixture({
       reconciliationSessions: [session()],
-      cashBankingReconciliations: [{ _id: "cash", organizationId: "org", status: "completed" }],
+      cashBankingReconciliations: [{ _id: "cash", organizationId: "org", status: "completed", cashCollectionSplits: [] }],
       pledges: [pledge("oldest", 1), pledge("locked", 2), pledge("unlocked", 3)],
       cashCollections: [{ _id: "collection", organizationId: "org", status: "submitted" }],
       transactions: [
@@ -163,6 +169,84 @@ function bankingFixture() {
 }
 
 describe("cash banking reconciliation ownership", () => {
+  it.each([["A", "B"], ["B", "A"]])("keeps giving locked after reopening %s and unlocks after reopening %s", async (first, second) => {
+    const { ctx, get, db } = bankingFixture();
+    await invoke(cashBanking.complete, ctx, { reconciliationId: "A" });
+    await invoke(cashBanking.complete, ctx, { reconciliationId: "B" });
+    await invoke(cashBanking.reopen, ctx, { reconciliationId: first, reason: "Correction" });
+    expect(get(first)?.status).toBe("reopened");
+    expect(get(second)).toMatchObject({ status: "completed", varianceAmount: 0 });
+    expect(get("collection")).toMatchObject({ cashBankingStatus: "partially_banked", cashBankingLastReconciliationId: second });
+    await expect(getCompletedReconciliationLock(ctx, {
+      organizationId: "org" as Id<"organizations">,
+      cashCollectionId: "collection" as Id<"cashCollections">,
+    })).resolves.toBe("cash");
+
+    db.patch.mockClear();
+    db.delete.mockClear();
+    await expect(patchTransaction(ctx, "source" as Id<"transactions">, { amount: 99 }))
+      .rejects.toThrow("completed cash banking reconciliation");
+    await expect(deleteTransaction(ctx, "source" as Id<"transactions">))
+      .rejects.toThrow("completed cash banking reconciliation");
+    await expect(invoke(markAsBanked, ctx, { cashCollectionId: "collection", bankedDate: "2026-10-05" }))
+      .rejects.toThrow("completed cash banking reconciliation");
+    expect(db.patch).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(get("source")?.amount).toBe(100);
+
+    await invoke(cashBanking.reopen, ctx, { reconciliationId: second, reason: "Correction" });
+    expect(get("source")?.cashBankingReconciliationId).toBeUndefined();
+    expect(get("source")?.cashBankingRole).toBeUndefined();
+    expect(get("collection")).toMatchObject({ cashBankingStatus: "not_started", cashBankingLastReconciliationId: undefined });
+    await expect(getCompletedReconciliationLock(ctx, {
+      organizationId: "org" as Id<"organizations">,
+      cashCollectionId: "collection" as Id<"cashCollections">,
+    })).resolves.toBeNull();
+    await patchTransaction(ctx, "source" as Id<"transactions">, { amount: 99 });
+    expect(get("source")?.amount).toBe(99);
+    await invoke(replaceCollectionEntries, ctx, {
+      cashCollectionId: "collection", weekEndingDate: "2026-10-05", collectionDate: "2026-10-05", status: "submitted",
+      serviceRows: [{ serviceDate: "2026-10-05", serviceNote: "Service", fundId: "fund", cash: 100, pdq: 0, cheque: 0 }],
+    });
+    expect(get("source")).toBeNull();
+    await expect(invoke(deleteCollection, ctx, { cashCollectionId: "collection" }))
+      .resolves.toEqual({ deletedTransactions: 1 });
+    expect(get("collection")).toBeNull();
+  });
+
+  it.each(["replace", "delete", "markAsBanked"])("blocks collection %s despite cleared row ownership and stale banking flags", async (operation) => {
+    const { ctx, get, db } = bankingFixture();
+    await invoke(cashBanking.complete, ctx, { reconciliationId: "A" });
+    await invoke(cashBanking.complete, ctx, { reconciliationId: "B" });
+    await invoke(cashBanking.reopen, ctx, { reconciliationId: "A", reason: "Correction" });
+    expect(get("source")?.cashBankingReconciliationId).toBeUndefined();
+    Object.assign(get("collection")!, { cashBankingStatus: "not_started", cashBankingLastReconciliationId: undefined });
+    const before = structuredClone(get("collection"));
+    db.patch.mockClear();
+    db.delete.mockClear();
+    const fn = operation === "replace" ? replaceCollectionEntries : operation === "delete" ? deleteCollection : markAsBanked;
+    await expect(invoke(fn, ctx, {
+      cashCollectionId: "collection", bankedDate: "2026-10-05",
+      weekEndingDate: "2026-10-05", collectionDate: "2026-10-05", status: "submitted",
+      serviceRows: [{ serviceDate: "2026-10-05", serviceNote: "Service", fundId: "fund", cash: 100, pdq: 0, cheque: 0 }],
+    })).rejects.toThrow("completed cash banking reconciliation");
+    expect(db.patch).not.toHaveBeenCalled();
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(get("collection")).toEqual(before);
+    expect(get("source")?.amount).toBe(100);
+  });
+
+  it("locks only collections used by completed reconciliations in their own organization", async () => {
+    const { ctx, get, records } = bankingFixture();
+    get("A")!.status = "reopened";
+    Object.assign(get("B")!, { status: "completed", cashCollectionSplits: [{ cashCollectionId: "other", cashAmount: 40, chequeAmount: 0 }] });
+    records.cashBankingReconciliations.push({ ...cashReconciliation("foreign", 100, "completed"), organizationId: "other-org" });
+    const collection = { organizationId: "org" as Id<"organizations">, cashCollectionId: "collection" as Id<"cashCollections"> };
+    await expect(getCompletedReconciliationLock(ctx, collection)).resolves.toBeNull();
+    get("A")!.status = "completed";
+    await expect(getCompletedReconciliationLock(ctx, collection)).resolves.toBe("cash");
+  });
+
   it("completing B preserves A's source claim and reopening B leaves it locked", async () => {
     const { ctx, get } = bankingFixture();
     await invoke(cashBanking.complete, ctx, { reconciliationId: "A" });
@@ -210,6 +294,22 @@ describe("cash banking reconciliation ownership", () => {
 });
 
 describe("locks across reconciliation systems", () => {
+  it.each(["reopen", "setCleared", "remove"] as const)("bank session %s preserves collection usage locks after the source owner reopens", async (operation) => {
+    const { ctx, get } = bankingFixture();
+    await invoke(cashBanking.complete, ctx, { reconciliationId: "A" });
+    await invoke(cashBanking.complete, ctx, { reconciliationId: "B" });
+    await invoke(cashBanking.reopen, ctx, { reconciliationId: "A", reason: "Correction" });
+    expect(get("source")?.cashBankingReconciliationId).toBeUndefined();
+    get("session")!.status = operation === "reopen" ? "completed" : "reopened";
+    Object.assign(get("source")!, { reconciliationSessionId: "session", isReconciled: true });
+    await invoke(bankSessions[operation], ctx, {
+      sessionId: "session", transactionId: "source", cleared: false, reason: "Correction",
+    });
+    expect(get("source")?.isReconciled).toBe(true);
+    await expect(patchTransaction(ctx, "source" as Id<"transactions">, { amount: 99 }))
+      .rejects.toThrow("completed cash banking reconciliation");
+  });
+
   it.each(["complete", "reopen", "updateDraft"] as const)("cash banking %s refuses a bank row in a completed bank session", async (operation) => {
     const { ctx, db, get } = bankingFixture();
     if (operation === "reopen") {
