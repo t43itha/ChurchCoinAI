@@ -121,7 +121,8 @@ describe("donor display text redaction", () => {
   });
 });
 
-describe("role-literal enforcement", () => {
+// Loading the full ESLint config takes several seconds on a busy runner.
+describe("role-literal enforcement", { timeout: 60_000 }, () => {
   const eslint = new ESLint();
   it("rejects role checks, role arrays, validators, dropdowns and TS literal unions", async () => {
     const [result] = await eslint.lintText(`
