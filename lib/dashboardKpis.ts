@@ -275,7 +275,6 @@ export function buildExecutiveDashboardSummary({
     ) * 0.1
   );
   const cashBankingPendingWeeks = countCashBankingPendingWeeks(
-    elapsed,
     periodTransactions,
     cashCollections,
     cashReconciliations
@@ -464,8 +463,9 @@ function isCashOrCheque(transaction: DashboardTransaction) {
   return transaction.paymentMethod === "Cash" || transaction.paymentMethod === "Cheque";
 }
 
+// A collection belongs to the period when its gifts do. Its week-ending label is
+// the coming Sunday, so it can fall after a period that already holds its gifts.
 function countCashBankingPendingWeeks(
-  period: DateRange,
   transactions: DashboardTransaction[],
   cashCollections: DashboardCashCollection[],
   cashReconciliations: DashboardCashReconciliation[]
@@ -475,10 +475,6 @@ function countCashBankingPendingWeeks(
     .flatMap((reconciliation) => reconciliation.cashCollectionSplits ?? []);
 
   return cashCollections.filter((collection) => {
-    if (!isWithinRange(collection.weekEndingDate, period)) {
-      return false;
-    }
-
     if (collection.status !== "submitted" && collection.status !== "banked") {
       return false;
     }
