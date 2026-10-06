@@ -1,6 +1,6 @@
 import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { isPendingStateExpired } from "../lib/bankConnectionUtils";
 import { assertValidTransactionDate } from "../lib/transactionValidation";
 
@@ -359,7 +359,7 @@ export const updateAccountFundMapping = mutation({
     fundId: v.optional(v.id("funds")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "bank.manage");
     const connection = await ctx.db.get(args.bankConnectionId);
 
     if (!connection || connection.organizationId !== user.organizationId) {
@@ -398,7 +398,7 @@ export const acknowledgeSyncThrough = mutation({
     lastSyncedThrough: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "bank.manage");
     assertValidTransactionDate(args.lastSyncedThrough);
 
     const connection = await ctx.db.get(args.bankConnectionId);

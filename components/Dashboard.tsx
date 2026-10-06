@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "convex/react";
@@ -30,7 +31,7 @@ const PERIOD_OPTIONS: Array<{ key: DashboardPeriodKey; label: string }> = [
 const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser }) => {
   const [periodKey, setPeriodKey] = useState<DashboardPeriodKey>("previousMonth");
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
-  const canEdit = ["Admin", "Finance Team"].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "cashCollections.write");
   const summary = useQuery(api.queries.dashboard.executiveSummary, {
     periodKey,
     today: formatLocalDateInputValue(new Date()),
@@ -39,7 +40,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
     summary?.period.label ?? PERIOD_OPTIONS.find((period) => period.key === periodKey)?.label;
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
       <header className="swiss-card-static p-6 md:p-[26px] flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
         <div className="min-w-0 max-w-3xl">
           <h2 className="text-[32px] md:text-4xl leading-tight font-bold text-ink tracking-tight">
@@ -71,7 +72,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
               <select
                 value={periodKey}
                 onChange={(event) => setPeriodKey(event.target.value as DashboardPeriodKey)}
-                className="w-full appearance-none bg-white border border-ledger rounded-lg pl-9 pr-9 py-2 text-sm font-semibold text-ink normal-case tracking-normal focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink"
+                className="w-full appearance-none bg-white border border-ledger rounded-lg pl-9 pr-9 py-2 text-sm font-semibold text-ink normal-case tracking-normal focus:outline-hidden focus:ring-[3px] focus:ring-ink/10 focus:border-ink"
               >
                 {PERIOD_OPTIONS.map((period) => (
                   <option key={period.key} value={period.key}>

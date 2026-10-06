@@ -1,3 +1,4 @@
+import { can, type UserRole } from "../lib/permissions";
 import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { Link, NavLink } from 'react-router-dom';
@@ -15,7 +16,7 @@ interface ConvexUser {
   _id: string;
   name: string;
   email: string;
-  role: 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
+  role: UserRole;
   avatarUrl?: string;
 }
 
@@ -41,8 +42,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
   }, [access.state]);
 
   // Permission Logic
-  const canViewDonors = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
-  const canViewSettings = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canViewDonors = can(currentUser.role, "donors.read");
+  const canViewSettings = can(currentUser.role, "settings.view");
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -50,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
     { path: '/funds', label: 'Funds & Balances', icon: Wallet },
     { path: '/donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
     { path: '/campaigns', label: 'Campaigns', icon: HeartHandshake },
-    { path: '/reports', label: 'Reports', icon: PieChart },
+    { path: '/reports', label: 'Reports', icon: PieChart, hidden: !can(currentUser.role, "reports.read") },
     { path: '/settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
     { path: '/copilot', label: 'Ask Ward', icon: Sparkles },
   ];
@@ -65,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
       {/* Mobile Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-20 md:hidden"
+          className="fixed inset-0 bg-ink/50 backdrop-blur-xs z-20 md:hidden"
           onClick={onClose}
         />
       )}
@@ -94,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
         </div>
         
         {/* Navigation */}
-        <nav className="min-h-0 flex-1 px-[18px] space-y-[3px] overflow-y-auto">
+        <nav className="min-h-0 flex-1 px-[18px] ledger-space-y-[3px] overflow-y-auto">
           {menuItems.filter(item => !item.hidden).map((item) => {
             const Icon = item.icon;
             const isWard = item.path === '/copilot';
@@ -136,7 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
         </nav>
 
         {/* User Section */}
-        <div className="px-[18px] pt-[18px] pb-5 border-t border-ledger mt-auto space-y-4">
+        <div className="px-[18px] pt-[18px] pb-5 border-t border-ledger mt-auto ledger-space-y-4">
           {trialProgress && (
             <section
               className="rounded-[12px] border border-[#dfd3c5] bg-[#fffdf9] p-3.5 shadow-hard-sm"
@@ -171,11 +172,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
                 </span>
               </div>
 
-              {currentUser.role === 'Admin' ? (
+              {can(currentUser.role, "billing.manage") ? (
                 <Link
                   to="/settings?tab=billing"
                   onClick={onClose}
-                  className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[9px] bg-ink px-3 text-[11px] font-bold uppercase tracking-[0.05em] text-white transition-colors hover:bg-charcoal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+                  className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[9px] bg-ink px-3 text-[11px] font-bold uppercase tracking-[0.05em] text-white transition-colors hover:bg-charcoal focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
                 >
                   Upgrade now
                 </Link>
@@ -193,7 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
               onOpenSupport();
               onClose();
             }}
-            className="flex min-h-10 w-full items-center gap-3 rounded-[10px] border border-ledger bg-[#fcfbf9] px-3 text-left text-[12px] font-semibold text-grey-dark transition-colors hover:border-grey-mid hover:bg-white hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+            className="flex min-h-10 w-full items-center gap-3 rounded-[10px] border border-ledger bg-[#fcfbf9] px-3 text-left text-[12px] font-semibold text-grey-dark transition-colors hover:border-grey-mid hover:bg-white hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
           >
             <LifeBuoy size={16} className="text-amber-dark" strokeWidth={2} />
             <span className="flex-1">Help & feedback</span>

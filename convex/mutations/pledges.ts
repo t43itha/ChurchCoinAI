@@ -1,10 +1,11 @@
 import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
 import { refreshPledgeStatus } from "../lib/pledgeStatus";
 import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
+import { assertNotLockedByReconciliation, getCompletedReconciliationLock, patchTransaction } from "../lib/transactionWrites";
 
 // Create a new pledge
 export const create = mutation({
@@ -26,7 +27,7 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     // Verify fund belongs to organization
     const fund = await ctx.db.get(args.fundId);
@@ -83,7 +84,7 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     const pledge = await ctx.db.get(args.pledgeId);
     if (!pledge || pledge.organizationId !== user.organizationId) {
@@ -158,7 +159,7 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     const pledgeIds: string[] = [];
 
@@ -218,7 +219,7 @@ export const checkCompletion = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
     const result = await refreshPledgeStatus(
       ctx,
       args.pledgeId,
@@ -251,7 +252,7 @@ export const reactivateIfNeeded = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
     const before = await ctx.db.get(args.pledgeId);
     if (!before || before.organizationId !== user.organizationId) {
       return { reactivated: false };
@@ -275,7 +276,7 @@ export const remove = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "pledges.delete");
 
     const pledge = await ctx.db.get(args.pledgeId);
     if (!pledge || pledge.organizationId !== user.organizationId) {
@@ -289,7 +290,10 @@ export const remove = mutation({
       .collect();
 
     for (const t of linkedTransactions) {
-      await ctx.db.patch(t._id, { pledgeId: null });
+      await assertNotLockedByReconciliation(ctx, t);
+    }
+    for (const t of linkedTransactions) {
+      await patchTransaction(ctx, t, { pledgeId: null });
     }
 
     await ctx.db.delete(args.pledgeId);
@@ -317,6 +321,7 @@ export const cleanupDuplicates = internalMutation({
     }
 
     let totalDeleted = 0;
+    let totalSkipped = 0;
     const allDeletedIds: string[] = [];
 
     for (const orgId of orgIds) {
@@ -356,8 +361,16 @@ export const cleanupDuplicates = internalMutation({
               .withIndex("by_pledge", (q) => q.eq("pledgeId", pledge._id))
               .collect();
 
+            const locks = await Promise.all(
+              linkedTransactions.map((t) => getCompletedReconciliationLock(ctx, t))
+            );
+            if (locks.some((lock) => lock !== null)) {
+              totalSkipped++;
+              continue;
+            }
+
             for (const t of linkedTransactions) {
-              await ctx.db.patch(t._id, { pledgeId: null });
+              await patchTransaction(ctx, t, { pledgeId: null });
             }
 
             await ctx.db.delete(pledge._id);
@@ -370,6 +383,7 @@ export const cleanupDuplicates = internalMutation({
 
     return {
       duplicatesDeleted: totalDeleted,
+      duplicatesSkipped: totalSkipped,
       deletedIds: allDeletedIds,
     };
   },

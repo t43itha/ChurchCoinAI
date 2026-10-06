@@ -1,4 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
+import { roleValidator } from "./lib/auth";
 import { v } from "convex/values";
 
 export default defineSchema({
@@ -53,12 +54,7 @@ export default defineSchema({
     organizationId: v.id("organizations"),
     name: v.string(),
     email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
     avatarUrl: v.optional(v.string()),
     createdAt: v.number(),
   })
@@ -87,7 +83,7 @@ export default defineSchema({
     description: v.string(),
     expectedBehaviour: v.optional(v.string()),
     reproductionSteps: v.optional(v.string()),
-    reporterRole: v.string(),
+    reporterRole: roleValidator,
     appPath: v.string(),
     appRelease: v.string(),
     browserSummary: v.string(),
@@ -128,12 +124,7 @@ export default defineSchema({
   invitations: defineTable({
     organizationId: v.id("organizations"),
     email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
     invitedBy: v.id("users"),
     status: v.union(
       v.literal("pending"),

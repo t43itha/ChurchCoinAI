@@ -72,7 +72,7 @@ const BillingSettings: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ledger-space-y-6">
       {checkoutCancelled && (
         <div className="flex items-start gap-3 rounded-[10px] border border-[#e4d0b5] bg-amber-light px-4 py-3 text-sm text-amber-dark">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -256,7 +256,7 @@ const BillingSettings: React.FC = () => {
                     <span className="text-grey-mid text-sm">/month</span>
                   </div>
 
-                  <ul className="space-y-2 mb-6">
+                  <ul className="ledger-space-y-2 mb-6">
                     {plan.features.map((feature, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-xs">
                         <Check size={14} className="text-sage-dark shrink-0 mt-0.5" />
@@ -268,7 +268,7 @@ const BillingSettings: React.FC = () => {
                   <button
                     onClick={() => handleSubscribe(plan.id)}
                     disabled={isCurrent || isLoading || loading !== null}
-                    className={`w-full py-2.5 rounded text-xs font-bold uppercase tracking-wide transition-all ${
+                    className={`w-full py-2.5 rounded-sm text-xs font-bold uppercase tracking-wide transition-all ${
                       isCurrent
                         ? 'bg-grey-light text-grey-mid cursor-not-allowed'
                         : plan.popular

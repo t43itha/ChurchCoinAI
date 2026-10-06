@@ -214,7 +214,7 @@ function ScreenshotFrame({
           <button
             type="button"
             onClick={toggleVideo}
-            className="absolute bottom-3 right-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink/10 bg-white/85 text-ink shadow-sm backdrop-blur-sm transition hover:border-ink/20 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2"
+            className="absolute bottom-3 right-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink/10 bg-white/85 text-ink shadow-xs backdrop-blur-xs transition hover:border-ink/20 hover:bg-white hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2"
             aria-label={videoPlaying ? "Pause transaction preview" : "Play transaction preview"}
             aria-pressed={videoPlaying}
             title={videoPlaying ? "Pause" : "Play"}
@@ -269,7 +269,7 @@ function HeroProductPreview() {
       transition={{ duration: 0.9, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
       className="relative mx-auto w-full max-w-[520px] p-3 sm:p-5 lg:ml-auto"
     >
-      <div className="absolute right-0 top-0 -z-10 h-36 w-36 rounded-full bg-sage-light/70 blur-sm" aria-hidden="true" />
+      <div className="absolute right-0 top-0 -z-10 h-36 w-36 rounded-full bg-sage-light/70 blur-xs" aria-hidden="true" />
       <motion.div
         className="relative aspect-square"
         animate={reduceMotion ? undefined : { y: [0, -8, 0] }}
@@ -294,11 +294,11 @@ function HeroProductPreview() {
             <motion.span animate={reduceMotion ? undefined : { scale: [1, 1.08, 1], rotate: [0, 3, 0] }} transition={{ duration: 3.8, repeat: Infinity, ease: "easeInOut" }} className="flex h-10 w-10 items-center justify-center bg-sage-light sm:h-12 sm:w-12"><span className="h-6 w-6 bg-sage sm:h-7 sm:w-7" /></motion.span>
           </div>
 
-          <div className="space-y-5 sm:space-y-6">
+          <div className="ledger-space-y-5 sm:ledger-space-y-6">
             {bars.map((bar) => (
               <motion.div key={bar.value} initial={reduceMotion ? undefined : { opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.65 + bar.delay, duration: 0.45 }} className="flex cursor-pointer items-center gap-3 sm:gap-4">
                 <span className="h-2 w-2 shrink-0" style={{ backgroundColor: bar.colour }} />
-                <span className="h-2 flex-1 overflow-hidden rounded-sm bg-[#e5e5e5]">
+                <span className="h-2 flex-1 overflow-hidden rounded-xs bg-[#e5e5e5]">
                   <motion.span
                     className="block h-full"
                     style={{ backgroundColor: bar.colour }}
@@ -381,7 +381,7 @@ function TourModal({ open, onClose }: { open: boolean; onClose: () => void }) {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/75 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/75 p-4 backdrop-blur-xs"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -514,7 +514,7 @@ export default function LandingPage({
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden border-t border-ledger bg-paper sm:hidden"
             >
-              <nav className="space-y-1 px-5 py-5" aria-label="Mobile navigation">
+              <nav className="ledger-space-y-1 px-5 py-5" aria-label="Mobile navigation">
                 {navigation.map((item) => (
                   <a
                     key={item.href}
@@ -554,7 +554,7 @@ export default function LandingPage({
                 initial={reduceMotion ? undefined : { opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-                className="text-balance text-[3rem] font-bold leading-[0.98] tracking-[-0.055em] text-ink sm:text-6xl lg:text-[3.65rem] xl:text-[4.3rem]"
+                className="text-balance text-[3rem] font-bold leading-[0.98] tracking-[-0.055em] text-ink sm:text-6xl sm:leading-none lg:text-[3.65rem] xl:text-[4.3rem]"
               >
                 Stop chasing spreadsheets. Start growing <span className="relative whitespace-nowrap text-sage">ministry.</span>
               </motion.h1>
@@ -642,12 +642,12 @@ export default function LandingPage({
               </h2>
             </motion.div>
 
-            <div className="mt-20 space-y-24 sm:space-y-32">
+            <div className="mt-20 ledger-space-y-24 sm:ledger-space-y-32">
               <motion.article {...motionProps} className="grid items-center gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:gap-16">
                 <div>
                   <span className="font-mono text-xs font-semibold tracking-[0.14em] text-amber">01</span>
                   <h3 className="mt-4 text-3xl font-bold tracking-[-0.035em]">Transactions sort themselves</h3>
-                  <div className="mt-6 space-y-4 text-base leading-7 text-grey-dark">
+                  <div className="mt-6 ledger-space-y-4 text-base leading-7 text-grey-dark">
                     <p>
                       Connect your church bank account and transactions arrive already categorised — each with a suggested fund and category, and the reason behind it. Prefer to import statements instead? That works too.
                     </p>
@@ -676,7 +676,7 @@ export default function LandingPage({
                 <div className="lg:order-2">
                   <span className="font-mono text-xs font-semibold tracking-[0.14em] text-amber">02</span>
                   <h3 className="mt-4 text-3xl font-bold tracking-[-0.035em]">Restricted funds stay restricted</h3>
-                  <div className="mt-6 space-y-4 text-base leading-7 text-grey-dark">
+                  <div className="mt-6 ledger-space-y-4 text-base leading-7 text-grey-dark">
                     <p>
                       Every designated gift is tracked against the fund it was given to, so you always know what&apos;s genuinely available to spend.
                     </p>
@@ -712,7 +712,7 @@ export default function LandingPage({
                 <div className="lg:order-2">
                   <span className="font-mono text-xs font-semibold tracking-[0.14em] text-amber">04</span>
                   <h3 className="mt-4 text-3xl font-bold tracking-[-0.035em]">Year-end figures, ready when you are</h3>
-                  <div className="mt-6 space-y-4 text-base leading-7 text-grey-dark">
+                  <div className="mt-6 ledger-space-y-4 text-base leading-7 text-grey-dark">
                     <p>
                       When it&apos;s time for the annual return, the numbers are already there: fund balances, income and expenditure, a year of approved transactions behind every figure.
                     </p>
@@ -736,7 +736,7 @@ export default function LandingPage({
               <p className="mt-7 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-light">Why trust it</p>
               <h2 className="mt-4 text-4xl font-bold tracking-[-0.04em] sm:text-5xl">Careful by design.</h2>
             </div>
-            <div className="space-y-5 text-lg leading-8 text-white/70">
+            <div className="ledger-space-y-5 text-lg leading-8 text-white/70">
               <p>ChurchCoin uses AI to do the sorting — and that only works if you can trust it.</p>
               <p>
                 So it&apos;s built the other way round from most AI tools. <strong className="font-semibold text-white">The system suggests. You approve.</strong> Nothing posts to your books automatically, ever.
@@ -781,7 +781,7 @@ export default function LandingPage({
                     <span className="pb-1 text-sm text-grey-mid">/month</span>
                   </div>
                   <p className="mt-4 min-h-12 text-sm leading-6 text-grey-dark">{plan.description}</p>
-                  <ul className="mt-7 space-y-3">
+                  <ul className="mt-7 ledger-space-y-3">
                     {plan.features.map((feature) => (
                       <li key={feature} className="flex items-start gap-2.5 text-sm text-grey-dark">
                         <Check size={16} className="mt-0.5 shrink-0 text-sage" strokeWidth={2.4} />
@@ -815,7 +815,7 @@ export default function LandingPage({
                 The practical details treasurers and trustees usually want to know first.
               </p>
             </motion.div>
-            <motion.div {...motionProps} className="divide-y divide-ledger border-y border-ledger">
+            <motion.div {...motionProps} className="ledger-divide-y ledger-divide-ledger border-y border-ledger">
               {faqs.map((item, index) => {
                 const isOpen = openFaq === index;
                 return (

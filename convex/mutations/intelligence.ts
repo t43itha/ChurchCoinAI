@@ -1,13 +1,13 @@
 import { mutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 
 // Accept a suggestion
 export const acceptSuggestion = mutation({
   args: { suggestionId: v.id("intelligenceSuggestions") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "intelligence.manage");
 
     const suggestion = await ctx.db.get(args.suggestionId);
     if (!suggestion || suggestion.organizationId !== user.organizationId) {
@@ -30,7 +30,7 @@ export const dismissSuggestion = mutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "intelligence.manage");
 
     const suggestion = await ctx.db.get(args.suggestionId);
     if (!suggestion || suggestion.organizationId !== user.organizationId) {
@@ -54,7 +54,7 @@ export const deferSuggestion = mutation({
     deferDays: v.number(), // Defer for N days
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "intelligence.manage");
 
     const suggestion = await ctx.db.get(args.suggestionId);
     if (!suggestion || suggestion.organizationId !== user.organizationId) {
@@ -79,7 +79,7 @@ export const provideFeedback = mutation({
     wasHelpful: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "intelligence.manage");
 
     const suggestion = await ctx.db.get(args.suggestionId);
     if (!suggestion || suggestion.organizationId !== user.organizationId) {
@@ -98,7 +98,7 @@ export const provideFeedback = mutation({
 export const regenerateInsights = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "intelligence.manage");
 
     // Schedule the internal mutation to run immediately
     await ctx.scheduler.runAfter(
@@ -117,7 +117,7 @@ export const regenerateInsights = mutation({
 export const clearPendingSuggestions = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "intelligence.delete");
 
     const pendingSuggestions = await ctx.db
       .query("intelligenceSuggestions")

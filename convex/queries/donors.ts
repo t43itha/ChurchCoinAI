@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability, redactDonorFields } from "../lib/auth";
 import {
   filterReportableTransactions,
   isReportableIncomeTransaction,
@@ -10,7 +10,7 @@ import {
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "donors.read");
 
     const donors = await ctx.db
       .query("donors")
@@ -27,7 +27,7 @@ export const list = query({
 export const getById = query({
   args: { donorId: v.id("donors") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "donors.read");
     const donor = await ctx.db.get(args.donorId);
 
     if (!donor || donor.organizationId !== user.organizationId) {
@@ -42,7 +42,7 @@ export const getById = query({
 export const searchByName = query({
   args: { searchTerm: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "donors.read");
 
     const donors = await ctx.db
       .query("donors")
@@ -60,7 +60,7 @@ export const searchByName = query({
 export const getWithHistory = query({
   args: { donorId: v.id("donors") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "donors.read");
     const donor = await ctx.db.get(args.donorId);
 
     if (!donor || donor.organizationId !== user.organizationId) {
@@ -94,8 +94,8 @@ export const getWithHistory = query({
 
     return {
       ...donor,
-      pledges: orgPledges,
-      transactions: reportableTransactions,
+      pledges: orgPledges.map((pledge) => redactDonorFields(user, pledge)),
+      transactions: reportableTransactions.map((transaction) => redactDonorFields(user, transaction)),
       totalGiving,
     };
   },
@@ -105,7 +105,7 @@ export const getWithHistory = query({
 export const listGiftAidEligible = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "donors.read");
 
     const donors = await ctx.db
       .query("donors")
@@ -132,7 +132,7 @@ const normalizeName = (name: string): string => {
 export const findByNameFuzzy = query({
   args: { name: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team", "Pastorate"]);
+    const user = await requireCapability(ctx, "donors.read");
 
     if (!args.name || args.name.trim().length < 2) {
       return null;

@@ -1,8 +1,9 @@
+import { can } from "../lib/permissions";
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
-import { Fund } from '../types';
+import { Fund, AppUser } from '../types';
 import {
   Plus,
   RefreshCw,
@@ -17,6 +18,7 @@ import { notify } from '../lib/notifications';
 
 interface BankConnectionsSettingsProps {
   funds: Fund[];
+  currentUser: AppUser;
 }
 
 type AvailableInstitution = {
@@ -54,7 +56,7 @@ const clearBankCallbackParams = () => {
   window.history.replaceState(window.history.state, '', nextUrl);
 };
 
-const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds }) => {
+const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds, currentUser }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
   const [callbackAttemptState, setCallbackAttemptState] = useState<string | null>(getCallbackAttemptState);
@@ -305,7 +307,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     : availableInstitutions;
 
   return (
-    <div className="space-y-6">
+    <div className="ledger-space-y-6">
       {isAwaitingCompletion && (
         <div className="flex items-center gap-3 rounded-[10px] border border-[#cbd9e8] bg-[#f3f7fb] p-4 text-xs text-[#385a7a]">
           <RefreshCw size={16} className="animate-spin shrink-0" />
@@ -318,7 +320,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             <AlertTriangle className="text-[#a9743f] mt-0.5 shrink-0" size={18} strokeWidth={1.9} />
             <div className="flex-1">
               <h4 className="text-sm font-bold text-[#7a5a30]">Bank Connections Need Attention</h4>
-              <ul className="mt-2 space-y-1">
+              <ul className="mt-2 ledger-space-y-1">
                 {itemsNeedingAttention.map((item) => (
                   <li key={item._id} className="text-xs text-[#7a5a30] leading-relaxed">
                     <strong>{item.institutionName}</strong>: {' '}
@@ -397,7 +399,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
             </button>
           </div>
         ) : (
-          <div className="divide-y divide-grey-light">
+          <div className="ledger-divide-y ledger-divide-grey-light">
             {bankConnections.map((connection) => (
               <div key={connection._id} className="px-6 py-4">
                 <div className="flex items-start justify-between gap-4">
@@ -440,31 +442,34 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                     )}
                     <button
                       onClick={() => setEditingItem(editingItem === connection._id ? null : connection._id)}
-                      className="p-2 text-grey-mid hover:text-ink hover:bg-paper rounded transition-colors"
+                      className="p-2 text-grey-mid hover:text-ink hover:bg-paper rounded-sm transition-colors"
                     >
                       <ChevronRight
                         size={16}
                         className={`transform transition-transform ${editingItem === connection._id ? 'rotate-90' : ''}`}
                       />
                     </button>
-                    <button
-                      onClick={() => handleRemoveConnection(connection._id)}
-                      disabled={isRemoving === connection._id}
-                      className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded transition-colors disabled:opacity-50"
-                    >
-                      {isRemoving === connection._id ? (
-                        <RefreshCw size={14} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={14} />
-                      )}
-                    </button>
+                    {can(currentUser.role, "bank.remove") && (
+                        <button
+                          aria-label={`Remove ${connection.institutionName} connection`}
+                          onClick={() => handleRemoveConnection(connection._id)}
+                          disabled={isRemoving === connection._id}
+                          className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded-sm transition-colors disabled:opacity-50"
+                        >
+                          {isRemoving === connection._id ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={14} />
+                          )}
+                        </button>
+                    )}
                   </div>
                 </div>
 
                 {editingItem === connection._id && (
                   <div className="mt-4 pt-4 border-t border-grey-light">
                     <h5 className="text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-3">Account Mappings</h5>
-                    <div className="space-y-2.5">
+                    <div className="ledger-space-y-2.5">
                       {connection.accounts.map((account) => (
                         <div key={account.accountId} className="flex items-center justify-between gap-3 px-3.5 py-3 bg-[#fbfaf8] border border-[#efeee9] rounded-[10px]">
                           <div className="min-w-0">
@@ -482,7 +487,7 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
                                 account.accountId,
                                 e.target.value ? e.target.value as Id<"funds"> : undefined
                               )}
-                              className="text-xs p-2 bg-white border border-ledger rounded-[9px] outline-none focus:ring-1 focus:ring-ink min-w-[150px] cursor-pointer"
+                              className="text-xs p-2 bg-white border border-ledger rounded-[9px] outline-hidden focus:ring-1 focus:ring-ink min-w-[150px] cursor-pointer"
                             >
                               <option value="">-- Not mapped --</option>
                               {funds.map((fund) => (

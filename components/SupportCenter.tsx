@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
 import {
   AlertCircle,
   CheckCircle2,
@@ -17,7 +16,7 @@ import {
   TicketCheck,
   X,
 } from "lucide-react";
-import type { Id } from "../convex/_generated/dataModel";
+import { api } from "../convex/_generated/api";
 import {
   SUPPORT_STATUS_LABELS,
   SupportTicketImpact,
@@ -31,40 +30,6 @@ type SupportCenterProps = {
   open: boolean;
   onClose: () => void;
 };
-
-type SupportTicketListItem = {
-  _id: Id<"supportTickets">;
-  reference: string;
-  type: SupportTicketType;
-  impact: SupportTicketImpact;
-  title: string;
-  description: string;
-  status: SupportTicketStatus;
-  createdAt: number;
-  updatedAt: number;
-};
-
-const submitSupportTicket = makeFunctionReference<
-  "mutation",
-  {
-    type: SupportTicketType;
-    impact: SupportTicketImpact;
-    title: string;
-    description: string;
-    expectedBehaviour?: string;
-    reproductionSteps?: string;
-    appPath: string;
-    appRelease: string;
-    browserSummary: string;
-  },
-  { ticketId: Id<"supportTickets">; reference: string }
->("mutations/supportTickets:submit");
-
-const listMySupportTickets = makeFunctionReference<
-  "query",
-  Record<string, never>,
-  SupportTicketListItem[]
->("queries/supportTickets:listMine");
 
 type SupportForm = {
   type: SupportTicketType;
@@ -134,8 +99,8 @@ const formatDate = (timestamp: number) =>
 
 const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
   const location = useLocation();
-  const submitTicket = useMutation(submitSupportTicket);
-  const tickets = useQuery(listMySupportTickets, open ? {} : "skip");
+  const submitTicket = useMutation(api.mutations.supportTickets.submit);
+  const tickets = useQuery(api.queries.supportTickets.listMine, open ? {} : "skip");
   const [view, setView] = useState<"new" | "requests">("new");
   const [form, setForm] = useState<SupportForm>(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -336,7 +301,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-6 p-5 sm:p-6">
+              <form onSubmit={handleSubmit} className="ledger-space-y-6 p-5 sm:p-6">
                 <fieldset>
                   <legend className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
                     What can we help with?
@@ -385,7 +350,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                       maxLength={120}
                       required
                       placeholder="e.g. Imported transaction will not save"
-                      className="w-full rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] text-ink outline-none"
+                      className="w-full rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] text-ink outline-hidden"
                     />
                   </label>
 
@@ -402,7 +367,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                       required
                       rows={4}
                       placeholder="Describe what you were trying to do and what went wrong. Please leave out donor, transaction and banking details."
-                      className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none"
+                      className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-hidden"
                     />
                   </label>
 
@@ -420,7 +385,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                           maxLength={2_000}
                           rows={3}
                           placeholder="What should have happened?"
-                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none"
+                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-hidden"
                         />
                       </label>
                       <label>
@@ -435,7 +400,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                           maxLength={3_000}
                           rows={3}
                           placeholder="1. Open…  2. Select…  3. See…"
-                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none"
+                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-hidden"
                         />
                       </label>
                     </>
@@ -523,7 +488,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="ledger-space-y-3">
                   <div className="mb-5 flex items-end justify-between gap-4">
                     <div>
                       <h3 className="text-[14px] font-bold text-ink">Your recent requests</h3>

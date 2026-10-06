@@ -53,6 +53,7 @@ import type * as lib_ragInstance from "../lib/ragInstance.js";
 import type * as lib_stripe from "../lib/stripe.js";
 import type * as lib_transactionEmbeddingModel from "../lib/transactionEmbeddingModel.js";
 import type * as lib_transactionValidation from "../lib/transactionValidation.js";
+import type * as lib_transactionWrites from "../lib/transactionWrites.js";
 import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as lib_yapily from "../lib/yapily.js";
 import type * as mutations_aiRateLimit from "../mutations/aiRateLimit.js";
@@ -146,6 +147,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stripe": typeof lib_stripe;
   "lib/transactionEmbeddingModel": typeof lib_transactionEmbeddingModel;
   "lib/transactionValidation": typeof lib_transactionValidation;
+  "lib/transactionWrites": typeof lib_transactionWrites;
   "lib/urlValidation": typeof lib_urlValidation;
   "lib/yapily": typeof lib_yapily;
   "mutations/aiRateLimit": typeof mutations_aiRateLimit;

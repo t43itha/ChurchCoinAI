@@ -1,7 +1,7 @@
 import { query, internalQuery } from "../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { getCurrentUser, getIdentity, requireRole } from "../lib/auth";
+import { getCurrentUser, getIdentity, requireCapability, redactDonorFields } from "../lib/auth";
 import {
   ORGANIZATION_DATA_TABLES,
   type OrganizationDataTable,
@@ -137,7 +137,7 @@ export const exportDataPage = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "organization.export");
 
     if (args.table === "organizations") {
       const organization = await ctx.db.get(user.organizationId);
@@ -228,7 +228,11 @@ export const exportDataPage = query({
 
     return {
       ...result,
-      page: result.page.map((record) => sanitizeExportRecord(args.table, record)),
+      page: result.page.map((record) => sanitizeExportRecord(
+        args.table,
+        args.table === "transactions" || args.table === "pledges"
+          ? redactDonorFields(user, record) : record
+      )),
     };
   },
 });

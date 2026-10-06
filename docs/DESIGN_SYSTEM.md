@@ -46,7 +46,7 @@ The current design source is `C:\Users\tabit\_Projects\ChurchCoinAI\churchcoin`.
 | Error Mid | `#c64545` | Error dots and icons |
 | Error Wash | `#fbeded` | Error badges |
 
-These values are implemented in [tailwind.config.cjs](../tailwind.config.cjs) and [styles.css](../styles.css).
+These values are implemented in the `@theme` block in [styles.css](../styles.css).
 
 ## Typography
 
@@ -131,7 +131,7 @@ Settings uses a tabbed Refined Ledger layout: top tabs with uppercase mono text 
 | Area | Active File |
 | --- | --- |
 | Global CSS utilities | [styles.css](../styles.css) |
-| Tailwind tokens | [tailwind.config.cjs](../tailwind.config.cjs) |
+| Tailwind tokens | `@theme` in [styles.css](../styles.css) |
 | Clerk appearance | [lib/clerkAppearance.ts](../lib/clerkAppearance.ts) |
 | Clerk hosted-surface rollout | [docs/CLERK_BRANDING_RUNBOOK.md](CLERK_BRANDING_RUNBOOK.md) |
 | Dashboard | [components/Dashboard.tsx](../components/Dashboard.tsx) |

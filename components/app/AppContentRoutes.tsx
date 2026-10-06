@@ -1,3 +1,4 @@
+import { can } from "../../lib/permissions";
 import React, { Suspense, lazy } from "react";
 import {
   Navigate,
@@ -96,7 +97,7 @@ const DonorsRoute: React.FC<RouteContext> = ({
   currentUser,
   churchDetails,
 }) => {
-  const canViewDonors = ["Admin", "Finance Team", "Pastorate"].includes(currentUser.role);
+  const canViewDonors = can(currentUser.role, "donors.read");
   const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
   const transactions = useQuery(api.queries.transactions.list, canViewDonors ? {} : "skip");
   const pledges = useQuery(api.queries.pledges.list, canViewDonors ? {} : "skip");
@@ -137,7 +138,7 @@ const DonorsRoute: React.FC<RouteContext> = ({
 };
 
 const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
-  const canViewDonors = ["Admin", "Finance Team", "Pastorate"].includes(currentUser.role);
+  const canViewDonors = can(currentUser.role, "donors.read");
   const pledges = useQuery(api.queries.pledges.list, {});
   const transactions = useQuery(api.queries.transactions.list, {});
   const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
@@ -192,14 +193,14 @@ const SettingsRoute: React.FC<RouteContext> = ({
   funds,
   categories,
 }) => {
-  const canManageSettings = currentUser.role === "Admin" || currentUser.role === "Finance Team";
+  const canManageSettings = can(currentUser.role, "settings.view");
   const users = useQuery(
     api.queries.users.listByOrganization,
-    canManageSettings ? {} : "skip"
+    can(currentUser.role, "users.list") ? {} : "skip"
   );
   const pendingInvitations = useQuery(
     api.queries.invitations.listPending,
-    canManageSettings ? {} : "skip"
+    can(currentUser.role, "invitations.read") ? {} : "skip"
   );
   const adminActions = useOrganizationAdminActions({
     showNotification: notify,
@@ -253,7 +254,7 @@ const AppContentRoutes: React.FC<RouteContext> = (context) => {
         <Route path="/funds" element={<FundsRoute {...context} />} />
         <Route path="/donors" element={<DonorsRoute {...context} />} />
         <Route path="/campaigns" element={<CampaignsRoute {...context} />} />
-        <Route path="/reports" element={<ReportsRoute {...context} />} />
+        <Route path="/reports" element={can(context.currentUser.role, "reports.read") ? <ReportsRoute {...context} /> : <Navigate to="/dashboard" replace />} />
         <Route path="/copilot" element={<AICoPilot />} />
         <Route path="/settings" element={<SettingsRoute {...context} />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

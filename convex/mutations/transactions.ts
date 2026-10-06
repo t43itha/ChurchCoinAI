@@ -1,7 +1,6 @@
-import { makeFunctionReference } from "convex/server";
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
@@ -17,21 +16,7 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
-
-const upsertAcceptedCategorizationMemory = makeFunctionReference<
-  "mutation",
-  {
-    organizationId: Id<"organizations">;
-    signature: string;
-    descriptionExample: string;
-    transactionType: "Income" | "Expenditure";
-    category: string;
-    fundId: Id<"funds">;
-    isGiftAidEligible?: boolean;
-    donorName?: string;
-    sourceTransactionId?: Id<"transactions">;
-  }
->("intelligence/categorizationMemory:upsertAccepted");
+import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {
@@ -71,35 +56,6 @@ export function shouldUpdateCategorizationRagIndex(args: {
   return categoryChanged || fundChanged || giftAidChanged || donorNameChanged;
 }
 
-// Block changes to transactions locked by a completed reconciliation.
-async function assertNotLockedByReconciliation(
-  ctx: any,
-  transaction: {
-    reconciliationSessionId?: Id<"reconciliationSessions"> | null;
-    cashBankingReconciliationId?: Id<"cashBankingReconciliations"> | null;
-  }
-) {
-  if (transaction.reconciliationSessionId) {
-    const session = await ctx.db.get(transaction.reconciliationSessionId);
-    if (session && session.status === "completed") {
-      throw new Error(
-        "This transaction is part of a completed reconciliation. " +
-          "Reopen that reconciliation session before changing it."
-      );
-    }
-  }
-
-  if (transaction.cashBankingReconciliationId) {
-    const reconciliation = await ctx.db.get(transaction.cashBankingReconciliationId);
-    if (reconciliation && reconciliation.status === "completed") {
-      throw new Error(
-        "This transaction is part of a completed cash banking reconciliation. " +
-          "Reopen that reconciliation before changing it."
-      );
-    }
-  }
-}
-
 // Create a new transaction
 export const create = mutation({
   args: {
@@ -124,7 +80,7 @@ export const create = mutation({
     cashCollectionId: v.optional(v.id("cashCollections")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     assertValidTransactionAmount(args.amount);
     assertValidTransactionDate(args.date);
 
@@ -213,13 +169,12 @@ export const update = mutation({
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     if (args.amount !== undefined) {
       assertValidTransactionAmount(args.amount);
@@ -285,7 +240,7 @@ export const update = mutation({
       updates.pledgeId = args.pledgeId;
     }
 
-    await ctx.db.patch(args.transactionId, updates);
+    await patchTransaction(ctx, transaction, updates);
 
     const nextPledgeId =
       finalType === "Income"
@@ -350,7 +305,7 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     if (args.transactions.length > 500) {
       throw new Error("Cannot import more than 500 transactions at once");
     }
@@ -546,7 +501,7 @@ export const bulkUpdate = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     // Verify new fund if provided
     if (args.updates.fundId) {
@@ -565,7 +520,6 @@ export const bulkUpdate = mutation({
     for (const transactionId of args.transactionIds) {
       const transaction = await ctx.db.get(transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
-        await assertNotLockedByReconciliation(ctx, transaction);
         const updates: Record<string, any> = {};
         if (args.updates.category !== undefined) {
           updates.category = requireCanonicalCategory(
@@ -579,7 +533,7 @@ export const bulkUpdate = mutation({
         if (args.updates.isGiftAidEligible !== undefined)
           updates.isGiftAidEligible = args.updates.isGiftAidEligible;
 
-        await ctx.db.patch(transactionId, updates);
+        await patchTransaction(ctx, transaction, updates);
         updatedCount++;
       }
     }
@@ -605,7 +559,7 @@ export const batchUpdate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     let updatedCount = 0;
     const pledgesToCheck = new Set<string>();
@@ -614,7 +568,6 @@ export const batchUpdate = mutation({
     for (const update of args.updates) {
       const transaction = await ctx.db.get(update.transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
-        await assertNotLockedByReconciliation(ctx, transaction);
         const changes: Record<string, any> = {};
         if (transaction.pledgeId) pledgesToCheck.add(transaction.pledgeId);
 
@@ -654,7 +607,7 @@ export const batchUpdate = mutation({
           }
         }
 
-        await ctx.db.patch(update.transactionId, changes);
+        await patchTransaction(ctx, transaction, changes);
         updatedCount++;
       }
     }
@@ -683,7 +636,7 @@ export const linkToPledge = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -699,10 +652,9 @@ export const linkToPledge = mutation({
       throw new Error("Pledge not found");
     }
 
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const previousPledgeId = transaction.pledgeId;
-    await ctx.db.patch(args.transactionId, { pledgeId: args.pledgeId });
+    await patchTransaction(ctx, transaction, { pledgeId: args.pledgeId });
     if (previousPledgeId && previousPledgeId !== args.pledgeId) {
       await refreshPledgeStatus(ctx, previousPledgeId, user.organizationId);
     }
@@ -724,14 +676,13 @@ export const unlinkFromPledge = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
 
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const oldPledgeId = transaction.pledgeId;
     if (!oldPledgeId) {
@@ -740,7 +691,7 @@ export const unlinkFromPledge = mutation({
 
     const oldPledge = await ctx.db.get(oldPledgeId);
     const wasCompleted = oldPledge?.status === "Completed";
-    await ctx.db.patch(args.transactionId, { pledgeId: null });
+    await patchTransaction(ctx, transaction, { pledgeId: null });
     const result = await refreshPledgeStatus(
       ctx,
       oldPledgeId,
@@ -760,17 +711,16 @@ export const remove = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "ledger.delete");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const pledgeId = transaction.pledgeId;
 
-    await ctx.db.delete(args.transactionId);
+    await deleteTransaction(ctx, transaction);
 
     if (pledgeId) {
       await refreshPledgeStatus(ctx, pledgeId, user.organizationId);
@@ -786,7 +736,7 @@ export const voidTransaction = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     const reason = args.reason.trim();
     if (reason.length < 3) {
       throw new Error("Void reason must be at least 3 characters");
@@ -796,9 +746,8 @@ export const voidTransaction = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: true,
       voidReason: reason,
       voidedAt: Date.now(),
@@ -818,15 +767,14 @@ export const unvoidTransaction = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: false,
       unvoidedAt: Date.now(),
       unvoidedBy: user._id,
@@ -846,16 +794,15 @@ export const toggleVoided = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const nextVoided = !transaction.isVoided;
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: nextVoided,
       ...(nextVoided
         ? {
@@ -909,7 +856,7 @@ export const recordCorrections = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     const categories = await ctx.db
       .query("categories")
       .withIndex("by_organization", (q) =>
@@ -995,7 +942,7 @@ export const recordCorrections = mutation({
       if (learned) {
         await ctx.scheduler.runAfter(
           0,
-          upsertAcceptedCategorizationMemory,
+          internal.intelligence.categorizationMemory.upsertAccepted,
           {
             organizationId: user.organizationId,
             signature: feedbackEvent.signature,
@@ -1071,7 +1018,7 @@ export const getCategorizationStats = query({
     memoryCount: v.number(), ruleCount: v.number(),
   }),
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const allCorrections = await ctx.db
       .query("categorizationCorrections")

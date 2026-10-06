@@ -1,7 +1,8 @@
+import { OWNER_ROLE } from "../../lib/permissions";
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { getIdentity, requireAuth, isAdmin } from "../lib/auth";
+import { getIdentity, requireAuth, assertCapability } from "../lib/auth";
 import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
@@ -248,7 +249,7 @@ export const create = mutation({
       organizationId,
       name: args.userName,
       email: userEmail,
-      role: "Admin",
+      role: OWNER_ROLE,
       createdAt: now,
     });
 
@@ -356,7 +357,7 @@ export const provisionDemo = internalMutation({
       organizationId,
       name: ownerName,
       email: ownerEmail,
-      role: "Admin",
+      role: OWNER_ROLE,
       createdAt: now,
     });
 
@@ -474,9 +475,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    if (!isAdmin(user)) {
-      throw new Error("Only admins can update organization settings");
-    }
+    assertCapability(user, "organization.update");
 
     const updates: Record<string, any> = {};
     if (args.name !== undefined) updates.name = args.name;

@@ -1,3 +1,4 @@
+import { can, ROLES, DEFAULT_INVITE_ROLE } from "../lib/permissions";
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useConvex } from 'convex/react';
@@ -65,7 +66,7 @@ const SectionCard: React.FC<{
 );
 
 const inputClass =
-  'w-full p-3 bg-white border border-ledger rounded-[10px] text-sm text-ink focus:ring-1 focus:ring-ink outline-none transition-shadow';
+  'w-full p-3 bg-white border border-ledger rounded-[10px] text-sm text-ink focus:ring-1 focus:ring-ink outline-hidden transition-shadow';
 const labelClass = 'block text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-1.5';
 const primaryBtnClass =
   'inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50';
@@ -117,9 +118,11 @@ const Settings: React.FC<SettingsProps> = ({
   const getInitialTab = (): SettingsTab => {
     if (typeof window === 'undefined') return 'general';
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const allowedTabs = currentUser.role === 'Admin'
-      ? ['general', 'funds', 'categories', 'users', 'bank', 'billing', 'data']
-      : ['general', 'funds', 'categories', 'users', 'bank'];
+    const allowedTabs = [
+      'general', 'funds', 'categories', 'users', 'bank',
+      ...(can(currentUser.role, "billing.manage") ? ['billing'] : []),
+      ...(can(currentUser.role, "organization.export") ? ['data'] : []),
+    ];
     return allowedTabs.includes(tab || '')
       ? tab as SettingsTab
       : 'general';
@@ -129,9 +132,11 @@ const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(location.search).get('tab');
-    const allowedTabs = currentUser.role === 'Admin'
-      ? ['general', 'funds', 'categories', 'users', 'bank', 'billing', 'data']
-      : ['general', 'funds', 'categories', 'users', 'bank'];
+    const allowedTabs = [
+      'general', 'funds', 'categories', 'users', 'bank',
+      ...(can(currentUser.role, "billing.manage") ? ['billing'] : []),
+      ...(can(currentUser.role, "organization.export") ? ['data'] : []),
+    ];
     if (requestedTab && allowedTabs.includes(requestedTab)) {
       setActiveTab(requestedTab as SettingsTab);
     }
@@ -145,9 +150,9 @@ const Settings: React.FC<SettingsProps> = ({
 
   // User/Invitation State
   const [showAddUser, setShowAddUser] = useState(false);
-  const [newInvitation, setNewInvitation] = useState<InvitationCreateInput>({ email: '', role: 'Guest' });
+  const [newInvitation, setNewInvitation] = useState<InvitationCreateInput>({ email: '', role: DEFAULT_INVITE_ROLE });
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState<{ email: string; role: string; inviteUrl: string; emailSent: boolean; emailError?: string } | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<{ email: string; role: UserRole; inviteUrl: string; emailSent: boolean; emailError?: string } | null>(null);
   const [copiedNewInvite, setCopiedNewInvite] = useState(false);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
@@ -163,7 +168,7 @@ const Settings: React.FC<SettingsProps> = ({
   const convex = useConvex();
 
   // Access Control
-  if (!['Admin', 'Finance Team'].includes(currentUser.role)) {
+  if (!can(currentUser.role, "settings.view")) {
     return (
         <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid animate-enter">
             <div className="w-16 h-16 bg-grey-light border border-ledger rounded-2xl flex items-center justify-center mb-6 text-grey-mid">
@@ -218,7 +223,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleCloseInviteModal = () => {
     setShowAddUser(false);
-    setNewInvitation({ email: '', role: 'Guest' });
+    setNewInvitation({ email: '', role: DEFAULT_INVITE_ROLE });
     setInviteSuccess(null);
     setCopiedNewInvite(false);
   };
@@ -233,7 +238,7 @@ const Settings: React.FC<SettingsProps> = ({
   const buildInviteUrl = (token?: string) =>
     token ? `${window.location.origin}/?invite=${token}` : null;
 
-  const generateInviteMessage = (email: string, role: string, inviteUrl: string | null) => {
+  const generateInviteMessage = (email: string, role: UserRole, inviteUrl: string | null) => {
     const acceptSteps = inviteUrl
       ? `To accept this invitation, open this link and sign up:
 ${inviteUrl}`
@@ -254,7 +259,7 @@ ${currentUser.name}`;
   };
 
   const handleCopyInvite = async (invitation: Invitation) => {
-    if (currentUser.role !== "Admin") {
+    if (!can(currentUser.role, "invitations.manage")) {
       notify("Restricted", "Only administrators can copy invite links.");
       return;
     }
@@ -281,7 +286,7 @@ ${currentUser.name}`;
     }
   };
 
-  const handleCopyNewInvite = async (email: string, role: string, inviteUrl: string) => {
+  const handleCopyNewInvite = async (email: string, role: UserRole, inviteUrl: string) => {
     const message = generateInviteMessage(email, role, inviteUrl);
     try {
       await navigator.clipboard.writeText(message);
@@ -370,7 +375,7 @@ ${currentUser.name}`;
   );
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Settings</h2>
         <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, users, bank connections, and data controls</p>
@@ -384,12 +389,10 @@ ${currentUser.name}`;
             { id: 'categories', label: 'Categories', icon: Tag },
             { id: 'users', label: 'Users', icon: Users },
             { id: 'bank', label: 'Bank Connections', icon: Landmark },
-            ...(currentUser.role === 'Admin'
-              ? [
-                  { id: 'billing', label: 'Billing', icon: CreditCard },
-                  { id: 'data', label: 'Data & Privacy', icon: Database },
-                ]
-              : []),
+            ...(can(currentUser.role, "billing.manage")
+              ? [{ id: 'billing', label: 'Billing', icon: CreditCard }] : []),
+            ...(can(currentUser.role, "organization.export")
+              ? [{ id: 'data', label: 'Data & Privacy', icon: Database }] : []),
         ].map(tab => (
             <button
                 key={tab.id}
@@ -414,14 +417,14 @@ ${currentUser.name}`;
                 title="Organization profile"
                 sub="Legal and contact details for reports."
                 className="max-w-4xl"
-                action={!isEditingDetails ? (
+                action={can(currentUser.role, "organization.update") && !isEditingDetails ? (
                     <button onClick={() => { setLocalChurchDetails(churchDetails); setIsEditingDetails(true); }} className={secondaryBtnClass}>
                         <Edit2 size={13} strokeWidth={1.9} className="text-grey-mid" /> Edit details
                     </button>
                 ) : undefined}
             >
-                    {isEditingDetails ? (
-                        <form onSubmit={handleSaveChurchDetails} className="space-y-8">
+                    {isEditingDetails && can(currentUser.role, "organization.update") ? (
+                        <form onSubmit={handleSaveChurchDetails} className="ledger-space-y-8">
                              <div className="flex items-start gap-6">
                                 <div className="w-[88px] h-[88px] bg-paper border border-ledger border-dashed rounded-[14px] flex items-center justify-center shrink-0 overflow-hidden relative group">
                                     {localChurchDetails.logoUrl ? (
@@ -584,7 +587,7 @@ ${currentUser.name}`;
                     ].map((s, i) => (
                         <div key={s.label} className={`relative px-6 py-5 ${i < 2 ? 'sm:border-r border-[#efeee9]' : ''}`}>
                             {s.tone && (
-                                <span className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r" style={{ background: TONE[s.tone].mid }} />
+                                <span className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r-sm" style={{ background: TONE[s.tone].mid }} />
                             )}
                             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-grey-mid whitespace-nowrap">{s.label}</p>
                             <p className="font-mono text-[22px] font-bold tracking-tight mt-1.5" style={{ color: s.tone ? TONE[s.tone].fg : '#1c1917' }}>
@@ -595,7 +598,7 @@ ${currentUser.name}`;
                 </div>
 
                 {/* Mobile Cards View */}
-                <div className="md:hidden p-4 space-y-3">
+                <div className="md:hidden p-4 ledger-space-y-3">
                     {funds.map(fund => {
                         const progress = calculateProgress(fund);
                         return (
@@ -614,9 +617,11 @@ ${currentUser.name}`;
                                         <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="p-2 text-grey-mid hover:text-ink hover:bg-paper rounded-[9px] transition-colors" title="Edit">
                                             <Edit2 size={16} strokeWidth={1.9} />
                                         </button>
-                                        <button onClick={() => handleDeleteFund(fund)} className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded-[9px] transition-colors" title="Delete">
-                                            <Trash2 size={16} strokeWidth={1.9} />
-                                        </button>
+                                        {can(currentUser.role, "funds.delete") && (
+                                            <button onClick={() => handleDeleteFund(fund)} className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded-[9px] transition-colors" title="Delete">
+                                                <Trash2 size={16} strokeWidth={1.9} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="text-xs text-grey-mid mb-3 line-clamp-2">{fund.description}</div>
@@ -685,9 +690,11 @@ ${currentUser.name}`;
                                     <button onClick={() => { setEditingFund(fund); setShowFundModal(true); }} className="p-1.5 text-grey-mid hover:text-ink rounded-[8px] transition-colors" title="Edit">
                                         <Edit2 size={14} strokeWidth={1.9} />
                                     </button>
-                                    <button onClick={() => handleDeleteFund(fund)} className="p-1.5 text-grey-mid hover:text-error rounded-[8px] transition-colors" title="Delete">
-                                        <Trash2 size={14} strokeWidth={1.9} />
-                                    </button>
+                                    {can(currentUser.role, "funds.delete") && (
+                                        <button onClick={() => handleDeleteFund(fund)} className="p-1.5 text-grey-mid hover:text-error rounded-[8px] transition-colors" title="Delete">
+                                            <Trash2 size={14} strokeWidth={1.9} />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -698,14 +705,14 @@ ${currentUser.name}`;
 
         {/* USERS TAB */}
         {activeTab === 'users' && (
-            <div className="space-y-[18px]">
+            <div className="ledger-space-y-[18px]">
                 {/* Active Users */}
                 <SectionCard
                     icon={Users}
                     title="Active users"
                     sub="People with access to this organization."
                     pad={false}
-                    action={(
+                    action={can(currentUser.role, "invitations.manage") && (
                         <button onClick={() => setShowAddUser(true)} className={primaryBtnClass}>
                             <Plus size={14} strokeWidth={2} /> Invite
                         </button>
@@ -726,17 +733,16 @@ ${currentUser.name}`;
                                 </div>
                             </div>
                             <div>
-                                <select
-                                    value={user.role}
-                                    onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
-                                    disabled={user._id === currentUser._id}
-                                    className="w-full sm:w-auto bg-white border border-ledger hover:border-grey-mid rounded-[9px] px-3 py-1.5 text-xs font-medium text-grey-dark outline-none focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                                >
-                                    <option value="Admin">Admin</option>
-                                    <option value="Finance Team">Finance Team</option>
-                                    <option value="Pastorate">Pastorate</option>
-                                    <option value="Guest">Guest</option>
-                                </select>
+                                {can(currentUser.role, "users.manage") ? (
+                                    <select
+                                        value={user.role}
+                                        onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
+                                        disabled={user._id === currentUser._id}
+                                        className="w-full sm:w-auto bg-white border border-ledger hover:border-grey-mid rounded-[9px] px-3 py-1.5 text-xs font-medium text-grey-dark outline-hidden focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    >
+                                        {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
+                                    </select>
+                                ) : <span className="text-xs text-grey-dark">{user.role}</span>}
                             </div>
                             <div className="sm:flex sm:justify-end">
                                 <DotBadge tone="sage">Active</DotBadge>
@@ -767,34 +773,36 @@ ${currentUser.name}`;
                                         </span>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                    <button
-                                        onClick={() => handleResendInvitation(invitation._id)}
-                                        disabled={resendingInviteId === invitation._id}
-                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] border border-ledger bg-white text-[12.5px] font-semibold text-ink hover:border-grey-mid transition-colors disabled:opacity-50"
-                                        title="Email the invitation again and extend its expiry"
-                                    >
-                                        <Mail size={14} strokeWidth={1.9} className="text-grey-mid" />
-                                        {resendingInviteId === invitation._id ? 'Sending…' : 'Resend'}
-                                    </button>
-                                    <button
-                                        onClick={() => handleCopyInvite(invitation)}
-                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] border border-ledger bg-white text-[12.5px] font-semibold text-ink hover:border-grey-mid transition-colors"
-                                        title="Copy invite message with link"
-                                    >
-                                        {copiedInviteId === invitation._id ? (
-                                            <><Check size={14} strokeWidth={1.9} className="text-sage" /> Copied!</>
-                                        ) : (
-                                            <><Copy size={14} strokeWidth={1.9} className="text-grey-mid" /> Copy link</>
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => onCancelInvitation(invitation._id)}
-                                        className="px-2 py-2 text-[12.5px] font-bold uppercase tracking-[0.04em] text-error hover:opacity-80 transition-opacity"
-                                    >
-                                        Revoke
-                                    </button>
-                                </div>
+                                {can(currentUser.role, "invitations.manage") && (
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button
+                                            onClick={() => handleResendInvitation(invitation._id)}
+                                            disabled={resendingInviteId === invitation._id}
+                                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] border border-ledger bg-white text-[12.5px] font-semibold text-ink hover:border-grey-mid transition-colors disabled:opacity-50"
+                                            title="Email the invitation again and extend its expiry"
+                                        >
+                                            <Mail size={14} strokeWidth={1.9} className="text-grey-mid" />
+                                            {resendingInviteId === invitation._id ? 'Sending…' : 'Resend'}
+                                        </button>
+                                        <button
+                                            onClick={() => handleCopyInvite(invitation)}
+                                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] border border-ledger bg-white text-[12.5px] font-semibold text-ink hover:border-grey-mid transition-colors"
+                                            title="Copy invite message with link"
+                                        >
+                                            {copiedInviteId === invitation._id ? (
+                                                <><Check size={14} strokeWidth={1.9} className="text-sage" /> Copied!</>
+                                            ) : (
+                                                <><Copy size={14} strokeWidth={1.9} className="text-grey-mid" /> Copy link</>
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => onCancelInvitation(invitation._id)}
+                                            className="px-2 py-2 text-[12.5px] font-bold uppercase tracking-[0.04em] text-error hover:opacity-80 transition-opacity"
+                                        >
+                                            Revoke
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </SectionCard>
@@ -816,13 +824,13 @@ ${currentUser.name}`;
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value)}
                             placeholder="Add a category…"
-                            className="flex-1 max-w-xs h-10 px-3.5 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none focus:ring-1 focus:ring-ink transition-shadow"
+                            className="flex-1 max-w-xs h-10 px-3.5 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-hidden focus:ring-1 focus:ring-ink transition-shadow"
                         />
                         <select
                             aria-label="Category type"
                             value={newCategoryType}
                             onChange={(e) => setNewCategoryType(e.target.value as 'Income' | 'Expenditure')}
-                            className="h-10 px-3 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none"
+                            className="h-10 px-3 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-hidden"
                         >
                             <option value="Income">Income</option>
                             <option value="Expenditure">Expenditure</option>
@@ -840,12 +848,15 @@ ${currentUser.name}`;
                     {categories.map(category => (
                         <span key={category} className="inline-flex items-center gap-2 px-3 py-[7px] bg-[#f3f1ed] border border-ledger rounded-full text-[13px] font-medium text-grey-dark">
                         {category}
-                        <button
-                            onClick={() => onRemoveCategory(category)}
-                            className="text-grey-mid hover:text-error transition-colors inline-flex"
-                        >
-                            <X size={13} strokeWidth={2} />
-                        </button>
+                        {can(currentUser.role, "categories.delete") && (
+                            <button
+                                aria-label={`Delete category ${category}`}
+                                onClick={() => onRemoveCategory(category)}
+                                className="text-grey-mid hover:text-error transition-colors inline-flex"
+                            >
+                                <X size={13} strokeWidth={2} />
+                            </button>
+                        )}
                         </span>
                     ))}
                     </div>
@@ -858,23 +869,23 @@ ${currentUser.name}`;
 
         {/* BANK CONNECTIONS TAB */}
         {activeTab === 'bank' && (
-            <BankConnectionsSettings funds={funds} />
+            <BankConnectionsSettings funds={funds} currentUser={currentUser} />
         )}
 
-        {activeTab === 'billing' && currentUser.role === 'Admin' && (
+        {activeTab === 'billing' && can(currentUser.role, "billing.manage") && (
             <BillingSettings />
         )}
 
         {/* DATA & PRIVACY TAB */}
-        {activeTab === 'data' && currentUser.role === 'Admin' && (
+        {activeTab === 'data' && can(currentUser.role, "organization.export") && (
             <DataPrivacySettings organizationName={churchDetails.name} />
         )}
 
       </div>
 
       {/* Invite User Modal */}
-      {showAddUser && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {showAddUser && can(currentUser.role, "invitations.manage") && (
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-sm rounded-xl shadow-soft-lg border border-ledger animate-enter">
                 <div className="px-5 py-4 border-b border-grey-light flex justify-between items-center bg-[#fcfbf9] rounded-t-xl">
                     <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">
@@ -885,7 +896,7 @@ ${currentUser.name}`;
 
                 {inviteSuccess ? (
                     // Success state with copy option
-                    <div className="p-6 space-y-4">
+                    <div className="p-6 ledger-space-y-4">
                         <div className="text-center">
                             <div className={`w-12 h-12 ${inviteSuccess.emailSent ? 'bg-sage-light' : 'bg-amber-light'} rounded-full flex items-center justify-center mx-auto mb-3`}>
                                 <Check size={24} className={inviteSuccess.emailSent ? 'text-sage' : 'text-amber'} />
@@ -943,7 +954,7 @@ ${currentUser.name}`;
                     </div>
                 ) : (
                     // Form state
-                    <form onSubmit={handleCreateInvitation} className="p-6 space-y-4">
+                    <form onSubmit={handleCreateInvitation} className="p-6 ledger-space-y-4">
                         <div>
                             <label className={labelClass}>Email Address</label>
                             <input
@@ -963,10 +974,7 @@ ${currentUser.name}`;
                                 onChange={(e) => setNewInvitation({...newInvitation, role: e.target.value as UserRole})}
                                 className={inputClass}
                             >
-                                <option value="Admin">Admin</option>
-                                <option value="Finance Team">Finance Team</option>
-                                <option value="Pastorate">Pastorate</option>
-                                <option value="Guest">Guest</option>
+                                {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
                             </select>
                         </div>
                         <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
@@ -988,7 +996,7 @@ ${currentUser.name}`;
 
       {/* Fund Modal */}
       {showFundModal && (
-          <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter">
                 <div className="px-5 py-4 border-b border-grey-light flex justify-between items-center bg-[#fcfbf9] rounded-t-xl">
                     <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">
@@ -996,7 +1004,7 @@ ${currentUser.name}`;
                     </h3>
                     <button onClick={() => setShowFundModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                 </div>
-                <form onSubmit={handleSaveFund} className="p-6 space-y-4">
+                <form onSubmit={handleSaveFund} className="p-6 ledger-space-y-4">
                      {/* Fund Logo Upload */}
                     <div className="flex items-center gap-4">
                         <div

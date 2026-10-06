@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
@@ -14,6 +15,8 @@ import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/cs
 import { categoryNamesForTransactionTypes } from '../lib/transactionCategories';
 import { applySmallIncomeDefaults, effectiveCategories } from '../lib/smallIncomeDefaults';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
+import { isVoidedTransaction, sumReportableIncome, sumReportableSigned } from '../lib/reportableTransactions';
+import { roundMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
@@ -212,7 +215,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
   }, [initialFundId]);
 
-  const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "ledger.write");
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -241,8 +244,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (filterFund && t.fundId !== filterFund) return false;
 
       // Status
-      if (filterStatus === 'active' && t.isVoided) return false;
-      if (filterStatus === 'voided' && !t.isVoided) return false;
+      if (filterStatus === 'active' && isVoidedTransaction(t)) return false;
+      if (filterStatus === 'voided' && !isVoidedTransaction(t)) return false;
       if (filterStatus === 'reconciled' && !t.isReconciled) return false;
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
@@ -252,18 +255,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
-  // Summary strip totals for the current filtered view (voided excluded)
+  // Summary strip totals for the current filtered view. Totals use the
+  // reportable rule (no voided rows, no cash banking deposits) so banked cash
+  // isn't counted twice; the review count covers every non-voided row.
   const stripTotals = useMemo(() => {
-    let totalIn = 0;
-    let totalOut = 0;
-    let needsReview = 0;
-    for (const t of filteredTransactions) {
-      if (t.isVoided) continue;
-      if (t.type === 'Income') totalIn += t.amount;
-      else totalOut += t.amount;
-      if (!t.isReconciled || !t.category) needsReview++;
-    }
-    return { totalIn, totalOut, net: totalIn - totalOut, needsReview };
+    const totalIn = sumReportableIncome(filteredTransactions);
+    const net = sumReportableSigned(filteredTransactions);
+    const needsReview = filteredTransactions.filter(
+      (t) => !isVoidedTransaction(t) && (!t.isReconciled || !t.category)
+    ).length;
+    return { totalIn, totalOut: roundMoney(totalIn - net), net, needsReview };
   }, [filteredTransactions]);
 
   const stripPeriodLabel =
@@ -463,7 +464,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             updates.push({
               transactionId: t._id as Id<"transactions">,
               changes: {
-                category: suggestion.category,
+                // The server rejects the whole batch if one category doesn't
+                // fit its transaction's type, so drop mismatched suggestions.
+                category: categoryNamesFor(t.type).includes(suggestion.category)
+                  ? suggestion.category
+                  : undefined,
                 isGiftAidEligible: suggestion.isGiftAidEligible,
                 fundId: suggestedFund?._id ? (suggestedFund._id as Id<"funds">) : undefined,
                 donorName: suggestion.donorName || undefined,
@@ -1125,12 +1130,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
-  if (showReconciliation) {
+  if (showReconciliation && can(currentUser.role, "reconciliation.manage")) {
     return <Reconciliation onBack={() => setShowReconciliation(false)} />;
   }
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
       {/* Keep announcements mounted when the review modal closes mid-process. */}
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {categorizationStatusMessage}
@@ -1164,7 +1169,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     {isUploading ? <Loader2 size={16} strokeWidth={1.9} className="animate-spin text-grey-mid"/> : <Building2 size={16} strokeWidth={1.9} className="text-grey-mid" />}
                     Sync Bank
                     {bankConnections.length > 0 && (
-                      <span className="ml-0.5 px-1.5 py-0.5 bg-sage-light text-sage-dark rounded text-[10px] font-bold">
+                      <span className="ml-0.5 px-1.5 py-0.5 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold">
                         {bankConnections.length}
                       </span>
                     )}
@@ -1183,13 +1188,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         onChange={handleFileUpload}
                     />
                 </button>
-                <button
-                    onClick={() => setShowReconciliation(true)}
-                    className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
-                >
-                    <Scale size={16} strokeWidth={1.9} className="text-grey-mid" />
-                    Reconcile
-                </button>
+                {can(currentUser.role, "reconciliation.manage") && (
+                    <button
+                        onClick={() => setShowReconciliation(true)}
+                        className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
+                    >
+                        <Scale size={16} strokeWidth={1.9} className="text-grey-mid" />
+                        Reconcile
+                    </button>
+                )}
                 <button
                     onClick={() => startTransition(() => setShowCashTakingsModal(true))}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-[18px] py-[11px] rounded-xl bg-ink text-white text-sm font-semibold hover:bg-charcoal transition-colors shadow-[0_6px_16px_-8px_rgba(28,25,23,0.5)]"
@@ -1212,7 +1219,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         ] as const).map((s, i, arr) => (
           <div key={s.label} className={`relative px-6 py-5 ${i < arr.length - 1 ? 'lg:border-r border-[#efeee9]' : ''}`}>
             {s.bar && (
-              <span className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r" style={{ background: s.bar }} />
+              <span className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r-sm" style={{ background: s.bar }} />
             )}
             <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-grey-mid whitespace-nowrap">{s.label}</div>
             <div className="font-mono text-[26px] font-bold tracking-tight mt-2 mb-1 whitespace-nowrap" style={{ color: s.valueColor }}>{s.value}</div>
@@ -1244,17 +1251,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         >
           In-Person Giving
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveTransactionTab('cashChequeBanking')}
-          className={`px-4 py-[11px] text-xs font-bold uppercase tracking-[0.06em] border-b-2 transition-colors ${
-            activeTransactionTab === 'cashChequeBanking'
-              ? 'border-ink text-ink'
-              : 'border-transparent text-grey-mid hover:text-ink'
-          }`}
-        >
-          Cash/cheque Banking
-        </button>
+        {can(currentUser.role, "reconciliation.manage") && (
+            <button
+              type="button"
+              onClick={() => setActiveTransactionTab('cashChequeBanking')}
+              className={`px-4 py-[11px] text-xs font-bold uppercase tracking-[0.06em] border-b-2 transition-colors ${
+                activeTransactionTab === 'cashChequeBanking'
+                  ? 'border-ink text-ink'
+                  : 'border-transparent text-grey-mid hover:text-ink'
+              }`}
+            >
+              Cash/cheque Banking
+            </button>
+        )}
       </div>
 
       {activeTransactionTab === 'all' && (
@@ -1269,7 +1278,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 placeholder="Search transactions, donors, or categories…"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full h-10 pl-[38px] pr-3.5 text-sm text-ink border border-[#e3e1dc] rounded-[10px] bg-white outline-none focus:border-[#c79a5f] transition-colors"
+                className="w-full h-10 pl-[38px] pr-3.5 text-sm text-ink border border-[#e3e1dc] rounded-[10px] bg-white outline-hidden focus:border-[#c79a5f] transition-colors"
              />
           </div>
 
@@ -1287,7 +1296,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <select
                   value={filterMonth ?? ''}
                   onChange={(e) => setFilterMonth(e.target.value === '' ? null : Number(e.target.value))}
-                  className="appearance-none text-[13px] font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                  className="appearance-none text-[13px] font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
                 >
                   <option value="">All Months</option>
                   {monthOptions.map((m) => (
@@ -1297,7 +1306,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <select
                   value={filterYear ?? ''}
                   onChange={(e) => setFilterYear(e.target.value === '' ? null : Number(e.target.value))}
-                  className="appearance-none text-[13px] font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                  className="appearance-none text-[13px] font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
                 >
                   <option value="">All Years</option>
                   {yearOptions.map((y) => (
@@ -1316,7 +1325,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
           {/* Status Filter */}
           <div className="relative h-10">
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-none appearance-none cursor-pointer ${filterStatus !== 'all' ? 'text-ink' : 'text-grey-dark'}`}>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterStatus !== 'all' ? 'text-ink' : 'text-grey-dark'}`}>
                   <option value="all">All Status</option>
                   <option value="active">Active</option>
                   <option value="voided">Voided</option>
@@ -1329,7 +1338,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
            {/* Fund Filter */}
            <div className="relative h-10">
-              <select value={filterFund} onChange={(e) => setFilterFund(e.target.value)} className={`h-full w-[132px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-none appearance-none cursor-pointer ${filterFund ? 'text-ink' : 'text-grey-dark'}`}>
+              <select value={filterFund} onChange={(e) => setFilterFund(e.target.value)} className={`h-full w-[132px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterFund ? 'text-ink' : 'text-grey-dark'}`}>
                   <option value="">All Funds</option>
                   {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
               </select>
@@ -1338,7 +1347,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
            {/* Category Filter */}
           <div className="relative h-10">
-              <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-none appearance-none cursor-pointer ${filterCategory ? 'text-ink' : 'text-grey-dark'}`}>
+              <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterCategory ? 'text-ink' : 'text-grey-dark'}`}>
                   <option value="">Category…</option>
                   {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -1388,7 +1397,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
 
                   return (
-                    <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : t.isVoided ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
+                    <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : isVoidedTransaction(t) ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
                       <td className="pl-6 pr-2 py-3.5">
                           {canEdit && (
                                <input type="checkbox" checked={isSelected} onChange={() => handleSelectOne(t._id)} className="w-[18px] h-[18px] align-middle rounded-md border-[#cfc9c1] accent-[#a9743f] cursor-pointer" />
@@ -1399,7 +1408,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           <div className="flex items-center gap-2">
                              <div className="font-semibold text-ink text-[14.5px] truncate max-w-[280px]">{t.description}</div>
                              {t.pledgeId && <LinkIcon size={13} strokeWidth={2} className="text-[#6b8e6b] shrink-0" />}
-                             {t.isVoided && (
+                             {isVoidedTransaction(t) && (
                               <span
                                 className="px-1.5 py-0.5 rounded-[5px] border border-error/30 bg-error-light text-[9.5px] font-bold text-error uppercase tracking-[0.08em] shrink-0"
                                 title={t.voidReason ? `Void reason: ${t.voidReason}` : "Voided transaction"}
@@ -1429,7 +1438,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       </td>
                       <td className="px-4 py-3.5 text-center">
                           {canEdit ? (
-                            t.isVoided ? (
+                            isVoidedTransaction(t) ? (
                               <button
                                 type="button"
                                 onClick={() => handleUnvoidTransaction(t)}
@@ -1449,7 +1458,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                               </button>
                             )
                           ) : (
-                            t.isVoided && <X size={14} className="mx-auto text-error/60" />
+                            isVoidedTransaction(t) && <X size={14} className="mx-auto text-error/60" />
                           )}
                       </td>
                       <td className="px-4 py-3.5 text-right opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
@@ -1512,7 +1521,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               <select
                 value={filterMonth ?? ''}
                 onChange={(e) => setFilterMonth(e.target.value === '' ? null : Number(e.target.value))}
-                className="appearance-none text-[13px] font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                className="appearance-none text-[13px] font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
               >
                 <option value="">All Months</option>
                 {monthOptions.map((m) => (
@@ -1522,7 +1531,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               <select
                 value={filterYear ?? ''}
                 onChange={(e) => setFilterYear(e.target.value === '' ? null : Number(e.target.value))}
-                className="appearance-none text-[13px] font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                className="appearance-none text-[13px] font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
               >
                 <option value="">All Years</option>
                 {yearOptions.map((y) => (
@@ -1579,7 +1588,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <div className="font-bold text-ink text-sm">{formatDateUK(ledger.weekEndingDate)}</div>
                           </td>
                           <td className="px-6 py-4 border-b border-[#efeee9]">
-                            <div className="space-y-1">
+                            <div className="ledger-space-y-1">
                               {ledger.fundTotals.length > 0 ? (
                                 ledger.fundTotals.map((fundTotal) => (
                                   <div key={fundTotal.fundId} className="flex items-center justify-between gap-4 text-sm text-ink font-medium">
@@ -1601,7 +1610,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setEditingGivingLedger(ledger)}
-                                  className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                  className="p-1.5 rounded-sm hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
                                   aria-label="Edit in-person giving"
                                 >
                                   <Edit2 size={15} />
@@ -1610,7 +1619,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => toggleGivingExpanded(ledger.collectionId)}
-                                className="p-1.5 rounded hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
+                                className="p-1.5 rounded-sm hover:bg-grey-light text-grey-mid hover:text-ink transition-colors"
                                 aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
                               >
                                 {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -1621,7 +1630,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         {isExpanded && (
                           <tr>
                             <td colSpan={4} className="p-4 bg-paper border-b border-ledger">
-                              <div className="space-y-4">
+                              <div className="ledger-space-y-4">
                                 {ledger.rows.length > 0 && (
                                   <div>
                                     <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-grey-mid">
@@ -1727,7 +1736,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         </>
       )}
 
-      {activeTransactionTab === 'cashChequeBanking' && (
+      {activeTransactionTab === 'cashChequeBanking' && can(currentUser.role, "reconciliation.manage") && (
         <CashChequeBanking funds={funds} currentUser={currentUser} />
       )}
 
@@ -1745,7 +1754,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   </button>
                   {/* Inline Category Dropdown */}
                   <select
-                      className="bg-white/[0.07] text-white text-xs font-semibold rounded-lg px-2.5 py-[7px] border border-white/[0.16] cursor-pointer outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="bg-white/[0.07] text-white text-xs font-semibold rounded-lg px-2.5 py-[7px] border border-white/[0.16] cursor-pointer outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
                       value=""
                       disabled={bulkCategoryNames.length === 0}
                       title={bulkCategoryNames.length === 0 ? "Select income or expenditure on its own to change category" : undefined}
@@ -1756,7 +1765,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   </select>
                   {/* Inline Fund Dropdown */}
                   <select
-                      className="bg-white/[0.07] text-white text-xs font-semibold rounded-lg px-2.5 py-[7px] border border-white/[0.16] cursor-pointer outline-none"
+                      className="bg-white/[0.07] text-white text-xs font-semibold rounded-lg px-2.5 py-[7px] border border-white/[0.16] cursor-pointer outline-hidden"
                       value=""
                       onChange={(e) => e.target.value && executeBulkUpdate({ fundId: e.target.value as Id<"funds"> })}
                   >
@@ -1774,7 +1783,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Smart Link Review Modal */}
       {showMatchModal && canEdit && createPortal(
-          <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-lg shadow-soft-lg w-full max-w-3xl animate-enter border border-ledger max-h-[80vh] flex flex-col">
                 <div className="p-4 border-b border-[#efeee9] flex justify-between items-center bg-sage-light rounded-t-lg">
                     <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
@@ -1786,12 +1795,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     <p className="text-sm text-grey-mid mb-4">
                         We found <strong>{pledgeMatches.length}</strong> possible matches for unlinked income.
                     </p>
-                    <div className="space-y-3">
+                    <div className="ledger-space-y-3">
                         {pledgeMatches.map((m, i) => {
                             const txn = transactions.find(t => t._id === m.transactionId);
                             if (!txn) return null;
                             return (
-                                <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded border border-sage/30 shadow-sm gap-4">
+                                <div key={i} className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-sm border border-sage/30 shadow-xs gap-4">
                                     <div className="flex flex-col gap-1">
                                         <div className="flex items-baseline gap-2">
                                             <span className="font-mono text-xs text-grey-mid">{txn.date}</span>
@@ -1807,10 +1816,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         </div>
                                     </div>
                                     <div className="flex gap-2 shrink-0">
-                                         <button onClick={() => setPledgeMatches(prev => prev.filter(match => match !== m))} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors bg-white">
+                                         <button onClick={() => setPledgeMatches(prev => prev.filter(match => match !== m))} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded-sm font-bold uppercase flex items-center gap-1 transition-colors bg-white">
                                             <X size={12}/> Ignore
                                         </button>
-                                        <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors shadow-sm">
+                                        <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded-sm font-bold uppercase flex items-center gap-1 transition-colors shadow-xs">
                                             <Check size={12}/> Confirm
                                         </button>
                                     </div>
@@ -1826,7 +1835,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* CSV Column Mapping Modal - REFINED UI 2.0 */}
       {showColumnMapper && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-5xl animate-enter border border-ledger overflow-hidden">
                 <div className="p-6 border-b border-[#efeee9] flex justify-between items-center bg-paper/50">
                     <div>
@@ -1846,13 +1855,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <div className="flex bg-grey-light p-1.5 rounded-xl border border-ledger">
                                 <button 
                                 onClick={() => setUseSplitAmount(false)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-sm text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
+                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-xs text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
                             >
                                 Single Amount Column
                             </button>
                             <button
                                 onClick={() => setUseSplitAmount(true)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-sm text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
+                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-xs text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
                             >
                                 Split In/Out Columns
                                 <ArrowLeftRight size={14} />
@@ -1861,13 +1870,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
 
                     <div className={`grid grid-cols-1 gap-6 mb-8 ${useSplitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                        <div className="space-y-2">
+                        <div className="ledger-space-y-2">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Date Column</label>
                             <div className="relative">
                                 <select 
                                     value={columnMapping.date} 
                                     onChange={(e) => setColumnMapping({...columnMapping, date: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-grey-dark cursor-pointer"
+                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
                                 >
                                     <option value="">Select Column...</option>
                                     {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1876,13 +1885,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             </div>
                         </div>
                         
-                         <div className="space-y-2">
+                         <div className="ledger-space-y-2">
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Description / Payee</label>
                              <div className="relative">
                                 <select 
                                     value={columnMapping.description} 
                                     onChange={(e) => setColumnMapping({...columnMapping, description: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-grey-dark cursor-pointer"
+                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
                                 >
                                     <option value="">Select Column...</option>
                                     {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1893,13 +1902,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         
                         {useSplitAmount ? (
                              <>
-                                <div className="space-y-2">
+                                <div className="ledger-space-y-2">
                                     <label className="block text-[10px] font-bold text-sage uppercase tracking-wide">Money In (Credit)</label>
                                     <div className="relative">
                                     <select
                                         value={columnMapping.amountIn}
                                         onChange={(e) => setColumnMapping({...columnMapping, amountIn: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-sage/30 rounded-lg text-xs bg-sage-light/50 hover:bg-sage-light focus:bg-white focus:ring-2 focus:ring-sage focus:border-transparent outline-none transition-all appearance-none font-medium text-sage-dark cursor-pointer"
+                                        className="w-full py-2 pl-3 pr-8 border border-sage/30 rounded-lg text-xs bg-sage-light/50 hover:bg-sage-light focus:bg-white focus:ring-2 focus:ring-sage focus:border-transparent outline-hidden transition-all appearance-none font-medium text-sage-dark cursor-pointer"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1907,13 +1916,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-sage pointer-events-none"/>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
+                                <div className="ledger-space-y-2">
                                     <label className="block text-[10px] font-bold text-error uppercase tracking-wide">Money Out (Debit)</label>
                                     <div className="relative">
                                     <select
                                         value={columnMapping.amountOut}
                                         onChange={(e) => setColumnMapping({...columnMapping, amountOut: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-error/30 rounded-lg text-xs bg-error-light/50 hover:bg-error-light focus:bg-white focus:ring-2 focus:ring-error focus:border-transparent outline-none transition-all appearance-none font-medium text-error cursor-pointer"
+                                        className="w-full py-2 pl-3 pr-8 border border-error/30 rounded-lg text-xs bg-error-light/50 hover:bg-error-light focus:bg-white focus:ring-2 focus:ring-error focus:border-transparent outline-hidden transition-all appearance-none font-medium text-error cursor-pointer"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1923,13 +1932,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 </div>
                              </>
                         ) : (
-                            <div className="space-y-2">
+                            <div className="ledger-space-y-2">
                                 <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Amount</label>
                                 <div className="relative">
                                 <select 
                                     value={columnMapping.amount} 
                                     onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all appearance-none font-medium text-grey-dark cursor-pointer"
+                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
                                 >
                                     <option value="">Select Column...</option>
                                     {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1977,7 +1986,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* New Transaction Modal */}
       {showAddModal && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
             <div className="bg-white rounded-lg shadow-soft-lg w-full max-w-lg animate-enter border border-ledger my-auto sm:my-8">
                 <div className="sticky top-0 p-4 border-b border-[#efeee9] flex justify-between items-center bg-paper rounded-t-lg z-10">
                     <h3 className="font-bold text-ink text-sm uppercase tracking-wide">New Entry</h3>
@@ -1985,7 +1994,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <X size={16} />
                     </button>
                 </div>
-                <form onSubmit={handleAddSubmit} className="p-4 sm:p-6 space-y-4">
+                <form onSubmit={handleAddSubmit} className="p-4 sm:p-6 ledger-space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
@@ -1994,7 +2003,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 required
                                 value={newTransaction.date}
                                 onChange={(e) => setNewTransaction({...newTransaction, date: e.target.value})}
-                                className="block w-full min-w-0 appearance-none p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                className="block w-full min-w-0 appearance-none p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors font-mono"
                             />
                         </div>
                         <div>
@@ -2007,7 +2016,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     required
                                     value={newTransaction.amount || ''} 
                                     onChange={(e) => setNewTransaction({...newTransaction, amount: parseFloat(e.target.value)})}
-                                    className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                    className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors font-mono"
                                     placeholder="0.00"
                                 />
                              </div>
@@ -2021,7 +2030,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             required
                             value={newTransaction.description || ''} 
                             onChange={(e) => setNewTransaction({...newTransaction, description: e.target.value})}
-                            className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                            className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors"
                             placeholder="e.g. Sunday Collection Cash"
                         />
                     </div>
@@ -2032,7 +2041,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <select
                                 value={newTransaction.category}
                                 onChange={(e) => setNewTransaction({...newTransaction, category: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 {categoryNamesFor(newTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
@@ -2042,7 +2051,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                              <select
                                 value={newTransaction.fundId}
                                 onChange={(e) => setNewTransaction({...newTransaction, fundId: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                             </select>
@@ -2056,14 +2065,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 value={newTransaction.type}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
-                                    const categoryStillValid = categories.some((category) => category.name === newTransaction.category && (!category.transactionType || category.transactionType === type));
+                                    const categoryStillValid = categoryNamesFor(type).includes(newTransaction.category ?? '');
                                     setNewTransaction({
                                         ...newTransaction,
                                         type,
                                         category: categoryStillValid ? newTransaction.category : '',
                                     });
                                 }}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 <option value="Income">Income</option>
                                 <option value="Expenditure">Expenditure</option>
@@ -2075,7 +2084,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="text"
                                 value={newTransaction.donorName || ''}
                                 onChange={(e) => setNewTransaction({...newTransaction, donorName: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors"
                                 placeholder="Name or Ref..."
                             />
                         </div>
@@ -2087,7 +2096,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <select
                                 value={newTransaction.pledgeId || ''}
                                 onChange={(e) => setNewTransaction({...newTransaction, pledgeId: e.target.value || undefined})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 <option value="">-- No Linked Pledge --</option>
                                 {relevantPledgesForNew.map(p => {
@@ -2111,14 +2120,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox" 
                                 checked={newTransaction.isGiftAidEligible || false}
                                 onChange={(e) => setNewTransaction({...newTransaction, isGiftAidEligible: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4" 
+                                className="rounded-sm border-slate-300 text-ink focus:ring-0 w-4 h-4"
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-[#efeee9] mt-4">
-                        <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
+                        <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button>
                         <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                             <Plus size={14} /> Add Entry
                         </button>
@@ -2131,7 +2140,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Edit Transaction Modal */}
       {editingTransaction && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
             <div className="bg-white rounded-lg shadow-soft-lg w-full max-w-lg animate-enter border border-ledger my-auto sm:my-8">
                 <div className="sticky top-0 p-4 border-b border-[#efeee9] flex justify-between items-center bg-paper rounded-t-lg z-10">
                     <h3 className="font-bold text-ink text-sm uppercase tracking-wide">Edit Transaction</h3>
@@ -2168,7 +2177,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             notify("Error", "Failed to update transaction.");
                         }
                     }
-                }} className="p-4 sm:p-6 space-y-4">
+                }} className="p-4 sm:p-6 ledger-space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="min-w-0">
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Date</label>
@@ -2177,7 +2186,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 required
                                 value={editingTransaction.date}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, date: e.target.value})}
-                                className="block w-full min-w-0 appearance-none p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                className="block w-full min-w-0 appearance-none p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors font-mono"
                             />
                         </div>
                         <div>
@@ -2190,7 +2199,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     required
                                     value={editingTransaction.amount} 
                                     onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
-                                    className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors font-mono"
+                                    className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors font-mono"
                                 />
                              </div>
                         </div>
@@ -2203,7 +2212,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             required
                             value={editingTransaction.description} 
                             onChange={(e) => setEditingTransaction({...editingTransaction, description: e.target.value})}
-                            className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none transition-colors"
+                            className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors"
                         />
                     </div>
 
@@ -2213,7 +2222,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <select
                                 value={editingTransaction.category}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 {categoryNamesFor(editingTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
@@ -2223,7 +2232,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                              <select
                                 value={editingTransaction.fundId}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 {funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}
                             </select>
@@ -2237,14 +2246,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 value={editingTransaction.type}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
-                                    const categoryStillValid = categories.some((category) => category.name === editingTransaction.category && (!category.transactionType || category.transactionType === type));
+                                    const categoryStillValid = categoryNamesFor(type).includes(editingTransaction.category);
                                     setEditingTransaction({
                                         ...editingTransaction,
                                         type,
                                         category: categoryStillValid ? editingTransaction.category : '',
                                     });
                                 }}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 <option value="Income">Income</option>
                                 <option value="Expenditure">Expenditure</option>
@@ -2280,7 +2289,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         donorName: (editingTransaction.donorName || !pid) ? editingTransaction.donorName : pledges.find(pl => pl._id === pid)?.donorName
                                     });
                                 }}
-                                className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                                className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
                                 <option value="">-- No Linked Pledge --</option>
                                 {relevantPledges.map(p => {
@@ -2304,12 +2313,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 type="checkbox"
                                 checked={editingTransaction.isGiftAidEligible || false}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, isGiftAidEligible: e.target.checked})}
-                                className="rounded border-slate-300 text-ink focus:ring-0 w-4 h-4"
+                                className="rounded-sm border-slate-300 text-ink focus:ring-0 w-4 h-4"
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
 
-                        {editingTransaction.isVoided && (
+                        {isVoidedTransaction(editingTransaction) && (
                           <div className="flex items-center gap-2 text-sm text-error">
                             <X size={14} />
                             <span>
@@ -2320,7 +2329,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-[#efeee9] mt-4">
-                        <button type="button" onClick={() => setEditingTransaction(null)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
+                        <button type="button" onClick={() => setEditingTransaction(null)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button>
                         <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                             <Save size={14} /> Save Changes
                         </button>
@@ -2332,7 +2341,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       )}
 
       {voidTarget && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-soft-lg w-full max-w-md border border-ledger animate-enter">
             <div className="p-4 border-b border-[#efeee9] flex justify-between items-center bg-paper rounded-t-lg">
               <div>
@@ -2350,8 +2359,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <X size={16} />
               </button>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="rounded border border-ledger bg-paper p-3">
+            <div className="p-5 ledger-space-y-4">
+              <div className="rounded-sm border border-ledger bg-paper p-3">
                 <div className="text-xs font-bold text-ink truncate">{voidTarget.description}</div>
                 <div className="text-xs text-grey-mid font-mono mt-1">
                   {formatDateUK(voidTarget.date)} - {voidTarget.type === 'Income' ? '+' : '-'}£{voidTarget.amount.toFixed(2)}
@@ -2365,7 +2374,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   value={voidReason}
                   onChange={(event) => setVoidReason(event.target.value)}
                   rows={3}
-                  className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none resize-none"
+                  className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden resize-none"
                   placeholder="e.g. Duplicate bank import"
                   disabled={isVoiding}
                 />
@@ -2374,7 +2383,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setVoidTarget(null)}
-                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors"
                   disabled={isVoiding}
                 >
                   Cancel
@@ -2383,7 +2392,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   type="button"
                   onClick={handleVoidTransaction}
                   disabled={isVoiding}
-                  className="px-4 py-2 bg-error text-white rounded font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
+                  className="px-4 py-2 bg-error text-white rounded-sm font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
                 >
                   {isVoiding ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
                   Void
@@ -2397,7 +2406,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Review Modal */}
       {showReviewModal && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-soft-lg w-full min-w-0 max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger overflow-hidden">
                 <div className="p-6 border-b border-[#efeee9] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center rounded-t-lg">
                     <div>
@@ -2442,7 +2451,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </p>
                       </div>
                     )}
-                    <div className="space-y-3 md:hidden">
+                    <div className="ledger-space-y-3 md:hidden">
                         {pendingTransactions.map((transaction, index) => {
                           const isDuplicate = duplicateWarnings.has(index);
                           return (
@@ -2473,7 +2482,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                   <select
                                     aria-label={`Category for import row ${index + 1}`}
                                     title={transaction.category || 'Select category'}
-                                    className="block w-full min-w-0 max-w-full rounded border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
+                                    className="block w-full min-w-0 max-w-full rounded-sm border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
                                     value={transaction.category || ''}
                                     onChange={(event) => updatePendingTransactionAt(index, { category: event.target.value })}
                                   >
@@ -2486,7 +2495,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                   <select
                                     aria-label={`Fund for import row ${index + 1}`}
                                     title={fundNamesById.get(transaction.fundId || '') || 'Select fund'}
-                                    className="block w-full min-w-0 max-w-full rounded border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
+                                    className="block w-full min-w-0 max-w-full rounded-sm border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
                                     value={transaction.fundId || ''}
                                     onChange={(event) => updatePendingTransactionAt(index, { fundId: event.target.value })}
                                   >
@@ -2545,8 +2554,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                       {t.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+                                    <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
                                     <td className="py-3 text-center">
                                       {duplicateWarnings.has(i) && (
                                         <button
@@ -2585,7 +2594,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         setShowReviewModal(false);
                         clearBankSyncReviewState();
                       }}
-                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded transition-colors disabled:cursor-wait disabled:opacity-50"
+                      className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded-sm transition-colors disabled:cursor-wait disabled:opacity-50"
                     >
                       Discard
                     </button>
@@ -2606,7 +2615,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {/* Bank Selector Modal */}
       {showBankSelector && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-soft-lg w-full max-w-md animate-enter border border-ledger">
             <div className="p-6 border-b border-[#efeee9] flex justify-between items-center rounded-t-lg">
               <div>
@@ -2617,7 +2626,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 <X size={18} />
               </button>
             </div>
-            <div className="p-6 space-y-3">
+            <div className="p-6 ledger-space-y-3">
               {bankConnections.map((item) => (
                 <button
                   key={item._id}

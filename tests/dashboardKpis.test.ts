@@ -259,6 +259,39 @@ describe("dashboard KPI helpers", () => {
     expect(summary.alerts.map((alert) => alert.title)).toContain("Month-end review needs attention");
   });
 
+  it.each(["draft", "reopened"] as const)(
+    "ignores %s reconciliations when counting collections awaiting banking",
+    (status) => {
+      const input: BuildExecutiveDashboardSummaryInput = {
+        periodKey: "previousMonth",
+        now: new Date("2026-06-08T12:00:00Z"),
+        funds,
+        transactions,
+        donors,
+        pledges,
+        cashCollections,
+        cashReconciliations,
+      };
+      const completedOnly = buildExecutiveDashboardSummary(input);
+      const withIncomplete = buildExecutiveDashboardSummary({
+        ...input,
+        cashReconciliations: [
+          ...cashReconciliations,
+          {
+            _id: `rec-${status}`,
+            status,
+            cashCollectionSplits: [
+              { cashCollectionId: "cash-2", cashAmount: 1000, chequeAmount: 1000 },
+            ],
+          },
+        ],
+      });
+
+      expect(completedOnly.readiness.cashBankingPendingWeeks).toBe(1);
+      expect(withIncomplete).toEqual(completedOnly);
+    }
+  );
+
   it("normalizes giving trend for multi-month periods", () => {
     const summary = buildExecutiveDashboardSummary({
       periodKey: "quarter",

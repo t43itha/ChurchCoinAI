@@ -1,10 +1,11 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import {
   computeDifferencePence,
   canCompleteSession,
 } from "../../lib/reconciliation";
+import { getCompletedReconciliationLock, patchTransaction } from "../lib/transactionWrites";
 
 // Start a new statement reconciliation session for a fund/period
 export const create = mutation({
@@ -16,7 +17,7 @@ export const create = mutation({
     statementClosingBalance: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const fund = await ctx.db.get(args.fundId);
     if (!fund || fund.organizationId !== user.organizationId) {
@@ -77,7 +78,7 @@ export const updateBalances = mutation({
     periodEnd: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -110,7 +111,7 @@ export const setCleared = mutation({
     cleared: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -135,15 +136,18 @@ export const setCleared = mutation({
       if (transaction.isVoided) {
         throw new Error("Voided transactions cannot be reconciled");
       }
-      await ctx.db.patch(args.transactionId, {
+      await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: args.sessionId,
-      });
+      }, { lockOverride: "reconciliation-owner" });
     } else {
       if (transaction.reconciliationSessionId !== args.sessionId) return;
-      await ctx.db.patch(args.transactionId, {
+      await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: undefined,
-        isReconciled: false,
-      });
+        isReconciled: await getCompletedReconciliationLock(ctx, {
+          ...transaction,
+          reconciliationSessionId: undefined,
+        }) !== null,
+      }, { lockOverride: "reconciliation-owner" });
     }
   },
 });
@@ -152,7 +156,7 @@ export const setCleared = mutation({
 export const complete = mutation({
   args: { sessionId: v.id("reconciliationSessions") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -194,7 +198,7 @@ export const complete = mutation({
     }
 
     for (const t of cleared) {
-      await ctx.db.patch(t._id, { isReconciled: true });
+      await patchTransaction(ctx, t._id, { isReconciled: true }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.patch(args.sessionId, {
       status: "completed",
@@ -212,7 +216,7 @@ export const reopen = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -231,7 +235,11 @@ export const reopen = mutation({
       )
       .collect();
     for (const t of cleared) {
-      await ctx.db.patch(t._id, { isReconciled: false });
+      const cashLocked = await getCompletedReconciliationLock(ctx, {
+        ...t,
+        reconciliationSessionId: undefined,
+      }) !== null;
+      await patchTransaction(ctx, t._id, { isReconciled: cashLocked }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.patch(args.sessionId, {
       status: "reopened",
@@ -247,7 +255,7 @@ export const reopen = mutation({
 export const remove = mutation({
   args: { sessionId: v.id("reconciliationSessions") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       throw new Error("Session not found");
@@ -262,10 +270,13 @@ export const remove = mutation({
       )
       .collect();
     for (const t of cleared) {
-      await ctx.db.patch(t._id, {
+      await patchTransaction(ctx, t._id, {
         reconciliationSessionId: undefined,
-        isReconciled: false,
-      });
+        isReconciled: await getCompletedReconciliationLock(ctx, {
+          ...t,
+          reconciliationSessionId: undefined,
+        }) !== null,
+      }, { lockOverride: "reconciliation-owner" });
     }
     await ctx.db.delete(args.sessionId);
     return args.sessionId;
