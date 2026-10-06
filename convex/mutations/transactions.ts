@@ -9,7 +9,6 @@ import {
   assertValidTransactionDate,
 } from "../lib/transactionValidation";
 import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
-import { decisionMetadataValidator } from "../intelligence/categorization/validators";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 import { roundMoney } from "../lib/money";
 import { applySmallIncomeDefaults, isSmallIncome } from "../../lib/smallIncomeDefaults";
@@ -890,7 +889,6 @@ export const recordCorrections = mutation({
         aiConfidence: v.string(),
         predictionSource: v.union(
           v.literal("rule"),
-          v.literal("jev"),
           v.literal("gemini"),
           v.literal("openrouter"),
           v.literal("openai"),
@@ -899,7 +897,6 @@ export const recordCorrections = mutation({
           v.literal("none")
         ),
         ragScore: v.optional(v.number()),
-        decisionMetadata: v.optional(decisionMetadataValidator),
         finalCategory: v.string(),
         aiPredictedFundId: v.optional(v.id("funds")),
         aiPredictedGiftAidEligible: v.optional(v.boolean()),
@@ -966,7 +963,6 @@ export const recordCorrections = mutation({
         aiConfidence: correction.aiConfidence,
         predictionSource: correction.predictionSource,
         ragScore: correction.ragScore,
-        decisionMetadata: correction.decisionMetadata,
         finalCategory: correction.finalCategory,
         wasCorrect,
         createdAt,
@@ -994,10 +990,7 @@ export const recordCorrections = mutation({
         learned,
         createdAt,
       });
-      await ctx.db.insert("categorizationFeedbackEvents", {
-        ...feedbackEvent,
-        decisionMetadata: correction.decisionMetadata,
-      });
+      await ctx.db.insert("categorizationFeedbackEvents", feedbackEvent);
 
       if (learned) {
         await ctx.scheduler.runAfter(
@@ -1073,9 +1066,9 @@ export const getCategorizationStats = query({
   returns: v.object({
     total: v.number(), correct: v.number(), accuracy: v.number(),
     geminiAccuracy: v.number(), openrouterAccuracy: v.number(), openaiAccuracy: v.number(),
-    ragAccuracy: v.number(), memoryAccuracy: v.number(), jevAccuracy: v.number(), ruleAccuracy: v.number(),
+    ragAccuracy: v.number(), memoryAccuracy: v.number(), ruleAccuracy: v.number(),
     ragCount: v.number(), geminiCount: v.number(), openrouterCount: v.number(), openaiCount: v.number(),
-    memoryCount: v.number(), jevCount: v.number(), ruleCount: v.number(),
+    memoryCount: v.number(), ruleCount: v.number(),
   }),
   handler: async (ctx) => {
     const user = await requireRole(ctx, ["Admin", "Finance Team"]);
@@ -1090,7 +1083,6 @@ export const getCategorizationStats = query({
     const total = allCorrections.length;
     const correct = allCorrections.filter((c) => c.wasCorrect).length;
     const bySource = {
-      jev: allCorrections.filter((c) => c.predictionSource === "jev"),
       rule: allCorrections.filter((c) => c.predictionSource === "rule"),
       gemini: allCorrections.filter((c) => c.predictionSource === "gemini"),
       openrouter: allCorrections.filter(
@@ -1140,9 +1132,7 @@ export const getCategorizationStats = query({
       openrouterCount: bySource.openrouter.length,
       openaiCount: bySource.openai.length,
       memoryCount: bySource.memory.length,
-      jevCount: bySource.jev.length,
       ruleCount: bySource.rule.length,
-      jevAccuracy: bySource.jev.length ? 100 * bySource.jev.filter((row) => row.wasCorrect).length / bySource.jev.length : 0,
       ruleAccuracy: bySource.rule.length ? 100 * bySource.rule.filter((row) => row.wasCorrect).length / bySource.rule.length : 0,
     };
   },

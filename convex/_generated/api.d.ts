@@ -22,7 +22,6 @@ import type * as intelligence_categorization_categoryResolver from "../intellige
 import type * as intelligence_categorization_confidence from "../intelligence/categorization/confidence.js";
 import type * as intelligence_categorization_feedback from "../intelligence/categorization/feedback.js";
 import type * as intelligence_categorization_gemini from "../intelligence/categorization/gemini.js";
-import type * as intelligence_categorization_jev from "../intelligence/categorization/jev.js";
 import type * as intelligence_categorization_memory from "../intelligence/categorization/memory.js";
 import type * as intelligence_categorization_modelContract from "../intelligence/categorization/modelContract.js";
 import type * as intelligence_categorization_normalize from "../intelligence/categorization/normalize.js";
@@ -31,7 +30,6 @@ import type * as intelligence_categorization_openrouter from "../intelligence/ca
 import type * as intelligence_categorization_pipeline from "../intelligence/categorization/pipeline.js";
 import type * as intelligence_categorization_rag from "../intelligence/categorization/rag.js";
 import type * as intelligence_categorization_rules from "../intelligence/categorization/rules.js";
-import type * as intelligence_categorization_selectiveFallback from "../intelligence/categorization/selectiveFallback.js";
 import type * as intelligence_categorization_types from "../intelligence/categorization/types.js";
 import type * as intelligence_categorization_validators from "../intelligence/categorization/validators.js";
 import type * as intelligence_categorizationMemory from "../intelligence/categorizationMemory.js";
@@ -117,7 +115,6 @@ declare const fullApi: ApiFromModules<{
   "intelligence/categorization/confidence": typeof intelligence_categorization_confidence;
   "intelligence/categorization/feedback": typeof intelligence_categorization_feedback;
   "intelligence/categorization/gemini": typeof intelligence_categorization_gemini;
-  "intelligence/categorization/jev": typeof intelligence_categorization_jev;
   "intelligence/categorization/memory": typeof intelligence_categorization_memory;
   "intelligence/categorization/modelContract": typeof intelligence_categorization_modelContract;
   "intelligence/categorization/normalize": typeof intelligence_categorization_normalize;
@@ -126,7 +123,6 @@ declare const fullApi: ApiFromModules<{
   "intelligence/categorization/pipeline": typeof intelligence_categorization_pipeline;
   "intelligence/categorization/rag": typeof intelligence_categorization_rag;
   "intelligence/categorization/rules": typeof intelligence_categorization_rules;
-  "intelligence/categorization/selectiveFallback": typeof intelligence_categorization_selectiveFallback;
   "intelligence/categorization/types": typeof intelligence_categorization_types;
   "intelligence/categorization/validators": typeof intelligence_categorization_validators;
   "intelligence/categorizationMemory": typeof intelligence_categorizationMemory;

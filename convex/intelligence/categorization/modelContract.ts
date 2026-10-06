@@ -24,8 +24,7 @@ ${evidence.map((item) => `- ${item.reason}`).join("\n")}`;
 
 export const categorizationOutputSchema = (
   categories: CategoryLike[],
-  funds: FundLike[],
-  selective = false
+  funds: FundLike[]
 ) => ({
   type: "object",
   properties: {
@@ -35,34 +34,35 @@ export const categorizationOutputSchema = (
         type: "object",
         properties: {
           rowId: { type: "string" },
-          ...(selective ? {} : { description: { type: "string" } }),
+          description: { type: "string" },
           category: {
-            type: selective ? ["string", "null"] : "string",
+            type: "string",
             enum: [
               ...categoryNamesForPrompt(categories, "Income"),
               ...categoryNamesForPrompt(categories, "Expenditure"),
-              ...(selective ? [null] : []),
             ],
           },
           fundName: {
-            type: selective ? ["string", "null"] : "string",
-            enum: [...funds.map((fund) => fund.name), ...(selective ? [null] : [])],
+            type: "string",
+            enum: funds.map((fund) => fund.name),
           },
           confidence: {
             type: "string",
             enum: ["High", "Medium", "Low"],
           },
-          ...(selective ? {} : { isGiftAidEligible: { type: "boolean" } }),
+          isGiftAidEligible: { type: "boolean" },
           donorName: { type: ["string", "null"] },
-          ...(selective ? {} : { evidence: { type: "string" } }),
+          evidence: { type: "string" },
         },
         required: [
           "rowId",
+          "description",
           "category",
           "fundName",
           "confidence",
+          "isGiftAidEligible",
           "donorName",
-          ...(selective ? [] : ["description", "isGiftAidEligible", "evidence"]),
+          "evidence",
         ],
         additionalProperties: false,
       },

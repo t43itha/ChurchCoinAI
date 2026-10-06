@@ -9,7 +9,6 @@ export type CategorizationSource =
   | "gemini"
   | "openrouter"
   | "openai"
-  | "jev"
   | "none";
 
 export type ConfidenceLabel = "High" | "Medium" | "Low";
@@ -30,9 +29,6 @@ export type FundLike = {
 };
 
 export type CategorizationInput = {
-  // Internal provider plan, never accepted from a public action argument.
-  requestedFields?: CategorizationField[];
-  fundName?: string;
   rowId?: string;
   category?: string;
   fundId?: string;
@@ -40,19 +36,6 @@ export type CategorizationInput = {
   description: string;
   amount: number;
   type: TransactionType;
-};
-
-export type CategorizationField = "category" | "fund" | "donor";
-export type DecisionMetadata = {
-  model: string;
-  requestId?: string;
-  templateVersion: string;
-  categoryProbability?: number;
-  fundProbability?: number;
-  categoryConfidence?: number;
-  fundConfidence?: number;
-  fieldSources?: Partial<Record<CategorizationField, CategorizationSource | "existing">>;
-  fallbackReasons?: string[];
 };
 
 export type NormalizedTransaction = CategorizationInput & {
@@ -72,7 +55,6 @@ export type CategorizationEvidence = {
 
 export type CategorizationSuggestion = {
   rowId?: string;
-  decisionMetadata?: DecisionMetadata;
   description: string;
   amount: number;
   type: TransactionType;

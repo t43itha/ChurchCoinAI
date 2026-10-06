@@ -87,11 +87,11 @@ describe("import category and date acceptance", () => {
       setPendingTransactions: (update: any) => { scope.pendingTransactions = typeof update === "function" ? update(scope.pendingTransactions) : update; },
       setCategorizationTransactionCount: vi.fn(), setCategorizationStatusMessage: vi.fn(), setIsProcessingAI: vi.fn(),
       setOriginalPredictions: vi.fn(), categorizeWithPipeline: vi.fn(() => response),
-      applySmallIncomeDefaults, getPipelineSourceLabel: () => "Jev suggestion", getPipelineConfidenceLabel: () => "High",
+      applySmallIncomeDefaults, getPipelineSourceLabel: () => "Luna AI", getPipelineConfidenceLabel: () => "High",
     };
     const running = uiFunction("handleApplyAI", scope)();
     scope.pendingTransactions = scope.pendingTransactions.filter((row: any) => row.reviewRowId !== "c").map((row: any) => row.reviewRowId === "a" ? { ...row, category: "Building Fund" } : row);
-    finish(["c", "b", "a"].map((id) => ({ rowId: id, category: "Offerings", fundId: "general", predictionSource: "jev", requiresReview: true, isGiftAidEligible: true })));
+    finish(["c", "b", "a"].map((id) => ({ rowId: id, category: "Offerings", fundId: "general", predictionSource: "openrouter", requiresReview: true, isGiftAidEligible: true })));
     await running;
     expect(scope.pendingTransactions).toHaveLength(2);
     expect(scope.pendingTransactions[0].category).toBe("Building Fund");

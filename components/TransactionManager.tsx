@@ -17,7 +17,6 @@ import { resolveCategoryForTransaction } from '../convex/intelligence/categoriza
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
-import type { CategorizationSuggestion } from '../convex/intelligence/categorization/types';
 
 interface Category {
   _id: string;
@@ -52,10 +51,9 @@ type PendingReviewTransaction = Partial<Transaction> & {
   bankConnectionId?: Id<"bankConnections">;
 };
 
-type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'jev' | 'rag' | 'none';
+type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
 
 type OriginalPrediction = {
-  decisionMetadata?: CategorizationSuggestion['decisionMetadata'];
   category: string;
   fundId?: string;
   isGiftAidEligible?: boolean;
@@ -884,8 +882,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         return 'Luna AI (OpenAI)';
       case 'openrouter':
         return 'Luna AI';
-      case 'jev':
-        return 'Jev suggestion';
       case 'none':
       default:
         return 'No AI suggestion';
@@ -938,8 +934,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               updated.set(suggestion.rowId, { category: suggestion.category, fundId: suggestion.fundId,
                 isGiftAidEligible: suggestion.isGiftAidEligible, donorName: suggestion.donorName,
                 confidence: getPipelineConfidenceLabel(suggestion), confidenceScore: suggestion.confidence,
-                predictionSource: suggestion.predictionSource, ragScore: suggestion.ragScore,
-                decisionMetadata: suggestion.decisionMetadata });
+                predictionSource: suggestion.predictionSource, ragScore: suggestion.ragScore });
             });
             return updated;
           });
@@ -1042,7 +1037,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         aiPredictedCategory: prediction.category,
                         aiConfidence: prediction.confidence,
                         predictionSource: prediction.predictionSource,
-                        decisionMetadata: prediction.decisionMetadata,
                         ragScore: prediction.ragScore,
                         finalCategory: pt.category || '',
                         aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,

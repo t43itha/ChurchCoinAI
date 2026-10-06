@@ -6,7 +6,6 @@ import { normalizeDescription, normalizeTransaction } from "./normalize";
 import { applyDeterministicRules } from "./rules";
 import { applySmallIncomeDefaults, effectiveCategories, isSmallIncome } from "../../../lib/smallIncomeDefaults";
 import { resolveCategoryForTransaction } from "./categoryResolver";
-import { mergeSelectiveFallback } from "./selectiveFallback";
 import {
   CategoryLike,
   CategorizationInput,
@@ -178,10 +177,6 @@ export const mergeAIFallback = (
       : queues.get(normalizeDescription(transaction.description))?.shift();
     if (!rawSuggestion) {
       return suggestion;
-    }
-
-    if (suggestion.decisionMetadata?.fieldSources) {
-      return mergeSelectiveFallback(suggestion, rawSuggestion, transaction, categories, funds, predictionSource);
     }
 
     const validated = validateGeminiSuggestion(
