@@ -96,8 +96,8 @@ export const getAwaitingBanking = query({
         .collect(),
       ctx.db
         .query("cashBankingReconciliations")
-        .withIndex("by_organization", (q) =>
-          q.eq("organizationId", user.organizationId)
+        .withIndex("by_organization_status", (q) =>
+          q.eq("organizationId", user.organizationId).eq("status", "completed")
         )
         .collect(),
     ]);
