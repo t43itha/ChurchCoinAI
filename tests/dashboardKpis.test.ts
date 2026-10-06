@@ -925,9 +925,9 @@ describe("dashboard KPI helpers", () => {
         ],
         bankAccountFundIds: ["general", "building"],
         statementSessions: [
-          { fundId: "general", periodEnd: "2026-09-30", status: "completed" },
-          { fundId: "youth", periodEnd: "2026-08-31", status: "completed" },
-          { fundId: "youth", periodEnd: "2026-09-30", status: "draft" },
+          { fundId: "general", periodStart: "2026-09-01", periodEnd: "2026-09-30", status: "completed" },
+          { fundId: "youth", periodStart: "2026-08-01", periodEnd: "2026-08-31", status: "completed" },
+          { fundId: "youth", periodStart: "2026-09-01", periodEnd: "2026-09-30", status: "draft" },
         ],
       });
 
@@ -936,6 +936,65 @@ describe("dashboard KPI helpers", () => {
         { fundId: "building", name: "Building Fund", reconciledThrough: null },
         { fundId: "youth", name: "Youth Fund", reconciledThrough: "2026-08-31" },
       ]);
+    });
+
+    it("does not let a later statement hide an unfinished or missing earlier one", () => {
+      const statement = (fundId: string, month: string, status = "completed") => ({
+        fundId,
+        periodStart: `2026-${month}-01`,
+        periodEnd: `2026-${month}-${month === "09" ? "30" : "31"}`,
+        status,
+      });
+      const summary = summarize({
+        now: new Date("2026-10-06T12:00:00Z"),
+        funds: [
+          { _id: "general", name: "General Fund", type: "Unrestricted" },
+          { _id: "building", name: "Building Fund", type: "Restricted" },
+          { _id: "youth", name: "Youth Fund", type: "Restricted" },
+        ],
+        bankAccountFundIds: ["general", "building", "youth"],
+        statementSessions: [
+          statement("general", "07"),
+          statement("general", "08", "reopened"),
+          statement("general", "09"),
+          statement("building", "07"),
+          statement("building", "09"),
+          statement("youth", "07"),
+          statement("youth", "08"),
+          statement("youth", "09"),
+        ],
+      });
+
+      expect(summary.readiness.statementsBehind).toEqual([
+        { fundId: "general", name: "General Fund", reconciledThrough: "2026-07-31" },
+        { fundId: "building", name: "Building Fund", reconciledThrough: "2026-07-31" },
+      ]);
+    });
+
+    it("does not count purchases from declared donors as missed Gift Aid", () => {
+      const summary = summarize({
+        donors: [{ _id: "declared", name: "Declared", type: "Individual", isGiftAidActive: true }],
+        transactions: [
+          income("book", "2026-05-03", 40, { donorId: "declared", category: "Merchandise" }),
+          income("offering", "2026-05-10", 100, { donorId: "declared" }),
+        ],
+      });
+
+      expect(summary.donorFollowUp).toMatchObject({ missedGiftAidCount: 1, missedGiftAidValue: 25 });
+    });
+
+    it("leaves future-dated entries out of figures for a period in progress", () => {
+      const summary = summarize({
+        periodKey: "currentMonth",
+        transactions: [
+          income("gift", "2026-06-07", 500),
+          expense("rent-due", "2026-06-20", 900, { isReconciled: false }),
+        ],
+      });
+
+      expect(summary.health.netMovement).toBe(500);
+      expect(summary.readiness.unreconciledExpenditureCount).toBe(0);
+      expect(summary.trends.monthlyIncomeExpenditure.at(-1)?.net).toBe(500);
     });
   });
 });
