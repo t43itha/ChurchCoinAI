@@ -1,5 +1,5 @@
 import { categoryNamesForPrompt } from "./categoryResolver";
-import { CATEGORIZATION_RULES } from "./gemini";
+import { accountingCriteria } from "./policy";
 import {
   CategoryLike,
   CategorizationEvidence,
@@ -11,13 +11,13 @@ export const categorizationModelInstructions = (
   funds: FundLike[],
   evidence: CategorizationEvidence[]
 ): string => `You are a UK church finance categorisation assistant.
-Return exactly one strict JSON prediction for every supplied transaction.
+Return exactly one strict JSON prediction for every supplied transaction, copying its rowId exactly. Never match rows by description.
 
 Income categories: ${categoryNamesForPrompt(categories, "Income").join(", ")}
 Expenditure categories: ${categoryNamesForPrompt(categories, "Expenditure").join(", ")}
 Funds: ${funds.map((fund) => fund.name).join(", ")}
 
-${CATEGORIZATION_RULES}
+${accountingCriteria(categories, funds)}
 
 Relevant evidence reasons:
 ${evidence.map((item) => `- ${item.reason}`).join("\n")}`;
@@ -33,6 +33,7 @@ export const categorizationOutputSchema = (
       items: {
         type: "object",
         properties: {
+          rowId: { type: "string" },
           description: { type: "string" },
           category: {
             type: "string",
@@ -54,6 +55,7 @@ export const categorizationOutputSchema = (
           evidence: { type: "string" },
         },
         required: [
+          "rowId",
           "description",
           "category",
           "fundName",

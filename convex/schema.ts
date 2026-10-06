@@ -594,6 +594,7 @@ export default defineSchema({
     aiPredictedCategory: v.string(),
     aiConfidence: v.string(),
     predictionSource: v.union(
+      v.literal("rule"),
       v.literal("gemini"),
       v.literal("openrouter"),
       v.literal("openai"),

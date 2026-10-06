@@ -20,6 +20,8 @@ import {
 } from "../intelligence/categorization/gemini";
 import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
+import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
+import { effectiveCategories } from "../../lib/transactionCategories";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
@@ -151,15 +153,13 @@ export const categorizeTransactions = action({
 // Preview the categorization pipeline, using the configured AI only for unresolved rows.
 export const categorizeWithPipelinePreview = action({
   args: {
-    transactions: v.array(
-      v.object({
-        description: v.string(),
-        amount: v.number(),
-        type: v.union(v.literal("Income"), v.literal("Expenditure")),
-      })
-    ),
+    transactions: v.array(categorizationInputValidator),
   },
+  returns: v.array(categorizationSuggestionValidator),
   handler: async (ctx, args) => {
+    if (args.transactions.length > 500 || args.transactions.some((row) => !Number.isFinite(row.amount) || row.amount <= 0 || row.description.length > 4000 || (row.rowId?.length ?? 0) > 100)) throw new Error("Invalid categorisation batch (maximum 500 rows)");
+    const transactions = args.transactions.map((row, index) => ({ ...row, rowId: row.rowId ?? `row-${index}` }));
+    if (transactions.some((row) => !row.rowId.trim()) || new Set(transactions.map((row) => row.rowId)).size !== transactions.length) throw new Error("Missing or duplicate categorisation row IDs");
     const startedAt = performance.now();
     const user = await requireUser(ctx);
     const authenticatedAt = performance.now();
@@ -168,14 +168,14 @@ export const categorizeWithPipelinePreview = action({
       internal.intelligence.categorizationMemory.getPipelineContext,
       {
         organizationId: user.organizationId,
-        signatures: categorizationSignatures(args.transactions),
+        signatures: categorizationSignatures(transactions),
       }
     );
     const contextLoadedAt = performance.now();
-    const categoryDetails = pipelineContext.categories;
+    const categoryDetails = effectiveCategories(pipelineContext.categories);
     const funds = pipelineContext.funds;
     const initialSuggestions = categorizeFromContext(
-      args.transactions,
+      transactions,
       categoryDetails,
       funds,
       pipelineContext.memories
@@ -183,9 +183,9 @@ export const categorizeWithPipelinePreview = action({
     const locallyCategorizedAt = performance.now();
     const unresolvedTransactions = initialSuggestions
       .map((suggestion, index) =>
-        suggestion.predictionSource === "none" ? args.transactions[index] : null
+        suggestion.predictionSource === "none" ? transactions[index] : null
       )
-      .filter((transaction): transaction is (typeof args.transactions)[number] =>
+      .filter((transaction): transaction is NonNullable<typeof transaction> =>
         Boolean(transaction)
       );
 
@@ -301,6 +301,7 @@ export const categorizeWithPipelinePreview = action({
                 items: {
                   type: Type.OBJECT,
                   properties: {
+                    rowId: { type: Type.STRING },
                     description: { type: Type.STRING },
                     category: { type: Type.STRING },
                     fundName: { type: Type.STRING },
@@ -309,7 +310,7 @@ export const categorizeWithPipelinePreview = action({
                       description: "High, Medium, or Low",
                     },
                     isGiftAidEligible: { type: Type.BOOLEAN },
-                    donorName: { type: Type.STRING },
+                    donorName: { type: Type.STRING, nullable: true },
                     evidence: { type: Type.STRING },
                   },
                 },
@@ -330,7 +331,7 @@ export const categorizeWithPipelinePreview = action({
           modelMs = Math.round(performance.now() - modelStartedAt);
         }
       },
-      args.transactions,
+      transactions,
       categoryDetails,
       funds,
       (error) => {

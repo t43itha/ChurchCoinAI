@@ -12,7 +12,9 @@ import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/csvImport';
-import { categoryNamesForTransactionTypes } from '../lib/transactionCategories';
+import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
+import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
+import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
 import { isVoidedTransaction, sumReportableIncome, sumReportableSigned } from '../lib/reportableTransactions';
 import { roundMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
@@ -45,6 +47,8 @@ type BankSyncCursor = {
 };
 
 type PendingReviewTransaction = Partial<Transaction> & {
+  reviewRowId?: string;
+  requiresReview?: boolean;
   source?: 'bank';
   providerTransactionId?: string;
   bankConnectionId?: Id<"bankConnections">;
@@ -74,19 +78,6 @@ const reindexSetAfterRemoval = (values: Set<number>, removedIndex: number): Set<
   });
   return reindexed;
 };
-
-const reindexMapAfterRemoval = <T,>(values: Map<number, T>, removedIndex: number): Map<number, T> => {
-  const reindexed = new Map<number, T>();
-  values.forEach((value, index) => {
-    if (index < removedIndex) {
-      reindexed.set(index, value);
-    } else if (index > removedIndex) {
-      reindexed.set(index - 1, value);
-    }
-  });
-  return reindexed;
-};
-
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -128,8 +119,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
+  const importCategories = useMemo(() => effectiveCategories(categories), [categories]);
   const categoryNamesFor = (type?: TransactionType) =>
-    categoryNamesForTransactionTypes(categories, [type]);
+    categoryNamesForTransactionTypes(importCategories, [type]);
   const fundNamesById = useMemo(
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
     [funds]
@@ -143,7 +135,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Track original AI predictions for correction learning
-  const [originalPredictions, setOriginalPredictions] = useState<Map<number, OriginalPrediction>>(new Map());
+  const categorizationRun = useRef(0);
+  const [originalPredictions, setOriginalPredictions] = useState<Map<string, OriginalPrediction>>(new Map());
   
   // Smart Link State
   const [isReconciling, setIsReconciling] = useState(false);
@@ -641,7 +634,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           notify("Error", "Add a fund before importing transactions.");
           return;
       }
-      const defaultFundId = funds[0]._id;
 
       const parsed: PendingReviewTransaction[] = [];
       let skippedInvalidAmounts = 0;
@@ -686,14 +678,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           }
 
           if (!sawAmount || amount === 0) return;
-          parsed.push({
+          parsed.push(applySmallIncomeDefaults({
+              reviewRowId: crypto.randomUUID(),
               date: dateStr,
               description,
               amount,
               type,
               category: "",
-              fundId: defaultFundId,
-          });
+          }, categories, funds));
       });
 
       if (skippedInvalidAmounts > 0) {
@@ -724,6 +716,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // --------------------
 
   const clearBankSyncReviewState = () => {
+    categorizationRun.current += 1;
+    setIsProcessingAI(false);
+    setCategorizationStatusMessage('');
+    setCategorizationTransactionCount(0);
     setPendingTransactions([]);
     setDuplicateWarnings(new Set());
     setNextBankSyncCursor(null);
@@ -735,7 +731,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const removePendingTransactionAt = useCallback((removedIndex: number) => {
     setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
     setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
-    setOriginalPredictions((current) => reindexMapAfterRemoval(current, removedIndex));
   }, []);
 
   const updatePendingTransactionAt = useCallback((index: number, updates: Partial<PendingReviewTransaction>) => {
@@ -756,18 +751,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     append: boolean,
     bankConnectionId: Id<"bankConnections">
   ) => {
-    const pending: PendingReviewTransaction[] = syncedTransactions.map((tx) => ({
+    const pending: PendingReviewTransaction[] = syncedTransactions.map((tx) => applySmallIncomeDefaults({
+      reviewRowId: crypto.randomUUID(),
       date: tx.date,
       description: tx.description,
       amount: tx.amount,
       type: tx.type,
-      fundId: tx.fundId || funds[0]?._id,
+      fundId: tx.fundId || undefined,
       category: '',
       isGiftAidEligible: false,
-      source: 'bank',
+      source: 'bank' as const,
       providerTransactionId: tx.providerTransactionId,
       bankConnectionId,
-    }));
+    }, categories, funds));
 
     setPendingTransactions((current) => {
       const startIndex = append ? current.length : 0;
@@ -898,69 +894,69 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleApplyAI = async () => {
-    const transactionCount = pendingTransactions.length;
-    const entryLabel = transactionCount === 1 ? 'entry' : 'entries';
-    let terminalStatus = `Auto-categorisation failed for ${transactionCount} ${entryLabel}. Please try again.`;
-    setCategorizationTransactionCount(transactionCount);
+    const run = ++categorizationRun.current;
+    const snapshot = pendingTransactions.map((row) => ({ ...row, reviewRowId: row.reviewRowId ?? crypto.randomUUID() }));
+    setPendingTransactions(snapshot);
+    setCategorizationTransactionCount(snapshot.length);
     setCategorizationStatusMessage('');
     setIsProcessingAI(true);
-    try {
-        // Use the categorization pipeline, with the configured AI only for unresolved transactions.
-        const transactionsForAI = pendingTransactions.map(t => ({
-            description: t.description || '',
-            amount: t.amount || 0,
-            type: (t.type || 'Income') as 'Income' | 'Expenditure',
-        }));
-
-        const suggestions = await categorizeWithPipeline({
-            transactions: transactionsForAI
-        });
-
-        // Track original AI predictions for correction learning
-        const predictions = new Map<number, OriginalPrediction>();
-
-        const updatedPending = pendingTransactions.map((t, idx) => {
-            const suggestion = suggestions[idx];
-            if (!suggestion) return t;
-            const confidence = getPipelineConfidenceLabel(suggestion);
-            const confidenceScore = typeof suggestion.confidence === 'number' ? suggestion.confidence : undefined;
-            const predictionSource = suggestion.predictionSource || 'none';
-            const ragScore = typeof suggestion.ragScore === 'number' ? suggestion.ragScore : undefined;
-
-            // Store original prediction for later comparison
-            predictions.set(idx, {
-                category: suggestion.category || '',
-                fundId: suggestion.fundId,
-                isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.donorName,
-                confidence,
-                confidenceScore,
-                predictionSource,
-                ragScore,
+    setOriginalPredictions(new Map());
+    let next = 0;
+    let completed = 0;
+    let failed = 0;
+    const worker = async () => {
+      while (next < snapshot.length && categorizationRun.current === run) {
+        const batch = snapshot.slice(next, next += 20);
+        try {
+          const suggestions = await categorizeWithPipeline({ transactions: batch.map((row) => ({
+            rowId: row.reviewRowId, description: row.description ?? '', amount: row.amount ?? 0,
+            type: row.type ?? 'Income', category: row.category,
+            fundId: funds.some((fund) => fund._id === row.fundId) ? row.fundId as Id<'funds'> : undefined,
+            donorName: row.donorName,
+          })) });
+          if (categorizationRun.current !== run) return;
+          const byId = new Map(suggestions.map((suggestion) => [suggestion.rowId, suggestion]));
+          const originals = new Map(batch.map((row) => [row.reviewRowId, row]));
+          setPendingTransactions((current) => current.map((row) => {
+            const original = originals.get(row.reviewRowId ?? '');
+            const suggestion = byId.get(row.reviewRowId);
+            // A user edit or removal while inference was running wins.
+            if (!suggestion || row !== original) return row;
+            return applySmallIncomeDefaults({
+              ...row, category: suggestion.category || row.category,
+              fundId: suggestion.fundId || row.fundId,
+              donorName: row.donorName ?? suggestion.donorName ?? undefined,
+              // Model inference cannot establish a donor's declaration status.
+              isGiftAidEligible: row.isGiftAidEligible ?? false,
+              requiresReview: suggestion.requiresReview,
+              notes: `${getPipelineSourceLabel(suggestion.predictionSource, suggestion.ragScore)} | Confidence: ${getPipelineConfidenceLabel(suggestion)}`,
+            }, categories, funds);
+          }));
+          setOriginalPredictions((current) => {
+            const updated = new Map(current);
+            suggestions.forEach((suggestion) => {
+              if (!suggestion.rowId) return;
+              updated.set(suggestion.rowId, { category: suggestion.category, fundId: suggestion.fundId,
+                isGiftAidEligible: suggestion.isGiftAidEligible, donorName: suggestion.donorName,
+                confidence: getPipelineConfidenceLabel(suggestion), confidenceScore: suggestion.confidence,
+                predictionSource: suggestion.predictionSource, ragScore: suggestion.ragScore });
             });
-
-            return {
-                ...t,
-                category: suggestion.category || t.category,
-                ...(suggestion.fundId ? { fundId: suggestion.fundId } : {}),
-                isGiftAidEligible: suggestion.isGiftAidEligible,
-                donorName: suggestion.donorName || undefined,
-                notes: `${getPipelineSourceLabel(predictionSource, ragScore)} | Confidence: ${confidence}`,
-            };
-        });
-
-        setOriginalPredictions(predictions);
-        setPendingTransactions(updatedPending);
-        terminalStatus = `Auto-categorisation complete. ${transactionCount} ${entryLabel} ready to review.`;
-    } catch (error) {
-        console.error("AI Error", error);
-        notify(
-          "Error",
-          error instanceof Error ? error.message : "Failed to auto-categorize. Please check API connection."
-        );
+            return updated;
+          });
+        } catch {
+          failed += batch.length;
+        }
+        completed += batch.length;
+        if (categorizationRun.current === run) setCategorizationStatusMessage(`${completed} of ${snapshot.length} entries processed. Suggestions are ready to review as they arrive.`);
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(2, Math.ceil(snapshot.length / 20)) }, worker));
     } finally {
+      if (categorizationRun.current === run) {
         setIsProcessingAI(false);
-        setCategorizationStatusMessage(terminalStatus);
+        setCategorizationStatusMessage(failed ? `${snapshot.length - failed} entries processed; ${failed} need manual review or a retry.` : `Auto-categorisation complete. ${snapshot.length} entries ready to review.`);
+      }
     }
   };
 
@@ -980,22 +976,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       notify("Error", "Add a fund before importing transactions.");
       return;
     }
-    if (pendingTransactions.some((transaction) => !transaction.category || !isRealIsoDate(transaction.date || ""))) {
-      notify("Error", "Every row needs a real date and a category before import.");
+    const importRows = pendingTransactions.map((transaction) => applySmallIncomeDefaults(transaction, categories, funds));
+    setPendingTransactions(importRows);
+    if (importRows.some((transaction) => !resolveCategoryForTransaction(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) || !funds.some((fund) => fund._id === transaction.fundId) || !isRealIsoDate(transaction.date || ""))) {
+      notify("Error", "Every row needs a real date, a valid category and a valid fund before import.");
       return;
     }
 
     try {
         // Build transactions - NO auto-donor creation or pledge linking
         // Just store the extracted donor name as text for manual linking later
-        const transactionsToCreate = pendingTransactions.map((pt: any) => {
+        const transactionsToCreate = importRows.map((pt) => {
             return {
-                date: pt.date,
+                date: pt.date!,
                 description: pt.description || '',
                 amount: pt.amount || 0,
                 type: (pt.type || 'Income') as 'Income' | 'Expenditure',
                 category: pt.category,
-                fundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+                fundId: pt.fundId as Id<"funds">,
                 isGiftAidEligible: pt.isGiftAidEligible || false,
                 donorName: pt.donorName, // Keep extracted name for reference
                 // No auto-linking: donorId and pledgeId left undefined
@@ -1033,11 +1031,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
         // Record corrections for ML learning if we have original predictions
         if (originalPredictions.size > 0 && result?.ids) {
-            const correctionsToRecord = pendingTransactions
+            const correctionsToRecord = importRows
                 .map((pt, idx) => {
-                    const prediction = originalPredictions.get(idx);
+                    const prediction = originalPredictions.get(pt.reviewRowId ?? '');
                     if (!prediction || !result.ids[idx]) return null;
-                    if (prediction.predictionSource === 'rule') return null;
 
                     return {
                         transactionId: result.ids[idx] as Id<"transactions">,
@@ -1051,7 +1048,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
                         aiPredictedDonorName: prediction.donorName || undefined,
                         aiConfidenceScore: prediction.confidenceScore,
-                        finalFundId: (pt.fundId || funds[0]._id) as Id<"funds">,
+                        finalFundId: pt.fundId as Id<"funds">,
                         finalGiftAidEligible: pt.isGiftAidEligible || false,
                         finalDonorName: pt.donorName || undefined,
                     };
@@ -2478,6 +2475,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                               <p className="mt-2 break-words text-sm font-medium text-ink">
                                 {transaction.description || 'No description'}
                               </p>
+                              {transaction.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
                               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <label className="min-w-0">
                                   <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Category</span>
@@ -2540,7 +2538,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </thead>
                         <tbody>
                             {pendingTransactions.map((t, i) => (
-                                <tr key={i} className={duplicateWarnings.has(i) ? 'bg-amber-50' : ''}>
+                                <tr key={t.reviewRowId ?? i} className={duplicateWarnings.has(i) ? 'bg-amber-50' : ''}>
                                     <td className="py-3 text-grey-mid font-mono text-xs">
                                       <div className="flex items-center gap-2">
                                         {duplicateWarnings.has(i) && (
@@ -2553,6 +2551,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     </td>
                                     <td className="py-3 font-medium text-ink text-sm overflow-hidden">
                                       <div className="truncate" title={t.description}>{t.description}</div>
+                                      {t.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
                                     <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
@@ -2595,7 +2594,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         setShowReviewModal(false);
                         clearBankSyncReviewState();
                       }}
-                      disabled={isProcessingAI}
                       className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded-sm transition-colors disabled:cursor-wait disabled:opacity-50"
                     >
                       Discard

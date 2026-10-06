@@ -10,6 +10,23 @@ interface CategoryOption {
 const normalizeName = (name: string) => name.trim().toLowerCase();
 const seededCategories = getRCICategorySeedData();
 
+// Writes backfill missing seed categories and type legacy seeded rows before
+// validating. Mirror that backfill without changing any records.
+export function effectiveCategories(categories: CategoryOption[]): CategoryOption[] {
+  const result = categories.map((category) => ({ ...category }));
+  for (const seed of seededCategories) {
+    const existing = result.find(
+      (category) => normalizeName(category.name) === normalizeName(seed.name)
+    );
+    if (existing) {
+      existing.transactionType ??= seed.transactionType;
+    } else {
+      result.push(seed);
+    }
+  }
+  return result;
+}
+
 export function categoryNamesForTransactionTypes(
   categories: CategoryOption[],
   transactionTypes: Iterable<TransactionType | undefined>
@@ -17,19 +34,8 @@ export function categoryNamesForTransactionTypes(
   const types = [...new Set(transactionTypes)];
   if (types.length === 0 || types.includes(undefined)) return [];
 
-  // Writes backfill missing seed categories and type legacy seeded rows before
-  // validating. Offer only names that will still be valid after that backfill.
-  const categoriesAfterBackfill = categories.map((category) => ({ ...category }));
-  for (const seed of seededCategories) {
-    const existing = categoriesAfterBackfill.find(
-      (category) => normalizeName(category.name) === normalizeName(seed.name)
-    );
-    if (existing) {
-      existing.transactionType ??= seed.transactionType;
-    } else {
-      categoriesAfterBackfill.push(seed);
-    }
-  }
+  // Offer only names that will still be valid after the write-time backfill.
+  const categoriesAfterBackfill = effectiveCategories(categories);
 
   return categories
     .filter((category) =>

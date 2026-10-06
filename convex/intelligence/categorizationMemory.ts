@@ -51,6 +51,7 @@ export const getPipelineContext = internalQuery({
     organizationId: v.id("organizations"),
     signatures: v.array(v.string()),
   },
+  returns: v.object({ categories: v.array(v.any()), funds: v.array(v.any()), memories: v.array(v.any()) }),
   handler: async (ctx, args) => {
     const uniqueSignatures = [...new Set(args.signatures)];
     const [categories, funds, memories] = await Promise.all([

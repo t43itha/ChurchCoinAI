@@ -93,6 +93,9 @@ export const applyDeterministicRules = (
   for (const rule of RULES) {
     if (rule.transactionType !== transaction.type) continue;
     if (!rule.pattern.test(normalized)) continue;
+    // Generic keywords must not win over an explicitly narrower purpose.
+    if (rule.id === "utilities" && /\bmanse\b/.test(normalized)) continue;
+    if (rule.id === "offerings" && /\b(women|womens|women's|men|mens|men's|mission|missions|relief|outreach|building|roof|renovation|charity)\b/.test(normalized)) continue;
 
     const category = resolveCategoryForTransaction(
       rule.category,

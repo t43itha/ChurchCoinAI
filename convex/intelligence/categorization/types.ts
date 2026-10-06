@@ -24,9 +24,15 @@ export type CategoryLike = {
 export type FundLike = {
   _id: Id<"funds"> | string;
   name: string;
+  description?: string;
+  type?: string;
 };
 
 export type CategorizationInput = {
+  rowId?: string;
+  category?: string;
+  fundId?: string;
+  donorName?: string | null;
   description: string;
   amount: number;
   type: TransactionType;
@@ -48,6 +54,7 @@ export type CategorizationEvidence = {
 };
 
 export type CategorizationSuggestion = {
+  rowId?: string;
   description: string;
   amount: number;
   type: TransactionType;

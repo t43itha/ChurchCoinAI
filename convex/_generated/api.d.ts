@@ -28,9 +28,11 @@ import type * as intelligence_categorization_normalize from "../intelligence/cat
 import type * as intelligence_categorization_openai from "../intelligence/categorization/openai.js";
 import type * as intelligence_categorization_openrouter from "../intelligence/categorization/openrouter.js";
 import type * as intelligence_categorization_pipeline from "../intelligence/categorization/pipeline.js";
+import type * as intelligence_categorization_policy from "../intelligence/categorization/policy.js";
 import type * as intelligence_categorization_rag from "../intelligence/categorization/rag.js";
 import type * as intelligence_categorization_rules from "../intelligence/categorization/rules.js";
 import type * as intelligence_categorization_types from "../intelligence/categorization/types.js";
+import type * as intelligence_categorization_validators from "../intelligence/categorization/validators.js";
 import type * as intelligence_categorizationMemory from "../intelligence/categorizationMemory.js";
 import type * as intelligence_generateInsights from "../intelligence/generateInsights.js";
 import type * as intelligence_index from "../intelligence/index.js";
@@ -121,9 +123,11 @@ declare const fullApi: ApiFromModules<{
   "intelligence/categorization/openai": typeof intelligence_categorization_openai;
   "intelligence/categorization/openrouter": typeof intelligence_categorization_openrouter;
   "intelligence/categorization/pipeline": typeof intelligence_categorization_pipeline;
+  "intelligence/categorization/policy": typeof intelligence_categorization_policy;
   "intelligence/categorization/rag": typeof intelligence_categorization_rag;
   "intelligence/categorization/rules": typeof intelligence_categorization_rules;
   "intelligence/categorization/types": typeof intelligence_categorization_types;
+  "intelligence/categorization/validators": typeof intelligence_categorization_validators;
   "intelligence/categorizationMemory": typeof intelligence_categorizationMemory;
   "intelligence/generateInsights": typeof intelligence_generateInsights;
   "intelligence/index": typeof intelligence_index;

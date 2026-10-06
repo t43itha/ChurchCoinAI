@@ -1,7 +1,7 @@
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
   assertValidTransactionAmount,
@@ -10,6 +10,7 @@ import {
 import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 import { roundMoney } from "../lib/money";
+import { applySmallIncomeDefaults, isSmallIncome } from "../../lib/smallIncomeDefaults";
 import { refreshPledgeStatus } from "../lib/pledgeStatus";
 import {
   ensureTypedCategories,
@@ -269,6 +270,12 @@ export const update = mutation({
 
 // Bulk create transactions (for CSV import)
 export const bulkCreate = mutation({
+  returns: v.object({
+    count: v.number(),
+    ids: v.array(v.union(v.id("transactions"), v.null())),
+    skippedDuplicates: v.number(),
+    completedPledges: v.array(v.object({ completed: v.boolean(), pledgeId: v.id("pledges"), donorName: v.string(), amount: v.number() })),
+  }),
   args: {
     transactions: v.array(
       v.object({
@@ -276,8 +283,8 @@ export const bulkCreate = mutation({
         description: v.string(),
         amount: v.number(),
         type: v.union(v.literal("Income"), v.literal("Expenditure")),
-        category: v.string(),
-        fundId: v.id("funds"),
+        category: v.optional(v.string()),
+        fundId: v.optional(v.id("funds")),
         isReconciled: v.optional(v.boolean()),
         notes: v.optional(v.string()),
         isGiftAidEligible: v.optional(v.boolean()),
@@ -306,21 +313,34 @@ export const bulkCreate = mutation({
     // ids stays index-aligned with args.transactions; skipped duplicates are null
     const transactionIds: (Id<"transactions"> | null)[] = [];
     const canonicalCategories: Array<string | null> = [];
+    const resolvedFundIds: Array<Id<"funds"> | null> = [];
     const pledgesToCheck = new Set<string>();
     const validatedConnections = new Set<string>();
     const validatedCollections = new Set<string>();
     const seenProviderIds = new Set<string>();
     let skippedDuplicates = 0;
     const categories = await ensureTypedCategories(ctx, user.organizationId);
+    let generalFund: Doc<"funds"> | null | undefined;
 
     for (const t of args.transactions) {
       assertValidTransactionAmount(t.amount);
       assertValidTransactionDate(t.date);
       // Verify fund belongs to organization
-      const fund = await ctx.db.get(t.fundId);
-      if (!fund || fund.organizationId !== user.organizationId) {
+      let fund = t.fundId ? await ctx.db.get(t.fundId) : null;
+      if (fund && fund.organizationId !== user.organizationId) {
         throw new Error(`Invalid fund: ${t.fundId}`);
       }
+      if (!fund && isSmallIncome(t)) {
+        if (generalFund === undefined) {
+          const tenantFunds = await ctx.db.query("funds")
+            .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
+            .take(1000);
+          generalFund = tenantFunds.find((candidate) => candidate.name.trim().toLowerCase() === "general fund") ?? null;
+        }
+        fund = generalFund;
+      }
+      if (!fund) throw new Error("Choose a valid fund before importing");
+      const defaulted = applySmallIncomeDefaults(t, categories, [fund]);
 
       if (t.donorId) {
         const donor = await ctx.db.get(t.donorId);
@@ -347,7 +367,7 @@ export const bulkCreate = mutation({
         validatedCollections.add(t.cashCollectionId);
       }
 
-      const category = requireCanonicalCategory(categories, t.category, t.type);
+      const category = requireCanonicalCategory(categories, defaulted.category ?? "", t.type);
 
       // Source-level dedup for bank-synced transactions: skip anything already
       // imported from the same connection with the same provider id.
@@ -374,6 +394,7 @@ export const bulkCreate = mutation({
         if (existing) {
           transactionIds.push(null);
           canonicalCategories.push(null);
+          resolvedFundIds.push(null);
           skippedDuplicates += 1;
           continue;
         }
@@ -387,7 +408,7 @@ export const bulkCreate = mutation({
         amount: roundMoney(t.amount),
         type: t.type,
         category,
-        fundId: t.fundId,
+        fundId: fund._id,
         isReconciled: t.isReconciled ?? false,
         notes: t.notes,
         isGiftAidEligible: t.type === "Expenditure" ? false : t.isGiftAidEligible,
@@ -403,6 +424,7 @@ export const bulkCreate = mutation({
 
       transactionIds.push(transactionId);
       canonicalCategories.push(category);
+      resolvedFundIds.push(fund._id);
 
       if (t.pledgeId && t.type === "Income") {
         pledgesToCheck.add(t.pledgeId as string);
@@ -418,13 +440,13 @@ export const bulkCreate = mutation({
           transactionId,
           searchText: buildRAGSearchText({
             description: t.description,
-            category: canonicalCategories[idx] ?? t.category,
+            category: canonicalCategories[idx]!,
             type: t.type,
             donorName: t.donorName,
           }),
           metadata: {
-            category: canonicalCategories[idx] ?? t.category,
-            fundId: t.fundId,
+            category: canonicalCategories[idx]!,
+            fundId: resolvedFundIds[idx]!,
             type: t.type,
             isGiftAidEligible: t.isGiftAidEligible,
             donorName: t.donorName,
@@ -804,6 +826,7 @@ export const toggleVoided = mutation({
 
 // Record categorization corrections for ML learning
 export const recordCorrections = mutation({
+  returns: v.object({ recorded: v.number(), corrected: v.number() }),
   args: {
     corrections: v.array(
       v.object({
@@ -812,6 +835,7 @@ export const recordCorrections = mutation({
         aiPredictedCategory: v.string(),
         aiConfidence: v.string(),
         predictionSource: v.union(
+          v.literal("rule"),
           v.literal("gemini"),
           v.literal("openrouter"),
           v.literal("openai"),
@@ -986,6 +1010,13 @@ export const recordCorrections = mutation({
 // Get categorization accuracy stats for an organization
 export const getCategorizationStats = query({
   args: {},
+  returns: v.object({
+    total: v.number(), correct: v.number(), accuracy: v.number(),
+    geminiAccuracy: v.number(), openrouterAccuracy: v.number(), openaiAccuracy: v.number(),
+    ragAccuracy: v.number(), memoryAccuracy: v.number(), ruleAccuracy: v.number(),
+    ragCount: v.number(), geminiCount: v.number(), openrouterCount: v.number(), openaiCount: v.number(),
+    memoryCount: v.number(), ruleCount: v.number(),
+  }),
   handler: async (ctx) => {
     const user = await requireCapability(ctx, "ledger.write");
 
@@ -999,6 +1030,7 @@ export const getCategorizationStats = query({
     const total = allCorrections.length;
     const correct = allCorrections.filter((c) => c.wasCorrect).length;
     const bySource = {
+      rule: allCorrections.filter((c) => c.predictionSource === "rule"),
       gemini: allCorrections.filter((c) => c.predictionSource === "gemini"),
       openrouter: allCorrections.filter(
         (c) => c.predictionSource === "openrouter"
@@ -1047,6 +1079,8 @@ export const getCategorizationStats = query({
       openrouterCount: bySource.openrouter.length,
       openaiCount: bySource.openai.length,
       memoryCount: bySource.memory.length,
+      ruleCount: bySource.rule.length,
+      ruleAccuracy: bySource.rule.length ? 100 * bySource.rule.filter((row) => row.wasCorrect).length / bySource.rule.length : 0,
     };
   },
 });
