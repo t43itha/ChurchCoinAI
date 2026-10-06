@@ -2,10 +2,11 @@ import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
+  Landmark,
   ShieldCheck,
   TrendingUp,
-  UsersRound,
 } from "lucide-react";
+import { sumMoney } from "../../convex/lib/money";
 import { formatCurrency } from "./formatters";
 import type { DashboardSummaryProps, ExecutiveDashboardSummary } from "./types";
 
@@ -47,7 +48,7 @@ export default function DashboardHealthCards({ summary }: DashboardSummaryProps)
       className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
       aria-label="Executive dashboard health"
     >
-      {cards.map(({ title, value, detail, badge, tone, icon: Icon }) => {
+      {cards.map(({ title, value, detail, badge, tone, icon: Icon, neutralValue }) => {
         const classes = toneClasses[tone];
 
         return (
@@ -75,7 +76,7 @@ export default function DashboardHealthCards({ summary }: DashboardSummaryProps)
                 <p className="text-[11.5px] font-semibold text-grey-mid uppercase tracking-[0.04em]">
                   {title}
                 </p>
-                <p className={`mt-1.5 mb-2.5 text-2xl 2xl:text-[28px] font-bold font-mono tabular-nums tracking-tight break-words ${classes.value}`}>
+                <p className={`mt-1.5 mb-2.5 text-[26px] 2xl:text-[30px] font-bold font-mono tabular-nums tracking-tight break-words ${neutralValue ? "text-ink" : classes.value}`}>
                   {value}
                 </p>
                 <p className="text-[12.5px] text-grey-mid font-medium leading-relaxed break-words">
@@ -91,12 +92,7 @@ export default function DashboardHealthCards({ summary }: DashboardSummaryProps)
 }
 
 function buildHealthCards(summary: ExecutiveDashboardSummary) {
-  const { health } = summary;
-  const givingTrendTone = health.givingTrendPercent > 0
-    ? "healthy"
-    : health.givingTrendPercent < -5
-      ? "watch"
-      : "neutral";
+  const { health, funds, period } = summary;
   const coverageTone = health.generalFundCoverageMonths === null
     ? "neutral"
     : health.generalFundCoverageMonths >= 3
@@ -104,47 +100,38 @@ function buildHealthCards(summary: ExecutiveDashboardSummary) {
       : health.generalFundCoverageMonths >= 1
         ? "watch"
         : "critical";
-  const donorTone = health.donorAttentionCount === 0
-    ? "healthy"
-    : health.donorAttentionCount <= 3
-      ? "watch"
-      : "critical";
+  const overdrawnCount = funds.overdrawnFunds.length;
+  const periodInProgress = period.throughDate < period.endDate;
 
   return [
     {
+      title: "Funds Held",
+      value: formatCurrency(sumMoney([funds.generalFundBalance, funds.restrictedBalance], (balance) => balance)),
+      detail: `${formatCurrency(funds.generalFundBalance)} unrestricted, ${formatCurrency(funds.restrictedBalance)} restricted`,
+      badge: overdrawnCount === 0 ? "In credit" : `${overdrawnCount} overdrawn`,
+      tone: overdrawnCount === 0 ? "neutral" : "critical",
+      icon: Landmark,
+      neutralValue: true,
+    },
+    {
       title: "Operating Position",
       value: signedCurrency(health.netMovement),
-      detail: `${summary.period.label} net movement`,
+      detail: `Unrestricted income less spending, ${period.label}${periodInProgress ? " to date" : ""}`,
       badge: health.operatingPosition,
       tone: operatingTone(health.operatingPosition),
       icon: Activity,
-    },
-    {
-      title: "Giving Trend",
-      value: signedPercent(health.givingTrendPercent),
-      detail: "Unrestricted giving versus recent baseline",
-      badge: health.givingTrendPercent >= 0 ? "Improving" : "Softening",
-      tone: givingTrendTone,
-      icon: health.givingTrendPercent >= 0 ? ArrowUpRight : ArrowDownRight,
     },
     {
       title: "General Fund Coverage",
       value: health.generalFundCoverageMonths === null
         ? "No spend"
         : `${health.generalFundCoverageMonths.toFixed(1)} months`,
-      detail: "Coverage from average unrestricted expenditure",
+      detail: "Unrestricted balance against average monthly spending",
       badge: health.generalFundCoverageMonths === null ? "No baseline" : coverageBadge(health.generalFundCoverageMonths),
       tone: coverageTone,
       icon: ShieldCheck,
     },
-    {
-      title: "Donor Attention",
-      value: health.donorAttentionCount.toLocaleString("en-GB"),
-      detail: "Pledges, Gift Aid, or giving records needing review",
-      badge: health.donorAttentionCount === 0 ? "Clear" : "Review",
-      tone: donorTone,
-      icon: health.donorAttentionCount === 0 ? TrendingUp : UsersRound,
-    },
+    givingTrendCard(health.givingTrendPercent),
   ] satisfies Array<{
     title: string;
     value: string;
@@ -152,7 +139,32 @@ function buildHealthCards(summary: ExecutiveDashboardSummary) {
     badge: string;
     tone: Tone;
     icon: typeof Activity;
+    neutralValue?: boolean;
   }>;
+}
+
+function givingTrendCard(percent: number | null) {
+  const detail = "Unrestricted giving per month against the prior three months";
+
+  if (percent === null) {
+    return {
+      title: "Giving Trend",
+      value: "No baseline",
+      detail,
+      badge: "Not enough history",
+      tone: "neutral" as Tone,
+      icon: TrendingUp,
+    };
+  }
+
+  return {
+    title: "Giving Trend",
+    value: signedPercent(percent),
+    detail,
+    badge: percent >= 0 ? "Improving" : "Softening",
+    tone: (percent > 0 ? "healthy" : percent < -5 ? "watch" : "neutral") as Tone,
+    icon: percent >= 0 ? ArrowUpRight : ArrowDownRight,
+  };
 }
 
 function operatingTone(position: ExecutiveDashboardSummary["health"]["operatingPosition"]): Tone {

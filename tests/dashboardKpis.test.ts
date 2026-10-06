@@ -183,6 +183,7 @@ describe("dashboard KPI helpers", () => {
       label: "May 2026",
       startDate: "2026-05-01",
       endDate: "2026-05-31",
+      throughDate: "2026-05-31",
     });
   });
 
@@ -194,22 +195,25 @@ describe("dashboard KPI helpers", () => {
       label: "June 2026",
       startDate: "2026-06-01",
       endDate: "2026-06-30",
+      throughDate: "2026-06-08",
     });
     expect(getDashboardPeriod("quarter", now)).toEqual({
       key: "quarter",
       label: "Q2 2026",
       startDate: "2026-04-01",
       endDate: "2026-06-30",
+      throughDate: "2026-06-08",
     });
     expect(getDashboardPeriod("ytd", now)).toEqual({
       key: "ytd",
       label: "2026 YTD",
       startDate: "2026-01-01",
       endDate: "2026-06-08",
+      throughDate: "2026-06-08",
     });
   });
 
-  it("calculates executive health, readiness, trends, funds, and alerts", () => {
+  it("calculates executive health, readiness, trends, funds, and donor follow-up", () => {
     const input: BuildExecutiveDashboardSummaryInput = {
       periodKey: "previousMonth",
       now: new Date("2026-06-08T12:00:00Z"),
@@ -219,32 +223,42 @@ describe("dashboard KPI helpers", () => {
       pledges,
       cashCollections,
       cashReconciliations,
+      statementSessions: [],
+      bankAccountFundIds: [],
     };
     const summary = buildExecutiveDashboardSummary(input);
 
     expect(summary.period.label).toBe("May 2026");
     expect(summary.health.operatingPosition).toBe("Healthy");
-    expect(summary.health.netMovement).toBe(630);
-    expect(summary.health.givingTrendPercent).toBeCloseTo(48, 0);
+    expect(summary.health.netMovement).toBe(130);
+    expect(summary.health.givingTrendPercent).toBe(31);
     expect(summary.health.generalFundCoverageMonths).toBeCloseTo(19.7, 1);
-    expect(summary.health.donorAttentionCount).toBe(3);
+    expect(summary.donorFollowUp).toEqual({
+      missedGiftAidCount: 0,
+      missedGiftAidValue: 0,
+      pledgesBehindCount: 1,
+    });
 
     expect(summary.readiness.reconciledPercent).toBe(50);
     expect(summary.readiness.categorizedPercent).toBe(100);
     expect(summary.readiness.cashBankingPendingWeeks).toBe(1);
     expect(summary.readiness.giftAidClaimable).toBe(350);
     expect(summary.readiness.missionTitheDue).toBe(148);
-    expect(summary.readiness.evidenceCheckCount).toBe(2);
+    expect(summary.readiness.unreconciledExpenditureCount).toBe(1);
 
     expect(summary.funds.generalFundBalance).toBe(4430);
-    expect(summary.funds.campaignProgress).toEqual({
-      fundId: "building",
-      name: "Building Fund",
-      progressPercent: 5,
-      balance: 500,
-      targetAmount: 10000,
-    });
-    expect(summary.funds.lowBalanceFunds.map((fund) => fund.name)).toContain("Building Fund");
+    expect(summary.funds.restrictedBalance).toBe(500);
+    expect(summary.funds.campaigns).toEqual([
+      {
+        fundId: "building",
+        name: "Building Fund",
+        progressPercent: 5,
+        balance: 500,
+        targetAmount: 10000,
+      },
+    ]);
+    expect(summary.funds.lowBalanceFunds.map((fund) => fund.name)).toEqual(["Youth Fund"]);
+    expect(summary.funds.overdrawnFunds).toEqual([]);
 
     expect(summary.trends.monthlyIncomeExpenditure).toHaveLength(6);
     expect(summary.trends.monthlyIncomeExpenditure.map((month) => month.month)).toEqual([
@@ -256,7 +270,7 @@ describe("dashboard KPI helpers", () => {
       "2026-05",
     ]);
     expect(summary.trends.monthlyIncomeExpenditure.at(-1)?.income).toBe(1480);
-    expect(summary.alerts.map((alert) => alert.title)).toContain("Month-end review needs attention");
+    expect(summary.trends.monthlyIncomeExpenditure.at(-1)?.net).toBe(summary.health.netMovement);
   });
 
   it.each(["draft", "reopened"] as const)(
@@ -271,6 +285,8 @@ describe("dashboard KPI helpers", () => {
         pledges,
         cashCollections,
         cashReconciliations,
+        statementSessions: [],
+        bankAccountFundIds: [],
       };
       const completedOnly = buildExecutiveDashboardSummary(input);
       const withIncomplete = buildExecutiveDashboardSummary({
@@ -302,9 +318,12 @@ describe("dashboard KPI helpers", () => {
       pledges,
       cashCollections,
       cashReconciliations,
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.givingTrendPercent).toBeCloseTo(-7, 0);
+    // Apr, May, and 8 of June's 30 days: 2780 / 2.27 months against a 1000 baseline.
+    expect(summary.health.givingTrendPercent).toBe(23);
     expect(summary.trends.monthlyIncomeExpenditure.map((month) => month.month)).toEqual([
       "2026-01",
       "2026-02",
@@ -325,6 +344,8 @@ describe("dashboard KPI helpers", () => {
       pledges,
       cashCollections,
       cashReconciliations,
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
     expect(summary.trends.monthlyIncomeExpenditure.map((month) => month.month)).toEqual([
@@ -366,6 +387,8 @@ describe("dashboard KPI helpers", () => {
       pledges: [],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
     expect(summary.readiness.missionTitheDue).toBe(30);
@@ -391,6 +414,8 @@ describe("dashboard KPI helpers", () => {
       pledges: [],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
     expect(summary.health.generalFundCoverageMonths).toBeNull();
@@ -425,9 +450,11 @@ describe("dashboard KPI helpers", () => {
       ],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.donorAttentionCount).toBe(2);
+    expect(summary.donorFollowUp.pledgesBehindCount).toBe(2);
   });
 
   it("does not satisfy donorless pledges with unrelated anonymous income", () => {
@@ -460,9 +487,11 @@ describe("dashboard KPI helpers", () => {
       ],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.donorAttentionCount).toBe(1);
+    expect(summary.donorFollowUp.pledgesBehindCount).toBe(1);
   });
 
   it("satisfies a donorless pledge with a matching pledge id transaction", () => {
@@ -496,9 +525,11 @@ describe("dashboard KPI helpers", () => {
       ],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.donorAttentionCount).toBe(0);
+    expect(summary.donorFollowUp.pledgesBehindCount).toBe(0);
   });
 
   it("does not let one explicit pledge payment satisfy another pledge for the same donor", () => {
@@ -553,9 +584,11 @@ describe("dashboard KPI helpers", () => {
       ],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.donorAttentionCount).toBe(1);
+    expect(summary.donorFollowUp.pledgesBehindCount).toBe(1);
   });
 
   it("does not let one explicit donorless pledge payment satisfy another pledge with the same donor name", () => {
@@ -600,9 +633,11 @@ describe("dashboard KPI helpers", () => {
       ],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.donorAttentionCount).toBe(1);
+    expect(summary.donorFollowUp.pledgesBehindCount).toBe(1);
   });
 
   it("uses donor details as a fallback for unlinked pledge payments", () => {
@@ -637,8 +672,346 @@ describe("dashboard KPI helpers", () => {
       ],
       cashCollections: [],
       cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
     });
 
-    expect(summary.health.donorAttentionCount).toBe(0);
+    expect(summary.donorFollowUp.pledgesBehindCount).toBe(0);
+  });
+
+  describe("review fixes", () => {
+    const summarize = (overrides: Partial<BuildExecutiveDashboardSummaryInput>) =>
+      buildExecutiveDashboardSummary({
+        periodKey: "previousMonth",
+        now: new Date("2026-06-08T12:00:00Z"),
+        funds,
+        transactions: [],
+        donors: [],
+        pledges: [],
+        cashCollections: [],
+        cashReconciliations: [],
+        statementSessions: [],
+        bankAccountFundIds: [],
+        ...overrides,
+      });
+    const income = (
+      id: string,
+      date: string,
+      amount: number,
+      extra: Partial<DashboardTransaction> = {}
+    ): DashboardTransaction => ({
+      _id: id,
+      date,
+      amount,
+      type: "Income",
+      category: "Offerings",
+      fundId: "general",
+      isReconciled: true,
+      ...extra,
+    });
+    const expense = (
+      id: string,
+      date: string,
+      amount: number,
+      extra: Partial<DashboardTransaction> = {}
+    ): DashboardTransaction => ({
+      ...income(id, date, amount),
+      type: "Expenditure",
+      category: "Rent-Premises For Worship",
+      ...extra,
+    });
+
+    it("counts the Uncategorized placeholder as uncategorised", () => {
+      const summary = summarize({
+        transactions: [
+          income("categorised", "2026-05-03", 10),
+          income("placeholder", "2026-05-10", 10, { category: "Uncategorized" }),
+        ],
+      });
+
+      expect(summary.readiness.categorizedPercent).toBe(50);
+    });
+
+    it("reports no completion percentages for a period without transactions", () => {
+      const summary = summarize({ transactions: [income("april", "2026-04-03", 10)] });
+
+      expect(summary.readiness.reconciledPercent).toBeNull();
+      expect(summary.readiness.categorizedPercent).toBeNull();
+    });
+
+    it("compares a single month against the three months immediately before it", () => {
+      const summary = summarize({
+        transactions: [
+          income("jan", "2026-01-04", 5000),
+          income("feb", "2026-02-01", 1000),
+          income("mar", "2026-03-01", 1000),
+          income("apr", "2026-04-05", 1000),
+          income("may", "2026-05-03", 1100),
+        ],
+      });
+
+      expect(summary.health.givingTrendPercent).toBe(10);
+    });
+
+    it("prorates a partial month before comparing giving", () => {
+      const summary = summarize({
+        periodKey: "currentMonth",
+        transactions: [
+          income("mar", "2026-03-01", 1000),
+          income("apr", "2026-04-05", 1000),
+          income("may", "2026-05-03", 1000),
+          income("jun", "2026-06-07", 300),
+        ],
+      });
+
+      // 300 over 8 of June's 30 days is 1125 a month.
+      expect(summary.health.givingTrendPercent).toBe(13);
+    });
+
+    it("reports no giving trend without a baseline", () => {
+      const summary = summarize({ transactions: [income("may", "2026-05-03", 1100)] });
+
+      expect(summary.health.givingTrendPercent).toBeNull();
+    });
+
+    it("judges the operating position on unrestricted funds only", () => {
+      const summary = summarize({
+        transactions: [
+          income("general", "2026-05-03", 500),
+          expense("rent", "2026-05-10", 900),
+          income("building", "2026-05-17", 20000, { fundId: "building", category: "Donations" }),
+        ],
+      });
+
+      expect(summary.health.netMovement).toBe(-400);
+      expect(summary.health.operatingPosition).toBe("Deficit");
+    });
+
+    it("bases coverage on complete months when the period is partial", () => {
+      const summary = summarize({
+        periodKey: "currentMonth",
+        transactions: [
+          income("seed", "2026-01-01", 12000),
+          ...["01", "02", "03", "04", "05"].map((month) =>
+            expense(`rent-${month}`, `2026-${month}-15`, 1000)
+          ),
+        ],
+      });
+
+      expect(summary.health.generalFundCoverageMonths).toBe(7);
+    });
+
+    it("lists open campaigns by nearest deadline", () => {
+      const summary = summarize({
+        funds: [
+          { _id: "general", name: "General Fund", type: "Unrestricted" },
+          { _id: "roof", name: "Roof", type: "Restricted", targetAmount: 5000, deadline: "2026-12-31" },
+          { _id: "van", name: "Minibus", type: "Restricted", targetAmount: 8000, deadline: "2026-07-31" },
+          { _id: "organ", name: "Organ", type: "Restricted", targetAmount: 3000 },
+          { _id: "past", name: "Past Appeal", type: "Restricted", targetAmount: 1000, deadline: "2026-04-30" },
+          { _id: "met", name: "Met Appeal", type: "Restricted", targetAmount: 1000 },
+        ],
+        transactions: [
+          income("roof-gift", "2026-05-03", 1000, { fundId: "roof" }),
+          income("met-gift", "2026-05-03", 1000, { fundId: "met" }),
+        ],
+      });
+
+      expect(summary.funds.campaigns.map((campaign) => campaign.name)).toEqual([
+        "Minibus",
+        "Roof",
+        "Organ",
+      ]);
+      expect(summary.funds.campaigns[1]).toMatchObject({ progressPercent: 20, deadline: "2026-12-31" });
+    });
+
+    it("separates overdrawn funds from low balances and leaves campaigns out of low balances", () => {
+      const summary = summarize({
+        funds: [
+          { _id: "general", name: "General Fund", type: "Unrestricted" },
+          { _id: "youth", name: "Youth Fund", type: "Restricted" },
+          { _id: "mission", name: "Mission Fund", type: "Restricted" },
+          { _id: "building", name: "Building Fund", type: "Restricted", targetAmount: 10000 },
+        ],
+        transactions: [
+          income("general", "2026-05-03", 5000),
+          expense("youth-trip", "2026-05-10", 200, { fundId: "youth" }),
+          income("mission", "2026-05-10", 300, { fundId: "mission" }),
+          income("building", "2026-05-10", 500, { fundId: "building" }),
+        ],
+      });
+
+      expect(summary.funds.overdrawnFunds).toEqual([
+        { fundId: "youth", name: "Youth Fund", balance: -200 },
+      ]);
+      expect(summary.funds.lowBalanceFunds).toEqual([
+        { fundId: "mission", name: "Mission Fund", balance: 300 },
+      ]);
+      expect(summary.funds.restrictedBalance).toBe(600);
+    });
+
+    it("counts unreconciled spending without the cash banking weeks", () => {
+      const summary = summarize({
+        transactions: [
+          expense("unreconciled", "2026-05-10", 650, { isReconciled: false }),
+          expense("reconciled", "2026-05-11", 100),
+          income("cash", "2026-05-10", 200, {
+            isReconciled: false,
+            cashCollectionId: "cash-2",
+            paymentMethod: "Cash",
+          }),
+        ],
+        cashCollections,
+      });
+
+      expect(summary.readiness.cashBankingPendingWeeks).toBe(1);
+      expect(summary.readiness.unreconciledExpenditureCount).toBe(1);
+    });
+
+    it("flags gifts from Gift Aid declared individuals that are not marked eligible", () => {
+      const summary = summarize({
+        donors: [
+          { _id: "declared", name: "Declared", type: "Individual", isGiftAidActive: true },
+          { _id: "undeclared", name: "Undeclared", type: "Individual", isGiftAidActive: false },
+          { _id: "company", name: "Company", type: "Organization", isGiftAidActive: true },
+        ],
+        transactions: [
+          income("missed", "2026-05-03", 100, { donorId: "declared", isGiftAidEligible: false }),
+          income("claimed", "2026-05-10", 100, { donorId: "declared", isGiftAidEligible: true }),
+          income("no-declaration", "2026-05-10", 100, { donorId: "undeclared" }),
+          income("company-gift", "2026-05-10", 100, { donorId: "company" }),
+        ],
+      });
+
+      expect(summary.donorFollowUp.missedGiftAidCount).toBe(1);
+      expect(summary.donorFollowUp.missedGiftAidValue).toBe(25);
+    });
+
+    it("only flags pledges whose payment cadence has lapsed", () => {
+      const pledge = (id: string, frequency: string, startDate: string): DashboardPledge => ({
+        _id: id,
+        donorName: id,
+        fundId: "general",
+        amount: 50,
+        frequency,
+        startDate,
+        status: "Active",
+      });
+      const summary = summarize({
+        pledges: [
+          pledge("annual-paid", "Annual", "2025-01-01"),
+          pledge("annual-lapsed", "Annual", "2024-01-01"),
+          pledge("monthly-new", "Monthly", "2026-05-20"),
+          pledge("one-off", "One-off", "2025-01-01"),
+          { ...pledge("monthly-ended", "Monthly", "2025-01-01"), endDate: "2026-03-31" },
+        ],
+        transactions: [
+          income("annual-paid-gift", "2025-10-01", 50, { pledgeId: "annual-paid" }),
+          income("annual-lapsed-gift", "2025-04-01", 50, { pledgeId: "annual-lapsed" }),
+        ],
+      });
+
+      expect(summary.donorFollowUp.pledgesBehindCount).toBe(1);
+    });
+
+    it("lists bank account funds whose statements are not reconciled through last month", () => {
+      const summary = summarize({
+        now: new Date("2026-10-06T12:00:00Z"),
+        funds: [
+          { _id: "general", name: "General Fund", type: "Unrestricted" },
+          { _id: "building", name: "Building Fund", type: "Restricted" },
+          { _id: "youth", name: "Youth Fund", type: "Restricted" },
+          { _id: "mission", name: "Mission Fund", type: "Restricted" },
+        ],
+        bankAccountFundIds: ["general", "building"],
+        statementSessions: [
+          { fundId: "general", periodStart: "2026-09-01", periodEnd: "2026-09-30", status: "completed" },
+          { fundId: "youth", periodStart: "2026-08-01", periodEnd: "2026-08-31", status: "completed" },
+          { fundId: "youth", periodStart: "2026-09-01", periodEnd: "2026-09-30", status: "draft" },
+        ],
+      });
+
+      expect(summary.readiness.statementsDueThrough).toBe("2026-09-30");
+      expect(summary.readiness.statementsBehind).toEqual([
+        { fundId: "building", name: "Building Fund", reconciledThrough: null },
+        { fundId: "youth", name: "Youth Fund", reconciledThrough: "2026-08-31" },
+      ]);
+    });
+
+    it("does not let a later statement hide an unfinished or missing earlier one", () => {
+      const statement = (fundId: string, month: string, status = "completed") => ({
+        fundId,
+        periodStart: `2026-${month}-01`,
+        periodEnd: `2026-${month}-${month === "09" ? "30" : "31"}`,
+        status,
+      });
+      const summary = summarize({
+        now: new Date("2026-10-06T12:00:00Z"),
+        funds: [
+          { _id: "general", name: "General Fund", type: "Unrestricted" },
+          { _id: "building", name: "Building Fund", type: "Restricted" },
+          { _id: "youth", name: "Youth Fund", type: "Restricted" },
+        ],
+        bankAccountFundIds: ["general", "building", "youth"],
+        statementSessions: [
+          statement("general", "07"),
+          statement("general", "08", "reopened"),
+          statement("general", "09"),
+          statement("building", "07"),
+          statement("building", "09"),
+          statement("youth", "07"),
+          statement("youth", "08"),
+          statement("youth", "09"),
+        ],
+      });
+
+      expect(summary.readiness.statementsBehind).toEqual([
+        { fundId: "general", name: "General Fund", reconciledThrough: "2026-07-31" },
+        { fundId: "building", name: "Building Fund", reconciledThrough: "2026-07-31" },
+      ]);
+    });
+
+    it("does not count purchases from declared donors as missed Gift Aid", () => {
+      const summary = summarize({
+        donors: [{ _id: "declared", name: "Declared", type: "Individual", isGiftAidActive: true }],
+        transactions: [
+          income("book", "2026-05-03", 40, { donorId: "declared", category: "Merchandise" }),
+          income("offering", "2026-05-10", 100, { donorId: "declared" }),
+        ],
+      });
+
+      expect(summary.donorFollowUp).toMatchObject({ missedGiftAidCount: 1, missedGiftAidValue: 25 });
+    });
+
+    it("leaves future-dated entries out of figures for a period in progress", () => {
+      const summary = summarize({
+        periodKey: "currentMonth",
+        transactions: [
+          income("gift", "2026-06-07", 500),
+          expense("rent-due", "2026-06-20", 900, { isReconciled: false }),
+        ],
+      });
+
+      expect(summary.health.netMovement).toBe(500);
+      expect(summary.readiness.unreconciledExpenditureCount).toBe(0);
+      expect(summary.trends.monthlyIncomeExpenditure.at(-1)?.net).toBe(500);
+    });
+
+    it("counts a collection awaiting banking before its week-ending Sunday", () => {
+      const summary = summarize({
+        periodKey: "currentMonth",
+        now: new Date("2026-06-10T12:00:00Z"),
+        transactions: [
+          income("midweek-cash", "2026-06-10", 120, {
+            isReconciled: false,
+            cashCollectionId: "this-week",
+            paymentMethod: "Cash",
+          }),
+        ],
+        cashCollections: [{ _id: "this-week", weekEndingDate: "2026-06-14", status: "submitted" }],
+      });
+
+      expect(summary.readiness.cashBankingPendingWeeks).toBe(1);
+    });
   });
 });

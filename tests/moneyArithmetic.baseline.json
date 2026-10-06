@@ -12,12 +12,10 @@
   "convex/queries/aiContext.ts": 11,
   "convex/queries/cashBankingReconciliations.ts": 2,
   "convex/queries/cashCollections.ts": 4,
-  "convex/queries/dashboard.ts": 7,
   "convex/queries/donors.ts": 1,
   "convex/queries/reports.ts": 36,
   "convex/queries/transactions.ts": 3,
   "lib/cashChequeBanking.ts": 6,
-  "lib/dashboardKpis.ts": 1,
   "lib/inPersonGiving.ts": 7,
   "services/excelGenerator.ts": 2,
   "services/pdfGenerator.ts": 4
