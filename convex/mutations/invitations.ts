@@ -1,6 +1,6 @@
 import { mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability, roleValidator } from "../lib/auth";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -14,15 +14,10 @@ function generateToken(): string {
 export const create = mutation({
   args: {
     email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
   },
   handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
+    const currentUser = await requireCapability(ctx, "invitations.manage");
     // Normalize email to lowercase
     const email = args.email.toLowerCase().trim();
 
@@ -99,7 +94,7 @@ export const resend = mutation({
     invitationId: v.id("invitations"),
   },
   handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
+    const currentUser = await requireCapability(ctx, "invitations.manage");
 
     const invitation = await ctx.db.get(args.invitationId);
     if (!invitation) {
@@ -144,7 +139,7 @@ export const markSent = mutation({
     invitationId: v.id("invitations"),
   },
   handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
+    const currentUser = await requireCapability(ctx, "invitations.manage");
 
     const invitation = await ctx.db.get(args.invitationId);
     if (!invitation || invitation.organizationId !== currentUser.organizationId) {
@@ -161,7 +156,7 @@ export const cancel = mutation({
     invitationId: v.id("invitations"),
   },
   handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
+    const currentUser = await requireCapability(ctx, "invitations.manage");
 
     const invitation = await ctx.db.get(args.invitationId);
     if (!invitation) {

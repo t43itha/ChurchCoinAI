@@ -1,12 +1,29 @@
+import { can } from "../../lib/permissions";
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { getCurrentUser, getIdentity, requireAuth } from "../lib/auth";
+import { getCurrentUser, getIdentity, requireAuth, requireCapability } from "../lib/auth";
+import { resolveOrganizationAccess } from "../lib/access";
 
 // Get the current authenticated user
 export const current = query({
   args: {},
   handler: async (ctx) => {
     return await getCurrentUser(ctx);
+  },
+});
+
+// Fetch the user and app-access decision together for server actions. This avoids
+// making every AI action resolve the same authenticated user twice.
+export const currentWithAccess = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await getCurrentUser(ctx);
+    if (!user) return null;
+
+    return {
+      user,
+      access: await resolveOrganizationAccess(ctx, user),
+    };
   },
 });
 
@@ -22,7 +39,7 @@ export const identity = query({
 export const listByOrganization = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "users.list");
 
     const users = await ctx.db
       .query("users")
@@ -31,7 +48,7 @@ export const listByOrganization = query({
       )
       .collect();
 
-    return users;
+    return users.map(({ clerkId: _clerkId, ...safeUser }) => safeUser);
   },
 });
 
@@ -46,6 +63,10 @@ export const getById = query({
       return null;
     }
 
-    return user;
+    if (!can(currentUser.role, "users.list")) {
+      return { _id: user._id, name: user.name };
+    }
+    const { clerkId: _clerkId, ...safeUser } = user;
+    return safeUser;
   },
 });

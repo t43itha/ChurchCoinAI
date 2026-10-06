@@ -18,6 +18,12 @@ describe("redirect url validation", () => {
     ).toThrow("successUrl is not a valid URL");
   });
 
+  it("rejects a redirect when the app origin is not configured", () => {
+    expect(() =>
+      validateRedirectUrl("https://app.example.com/billing", "returnUrl", undefined)
+    ).toThrow("APP_BASE_URL is not configured");
+  });
+
   it("rejects disallowed host", () => {
     expect(() =>
       validateRedirectUrl(

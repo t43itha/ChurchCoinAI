@@ -1,17 +1,18 @@
 "use node";
 
 import { action } from "../_generated/server";
+import { assertCapability } from "../lib/auth";
 import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 import {
   ORGANIZATION_DELETION_TABLES,
   type OrganizationDataTable,
 } from "../../lib/organizationData";
-import {
-  closeSession,
-  EnableBankingApiError,
-} from "../lib/enableBanking";
 import { getPlaid } from "../lib/plaid";
+import {
+  deleteYapilyConsent,
+  YapilyApiError,
+} from "../lib/yapily";
 import { getStripe } from "../lib/stripe";
 import { transactionRAG } from "../lib/ragInstance";
 
@@ -27,9 +28,11 @@ export const deleteOrganization = action({
     }
 
     const user = await ctx.runQuery(api.queries.users.current, {});
-    if (!user || user.role !== "Admin") {
+    if (!user) {
       throw new Error("Forbidden: only organization admins can delete data");
     }
+
+    assertCapability(user, "organization.delete");
 
     const manifest = await ctx.runQuery(
       internal.queries.organizations.getDeletionManifest,
@@ -46,10 +49,14 @@ export const deleteOrganization = action({
     // Revoke third-party access before deleting the local credentials needed
     // to do so. All provider operations are retry-safe for already-removed IDs.
     for (const connection of manifest.bankConnections) {
+      if (connection.provider !== "yapily") continue;
+
       try {
-        await closeSession(connection.providerConnectionId);
+        await deleteYapilyConsent(connection.providerConnectionId);
       } catch (error) {
-        if (!(error instanceof EnableBankingApiError && error.status === 404)) {
+        if (
+          !(error instanceof YapilyApiError && error.status === 404)
+        ) {
           throw error;
         }
       }

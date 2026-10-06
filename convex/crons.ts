@@ -21,4 +21,10 @@ crons.daily(
   internal.mutations.scheduledMaintenance.cleanupExpiredPendingBankConnections
 );
 
+crons.interval(
+  "retry support tickets awaiting GitHub sync",
+  { minutes: 30 },
+  internal.mutations.supportTickets.scheduleFailedGithubSyncs
+);
+
 export default crons;

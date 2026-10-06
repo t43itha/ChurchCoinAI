@@ -1,5 +1,5 @@
 import { filterActiveTransactions, isActiveTransaction } from "./voidedTransactions";
-import { roundMoney } from "../convex/lib/money";
+import { sumMoney } from "../convex/lib/money";
 
 export type ReportableTransaction = {
   amount: number;
@@ -8,6 +8,13 @@ export type ReportableTransaction = {
   cashBankingRole?: "source_giving" | "bank_deposit";
   category?: string;
 };
+
+// For display and filtering by void status only. Totals, reports, and matching
+// must use isReportableTransaction / filterReportableTransactions, which also
+// exclude cash banking deposits.
+export function isVoidedTransaction(transaction: { isVoided?: boolean }) {
+  return !isActiveTransaction(transaction);
+}
 
 export function isCashBankingDeposit(transaction: {
   cashBankingRole?: "source_giving" | "bank_deposit";
@@ -48,23 +55,18 @@ export function filterReportableTransactions<T extends ReportableTransaction>(
 export function sumReportableIncome<T extends ReportableTransaction>(
   transactions: T[]
 ) {
-  return roundMoney(
-    filterReportableTransactions(transactions)
-      .filter((transaction) => transaction.type === "Income")
-      .reduce((sum, transaction) => sum + transaction.amount, 0)
+  return sumMoney(
+    filterReportableTransactions(transactions).filter(
+      (transaction) => transaction.type === "Income"
+    ),
+    (transaction) => transaction.amount
   );
 }
 
 export function sumReportableSigned<T extends ReportableTransaction>(
   transactions: T[]
 ) {
-  return roundMoney(
-    filterReportableTransactions(transactions).reduce(
-      (sum, transaction) =>
-        transaction.type === "Income"
-          ? sum + transaction.amount
-          : sum - transaction.amount,
-      0
-    )
+  return sumMoney(filterReportableTransactions(transactions), (transaction) =>
+    transaction.type === "Income" ? transaction.amount : -transaction.amount
   );
 }

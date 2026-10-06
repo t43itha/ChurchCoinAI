@@ -84,20 +84,20 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
   const statusBadge = (status: string) => {
     if (status === "completed") {
       return (
-        <span className="inline-flex items-center gap-1 bg-sage-light text-sage-dark px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide border border-sage/30">
+        <span className="inline-flex items-center gap-1 bg-sage-light text-sage-dark px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wide border border-sage/30">
           <Lock size={10} /> Completed
         </span>
       );
     }
     if (status === "reopened") {
       return (
-        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide border border-amber/30">
+        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wide border border-amber/30">
           <Unlock size={10} /> Reopened
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 bg-paper text-charcoal px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide border border-ledger">
+      <span className="inline-flex items-center gap-1 bg-paper text-charcoal px-2 py-0.5 rounded-sm text-xs font-bold uppercase tracking-wide border border-ledger">
         Draft
       </span>
     );
@@ -136,7 +136,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
             New Reconciliation
           </h2>
           {formError && (
-            <p className="text-xs text-red-600 mb-3 bg-red-50 border border-red-200 rounded p-2">
+            <p className="text-xs text-red-600 mb-3 bg-red-50 border border-red-200 rounded-sm p-2">
               {formError}
             </p>
           )}
@@ -152,7 +152,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                 onChange={(e) =>
                   setFormData((d) => ({ ...d, fundId: e.target.value as Id<"funds"> }))
                 }
-                className="w-full border border-ledger rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-ink"
+                className="w-full border border-ledger rounded-sm px-3 py-2 text-sm bg-white focus:outline-hidden focus:border-ink"
               >
                 <option value="">Select a fund…</option>
                 {(funds ?? []).map((f) => (
@@ -175,7 +175,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                 onChange={(e) =>
                   setFormData((d) => ({ ...d, periodStart: e.target.value }))
                 }
-                className="w-full border border-ledger rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-ink"
+                className="w-full border border-ledger rounded-sm px-3 py-2 text-sm bg-white focus:outline-hidden focus:border-ink"
               />
             </div>
             <div>
@@ -189,7 +189,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                 onChange={(e) =>
                   setFormData((d) => ({ ...d, periodEnd: e.target.value }))
                 }
-                className="w-full border border-ledger rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-ink"
+                className="w-full border border-ledger rounded-sm px-3 py-2 text-sm bg-white focus:outline-hidden focus:border-ink"
               />
             </div>
 
@@ -207,7 +207,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                   setFormData((d) => ({ ...d, openingBalance: e.target.value }))
                 }
                 placeholder="0.00"
-                className="w-full border border-ledger rounded px-3 py-2 text-sm font-mono bg-white focus:outline-none focus:border-ink"
+                className="w-full border border-ledger rounded-sm px-3 py-2 text-sm font-mono bg-white focus:outline-hidden focus:border-ink"
               />
             </div>
             <div>
@@ -223,7 +223,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                   setFormData((d) => ({ ...d, closingBalance: e.target.value }))
                 }
                 placeholder="0.00"
-                className="w-full border border-ledger rounded px-3 py-2 text-sm font-mono bg-white focus:outline-none focus:border-ink"
+                className="w-full border border-ledger rounded-sm px-3 py-2 text-sm font-mono bg-white focus:outline-hidden focus:border-ink"
               />
             </div>
 
@@ -296,7 +296,7 @@ const SessionList: React.FC<SessionListProps> = ({ onOpen, onBack }) => {
                     {s.status !== "completed" && (
                       <button
                         onClick={(e) => handleDelete(e, s._id)}
-                        className="p-1.5 text-grey-mid hover:text-red-500 transition-colors rounded"
+                        className="p-1.5 text-grey-mid hover:text-red-500 transition-colors rounded-sm"
                         title="Delete"
                         aria-label="Delete reconciliation"
                       >
@@ -421,7 +421,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
       </h1>
 
       {session.status === "reopened" && session.reopenedReason && (
-        <p className="text-xs text-amber bg-amber-50 border border-amber/30 rounded px-3 py-2 mb-4">
+        <p className="text-xs text-amber bg-amber-50 border border-amber/30 rounded-sm px-3 py-2 mb-4">
           <span className="font-bold uppercase">Reopened: </span>
           {session.reopenedReason}
         </p>
@@ -430,7 +430,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
       {/* Sticky balance strip */}
       <div className="swiss-card p-4 mb-6 sticky top-4 z-10">
         {actionError && (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-2 mb-3">
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-sm p-2 mb-3">
             {actionError}
           </p>
         )}
@@ -508,7 +508,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
               value={reopenReason}
               onChange={(e) => setReopenReason(e.target.value)}
               placeholder="Reason for reopening (required)"
-              className="flex-1 min-w-0 border border-ledger rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-ink"
+              className="flex-1 min-w-0 border border-ledger rounded-sm px-3 py-1.5 text-sm bg-white focus:outline-hidden focus:border-ink"
             />
             <button
               onClick={handleReopenConfirm}
@@ -541,7 +541,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
               All ledger transactions have been cleared for this period.
             </p>
           ) : (
-            <ul className="divide-y divide-ledger">
+            <ul className="ledger-divide-y ledger-divide-ledger">
               {candidates.map((t) => (
                 <TransactionRow
                   key={t._id}
@@ -567,7 +567,7 @@ const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({
               Tick transactions on the left to mark them as cleared on your statement.
             </p>
           ) : (
-            <ul className="divide-y divide-ledger">
+            <ul className="ledger-divide-y ledger-divide-ledger">
               {cleared.map((t) => (
                 <TransactionRow
                   key={t._id}

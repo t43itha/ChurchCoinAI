@@ -41,7 +41,7 @@ export default function DashboardLeadershipAlerts({ summary }: DashboardSummaryP
           </div>
         </div>
       ) : (
-        <ol className="divide-y divide-[#efeee9]">
+        <ol className="ledger-divide-y ledger-divide-[#efeee9]">
           {alerts.map((alert, index) => {
             const classes = getSeverityClasses(alert.severity);
             const Icon = alert.severity === "info" ? Info : AlertTriangle;

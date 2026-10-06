@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // IMPORTANT: Do NOT expose backend secrets (e.g., GEMINI_API_KEY) to the browser.
 // All AI calls must go through Convex actions where auth is enforced.
@@ -37,7 +38,11 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: react(),
+    plugins: [react(), tailwindcss()],
+    css: {
+      // Tailwind runs through Vite; ignore a parent checkout's PostCSS config.
+      postcss: { plugins: [] },
+    },
     resolve: {
       alias: {
         "@": import.meta.dirname,

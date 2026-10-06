@@ -1,13 +1,15 @@
 "use node";
 
+import type { UserRole } from "../../lib/permissions";
 import { action } from "../_generated/server";
+import { roleValidator } from "../lib/auth";
 import { v } from "convex/values";
 import { api } from "../_generated/api";
 import { getInviteEmailConfig } from "../lib/emailConfig";
 
 interface InviteEmailParams {
   email: string;
-  role: string;
+  role: UserRole;
   organizationName: string;
   inviterName: string;
   inviteUrl: string;
@@ -100,12 +102,7 @@ function escapeHtml(value: string): string {
 export const createAndSend = action({
   args: {
     email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
   },
   handler: async (ctx, args): Promise<InviteResult> => {
     const invitation = await ctx.runMutation(api.mutations.invitations.create, {

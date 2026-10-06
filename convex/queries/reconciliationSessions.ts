@@ -1,13 +1,13 @@
 // convex/queries/reconciliationSessions.ts
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability, redactDonorFields } from "../lib/auth";
 
 // All sessions for the organization, newest first, with fund names
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const sessions = await ctx.db
       .query("reconciliationSessions")
       .withIndex("by_organization", (q) =>
@@ -33,7 +33,7 @@ export const list = query({
 export const workspace = query({
   args: { sessionId: v.id("reconciliationSessions") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const session = await ctx.db.get(args.sessionId);
     if (!session || session.organizationId !== user.organizationId) {
       return null;
@@ -62,6 +62,10 @@ export const workspace = query({
         t.reconciliationSessionId == null
     );
 
-    return { session, cleared, candidates };
+    return {
+      session,
+      cleared: cleared.map((transaction) => redactDonorFields(user, transaction)),
+      candidates: candidates.map((transaction) => redactDonorFields(user, transaction)),
+    };
   },
 });

@@ -1,5 +1,6 @@
 
 import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup } from "../types";
+import { filterReportableTransactions } from "../lib/reportableTransactions";
 
 // Escape HTML entities to prevent injection when rendering user-supplied data
 const escapeHtml = (value?: string) =>
@@ -12,6 +13,12 @@ const escapeHtml = (value?: string) =>
 
 const safeUrl = (url?: string) => {
   if (!url) return "";
+  if (
+    /^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(url) &&
+    url.length <= 700_000
+  ) {
+    return url;
+  }
   try {
     const parsed = new URL(url);
     return ["https:", "http:"].includes(parsed.protocol) ? url : "";
@@ -45,7 +52,7 @@ export const generateScheduleHTML = (
     : 'All Time';
 
   // Filter transactions for this donor and sort by date (newest first)
-  const donorTransactions = (transactions || [])
+  const donorTransactions = filterReportableTransactions(transactions || [])
     .filter(t => t.type === 'Income')
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

@@ -8,7 +8,7 @@ The product is currently being prepared for a supervised pilot with a small numb
 
 - Tracks unrestricted, restricted, designated, and endowment funds.
 - Manages donors, Gift Aid indicators, pledges, campaigns, and in-person giving.
-- Imports UK Open Banking transactions through Enable Banking.
+- Imports UK Open Banking transactions through Yapily.
 - Reconciles statements, cash collections, cheques, and bank deposits.
 - Suggests transaction categories using Gemini and organization-scoped RAG memory.
 - Produces trustee-friendly reports and PDF/Excel exports.
@@ -21,7 +21,7 @@ The product is currently being prepared for a supervised pilot with a small numb
 - Convex for the database, real-time queries, actions, and HTTP endpoints
 - Clerk for authentication
 - Google Gemini and Convex RAG for categorisation
-- Enable Banking for active UK Open Banking connections
+- Yapily for UK Open Banking connections
 - Stripe for subscriptions
 - Resend for invitations
 - Sentry for browser error reporting, with Convex's native exception integration recommended for backend functions
@@ -78,9 +78,48 @@ Set `VITE_SENTRY_DSN` and `VITE_SENTRY_ENVIRONMENT` in the frontend deployment t
 
 For backend exceptions, enable the native Sentry integration for each production Convex deployment under **Deployment Settings → Integrations**. This is a deployment-level setting and is not activated by the frontend DSN.
 
+### In-app support tickets
+
+Signed-in members can submit bugs, questions, and product ideas from **Help & feedback**. The report is stored in Convex first and then mirrored to GitHub in the background, so a GitHub outage cannot lose the customer's request.
+
+Create a separate **private** repository such as `ChurchCoinAI-Support`; never point this integration at the public source repository. Create a GitHub App installed only on the support repository with **Metadata: read** and **Issues: read/write** permissions, then set the `GITHUB_*` values documented in `.env.example` in the Convex deployment.
+
+Configure the GitHub App's webhook URL as:
+
+```text
+https://YOUR-CONVEX-DEPLOYMENT.convex.site/github/support-webhook
+```
+
+Subscribe it to **Issues** events and use the same secret as `GITHUB_WEBHOOK_SECRET`. The following optional labels drive the customer-visible workflow:
+
+- `customer-report`
+- `status:triage`
+- `status:under-review`
+- `status:in-progress`
+- `status:waiting-for-customer`
+- `status:resolved`
+
+GitHub comments remain internal. Only the issue state and explicit status labels are mirrored back to the customer's **My requests** view. The backend refuses to create customer issues if the configured repository is public.
+
 ### Banking and billing
 
-Set Enable Banking, Stripe, and callback variables listed in `.env.example`. `APP_BASE_URL` must be the deployed frontend origin. Keep all provider secrets in Convex—never place them in `VITE_*` values, which are shipped to browsers.
+To activate Yapily access:
+
+1. Create a Yapily Console application and arrange production access through Yapily Connect (delegated AISP licensing) or your own regulated registration.
+2. In Yapily, authorise the exact callback URL `https://YOUR-CONVEX-DEPLOYMENT.convex.site/yapily/callback`. Yapily Connect uses `https://auth.yapily.com/` as the bank redirect and returns the browser to this callback.
+3. Set `YAPILY_APPLICATION_ID`, `YAPILY_APPLICATION_SECRET`, `YAPILY_CALLBACK_URL`, and `APP_BASE_URL` in the target Convex deployment. `YAPILY_API_BASE_URL` is optional.
+4. Enable/register the UK institutions required by the pilot churches. ChurchCoin lists only institutions exposed to the application with account-authorisation, account, and transaction features.
+5. Test first with a Yapily sandbox institution, then complete a live-bank consent in **Settings → Bank Connections** and map each account to a ChurchCoin fund.
+
+ChurchCoin requests a Yapily one-time token at callback, exchanges it server-side,
+stores the resulting consent credential only in Convex, and revokes the consent
+when a connection or organisation is deleted. The callback schedules account
+discovery before redirecting so it meets Yapily's fast-response guidance.
+
+Transaction sync remains manual so imported entries can be reviewed before they
+reach the ledger.
+
+Set the Yapily, Stripe, and callback variables listed in `.env.example`. `APP_BASE_URL` must be the deployed frontend origin. Keep all provider secrets in Convex—never place them in `VITE_*` values, which are shipped to browsers.
 
 ## Data protection and retention
 
@@ -89,7 +128,7 @@ Organization admins can use **Settings → Data & Privacy** to:
 - download a paginated JSON export covering every organization-scoped table, with invitation, banking, and Stripe credentials removed; and
 - permanently delete an organization after an exact-name confirmation.
 
-Deletion first revokes Enable Banking and legacy Plaid access, removes the Stripe customer, clears organization RAG data, and then erases tenant records in bounded batches. The user's Clerk sign-in is retained so they can join or create another organization.
+Deletion first revokes Yapily and legacy Plaid access, removes the Stripe customer, clears organization RAG data, and then erases tenant records in bounded batches. The user's Clerk sign-in is retained so they can join or create another organization.
 
 Deletion is not a substitute for a retention policy. UK charities generally need accounting and Gift Aid records for at least six years. Pilot churches should export and retain legally required records before deletion and document their own retention schedule and data-processing responsibilities.
 
@@ -98,8 +137,9 @@ Deletion is not a substitute for a retention policy. UK charities generally need
 - Every application table is scoped by `organizationId`.
 - Server-side auth helpers derive identity from Clerk and enforce roles in Convex.
 - Stripe webhooks verify signatures.
-- Enable Banking callback state is single-use and time-limited.
+- Yapily callback state is provider-bound, single-use, and time-limited; callbacks expose only a short-lived one-time token.
 - Preserved Plaid webhooks verify JWT signatures and request body hashes.
+- GitHub support webhooks verify HMAC signatures, and customer issue syncing is restricted to a private repository.
 - Financial values use shared money-precision helpers.
 - Provider secrets remain server-side and are excluded from data exports.
 
@@ -125,4 +165,4 @@ Build the frontend with `npm run build` and deploy `dist/` to the configured hos
 npx convex deploy
 ```
 
-Before inviting a pilot church, verify the production Resend sender, Sentry projects, Clerk JWT issuer, Stripe webhook, Enable Banking callback, backup/export procedure, and the complete CI run.
+Before inviting a pilot church, verify the production Resend sender, Sentry projects, Clerk JWT issuer, Stripe webhook, Yapily callback, backup/export procedure, and the complete CI run.

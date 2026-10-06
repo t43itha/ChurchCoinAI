@@ -1,6 +1,6 @@
 import { mutation, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 
 // Account schema for validation
@@ -154,7 +154,7 @@ export const updateAccountFundMapping = mutation({
     fundId: v.optional(v.id("funds")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "bank.manage");
 
     const item = await ctx.db.get(args.plaidItemId);
     if (!item) {
@@ -164,6 +164,13 @@ export const updateAccountFundMapping = mutation({
     // Verify user has access to this organization's items
     if (item.organizationId !== user.organizationId) {
       throw new Error("Access denied");
+    }
+
+    if (args.fundId) {
+      const fund = await ctx.db.get(args.fundId);
+      if (!fund || fund.organizationId !== user.organizationId) {
+        throw new Error("Invalid fund");
+      }
     }
 
     // Update the fund mapping for the specific account
@@ -189,7 +196,7 @@ export const removeConnection = internalMutation({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "bank.remove");
 
     const item = await ctx.db.get(args.plaidItemId);
     if (!item) {

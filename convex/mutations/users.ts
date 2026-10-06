@@ -1,6 +1,7 @@
+import { OWNER_ROLE } from "../../lib/permissions";
 import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { getIdentity, requireAuth, requireRole } from "../lib/auth";
+import { getIdentity, requireAuth, requireCapability, roleValidator } from "../lib/auth";
 
 // Accept an invitation explicitly (for new users). Identified either by the
 // secret link token (works regardless of which email the user signed up
@@ -93,15 +94,10 @@ export const invite = internalMutation({
 export const updateRole = mutation({
   args: {
     userId: v.id("users"),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
   },
   handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
+    const currentUser = await requireCapability(ctx, "users.manage");
 
     const targetUser = await ctx.db.get(args.userId);
     if (!targetUser) {
@@ -113,13 +109,13 @@ export const updateRole = mutation({
     }
 
     // Prevent removing the last admin
-    if (targetUser.role === "Admin" && args.role !== "Admin") {
+    if (targetUser.role === OWNER_ROLE && args.role !== OWNER_ROLE) {
       const admins = await ctx.db
         .query("users")
         .withIndex("by_organization", (q) =>
           q.eq("organizationId", currentUser.organizationId)
         )
-        .filter((q) => q.eq(q.field("role"), "Admin"))
+        .filter((q) => q.eq(q.field("role"), OWNER_ROLE))
         .collect();
 
       if (admins.length <= 1) {
@@ -144,7 +140,24 @@ export const updateProfile = mutation({
 
     const updates: Record<string, any> = {};
     if (args.name !== undefined) updates.name = args.name;
-    if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
+    if (args.avatarUrl !== undefined) {
+      const avatarUrl = args.avatarUrl.trim();
+      if (avatarUrl.length > 2048) {
+        throw new Error("Avatar URL is too long");
+      }
+      if (avatarUrl) {
+        let parsed: URL;
+        try {
+          parsed = new URL(avatarUrl);
+        } catch {
+          throw new Error("Avatar URL is not valid");
+        }
+        if (!["https:", "http:"].includes(parsed.protocol)) {
+          throw new Error("Avatar URL must use HTTP or HTTPS");
+        }
+      }
+      updates.avatarUrl = avatarUrl || undefined;
+    }
 
     await ctx.db.patch(user._id, updates);
 
@@ -158,7 +171,7 @@ export const remove = mutation({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
-    const currentUser = await requireRole(ctx, ["Admin"]);
+    const currentUser = await requireCapability(ctx, "users.manage");
 
     const targetUser = await ctx.db.get(args.userId);
     if (!targetUser) {
@@ -175,13 +188,13 @@ export const remove = mutation({
     }
 
     // Prevent removing the last admin
-    if (targetUser.role === "Admin") {
+    if (targetUser.role === OWNER_ROLE) {
       const admins = await ctx.db
         .query("users")
         .withIndex("by_organization", (q) =>
           q.eq("organizationId", currentUser.organizationId)
         )
-        .filter((q) => q.eq(q.field("role"), "Admin"))
+        .filter((q) => q.eq(q.field("role"), OWNER_ROLE))
         .collect();
 
       if (admins.length <= 1) {

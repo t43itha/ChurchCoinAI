@@ -49,9 +49,17 @@ describe("category resolver", () => {
     );
   });
 
-  it("rejects mismatched and unknown type categories", () => {
+  it("rejects a typed category used on the other side of the ledger", () => {
     expect(resolveCategoryForTransaction("Bank Charges", "Income", categories)).toBeNull();
-    expect(resolveCategoryForTransaction("Legacy", "Income", categories)).toBeNull();
+  });
+
+  it("keeps an untyped user category usable for transaction writes", () => {
+    expect(resolveCategoryForTransaction("Legacy", "Income", categories)?.name).toBe(
+      "Legacy"
+    );
+    expect(resolveCategoryForTransaction("Legacy", "Expenditure", categories)?.name).toBe(
+      "Legacy"
+    );
   });
 
   it("groups rent and manse variants under Premises Costs in reports", () => {

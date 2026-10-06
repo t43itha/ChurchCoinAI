@@ -9,7 +9,10 @@ import { ChurchDetails } from "./types";
 import Sidebar from "./components/Sidebar";
 import Onboarding from "./components/Onboarding";
 import AuthPage from "./components/AuthPage";
-import { clerkAppearance } from "./lib/clerkAppearance";
+import {
+  clerkUserButtonAppearance,
+  clerkUserProfileAppearance,
+} from "./lib/clerkAppearance";
 import LoadingSpinner from "./components/LoadingSpinner";
 import LandingPage from "./components/landing/LandingPage";
 import LegalPage from "./components/legal/LegalPage";
@@ -18,9 +21,11 @@ import AppContentRoutes from "./components/app/AppContentRoutes";
 import AppNotificationToast, {
   AppNotification,
 } from "./components/app/AppNotificationToast";
+import SupportCenter from "./components/SupportCenter";
 import { subscribeToNotifications } from "./lib/notifications";
 import { getStoredInviteToken, storeInviteToken } from "./lib/inviteToken";
 import { setMonitoringContext } from "./lib/monitoring";
+import { hasSupportDraft } from "./lib/supportDraft";
 import {
   clearOnboardingIntent,
   getOnboardingIntent,
@@ -77,6 +82,14 @@ function App() {
     api.queries.subscriptions.access,
     hasUser ? {} : "skip"
   );
+  const returnedFromCheckout =
+    new URLSearchParams(location.search).get("subscription") === "success";
+  const checkoutVerificationPending =
+    returnedFromCheckout &&
+    access !== undefined &&
+    access !== null &&
+    access.state !== "active_subscription" &&
+    access.state !== "trialing_subscription";
 
   // Shared reference data used by every route. Route-specific data
   // (transactions, donors, pledges, users) is fetched inside each route.
@@ -110,12 +123,51 @@ function App() {
   const [selectedPlan, setSelectedPlan] = useState<PlanTier | undefined>(
     () => getOnboardingIntent()?.selectedPlan
   );
+  const [isSupportOpen, setIsSupportOpen] = useState(
+    () =>
+      new URLSearchParams(window.location.search).has("support") ||
+      hasSupportDraft()
+  );
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has("support")) {
+      setIsSupportOpen(true);
+    }
+  }, [location.search]);
+
+  const closeSupport = useCallback(() => {
+    setIsSupportOpen(false);
+    const params = new URLSearchParams(location.search);
+    if (!params.has("support")) return;
+    params.delete("support");
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true }
+    );
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     if (access?.canUseApp) {
       clearOnboardingIntent();
     }
   }, [access?.canUseApp]);
+
+  useEffect(() => {
+    if (
+      !returnedFromCheckout ||
+      (access?.state !== "active_subscription" &&
+        access?.state !== "trialing_subscription")
+    ) {
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    params.delete("subscription");
+    params.delete("session_id");
+    navigate(
+      { pathname: location.pathname, search: params.toString() },
+      { replace: true }
+    );
+  }, [access?.state, location.pathname, location.search, navigate, returnedFromCheckout]);
 
   const beginAuth = (mode: "signin" | "signup", plan?: PlanTier, source = "landing") => {
     storeOnboardingIntent({ authMode: mode, selectedPlan: plan, source });
@@ -193,6 +245,7 @@ function App() {
     return (
       <Onboarding
         clerkUser={clerkUser}
+        selectedPlan={selectedPlan}
         onComplete={(result) => {
           if (result === "invitation") {
             clearOnboardingIntent();
@@ -210,14 +263,19 @@ function App() {
     return <LoadingSpinner message="Checking organization access..." />;
   }
 
-  if (access === null || !access.canUseApp) {
+  if (access === null || !access.canUseApp || checkoutVerificationPending) {
     return (
-      <SubscriptionRequired
-        organizationName={currentOrganization.name}
-        userRole={currentUser.role}
-        selectedPlan={selectedPlan}
-        accessState={access?.state ?? "access_revoked"}
-      />
+      <>
+        <SubscriptionRequired
+          organizationName={currentOrganization.name}
+          userRole={currentUser.role}
+          selectedPlan={selectedPlan ?? access?.plan ?? undefined}
+          accessState={access?.state ?? "access_revoked"}
+          accessReason={access?.reason}
+          onOpenSupport={() => setIsSupportOpen(true)}
+        />
+        <SupportCenter open={isSupportOpen} onClose={closeSupport} />
+      </>
     );
   }
 
@@ -246,19 +304,27 @@ function App() {
 
       <Sidebar
         currentUser={currentUser}
+        access={access}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        onOpenSupport={() => setIsSupportOpen(true)}
       />
 
+      <SupportCenter open={isSupportOpen} onClose={closeSupport} />
+
       <main className="flex-1 md:ml-[248px] flex flex-col h-screen overflow-hidden">
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-sm sticky top-0 z-10">
+        <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-xs sticky top-0 z-10">
           <img
             src="/churchcoin-logo.png"
             alt="ChurchCoin Finance Platform"
             className="h-10 w-auto"
           />
           <div className="flex items-center gap-2">
-            <UserButton afterSignOutUrl="/" appearance={clerkAppearance} />
+            <UserButton
+              afterSignOutUrl="/"
+              appearance={clerkUserButtonAppearance}
+              userProfileProps={{ appearance: clerkUserProfileAppearance }}
+            />
             <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="p-2 text-grey-dark hover:bg-grey-light rounded-md"

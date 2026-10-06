@@ -124,7 +124,7 @@ const DataPrivacySettings: React.FC<DataPrivacySettingsProps> = ({
   };
 
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className="max-w-4xl ledger-space-y-5">
       <div className="swiss-card-static overflow-hidden">
         <div className="flex items-center gap-3 px-6 py-[18px] border-b border-grey-light bg-[#fcfbf9]">
           <span className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-[9px] bg-white border border-ledger text-grey-dark">
@@ -182,7 +182,7 @@ const DataPrivacySettings: React.FC<DataPrivacySettingsProps> = ({
             </p>
           </div>
         </div>
-        <div className="p-6 space-y-5">
+        <div className="p-6 ledger-space-y-5">
           <div className="flex gap-3 rounded-[10px] border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-xs leading-relaxed text-[#7a5a30]">
             <AlertTriangle size={18} className="shrink-0 mt-0.5" />
             <p>
@@ -202,13 +202,13 @@ const DataPrivacySettings: React.FC<DataPrivacySettingsProps> = ({
               onChange={(event) => setConfirmation(event.target.value)}
               disabled={isDeleting}
               autoComplete="off"
-              className="w-full max-w-md p-3 bg-white border border-ledger rounded-[10px] text-sm text-ink focus:ring-1 focus:ring-error outline-none disabled:opacity-60"
+              className="w-full max-w-md p-3 bg-white border border-ledger rounded-[10px] text-sm text-ink focus:ring-1 focus:ring-error outline-hidden disabled:opacity-60"
             />
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <p className="text-xs text-grey-mid max-w-xl leading-relaxed">
-              This closes Enable Banking and Plaid access, deletes the Stripe
+              This revokes Yapily and Plaid access, deletes the Stripe
               customer, removes AI memory, and erases all organization records.
               Your personal sign-in remains available for joining another church.
             </p>

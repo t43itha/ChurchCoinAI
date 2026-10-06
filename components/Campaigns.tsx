@@ -1,9 +1,11 @@
+import { can } from "../lib/permissions";
 import React, { useState, useRef, useEffect } from 'react';
 import { AppUser, Donor, DonorCreateInput, Fund, FundType, Pledge, PledgeCreateInput, Transaction } from '../types';
 import { useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Users, Calendar, Wand2, Check, X, Lock, Plus, FileSpreadsheet, ArrowRight, Table as TableIcon, Edit2, Target, Save, MessageSquare, Phone, Mail, Loader2, Copy, Search, ChevronDown } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { sumReportableIncome } from '../lib/reportableTransactions';
 
 interface CampaignsProps {
@@ -91,7 +93,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     const [pledgeForm, setPledgeForm] = useState<Partial<Pledge>>({
         frequency: 'Monthly',
         status: 'Active',
-        startDate: new Date().toISOString().split('T')[0]
+        startDate: formatLocalDateInputValue(new Date())
     });
 
     // CSV Import State
@@ -120,7 +122,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
         skippedRows: { row: number; reason: string }[];
     } | null>(null);
 
-    const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
+    const canEdit = can(currentUser.role, "pledges.write");
     const [pledgeSearch, setPledgeSearch] = useState('');
 
     // Show empty state if no campaign funds exist
@@ -201,7 +203,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
             // Simple robust check for UK international format
             const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
             const url = `https://wa.me/${formatted}?text=${encodeURIComponent(thankYouModal.text)}`;
-            window.open(url, '_blank');
+            window.open(url, '_blank', 'noopener');
         } else {
             notify("Notice", "No phone number found for this donor.");
         }
@@ -213,7 +215,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
     };
 
     const handleAddPledgeClick = () => {
-        setPledgeForm({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+        setPledgeForm({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
         setShowAddModal(true);
     }
 
@@ -242,7 +244,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 amount: Number(pledgeForm.amount),
                 fundId: currentFundId,
                 frequency: (pledgeForm.frequency as PledgeCreateInput["frequency"]) || 'Monthly',
-                startDate: pledgeForm.startDate || new Date().toISOString().split('T')[0],
+                startDate: pledgeForm.startDate || formatLocalDateInputValue(new Date()),
                 endDate: pledgeForm.endDate,
                 status: (pledgeForm.status as PledgeCreateInput["status"]) || 'Active'
             };
@@ -447,7 +449,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                 amount,
                 fundId: currentFundId,
                 frequency,
-                startDate: new Date().toISOString().split('T')[0],
+                startDate: formatLocalDateInputValue(new Date()),
                 status: 'Active'
             });
         });
@@ -489,7 +491,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
     return (
         <>
-        <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+        <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
             <header className="swiss-card-static p-6 md:p-[26px] flex flex-col md:flex-row justify-between md:items-start gap-4">
                 <div>
                     <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Campaigns</h2>
@@ -499,7 +501,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     <div className="bg-white border border-ledger rounded-xl h-[42px] px-3.5 flex items-center gap-2 shadow-soft-sm">
                         <Target size={16} strokeWidth={1.9} className="text-grey-mid"/>
                         <select
-                            className="appearance-none text-sm font-semibold text-ink outline-none bg-transparent cursor-pointer min-w-[150px] pr-1"
+                            className="appearance-none text-sm font-semibold text-ink outline-hidden bg-transparent cursor-pointer min-w-[150px] pr-1"
                             value={currentFundId}
                             onChange={(e) => setSelectedFundId(e.target.value)}
                         >
@@ -573,7 +575,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     placeholder="Search donors…"
                                     value={pledgeSearch}
                                     onChange={(e) => setPledgeSearch(e.target.value)}
-                                    className="h-9 pl-[34px] pr-3 text-[13px] text-ink border border-ledger rounded-[9px] bg-white outline-none w-full sm:w-[180px]"
+                                    className="h-9 pl-[34px] pr-3 text-[13px] text-ink border border-ledger rounded-[9px] bg-white outline-hidden w-full sm:w-[180px]"
                                 />
                             </div>
                         </div>
@@ -616,7 +618,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             <h4 className="text-xs font-bold text-sage-dark uppercase tracking-wide mb-3 flex items-center gap-2">
                                 <Wand2 size={12} /> Suggested Links
                             </h4>
-                            <div className="space-y-3">
+                            <div className="ledger-space-y-3">
                                 {matches.map((m, i) => {
                                     const txn = transactions.find(t => t._id === m.transactionId);
                                     if (!txn) return <div key={i} style={{display: 'none'}} />;
@@ -635,7 +637,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                                 </div>
                                             </div>
                                             <div className="flex gap-2 shrink-0">
-                                                 <button onClick={() => handleRejectMatch(m)} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded font-bold uppercase flex items-center gap-1 transition-colors">
+                                                 <button onClick={() => handleRejectMatch(m)} className="text-[10px] border border-ledger text-grey-mid hover:text-error hover:border-error/30 px-3 py-1.5 rounded-sm font-bold uppercase flex items-center gap-1 transition-colors">
                                                     <X size={12}/> Dismiss
                                                 </button>
                                                 <button onClick={() => handleConfirmMatch(m)} className="text-[10px] bg-sage hover:bg-sage-dark text-white px-3 py-1.5 rounded-[7px] font-bold uppercase flex items-center gap-1 transition-colors">
@@ -650,7 +652,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                     )}
 
                     {/* Mobile Cards View */}
-                    <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-3">
+                    <div className="md:hidden flex-1 overflow-y-auto p-4 ledger-space-y-3">
                         {filteredPledges.map((pledge) => (
                             <div key={pledge._id} className="bg-white p-4 rounded-[10px] border border-ledger shadow-soft-sm">
                                 <div className="flex justify-between items-start mb-2">
@@ -672,7 +674,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                             </button>
                                         )}
                                         {canEdit && (
-                                            <button onClick={() => handleEditPledgeClick(pledge)} className="p-2 text-grey-mid hover:text-grey-dark hover:bg-grey-light rounded transition-colors">
+                                            <button onClick={() => handleEditPledgeClick(pledge)} className="p-2 text-grey-mid hover:text-grey-dark hover:bg-grey-light rounded-sm transition-colors">
                                                 <Edit2 size={16} />
                                             </button>
                                         )}
@@ -773,7 +775,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* Thank You / Completion Modal */}
             {thankYouModal.isOpen && (
-                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
                     <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-sage-light rounded-t-lg">
                             <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
@@ -826,7 +828,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* Add/Edit Pledge Modal */}
             {(showAddModal || editingPledge) && canEdit && (
-                <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
+                <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
                     <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter my-4 md:my-auto max-h-[calc(100vh-2rem)] overflow-y-auto">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                             <h3 className="font-bold text-ink text-sm uppercase tracking-wide">
@@ -834,7 +836,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </h3>
                             <button onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                         </div>
-                        <form onSubmit={handlePledgeSubmit} className="p-6 space-y-4">
+                        <form onSubmit={handlePledgeSubmit} className="p-6 ledger-space-y-4">
                             <div className="bg-sage-light p-3 rounded-lg border border-sage/30 text-xs text-sage-dark mb-2">
                                 {editingPledge ? 'Editing pledge for ' : 'Adding pledge to '} <strong>{selectedFund?.name}</strong>
                             </div>
@@ -846,7 +848,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     required
                                     value={pledgeForm.donorName || ''} 
                                     onChange={(e) => setPledgeForm({...pledgeForm, donorName: e.target.value})}
-                                    className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"
+                                    className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"
                                     placeholder="e.g. John Doe"
                                 />
                             </div>
@@ -861,7 +863,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                             required
                                             value={pledgeForm.amount || ''} 
                                             onChange={(e) => setPledgeForm({...pledgeForm, amount: parseFloat(e.target.value)})}
-                                            className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
+                                            className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -871,7 +873,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={pledgeForm.frequency} 
                                         onChange={(e) => setPledgeForm({...pledgeForm, frequency: e.target.value as any})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="One-off">One-off</option>
                                         <option value="Weekly">Weekly</option>
@@ -888,7 +890,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                         type="date"
                                         value={pledgeForm.startDate}
                                         onChange={e => setPledgeForm({...pledgeForm, startDate: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"
                                         required
                                     />
                                 </div>
@@ -898,7 +900,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                         type="date"
                                         value={pledgeForm.endDate || ''} 
                                         onChange={e => setPledgeForm({...pledgeForm, endDate: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"
                                     />
                                 </div>
                             </div>
@@ -909,7 +911,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={pledgeForm.status} 
                                         onChange={(e) => setPledgeForm({...pledgeForm, status: e.target.value as any})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="Active">Active</option>
                                         <option value="Completed">Completed</option>
@@ -919,7 +921,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             )}
 
                             <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4">
-                                <button type="button" onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
+                                <button type="button" onClick={() => { setShowAddModal(false); setEditingPledge(null); }} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button>
                                 <button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                                     {editingPledge ? <Save size={14} /> : <Plus size={14} />} 
                                     {editingPledge ? 'Save Changes' : 'Add Pledge'}
@@ -932,7 +934,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* CSV Import Modal */}
             {showCsvMapper && canEdit && (
-                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-4xl animate-enter border border-ledger">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-paper rounded-t-lg">
                             <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
@@ -942,7 +944,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 <X size={16} />
                             </button>
                         </div>
-                        <div className="p-6 space-y-6">
+                        <div className="p-6 ledger-space-y-6">
                             <div className="bg-sage-light p-4 rounded-lg border border-sage/30 mb-4 flex justify-between items-center">
                                 <p className="text-xs text-sage-dark">
                                     <strong>{csvRows.length}</strong> rows found • Importing into <strong>{selectedFund?.name}</strong>
@@ -958,7 +960,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.donor} 
                                         onChange={(e) => setColumnMapping({...columnMapping, donor: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -969,7 +971,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select
                                         value={columnMapping.amount}
                                         onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -980,7 +982,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.frequency} 
                                         onChange={(e) => setColumnMapping({...columnMapping, frequency: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -991,7 +993,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.email} 
                                         onChange={(e) => setColumnMapping({...columnMapping, email: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1002,7 +1004,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.phone} 
                                         onChange={(e) => setColumnMapping({...columnMapping, phone: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1013,7 +1015,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.address} 
                                         onChange={(e) => setColumnMapping({...columnMapping, address: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1024,7 +1026,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.postcode} 
                                         onChange={(e) => setColumnMapping({...columnMapping, postcode: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1035,7 +1037,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <select 
                                         value={columnMapping.commPref} 
                                         onChange={(e) => setColumnMapping({...columnMapping, commPref: e.target.value})}
-                                        className="w-full p-2.5 border border-ledger rounded text-sm bg-white focus:ring-1 focus:ring-ink outline-none"
+                                        className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-white focus:ring-1 focus:ring-ink outline-hidden"
                                     >
                                         <option value="">Select Column...</option>
                                         {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1062,7 +1064,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                             </div>
 
                             <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4">
-                                <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button>
+                                <button onClick={() => setShowCsvMapper(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button>
                                 <button onClick={handleProcessImport} className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2">
                                     Import Data <ArrowRight size={14} />
                                 </button>
@@ -1074,7 +1076,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
 
             {/* Import Results Modal */}
             {importResult?.show && (
-                <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-md animate-enter border border-ledger">
                         <div className="p-4 border-b border-ledger flex justify-between items-center bg-sage-light rounded-t-lg">
                             <h3 className="font-bold text-sage-dark text-sm uppercase tracking-wide flex items-center gap-2">
@@ -1084,7 +1086,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                 <X size={16} />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 ledger-space-y-4">
                             {/* Summary Stats */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="bg-paper p-3 rounded-lg border border-ledger text-center">
@@ -1111,7 +1113,7 @@ const Campaigns: React.FC<CampaignsProps> = ({ funds, pledges, transactions, don
                                     <div className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-2">
                                         {importResult.skippedRows.length} Rows Skipped
                                     </div>
-                                    <div className="max-h-32 overflow-y-auto space-y-1">
+                                    <div className="max-h-32 overflow-y-auto ledger-space-y-1">
                                         {importResult.skippedRows.slice(0, 10).map((skip, i) => (
                                             <div key={i} className="text-xs text-amber-700">
                                                 Row {skip.row}: {skip.reason}

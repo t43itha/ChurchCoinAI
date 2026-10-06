@@ -1,15 +1,16 @@
 import { mutation, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import {
   calculateCollectionBankingTotals,
   calculateReconciliationSummary,
   normalizeBankTransactionSplits,
 } from "../../lib/cashChequeBanking";
-import { sumReportableIncome } from "../../lib/reportableTransactions";
+import { refreshPledgeStatus as refreshSharedPledgeStatus } from "../lib/pledgeStatus";
 import { isActiveTransaction } from "../../lib/voidedTransactions";
-import { meetsMoneyTarget, roundMoney } from "../lib/money";
+import { roundMoney } from "../lib/money";
+import { assertNotLockedByReconciliation, patchTransaction } from "../lib/transactionWrites";
 
 type BankingMedium = "cash" | "cheque" | "mixed";
 type VarianceType =
@@ -132,6 +133,10 @@ async function getAndValidateBankTransactions(
       throw new Error("Bank transaction not found");
     }
 
+    await assertNotLockedByReconciliation(ctx, {
+      reconciliationSessionId: transaction.reconciliationSessionId,
+    });
+
     if (!isActiveTransaction(transaction)) {
       throw new Error("Voided transactions cannot be used as bank deposits");
     }
@@ -237,27 +242,7 @@ async function refreshPledgeStatus(
   organizationId: Id<"organizations">,
   pledgeId: Id<"pledges">
 ) {
-  const pledge = await ctx.db.get(pledgeId);
-  if (
-    !pledge ||
-    pledge.organizationId !== organizationId ||
-    (pledge.status !== "Active" && pledge.status !== "Completed")
-  ) {
-    return;
-  }
-
-  const linkedTransactions = await ctx.db
-    .query("transactions")
-    .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
-    .collect();
-  const totalReceived = sumReportableIncome(linkedTransactions);
-  const nextStatus = meetsMoneyTarget(totalReceived, pledge.amount)
-    ? "Completed"
-    : "Active";
-
-  if (pledge.status !== nextStatus) {
-    await ctx.db.patch(pledgeId, { status: nextStatus });
-  }
+  await refreshSharedPledgeStatus(ctx, pledgeId, organizationId);
 }
 
 async function calculateCollectionBankingState(
@@ -406,7 +391,7 @@ function assertVarianceDetails(
 export const createDraft = mutation({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const now = Date.now();
 
     const reconciliationId = await ctx.db.insert("cashBankingReconciliations", {
@@ -441,7 +426,7 @@ export const updateDraft = mutation({
     varianceNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const reconciliation = await ctx.db.get(args.reconciliationId);
     if (!reconciliation || reconciliation.organizationId !== user.organizationId) {
@@ -513,7 +498,7 @@ export const complete = mutation({
     reconciliationId: v.id("cashBankingReconciliations"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const reconciliation = await ctx.db.get(args.reconciliationId);
     if (!reconciliation || reconciliation.organizationId !== user.organizationId) {
@@ -588,13 +573,31 @@ export const complete = mutation({
     );
 
     for (const transaction of currentBankDeposits) {
+      await assertNotLockedByReconciliation(ctx, {
+        reconciliationSessionId: transaction.reconciliationSessionId,
+      });
+    }
+
+    for (const transaction of currentBankDeposits) {
       if (!finalBankTransactionIds.has(transaction._id)) {
-        await ctx.db.patch(transaction._id, {
+        const snapshot = reconciliation.bankTransactionSplits.find(
+          (split) => split.transactionId === transaction._id
+        );
+        await patchTransaction(ctx, transaction._id, {
           cashBankingReconciliationId: undefined,
           cashBankingRole: undefined,
           bankingMedium: undefined,
           isReconciled: false,
-        });
+          ...(snapshot?.previousCategory !== undefined
+            ? {
+                category: snapshot.previousCategory,
+                donorId: snapshot.previousDonorId,
+                donorName: snapshot.previousDonorName,
+                pledgeId: snapshot.previousPledgeId,
+                isGiftAidEligible: snapshot.previousGiftAidEligible ?? false,
+              }
+            : {}),
+        }, { lockOverride: "reconciliation-owner" });
       }
     }
 
@@ -605,8 +608,24 @@ export const complete = mutation({
       }
     }
 
+    const snapshottedSplits = [];
     for (const split of reconciliation.bankTransactionSplits) {
-      await ctx.db.patch(split.transactionId, {
+      const transaction = bankTransactions.find(
+        (candidate) => candidate._id === split.transactionId
+      );
+      const snapshotted =
+        split.previousCategory !== undefined
+          ? split
+          : {
+              ...split,
+              previousCategory: transaction?.category ?? "",
+              previousDonorId: transaction?.donorId,
+              previousDonorName: transaction?.donorName,
+              previousPledgeId: transaction?.pledgeId ?? null,
+              previousGiftAidEligible: transaction?.isGiftAidEligible,
+            };
+      snapshottedSplits.push(snapshotted);
+      await patchTransaction(ctx, split.transactionId, {
         category: "Cash/cheque banking",
         cashBankingReconciliationId: args.reconciliationId,
         cashBankingRole: "bank_deposit",
@@ -616,8 +635,11 @@ export const complete = mutation({
         pledgeId: null,
         isGiftAidEligible: false,
         isReconciled: true,
-      });
+      }, { lockOverride: "reconciliation-owner" });
     }
+    await ctx.db.patch(args.reconciliationId, {
+      bankTransactionSplits: snapshottedSplits,
+    });
 
     for (const pledgeId of affectedPledgeIds) {
       await refreshPledgeStatus(ctx, user.organizationId, pledgeId);
@@ -640,15 +662,17 @@ export const complete = mutation({
       for (const transaction of sourceTransactions) {
         if (
           transaction.organizationId === user.organizationId &&
+          (!transaction.cashBankingReconciliationId ||
+            transaction.cashBankingReconciliationId === args.reconciliationId) &&
           isActiveTransaction(transaction) &&
           transaction.type === "Income" &&
           (transaction.paymentMethod === "Cash" ||
             transaction.paymentMethod === "Cheque")
         ) {
-          await ctx.db.patch(transaction._id, {
+          await patchTransaction(ctx, transaction._id, {
             cashBankingReconciliationId: args.reconciliationId,
             cashBankingRole: "source_giving",
-          });
+          }, { lockOverride: "reconciliation-owner" });
         }
       }
 
@@ -691,7 +715,7 @@ export const reopen = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
     const reason = args.reason.trim();
 
     if (reason.length < 3) {
@@ -706,6 +730,23 @@ export const reopen = mutation({
     if (reconciliation.status !== "completed") {
       throw new Error("Only completed reconciliations can be reopened");
     }
+
+    const ownedBankSplits = [];
+    for (const split of reconciliation.bankTransactionSplits) {
+      const transaction = await ctx.db.get(split.transactionId);
+      if (transaction?.cashBankingReconciliationId === args.reconciliationId) {
+        ownedBankSplits.push(split);
+      }
+    }
+    await getAndValidateBankTransactions(
+      ctx,
+      user.organizationId,
+      ownedBankSplits.map((split) => ({
+        ...split,
+        transactionAmount: split.cashAmount + split.chequeAmount,
+      })),
+      args.reconciliationId
+    );
 
     const completedReconciliations = await getCompletedReconciliations(
       ctx,
@@ -725,10 +766,10 @@ export const reopen = mutation({
           transaction.cashBankingReconciliationId === args.reconciliationId &&
           transaction.cashBankingRole === "source_giving"
         ) {
-          await ctx.db.patch(transaction._id, {
+          await patchTransaction(ctx, transaction._id, {
             cashBankingReconciliationId: undefined,
             cashBankingRole: undefined,
-          });
+          }, { lockOverride: "reconciliation-owner" });
         }
       }
 
@@ -763,6 +804,25 @@ export const reopen = mutation({
               ? "banked"
               : "partially_banked",
       });
+    }
+
+    for (const split of ownedBankSplits) {
+      const restoreCategory = split.previousCategory !== undefined;
+      await patchTransaction(ctx, split.transactionId, {
+        ...(restoreCategory
+          ? {
+              category: split.previousCategory,
+              donorId: split.previousDonorId,
+              donorName: split.previousDonorName,
+              pledgeId: split.previousPledgeId,
+              isGiftAidEligible: split.previousGiftAidEligible ?? false,
+            }
+          : {}),
+        cashBankingReconciliationId: undefined,
+        cashBankingRole: undefined,
+        bankingMedium: undefined,
+        isReconciled: false,
+      }, { lockOverride: "reconciliation-owner" });
     }
 
     const now = Date.now();

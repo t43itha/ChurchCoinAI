@@ -1,7 +1,7 @@
 import { query, internalQuery } from "../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { getCurrentUser, getIdentity, requireRole } from "../lib/auth";
+import { getCurrentUser, getIdentity, requireCapability, redactDonorFields } from "../lib/auth";
 import {
   ORGANIZATION_DATA_TABLES,
   type OrganizationDataTable,
@@ -27,6 +27,17 @@ const sanitizeExportRecord = (
 
   if (table === "invitations") {
     const { token: _token, ...safe } = record;
+    return safe;
+  }
+
+  if (table === "supportTickets") {
+    const {
+      githubIssueUrl: _githubIssueUrl,
+      githubRepository: _githubRepository,
+      githubSyncError: _githubSyncError,
+      githubSyncAttemptedAt: _githubSyncAttemptedAt,
+      ...safe
+    } = record;
     return safe;
   }
 
@@ -58,7 +69,13 @@ const sanitizeExportRecord = (
   }
 
   if (table === "bankConnections") {
-    const { providerConnectionId: _providerConnectionId, accounts, ...safe } = record;
+    const {
+      providerConnectionId: _providerConnectionId,
+      providerAccessToken: _providerAccessToken,
+      providerInstitutionId: _providerInstitutionId,
+      accounts,
+      ...safe
+    } = record;
     return {
       ...safe,
       accounts: (accounts ?? []).map(
@@ -73,7 +90,11 @@ const sanitizeExportRecord = (
   }
 
   if (table === "pendingBankConnections") {
-    const { state: _state, ...safe } = record;
+    const {
+      state: _state,
+      providerInstitutionId: _providerInstitutionId,
+      ...safe
+    } = record;
     return safe;
   }
 
@@ -116,7 +137,7 @@ export const exportDataPage = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "organization.export");
 
     if (args.table === "organizations") {
       const organization = await ctx.db.get(user.organizationId);
@@ -142,6 +163,9 @@ export const exportDataPage = query({
         break;
       case "invitations":
         result = await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
+      case "supportTickets":
+        result = await ctx.db.query("supportTickets").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
         break;
       case "funds":
         result = await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
@@ -194,11 +218,21 @@ export const exportDataPage = query({
       case "categorizationFeedbackEvents":
         result = await ctx.db.query("categorizationFeedbackEvents").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
         break;
+      case "ragIndexingRuns":
+        result = await ctx.db.query("ragIndexingRuns").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
+      case "ragIndexingItems":
+        result = await ctx.db.query("ragIndexingItems").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
     }
 
     return {
       ...result,
-      page: result.page.map((record) => sanitizeExportRecord(args.table, record)),
+      page: result.page.map((record) => sanitizeExportRecord(
+        args.table,
+        args.table === "transactions" || args.table === "pledges"
+          ? redactDonorFields(user, record) : record
+      )),
     };
   },
 });

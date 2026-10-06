@@ -1,24 +1,12 @@
+import { OWNER_ROLE } from "../../lib/permissions";
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { getIdentity, requireAuth, isAdmin } from "../lib/auth";
+import { internal } from "../_generated/api";
+import { getIdentity, requireAuth, assertCapability } from "../lib/auth";
 import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
-
-// Default categories for new organizations
-const DEFAULT_CATEGORIES = [
-  "Tithe",
-  "Donations",
-  "Grants",
-  "Fundraising",
-  "Investment Income",
-  "Gift Aid",
-  "Utilities",
-  "Salaries",
-  "Maintenance",
-  "Ministry",
-  "Mission Giving",
-  "Administration",
-  "Sundries",
-];
+import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
+import { getRCICategorySeedData } from "../../constants/rciCategories";
+import { seedOrganizationCategories } from "../lib/categoryIntegrity";
 
 const DEMO_SEED_VERSION = "uk-church-v1";
 
@@ -27,15 +15,7 @@ async function seedDemoOrganization(
   organizationId: any,
   now: number
 ) {
-  const categoryIds = new Map<string, any>();
-  for (const categoryName of DEFAULT_CATEGORIES) {
-    const categoryId = await ctx.db.insert("categories", {
-      organizationId,
-      name: categoryName,
-      createdAt: now,
-    });
-    categoryIds.set(categoryName, categoryId);
-  }
+  await seedOrganizationCategories(ctx, organizationId, now);
 
   const generalFundId = await ctx.db.insert("funds", {
     organizationId,
@@ -139,7 +119,7 @@ async function seedDemoOrganization(
       description: `Standing order — ${donorDefinitions[donorIndex][0]}`,
       amount: monthlyIncome,
       type: "Income",
-      category: "Tithe",
+      category: "Tithes & First Fruits",
       fundId: generalFundId,
       isReconciled: month > 0,
       isGiftAidEligible: true,
@@ -174,7 +154,7 @@ async function seedDemoOrganization(
       description: month % 2 === 0 ? "Building appeal gift" : "Youth activity costs",
       amount: month % 2 === 0 ? 650 + month * 20 : 180 + month * 5,
       type: month % 2 === 0 ? "Income" : "Expenditure",
-      category: month % 2 === 0 ? "Donations" : "Ministry",
+      category: month % 2 === 0 ? "Offerings" : "Church Provisions",
       fundId: month % 2 === 0 ? buildingFundId : youthFundId,
       isReconciled: month > 1,
       isGiftAidEligible: month % 2 === 0,
@@ -189,7 +169,7 @@ async function seedDemoOrganization(
 
   return {
     funds: 3,
-    categories: categoryIds.size,
+    categories: getRCICategorySeedData().length,
     donors: donorIds.length,
     pledges: pledgeIds.length,
     transactions: transactionCount,
@@ -213,6 +193,11 @@ export const create = mutation({
     ),
     logoUrl: v.optional(v.string()),
     userName: v.string(),
+    selectedPlan: v.optional(v.union(
+      v.literal("starter"),
+      v.literal("growing"),
+      v.literal("thriving")
+    )),
   },
   handler: async (ctx, args) => {
     const identity = await getIdentity(ctx);
@@ -236,7 +221,10 @@ export const create = mutation({
       throw new Error("User already belongs to an organization");
     }
 
-    // Create the organization
+    const now = Date.now();
+    const trialEndsAt = now + PRODUCT_TRIAL_DURATION_MS;
+
+    // Create the organization with a server-issued product trial.
     const organizationId = await ctx.db.insert("organizations", {
       name: args.name,
       charityNumber: args.charityNumber,
@@ -247,7 +235,11 @@ export const create = mutation({
       logoUrl: args.logoUrl,
       accessMode: "subscription",
       dataMode: "live",
-      createdAt: Date.now(),
+      trialStatus: "active",
+      trialStartedAt: now,
+      trialEndsAt,
+      trialPlan: args.selectedPlan,
+      createdAt: now,
       createdBy: identity.subject,
     });
 
@@ -257,18 +249,11 @@ export const create = mutation({
       organizationId,
       name: args.userName,
       email: userEmail,
-      role: "Admin",
-      createdAt: Date.now(),
+      role: OWNER_ROLE,
+      createdAt: now,
     });
 
-    // Create default categories
-    for (const categoryName of DEFAULT_CATEGORIES) {
-      await ctx.db.insert("categories", {
-        organizationId,
-        name: categoryName,
-        createdAt: Date.now(),
-      });
-    }
+    await seedOrganizationCategories(ctx, organizationId, now);
 
     // Create default General Fund
     await ctx.db.insert("funds", {
@@ -276,10 +261,46 @@ export const create = mutation({
       name: "General Fund",
       type: "Unrestricted",
       description: "Main unrestricted fund for general operations",
-      createdAt: Date.now(),
+      createdAt: now,
     });
 
+    // Server-time checks in the resolver remain authoritative if this job is
+    // delayed. The scheduled transition gives connected clients an immediate
+    // reactive update at the boundary.
+    await ctx.scheduler.runAt(
+      trialEndsAt,
+      internal.mutations.organizations.expireProductTrial,
+      { organizationId }
+    );
+
     return organizationId;
+  },
+});
+
+export const expireProductTrial = internalMutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, { organizationId }) => {
+    const organization = await ctx.db.get(organizationId);
+    if (
+      !organization ||
+      organization.accessMode !== "subscription" ||
+      organization.trialStatus !== "active" ||
+      !organization.trialEndsAt
+    ) {
+      return;
+    }
+
+    const remainingMs = organization.trialEndsAt - Date.now();
+    if (remainingMs > 0) {
+      await ctx.scheduler.runAfter(
+        remainingMs,
+        internal.mutations.organizations.expireProductTrial,
+        { organizationId }
+      );
+      return;
+    }
+
+    await ctx.db.patch(organizationId, { trialStatus: "expired" });
   },
 });
 
@@ -336,7 +357,7 @@ export const provisionDemo = internalMutation({
       organizationId,
       name: ownerName,
       email: ownerEmail,
-      role: "Admin",
+      role: OWNER_ROLE,
       createdAt: now,
     });
 
@@ -454,9 +475,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
-    if (!isAdmin(user)) {
-      throw new Error("Only admins can update organization settings");
-    }
+    assertCapability(user, "organization.update");
 
     const updates: Record<string, any> = {};
     if (args.name !== undefined) updates.name = args.name;
@@ -510,6 +529,9 @@ export const deleteDataBatch = internalMutation({
       case "invitations":
         records = await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
+      case "supportTickets":
+        records = await ctx.db.query("supportTickets").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
       case "funds":
         records = await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
@@ -561,6 +583,12 @@ export const deleteDataBatch = internalMutation({
       case "categorizationFeedbackEvents":
         records = await ctx.db.query("categorizationFeedbackEvents").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
+      case "ragIndexingRuns":
+        records = await ctx.db.query("ragIndexingRuns").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
+      case "ragIndexingItems":
+        records = await ctx.db.query("ragIndexingItems").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
     }
 
     await Promise.all(records.map((record) => ctx.db.delete(record._id)));
@@ -580,6 +608,7 @@ export const finalizeDeletion = internalMutation({
     const organizationId = args.organizationId;
     const checks: Array<[string, unknown]> = [
       ["users", await ctx.db.query("users").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["supportTickets", await ctx.db.query("supportTickets").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["invitations", await ctx.db.query("invitations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["funds", await ctx.db.query("funds").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["donors", await ctx.db.query("donors").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],

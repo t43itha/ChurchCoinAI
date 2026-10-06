@@ -1,3 +1,4 @@
+import type { UserRole } from "./lib/permissions";
 
 export const TransactionType = {
   INCOME: "Income",
@@ -57,13 +58,13 @@ export type CashBankingVarianceType =
   | "cheque_timing"
   | "other";
 
-export type UserRole = 'Admin' | 'Finance Team' | 'Pastorate' | 'Guest';
+export type { UserRole } from "./lib/permissions";
 
 export type InvitationStatus = 'pending' | 'accepted' | 'expired';
 
 export interface AppUser {
   _id: string;
-  clerkId: string;
+  clerkId?: string;
   name: string;
   email: string;
   role: UserRole;

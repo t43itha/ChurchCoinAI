@@ -4,6 +4,15 @@
 **Status:** Proposed workflow
 **Scope:** Public Get Started journey, invitation onboarding, Stripe subscription access, and internally provisioned synthetic demo churches
 
+> **Implemented amendment — 2026-08-13:** Public church creation now starts a
+> server-issued 14-day product trial with no card required. The organisation
+> receives full application access immediately, displays a trial countdown in
+> the sidebar, and enters Stripe Checkout only when an Admin chooses Upgrade or
+> the product trial has expired. This ChurchCoin trial is distinct from Stripe's
+> `trialing` subscription status. Invitations inherit the organisation's trial
+> state and never start another trial. Where the older workflow below says a new
+> church must pay before entering the app, this amendment takes precedence.
+
 ## Outcome
 
 ChurchCoin should support three distinct entry journeys:

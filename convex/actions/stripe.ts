@@ -1,6 +1,7 @@
 "use node";
 
 import { action, type ActionCtx } from "../_generated/server";
+import { assertCapability } from "../lib/auth";
 import { v } from "convex/values";
 import {
   getPlanFromStripeProduct,
@@ -47,9 +48,7 @@ export const createCheckoutSession = action({
     if (!org) {
       throw new Error("Organization not found");
     }
-    if (user.role !== "Admin") {
-      throw new Error("Only organization admins can start checkout");
-    }
+    assertCapability(user, "billing.manage");
     if (org.accessMode !== "subscription") {
       throw new Error("This organization is not eligible for Stripe billing");
     }
@@ -133,7 +132,7 @@ export const reconcileCheckoutSession = action({
   args: { sessionId: v.string() },
   handler: async (ctx, args): Promise<{ status: string; active: boolean }> => {
     const user = await requireUser(ctx);
-    if (user.role !== "Admin") throw new Error("Only organization admins can reconcile checkout");
+    assertCapability(user, "billing.manage");
     if (!/^cs_(test_|live_)?[a-zA-Z0-9]+$/.test(args.sessionId)) {
       throw new Error("Invalid Checkout Session ID");
     }
@@ -221,12 +220,11 @@ export const createPortalSession = action({
 
     // Get organization
     const org: any = await ctx.runQuery(api.queries.organizations.current, {});
-    if (user.role !== "Admin") {
-      throw new Error("Only organization admins can manage billing");
-    }
+    assertCapability(user, "billing.manage");
     if (org?.accessMode === "demo" || org?.dataMode === "synthetic") {
       throw new Error("Demo organizations do not use Stripe billing");
     }
+    validateRedirectUrl(args.returnUrl, "returnUrl", process.env.APP_BASE_URL);
     if (!org?.stripeCustomerId) {
       throw new Error("No active subscription found");
     }
@@ -251,9 +249,7 @@ export const cancelSubscription = action({
     const { api } = await import("../_generated/api");
 
     // Check admin permission
-    if (user.role !== "Admin") {
-      throw new Error("Only admins can cancel subscriptions");
-    }
+    assertCapability(user, "billing.manage");
 
     // Get current subscription
     const subscription: any = await ctx.runQuery(api.queries.subscriptions.current, {});
@@ -285,9 +281,7 @@ export const resumeSubscription = action({
     const { api } = await import("../_generated/api");
 
     // Check admin permission
-    if (user.role !== "Admin") {
-      throw new Error("Only admins can manage subscriptions");
-    }
+    assertCapability(user, "billing.manage");
 
     // Get current subscription
     const subscription: any = await ctx.runQuery(api.queries.subscriptions.current, {});

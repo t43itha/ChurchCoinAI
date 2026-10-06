@@ -1,4 +1,5 @@
 import { defineSchema, defineTable } from "convex/server";
+import { roleValidator } from "./lib/auth";
 import { v } from "convex/values";
 
 export default defineSchema({
@@ -21,6 +22,20 @@ export default defineSchema({
     )),
     dataMode: v.optional(v.union(v.literal("live"), v.literal("synthetic"))),
     accessExpiresAt: v.optional(v.number()),
+    // Server-issued, no-card product trial. This remains separate from a
+    // Stripe `trialing` subscription so sign-up never creates billing data.
+    trialStatus: v.optional(v.union(
+      v.literal("active"),
+      v.literal("converted"),
+      v.literal("expired")
+    )),
+    trialStartedAt: v.optional(v.number()),
+    trialEndsAt: v.optional(v.number()),
+    trialPlan: v.optional(v.union(
+      v.literal("starter"),
+      v.literal("growing"),
+      v.literal("thriving")
+    )),
     demoSeedStatus: v.optional(v.union(
       v.literal("pending"),
       v.literal("ready"),
@@ -39,12 +54,7 @@ export default defineSchema({
     organizationId: v.id("organizations"),
     name: v.string(),
     email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
     avatarUrl: v.optional(v.string()),
     createdAt: v.number(),
   })
@@ -53,16 +63,68 @@ export default defineSchema({
     .index("by_clerkId_organization", ["clerkId", "organizationId"])
     .index("by_email", ["email"]),
 
+  // Customer support requests. Convex is the durable source of truth; a
+  // sanitised copy is mirrored to a separately configured private GitHub repo.
+  supportTickets: defineTable({
+    organizationId: v.id("organizations"),
+    createdBy: v.id("users"),
+    reference: v.string(),
+    type: v.union(
+      v.literal("bug"),
+      v.literal("question"),
+      v.literal("feature")
+    ),
+    impact: v.union(
+      v.literal("blocking"),
+      v.literal("difficult"),
+      v.literal("minor")
+    ),
+    title: v.string(),
+    description: v.string(),
+    expectedBehaviour: v.optional(v.string()),
+    reproductionSteps: v.optional(v.string()),
+    reporterRole: roleValidator,
+    appPath: v.string(),
+    appRelease: v.string(),
+    browserSummary: v.string(),
+    status: v.union(
+      v.literal("submitted"),
+      v.literal("under_review"),
+      v.literal("in_progress"),
+      v.literal("waiting_for_reporter"),
+      v.literal("resolved"),
+      v.literal("closed")
+    ),
+    githubSyncStatus: v.union(
+      v.literal("pending"),
+      v.literal("syncing"),
+      v.literal("synced"),
+      v.literal("failed")
+    ),
+    githubSyncAttempts: v.number(),
+    githubSyncAttemptedAt: v.optional(v.number()),
+    githubSyncError: v.optional(v.string()),
+    githubSyncRetryable: v.optional(v.boolean()),
+    githubRepository: v.optional(v.string()),
+    githubIssueNumber: v.optional(v.number()),
+    githubIssueUrl: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_createdAt", ["organizationId", "createdAt"])
+    .index("by_createdBy_createdAt", ["createdBy", "createdAt"])
+    .index("by_githubSyncStatus_createdAt", ["githubSyncStatus", "createdAt"])
+    .index("by_github_repository_issue", [
+      "githubRepository",
+      "githubIssueNumber",
+    ]),
+
   // Pending invitations for users not yet registered
   invitations: defineTable({
     organizationId: v.id("organizations"),
     email: v.string(),
-    role: v.union(
-      v.literal("Admin"),
-      v.literal("Finance Team"),
-      v.literal("Pastorate"),
-      v.literal("Guest")
-    ),
+    role: roleValidator,
     invitedBy: v.id("users"),
     status: v.union(
       v.literal("pending"),
@@ -140,6 +202,9 @@ export default defineSchema({
       v.literal("Completed"),
       v.literal("Cancelled")
     ),
+    // Set when a person marks the pledge completed. Automatic completion
+    // leaves this unset so a later shortfall can reopen it.
+    completionOverride: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
@@ -276,6 +341,11 @@ export default defineSchema({
       ),
       cashAmount: v.number(),
       chequeAmount: v.number(),
+      previousCategory: v.optional(v.string()),
+      previousDonorId: v.optional(v.id("donors")),
+      previousDonorName: v.optional(v.string()),
+      previousPledgeId: v.optional(v.union(v.id("pledges"), v.null())),
+      previousGiftAidEligible: v.optional(v.boolean()),
     })),
     status: v.union(
       v.literal("draft"),
@@ -396,6 +466,9 @@ export default defineSchema({
     // Timestamp of the newest Stripe event applied; guards against retried
     // or out-of-order webhooks overwriting newer state
     lastStripeEventAt: v.optional(v.number()),
+    lastStripeEventSource: v.optional(
+      v.union(v.literal("invoice"), v.literal("subscription"))
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -441,8 +514,14 @@ export default defineSchema({
   // Provider-neutral bank connections
   bankConnections: defineTable({
     organizationId: v.id("organizations"),
-    provider: v.union(v.literal("enable_banking")),
+    // Keep the retired provider value readable until all historic rows have
+    // been disconnected. New connection flows create Yapily records only.
+    provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
     providerConnectionId: v.string(),
+    // Provider credential used for data access. Kept server-side and excluded
+    // from organisation exports and every public bank-connection query.
+    providerAccessToken: v.optional(v.string()),
+    providerInstitutionId: v.optional(v.string()),
     institutionName: v.string(),
     institutionCountry: v.string(),
     accounts: v.array(
@@ -469,6 +548,7 @@ export default defineSchema({
     lastSyncAt: v.optional(v.number()),
     lastSyncedThrough: v.optional(v.string()),
     consentExpiresAt: v.optional(v.number()),
+    consentReconfirmBy: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -481,7 +561,8 @@ export default defineSchema({
   pendingBankConnections: defineTable({
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
-    provider: v.union(v.literal("enable_banking")),
+    // Retained for schema compatibility with any unexpired historic attempts.
+    provider: v.union(v.literal("enable_banking"), v.literal("yapily")),
     state: v.string(),
     status: v.union(
       v.literal("pending"),
@@ -491,6 +572,7 @@ export default defineSchema({
     ),
     aspspCountry: v.string(),
     aspspName: v.string(),
+    providerInstitutionId: v.optional(v.string()),
     existingConnectionId: v.optional(v.id("bankConnections")),
     errorCode: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
@@ -500,6 +582,7 @@ export default defineSchema({
   })
     .index("by_state", ["state"])
     .index("by_organization", ["organizationId"])
+    .index("by_organization_and_state", ["organizationId", "state"])
     .index("by_organization_status", ["organizationId", "status"])
     .index("by_status_expiresAt", ["status", "expiresAt"]),
 
@@ -512,6 +595,8 @@ export default defineSchema({
     aiConfidence: v.string(),
     predictionSource: v.union(
       v.literal("gemini"),
+      v.literal("openrouter"),
+      v.literal("openai"),
       v.literal("rag"),
       v.literal("memory"),
       v.literal("none")
@@ -556,6 +641,8 @@ export default defineSchema({
       v.literal("rule"),
       v.literal("rag"),
       v.literal("gemini"),
+      v.literal("openrouter"),
+      v.literal("openai"),
       v.literal("none")
     ),
     confidence: v.number(),
@@ -577,4 +664,80 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_transaction", ["transactionId"])
     .index("by_organization_source", ["organizationId", "source"]),
+
+  // Durable tenant-wide orchestration state for embedding migrations. This is
+  // operational data rather than organization-owned export data.
+  ragIndexingSweeps: defineTable({
+    model: v.string(),
+    indexVersion: v.string(),
+    dimension: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("completed_with_errors"),
+      v.literal("failed")
+    ),
+    cursor: v.optional(v.string()),
+    batchSize: v.number(),
+    organizationsScheduled: v.number(),
+    organizationSchedulingComplete: v.optional(v.boolean()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_version", ["indexVersion"])
+    .index("by_status", ["status"]),
+
+  // Durable progress for each organization's embedding migration.
+  ragIndexingRuns: defineTable({
+    sweepId: v.optional(v.id("ragIndexingSweeps")),
+    organizationId: v.id("organizations"),
+    model: v.string(),
+    indexVersion: v.string(),
+    dimension: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("running"),
+      v.literal("failed"),
+      v.literal("completed"),
+      v.literal("completed_with_errors")
+    ),
+    cursor: v.optional(v.string()),
+    batchSize: v.optional(v.number()),
+    schedulingComplete: v.boolean(),
+    totalTransactions: v.number(),
+    scheduledTransactions: v.number(),
+    processedTransactions: v.number(),
+    successfulTransactions: v.number(),
+    failedTransactions: v.number(),
+    startedAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_sweep", ["sweepId"])
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_version", ["organizationId", "indexVersion"])
+    .index("by_status", ["status"]),
+
+  // One row per transaction makes progress idempotent and failed work
+  // discoverable/retryable without rebuilding successful embeddings.
+  ragIndexingItems: defineTable({
+    runId: v.id("ragIndexingRuns"),
+    organizationId: v.id("organizations"),
+    transactionId: v.id("transactions"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("success"),
+      v.literal("failed")
+    ),
+    attempts: v.number(),
+    error: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_run_status", ["runId", "status"])
+    .index("by_run_transaction", ["runId", "transactionId"]),
 });

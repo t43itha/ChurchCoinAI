@@ -1,3 +1,4 @@
+import { can } from "../lib/permissions";
 import React, { useState, useMemo } from 'react';
 import { useConvex, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
@@ -5,7 +6,9 @@ import { Id } from '../convex/_generated/dataModel';
 import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { filterReportableTransactions, sumReportableIncome } from '../lib/reportableTransactions';
+import { meetsMoneyTarget } from '../convex/lib/money';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -125,10 +128,10 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   // Forms state
   const [formData, setFormData] = useState<Partial<Donor>>({});
   const [newDonorData, setNewDonorData] = useState<Partial<Donor>>({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
-  const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+  const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
 
-  const canEdit = ['Admin', 'Finance Team'].includes(currentUser.role);
-  const canView = ['Admin', 'Finance Team', 'Pastorate'].includes(currentUser.role);
+  const canEdit = can(currentUser.role, "donors.write");
+  const canView = can(currentUser.role, "donors.read");
 
   const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -178,7 +181,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     };
   }, [donors, transactions, donorStats]);
 
-  // After all hooks (Rules of Hooks) — read-only roles see a notice instead
+  // After all hooks (Rules of Hooks) — Guests cannot view donor records.
   if (!canView) {
       return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
@@ -327,7 +330,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     if (!selectedDonor?.phone || !generatedMessage) return;
     const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
     const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
-    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(generatedMessage)}`, '_blank');
+    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(generatedMessage)}`, '_blank', 'noopener');
   };
 
   const handleEditClick = () => { if (selectedDonor && canEdit) { setFormData(selectedDonor); setIsEditing(true); } };
@@ -358,7 +361,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     if (!selectedDonor) return null;
 
     let filteredPledges = donorPledges;
-    let filteredTransactions = donorTransactions;
+    let filteredTransactions = reportableDonorTransactions;
     let logoOverride: string | undefined;
     let campaignName: string | undefined;
 
@@ -437,6 +440,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       if (didSave) setShowExportModal(false);
     } catch (e) {
       console.error('PDF export failed:', e);
+      notify("Error", e instanceof Error ? e.message : "Could not create the donor schedule.");
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -601,13 +605,13 @@ ${churchDetails?.name || 'Church'} Finance Team
             amount: Number(newPledgeData.amount),
             fundId: newPledgeData.fundId,
             frequency: newPledgeData.frequency as any,
-            startDate: newPledgeData.startDate || new Date().toISOString().split('T')[0],
+            startDate: newPledgeData.startDate || formatLocalDateInputValue(new Date()),
             endDate: newPledgeData.endDate,
             status: 'Active'
         };
         onAddPledge(pledge);
         setShowAddPledgeModal(false);
-        setNewPledgeData({ frequency: 'Monthly', status: 'Active', startDate: new Date().toISOString().split('T')[0] });
+        setNewPledgeData({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
     }
   };
 
@@ -626,11 +630,11 @@ ${churchDetails?.name || 'Church'} Finance Team
       // Check if unlinking should reactivate a completed pledge
       const pledge = pledges.find(p => p._id === oldPledgeId);
       if (pledge && pledge.status === 'Completed') {
-           const remainingSum = transactions
-              .filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
-              .reduce((sum, t) => sum + t.amount, 0);
+           const remainingSum = sumReportableIncome(
+              transactions.filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
+           );
 
-           if (remainingSum < pledge.amount) {
+           if (!meetsMoneyTarget(remainingSum, pledge.amount)) {
                 onUpdatePledge({ ...pledge, status: 'Active' });
            }
       }
@@ -749,7 +753,7 @@ ${churchDetails?.name || 'Church'} Finance Team
   };
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
       {/* Page header */}
       <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
@@ -794,7 +798,7 @@ ${churchDetails?.name || 'Church'} Finance Team
       <div className="flex h-[600px] gap-0 swiss-card overflow-hidden relative">
       {/* Sidebar - Directory */}
       <div className={`${mobileView === 'detail' ? 'hidden' : 'w-full'} md:block md:w-[340px] border-r border-ledger bg-white flex flex-col shrink-0`}>
-        <div className="p-4 border-b border-ledger space-y-3 bg-[#fcfbf9]">
+        <div className="p-4 border-b border-ledger ledger-space-y-3 bg-[#fcfbf9]">
           <div className="flex justify-between items-center">
               <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Donor Directory</h3>
               <div className="flex gap-1">
@@ -811,7 +815,7 @@ ${churchDetails?.name || 'Church'} Finance Team
           </div>
           {/* Manual merge mode banner */}
           {manualMergeMode && (
-            <div className="bg-amber-light border border-[#ecd8bd] rounded-xl p-3 space-y-2">
+            <div className="bg-amber-light border border-[#ecd8bd] rounded-xl p-3 ledger-space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-amber">Select donors to merge</span>
                 <button onClick={cancelManualMerge} className="text-amber hover:text-amber-dark">
@@ -837,7 +841,7 @@ ${churchDetails?.name || 'Church'} Finance Team
           )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" size={14} />
-            <input type="text" placeholder="Search donors..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-lg focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink bg-white transition-colors" />
+            <input type="text" placeholder="Search donors..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-lg focus:outline-hidden focus:ring-[3px] focus:ring-ink/10 focus:border-ink bg-white transition-colors" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -860,7 +864,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                 {manualMergeMode && (
                   <button
                     onClick={() => toggleDonorForMerge(donor._id)}
-                    className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                    className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${
                       isSelectedForMerge
                         ? 'bg-amber border-amber text-white'
                         : 'border-grey-mid hover:border-amber'
@@ -912,7 +916,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                 {manualMergeMode && isSelectedForMerge && selectedForMerge.size >= 2 && !isPrimary && (
                   <button
                     onClick={() => setManualPrimaryId(donor._id)}
-                    className="text-[10px] px-2 py-1 bg-amber-light text-amber-dark border border-[#ecd8bd] rounded hover:bg-[#f5e7d4] shrink-0"
+                    className="text-[10px] px-2 py-1 bg-amber-light text-amber-dark border border-[#ecd8bd] rounded-sm hover:bg-[#f5e7d4] shrink-0"
                   >
                     Keep
                   </button>
@@ -962,7 +966,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                     { id: 'profile', label: 'Profile', icon: UserCog },
                     { id: 'communicate', label: 'Communicate', icon: MessageSquare },
                 ].map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab.id ? 'border-amber text-amber' : 'border-transparent text-grey-mid hover:text-ink'}`}>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] border-b-2 transition-colors whitespace-nowrap shrink-0 ${activeTab === tab.id ? 'border-amber text-amber' : 'border-transparent text-grey-mid hover:text-ink'}`}>
                         <tab.icon size={14} /> {tab.label}
                     </button>
                 ))}
@@ -976,7 +980,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                 {canEdit && <button onClick={() => setShowAddPledgeModal(true)} className="btn-primary text-xs px-3 py-1.5 font-bold uppercase">+ New</button>}
                              </div>
                              {donorPledges.length === 0 ? <div className="p-8 text-center bg-paper rounded-lg border border-dashed border-ledger"><p className="text-sm text-grey-mid font-medium">No active pledges.</p></div> : (
-                                <div className="space-y-3">
+                                <div className="ledger-space-y-3">
                                 {donorPledges.map(p => (
                                     <div key={p._id} className="flex justify-between items-center p-3 border border-ledger rounded-xl hover:bg-[#fcfbf9] transition-colors">
                                         <div className="flex items-center gap-3">
@@ -1009,7 +1013,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                          {donorTransactions.length === 0 ? <div className="p-12 text-center text-grey-mid"><History size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No transaction history found.</p></div> : (
                             <>
                               {/* Mobile List View */}
-                              <div className="md:hidden divide-y divide-grey-light">
+                              <div className="md:hidden ledger-divide-y ledger-divide-grey-light">
                                 {donorTransactions.map(t => {
                                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
                                   return (
@@ -1019,7 +1023,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                           <div className="font-medium text-ink text-sm truncate">{t.description}</div>
                                           <div className="text-xs text-grey-mid mt-0.5 flex items-center gap-2">
                                             <span className="font-mono">{t.date}</span>
-                                            <span className="px-1.5 py-0.5 bg-grey-light rounded text-[10px] font-bold text-grey-dark uppercase border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span>
+                                            <span className="px-1.5 py-0.5 bg-grey-light rounded-sm text-[10px] font-bold text-grey-dark uppercase border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span>
                                           </div>
                                         </div>
                                         <div className={`font-mono text-lg font-bold ${t.type === TransactionType.INCOME ? 'text-sage' : 'text-ink'}`}>
@@ -1030,7 +1034,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                         <div className="mt-2 pt-2 border-t border-grey-light">
                                           {linkedPledge ? (
                                             <div className="flex items-center justify-between">
-                                              <div className="px-2 py-1 bg-sage-light text-sage-dark rounded text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30">
+                                              <div className="px-2 py-1 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30">
                                                 <LinkIcon size={10} /> Linked to Pledge
                                               </div>
                                               <button onClick={() => handleUnlinkTransaction(t)} className="text-xs text-grey-mid hover:text-error transition-colors" title="Unlink">
@@ -1038,7 +1042,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                               </button>
                                             </div>
                                           ) : (
-                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="w-full bg-paper border border-ledger text-xs text-grey-dark rounded px-3 py-2 focus:ring-1 focus:ring-ink outline-none">
+                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="w-full bg-paper border border-ledger text-xs text-grey-dark rounded-sm px-3 py-2 focus:ring-1 focus:ring-ink outline-hidden">
                                               <option value="">Link to Pledge...</option>
                                               {activePledges.map(p => <option key={p._id} value={p._id}>{funds.find(f => f._id === p.fundId)?.name} (£{p.amount})</option>)}
                                             </select>
@@ -1061,12 +1065,12 @@ ${churchDetails?.name || 'Church'} Finance Team
                                                 <td className="pl-6 py-3 text-grey-mid font-mono text-xs border-b border-grey-light">{t.date}</td>
                                                 <td className="px-4 py-3 font-medium text-ink text-sm border-b border-grey-light">{t.description}</td>
                                                 <td className={`px-4 py-3 font-mono text-sm font-bold text-right border-b border-grey-light ${t.type === TransactionType.INCOME ? 'text-sage' : 'text-ink'}`}>{t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}</td>
-                                                <td className="px-4 py-3 border-b border-grey-light"><span className="px-2 py-0.5 bg-grey-light rounded text-[10px] font-bold text-grey-dark uppercase tracking-wide border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span></td>
+                                                <td className="px-4 py-3 border-b border-grey-light"><span className="px-2 py-0.5 bg-grey-light rounded-sm text-[10px] font-bold text-grey-dark uppercase tracking-wide border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span></td>
                                                 <td className="px-4 py-3 border-b border-grey-light">
                                                     {t.type === TransactionType.INCOME && canEdit ? (
-                                                        linkedPledge ? <div className="flex items-center gap-2"><div className="px-2 py-1 bg-sage-light text-sage-dark rounded text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30"><LinkIcon size={10} /> Linked</div><button onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Unlink"><Unlink size={12} /></button></div> :
+                                                        linkedPledge ? <div className="flex items-center gap-2"><div className="px-2 py-1 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30"><LinkIcon size={10} /> Linked</div><button onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Unlink"><Unlink size={12} /></button></div> :
                                                         <div className="relative group/select">
-                                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="appearance-none bg-white border border-ledger hover:border-grey-mid text-xs text-grey-mid rounded px-2 py-1 pr-6 focus:ring-1 focus:ring-ink outline-none w-full max-w-[140px] cursor-pointer">
+                                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="appearance-none bg-white border border-ledger hover:border-grey-mid text-xs text-grey-mid rounded-sm px-2 py-1 pr-6 focus:ring-1 focus:ring-ink outline-hidden w-full max-w-[140px] cursor-pointer">
                                                                 <option value="">Link Pledge...</option>
                                                                 {activePledges.map(p => <option key={p._id} value={p._id}>{funds.find(f => f._id === p.fundId)?.name} (£{p.amount})</option>)}
                                                             </select>
@@ -1087,7 +1091,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
                         <div className="swiss-card p-6 bg-white">
                              <h3 className="font-mono font-semibold text-grey-mid mb-4 text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><User size={16} /> Contact Details</h3>
-                             <div className="space-y-4">
+                             <div className="ledger-space-y-4">
                                  <div className="flex items-center gap-3 p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><Mail size={16} className="text-grey-mid"/><span className="text-sm font-medium text-grey-dark">{selectedDonor.email || 'No email provided'}</span></div>
                                  <div className="flex items-center justify-between p-3 bg-[#fcfbf9] rounded-xl border border-ledger">
                                      <div className="flex items-center gap-3">
@@ -1095,7 +1099,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                          <span className="text-sm font-medium text-grey-dark">{selectedDonor.phone || 'No phone number'}</span>
                                      </div>
                                      {selectedDonor.phone && (
-                                         <button onClick={openWhatsApp} className="p-1.5 bg-[#25D366] text-white rounded hover:bg-[#128C7E] transition-colors" title="Message on WhatsApp">
+                                         <button onClick={openWhatsApp} className="p-1.5 bg-[#25D366] text-white rounded-sm hover:bg-[#128C7E] transition-colors" title="Message on WhatsApp">
                                              <MessageSquare size={14} />
                                          </button>
                                      )}
@@ -1112,7 +1116,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                         <div className="swiss-card p-6 bg-white">
                              <h3 className="font-mono font-semibold text-grey-mid mb-4 text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><FileText size={16} /> Notes & Settings</h3>
                              <div className="bg-amber-light p-4 rounded-xl border border-[#ecd8bd] mb-4"><p className="text-xs text-amber-dark italic min-h-[60px]">{selectedDonor.notes || 'No private notes added.'}</p></div>
-                             <div className="space-y-2">
+                             <div className="ledger-space-y-2">
                                 <div className="flex justify-between items-center p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><span className="text-sm font-bold text-grey-dark">Donor Type</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.type}</span></div>
                                 <div className="flex justify-between items-center p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><span className="text-sm font-bold text-grey-dark">Comm. Pref</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.communicationPreference || 'Email'}</span></div>
                              </div>
@@ -1159,7 +1163,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                         <select
                                             value={selectedPledgeForTemplate || ''}
                                             onChange={(e) => handlePledgeSelectForTemplate(e.target.value)}
-                                            className="w-full max-w-sm p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"
+                                            className="w-full max-w-sm p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"
                                         >
                                             {availablePledges.map(p => (
                                                 <option key={p._id} value={p._id}>
@@ -1187,7 +1191,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                 <select
                                     value={selectedFundForTemplate || ''}
                                     onChange={(e) => handleFundSelectForTemplate(e.target.value)}
-                                    className="w-full max-w-sm p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"
+                                    className="w-full max-w-sm p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"
                                 >
                                     {funds.map(f => (
                                         <option key={f._id} value={f._id}>
@@ -1204,7 +1208,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                 Message Preview
                             </label>
                             <textarea
-                                className="w-full h-48 p-4 text-sm border border-ledger rounded-lg focus:ring-1 focus:ring-ink focus:border-grey-mid outline-none leading-relaxed resize-none bg-paper text-grey-dark"
+                                className="w-full h-48 p-4 text-sm border border-ledger rounded-lg focus:ring-1 focus:ring-ink focus:border-grey-mid outline-hidden leading-relaxed resize-none bg-paper text-grey-dark"
                                 value={generatedMessage}
                                 onChange={(e) => setGeneratedMessage(e.target.value)}
                                 placeholder="Select a template above to generate a message..."
@@ -1216,7 +1220,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                             <button
                                 onClick={copyMessageToClipboard}
                                 disabled={!generatedMessage}
-                                className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+                                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wide transition-colors ${
                                     copiedToClipboard
                                         ? 'bg-sage-light text-sage-dark'
                                         : generatedMessage
@@ -1230,7 +1234,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                             <button
                                 onClick={shareMessageViaWhatsApp}
                                 disabled={!generatedMessage || !selectedDonor?.phone}
-                                className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+                                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wide transition-colors ${
                                     generatedMessage && selectedDonor?.phone
                                         ? 'bg-[#25D366] text-white hover:bg-[#128C7E]'
                                         : 'bg-grey-light text-grey-mid cursor-not-allowed'
@@ -1251,33 +1255,33 @@ ${churchDetails?.name || 'Church'} Finance Team
                 )}
             </div>
           </>
-        ) : <div className="flex flex-col items-center justify-center h-full text-ledger space-y-4"><div className="w-20 h-20 bg-grey-light rounded-full flex items-center justify-center"><User size={32} className="opacity-20" /></div><p className="text-sm font-medium">Select a donor to view details.</p></div>}
+        ) : <div className="flex flex-col items-center justify-center h-full text-ledger ledger-space-y-4"><div className="w-20 h-20 bg-grey-light rounded-full flex items-center justify-center"><User size={32} className="opacity-20" /></div><p className="text-sm font-medium">Select a donor to view details.</p></div>}
       </div>
       </div>
 
       {showAddDonorModal && canEdit && (
-          <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
+          <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
               <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter my-auto sm:my-8 overflow-hidden">
                   <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9] z-10"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">New Donor Profile</h3><button onClick={() => setShowAddDonorModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
-                  <form onSubmit={handleAddDonorSubmit} className="p-4 sm:p-6 space-y-4">
+                  <form onSubmit={handleAddDonorSubmit} className="p-4 sm:p-6 ledger-space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name *</label><input type="text" value={newDonorData.name || ''} onChange={e => setNewDonorData({...newDonorData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required placeholder="e.g. John Doe"/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={newDonorData.email || ''} onChange={e => setNewDonorData({...newDonorData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={newDonorData.phone || ''} onChange={e => setNewDonorData({...newDonorData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
+                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name *</label><input type="text" value={newDonorData.name || ''} onChange={e => setNewDonorData({...newDonorData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors" required placeholder="e.g. John Doe"/></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={newDonorData.email || ''} onChange={e => setNewDonorData({...newDonorData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={newDonorData.phone || ''} onChange={e => setNewDonorData({...newDonorData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Address</label>
-                        <textarea value={newDonorData.address || ''} onChange={e => setNewDonorData({...newDonorData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors h-16 resize-none" placeholder="Street, City..."/>
+                        <textarea value={newDonorData.address || ''} onChange={e => setNewDonorData({...newDonorData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors h-16 resize-none" placeholder="Street, City..."/>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={newDonorData.postcode || ''} onChange={e => setNewDonorData({...newDonorData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"/></div>
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={newDonorData.communicationPreference || 'Email'} onChange={e => setNewDonorData({...newDonorData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
+                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={newDonorData.postcode || ''} onChange={e => setNewDonorData({...newDonorData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"/></div>
+                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={newDonorData.communicationPreference || 'Email'} onChange={e => setNewDonorData({...newDonorData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={newDonorData.type || 'Individual'} onChange={e => setNewDonorData({...newDonorData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
-                          <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
+                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={newDonorData.type || 'Individual'} onChange={e => setNewDonorData({...newDonorData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
+                          <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
                       </div>
-                      <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={newDonorData.notes || ''} onChange={e => setNewDonorData({...newDonorData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none h-16 resize-none"/></div>
+                      <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={newDonorData.notes || ''} onChange={e => setNewDonorData({...newDonorData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden h-16 resize-none"/></div>
                       <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setShowAddDonorModal(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Plus size={14} /> Create Profile</button></div>
                   </form>
               </div>
@@ -1285,28 +1289,28 @@ ${churchDetails?.name || 'Church'} Finance Team
       )}
 
       {isEditing && canEdit && (
-          <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
+          <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
               <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter my-auto sm:my-8 overflow-hidden">
                   <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9] z-10"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Edit Donor Profile</h3><button onClick={() => setIsEditing(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
-                  <form onSubmit={handleSaveEdit} className="p-4 sm:p-6 space-y-4">
+                  <form onSubmit={handleSaveEdit} className="p-4 sm:p-6 ledger-space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name</label><input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors"/></div>
+                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name</label><input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors" required/></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
                       </div>
                       <div>
                           <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Address</label>
-                          <textarea value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors h-16 resize-none"/>
+                          <textarea value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors h-16 resize-none"/>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={formData.postcode || ''} onChange={e => setFormData({...formData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"/></div>
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={formData.communicationPreference || 'Email'} onChange={e => setFormData({...formData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
+                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={formData.postcode || ''} onChange={e => setFormData({...formData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"/></div>
+                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={formData.communicationPreference || 'Email'} onChange={e => setFormData({...formData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={formData.type || 'Individual'} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
-                          <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
+                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={formData.type || 'Individual'} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
+                          <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
                       </div>
-                      <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none h-16 resize-none"/></div>
+                      <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden h-16 resize-none"/></div>
                       <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Save size={14} /> Save Changes</button></div>
                   </form>
               </div>
@@ -1314,27 +1318,27 @@ ${churchDetails?.name || 'Church'} Finance Team
       )}
 
       {showAddPledgeModal && canEdit && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter overflow-hidden">
                 <div className="p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">New Schedule</h3><button onClick={() => setShowAddPledgeModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
-                <form onSubmit={handleAddPledgeSubmit} className="p-6 space-y-4">
-                    <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f._id} value={f._id}>{f.name}</option>))}</select></div>
+                <form onSubmit={handleAddPledgeSubmit} className="p-6 ledger-space-y-4">
+                    <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f._id} value={f._id}>{f.name}</option>))}</select></div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span><input type="number" value={newPledgeData.amount || ''} onChange={e => setNewPledgeData({...newPledgeData, amount: parseFloat(e.target.value)})} className="w-full pl-6 p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono" placeholder="0.00" required/></div></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Frequency</label><select value={newPledgeData.frequency} onChange={e => setNewPledgeData({...newPledgeData, frequency: e.target.value as any})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none"><option value="One-off">One-off</option><option value="Weekly">Weekly</option><option value="Monthly">Monthly</option><option value="Annual">Annual</option></select></div>
+                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span><input type="number" value={newPledgeData.amount || ''} onChange={e => setNewPledgeData({...newPledgeData, amount: parseFloat(e.target.value)})} className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono" placeholder="0.00" required/></div></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Frequency</label><select value={newPledgeData.frequency} onChange={e => setNewPledgeData({...newPledgeData, frequency: e.target.value as any})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="One-off">One-off</option><option value="Weekly">Weekly</option><option value="Monthly">Monthly</option><option value="Annual">Annual</option></select></div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Start Date</label><input type="date" value={newPledgeData.startDate} onChange={e => setNewPledgeData({...newPledgeData, startDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono" required/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">End Date (Optional)</label><input type="date" value={newPledgeData.endDate || ''} onChange={e => setNewPledgeData({...newPledgeData, endDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-none font-mono"/></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Start Date</label><input type="date" value={newPledgeData.startDate} onChange={e => setNewPledgeData({...newPledgeData, startDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono" required/></div>
+                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">End Date (Optional)</label><input type="date" value={newPledgeData.endDate || ''} onChange={e => setNewPledgeData({...newPledgeData, endDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"/></div>
                     </div>
-                    <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4"><button type="button" onClick={() => setShowAddPledgeModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors">Cancel</button><button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2"><Plus size={14} /> Create Schedule</button></div>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4"><button type="button" onClick={() => setShowAddPledgeModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button><button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2"><Plus size={14} /> Create Schedule</button></div>
                 </form>
             </div>
         </div>
       )}
 
       {showExportModal && selectedDonor && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter overflow-hidden">
                 {/* Compact Header */}
                 <div className="px-4 py-3 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
@@ -1343,7 +1347,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                     </h3>
                     <button onClick={() => setShowExportModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                 </div>
-                <div className="p-4 space-y-3">
+                <div className="p-4 ledger-space-y-3">
                     {/* Inline Period Selection */}
                     <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-bold text-grey-mid uppercase">Period:</span>
@@ -1353,7 +1357,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                     key={period}
                                     type="button"
                                     onClick={() => setExportPeriod(period)}
-                                    className={`px-2 py-1 text-[11px] font-bold rounded transition-colors ${
+                                    className={`px-2 py-1 text-[11px] font-bold rounded-sm transition-colors ${
                                         exportPeriod === period
                                             ? 'bg-ink text-white'
                                             : 'bg-grey-light text-grey-dark hover:bg-ledger'
@@ -1367,7 +1371,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                             <select
                                 value={exportYear}
                                 onChange={(e) => setExportYear(Number(e.target.value))}
-                                className="px-2 py-1 text-xs font-mono bg-white border border-ledger rounded focus:ring-1 focus:ring-ink outline-none"
+                                className="px-2 py-1 text-xs font-mono bg-white border border-ledger rounded-sm focus:ring-1 focus:ring-ink outline-hidden"
                             >
                                 {[0, 1, 2].map(offset => {
                                     const year = new Date().getFullYear() - offset;
@@ -1397,7 +1401,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                         const restrictedFunds = funds.filter(f => f.type === 'Restricted');
 
                         return (
-                            <div className="space-y-2">
+                            <div className="ledger-space-y-2">
                                 <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Report Type</div>
 
                                 {/* Grid of compact report options */}
@@ -1493,7 +1497,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
                     {/* No contact warning if needed */}
                     {!selectedDonor.phone && !selectedDonor.email && (
-                        <div className="flex items-center gap-2 text-[10px] text-amber-dark bg-amber-light border border-[#ecd8bd] px-2 py-1.5 rounded">
+                        <div className="flex items-center gap-2 text-[10px] text-amber-dark bg-amber-light border border-[#ecd8bd] px-2 py-1.5 rounded-sm">
                             <AlertTriangle size={12} />
                             <span>No contact info on file for sending</span>
                         </div>
@@ -1501,7 +1505,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
                     {/* Cancel aligned right */}
                     <div className="flex justify-end pt-1">
-                        <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-grey-mid font-bold uppercase text-[10px] tracking-wide hover:bg-paper rounded transition-colors">
+                        <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-grey-mid font-bold uppercase text-[10px] tracking-wide hover:bg-paper rounded-sm transition-colors">
                             Cancel
                         </button>
                     </div>
@@ -1512,7 +1516,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
       {/* Merge Duplicates Modal */}
       {showMergeModal && canEdit && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl rounded-xl shadow-soft-lg border border-ledger animate-enter max-h-[80vh] flex flex-col overflow-hidden">
             <div className="p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
               <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2">
@@ -1527,13 +1531,13 @@ ${churchDetails?.name || 'Church'} Finance Team
               {duplicateGroups.length === 0 ? (
                 <p className="text-grey-mid text-sm text-center py-8">No duplicate donors found.</p>
               ) : (
-                <div className="space-y-6">
+                <div className="ledger-space-y-6">
                   <p className="text-xs text-grey-mid">
                     Found {duplicateGroups.length} group(s) of potential duplicates. Select the primary donor to keep, and duplicates will be merged into it.
                   </p>
 
                   {duplicateGroups.map((group, groupIndex) => (
-                    <div key={groupIndex} className="border border-ledger rounded-lg p-4 space-y-3">
+                    <div key={groupIndex} className="border border-ledger rounded-lg p-4 ledger-space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-grey-mid uppercase">
                           Group {groupIndex + 1} - {group.donors.length} donors
@@ -1542,14 +1546,14 @@ ${churchDetails?.name || 'Church'} Finance Team
                           <button
                             onClick={() => handleMergeDonors(groupIndex)}
                             disabled={isMerging}
-                            className="px-3 py-1.5 bg-amber text-white rounded text-xs font-bold uppercase hover:bg-amber-dark disabled:opacity-50 flex items-center gap-1"
+                            className="px-3 py-1.5 bg-amber text-white rounded-sm text-xs font-bold uppercase hover:bg-amber-dark disabled:opacity-50 flex items-center gap-1"
                           >
                             {isMerging ? 'Merging...' : <><Merge size={12} /> Merge</>}
                           </button>
                         )}
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="ledger-space-y-2">
                         {group.donors.map((donor: any) => {
                           const isSelected = selectedMergeGroup === groupIndex && selectedPrimaryId === donor._id;
                           const isSuggested = group.suggestedPrimary === donor._id;
@@ -1572,12 +1576,12 @@ ${churchDetails?.name || 'Church'} Finance Team
                                   <div className="font-bold text-ink text-sm flex items-center gap-2">
                                     {donor.name}
                                     {isSuggested && (
-                                      <span className="text-[10px] bg-sage/20 text-sage-dark px-1.5 py-0.5 rounded">
+                                      <span className="text-[10px] bg-sage/20 text-sage-dark px-1.5 py-0.5 rounded-sm">
                                         Suggested
                                       </span>
                                     )}
                                     {isSelected && (
-                                      <span className="text-[10px] bg-amber-light text-amber-dark border border-[#ecd8bd] px-1.5 py-0.5 rounded">
+                                      <span className="text-[10px] bg-amber-light text-amber-dark border border-[#ecd8bd] px-1.5 py-0.5 rounded-sm">
                                         Primary
                                       </span>
                                     )}
@@ -1607,7 +1611,7 @@ ${churchDetails?.name || 'Church'} Finance Team
             <div className="p-4 border-t border-ledger flex justify-end">
               <button
                 onClick={() => setShowMergeModal(false)}
-                className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+                className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors"
               >
                 Close
               </button>

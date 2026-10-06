@@ -26,6 +26,11 @@ const categories: CategoryLike[] = [
     transactionType: "Income",
     mainCategory: "Donations",
   },
+  {
+    name: "Thanksgiving",
+    transactionType: "Income",
+    mainCategory: "Donations",
+  },
 ];
 
 const funds: FundLike[] = [{ _id: "fund1", name: "General Fund" }];
@@ -90,7 +95,7 @@ describe("deterministic categorization rules", () => {
       ["firstfruit", "Tithes & First Fruits"],
       ["offering", "Offerings"],
       ["offerings", "Offerings"],
-      ["thanksgiving", "Offerings"],
+      ["thanksgiving", "Thanksgiving"],
       ["donation", "Offerings"],
     ];
 
@@ -103,6 +108,19 @@ describe("deterministic categorization rules", () => {
 
       expect(suggestion?.category, description).toBe(category);
     }
+  });
+
+  it("uses the fund named in the description", () => {
+    const suggestion = applyDeterministicRules(
+      { description: "Building Fund offering", amount: 50, type: "Income" },
+      categories,
+      [
+        { _id: "general", name: "General Fund" },
+        { _id: "building", name: "Building Fund" },
+      ]
+    );
+    expect(suggestion?.fundName).toBe("Building Fund");
+    expect(suggestion?.category).toBe("Offerings");
   });
 
   it("does not match utility substrings inside unrelated expenditure descriptions", () => {

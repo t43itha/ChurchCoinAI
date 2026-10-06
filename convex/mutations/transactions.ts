@@ -1,7 +1,6 @@
-import { makeFunctionReference } from "convex/server";
 import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireRole } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
@@ -10,23 +9,13 @@ import {
 } from "../lib/transactionValidation";
 import { buildFeedbackEvent } from "../intelligence/categorization/feedback";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
-import { sumReportableIncome } from "../../lib/reportableTransactions";
-import { meetsMoneyTarget, roundMoney } from "../lib/money";
-
-const upsertAcceptedCategorizationMemory = makeFunctionReference<
-  "mutation",
-  {
-    organizationId: Id<"organizations">;
-    signature: string;
-    descriptionExample: string;
-    transactionType: "Income" | "Expenditure";
-    category: string;
-    fundId: Id<"funds">;
-    isGiftAidEligible?: boolean;
-    donorName?: string;
-    sourceTransactionId?: Id<"transactions">;
-  }
->("intelligence/categorizationMemory:upsertAccepted");
+import { roundMoney } from "../lib/money";
+import { refreshPledgeStatus } from "../lib/pledgeStatus";
+import {
+  ensureTypedCategories,
+  requireCanonicalCategory,
+} from "../lib/categoryIntegrity";
+import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {
@@ -66,89 +55,6 @@ export function shouldUpdateCategorizationRagIndex(args: {
   return categoryChanged || fundChanged || giftAidChanged || donorNameChanged;
 }
 
-// Helper to check pledge completion after transaction changes
-async function checkPledgeCompletion(
-  ctx: any,
-  pledgeId: Id<"pledges">,
-  organizationId: Id<"organizations">
-) {
-  const pledge = await ctx.db.get(pledgeId);
-  if (!pledge || pledge.organizationId !== organizationId || pledge.status !== "Active") {
-    return null;
-  }
-
-  const linkedTransactions = await ctx.db
-    .query("transactions")
-    .withIndex("by_pledge", (q: any) => q.eq("pledgeId", pledgeId))
-    .collect();
-
-  const totalReceived = sumReportableIncome(linkedTransactions);
-
-  if (meetsMoneyTarget(totalReceived, pledge.amount)) {
-    await ctx.db.patch(pledgeId, { status: "Completed" });
-    return {
-      completed: true,
-      pledgeId,
-      donorName: pledge.donorName,
-      amount: pledge.amount,
-    };
-  }
-
-  return null;
-}
-
-// Block changes to transactions locked by a completed reconciliation session
-async function assertNotLockedByReconciliation(
-  ctx: any,
-  transaction: { reconciliationSessionId?: Id<"reconciliationSessions"> | null }
-) {
-  if (!transaction.reconciliationSessionId) return;
-  const session = await ctx.db.get(transaction.reconciliationSessionId);
-  if (session && session.status === "completed") {
-    throw new Error(
-      "This transaction is part of a completed reconciliation. " +
-        "Reopen that reconciliation session before changing it."
-    );
-  }
-}
-
-async function refreshPledgeStatus(
-  ctx: any,
-  pledgeId: Id<"pledges">,
-  organizationId: Id<"organizations">
-) {
-  const pledge = await ctx.db.get(pledgeId);
-  if (!pledge || pledge.organizationId !== organizationId) {
-    return null;
-  }
-
-  const linkedTransactions = await ctx.db
-    .query("transactions")
-    .withIndex("by_pledge", (q: any) => q.eq("pledgeId", pledgeId))
-    .collect();
-
-  const totalReceived = sumReportableIncome(linkedTransactions);
-  const nextStatus = meetsMoneyTarget(totalReceived, pledge.amount)
-    ? "Completed"
-    : "Active";
-  const statusChanged =
-    (pledge.status === "Active" || pledge.status === "Completed") &&
-    pledge.status !== nextStatus;
-
-  if (statusChanged) {
-    await ctx.db.patch(pledgeId, { status: nextStatus });
-  }
-
-  return statusChanged && nextStatus === "Completed"
-    ? {
-        completed: true,
-        pledgeId,
-        donorName: pledge.donorName,
-        amount: pledge.amount,
-      }
-    : null;
-}
-
 // Create a new transaction
 export const create = mutation({
   args: {
@@ -173,7 +79,7 @@ export const create = mutation({
     cashCollectionId: v.optional(v.id("cashCollections")),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     assertValidTransactionAmount(args.amount);
     assertValidTransactionDate(args.date);
 
@@ -202,17 +108,27 @@ export const create = mutation({
       }
     }
 
+    if (args.cashCollectionId) {
+      const collection = await ctx.db.get(args.cashCollectionId);
+      if (!collection || collection.organizationId !== user.organizationId) {
+        throw new Error("Invalid cash collection");
+      }
+    }
+
+    const categories = await ensureTypedCategories(ctx, user.organizationId);
+    const category = requireCanonicalCategory(categories, args.category, args.type);
+
     const transactionId = await ctx.db.insert("transactions", {
       organizationId: user.organizationId,
       date: args.date,
       description: args.description,
       amount: roundMoney(args.amount),
       type: args.type,
-      category: args.category,
+      category,
       fundId: args.fundId,
       isReconciled: false,
       notes: args.notes,
-      isGiftAidEligible: args.isGiftAidEligible,
+      isGiftAidEligible: args.type === "Expenditure" ? false : args.isGiftAidEligible,
       donorName: args.donorName,
       donorId: args.donorId,
       pledgeId: args.pledgeId,
@@ -224,7 +140,7 @@ export const create = mutation({
     // Check pledge completion if linked
     let pledgeCompleted = null;
     if (args.pledgeId && args.type === "Income") {
-      pledgeCompleted = await checkPledgeCompletion(
+      pledgeCompleted = await refreshPledgeStatus(
         ctx,
         args.pledgeId,
         user.organizationId
@@ -252,13 +168,12 @@ export const update = mutation({
     pledgeId: v.optional(v.union(v.id("pledges"), v.null())),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     if (args.amount !== undefined) {
       assertValidTransactionAmount(args.amount);
@@ -296,54 +211,55 @@ export const update = mutation({
     }
 
     const oldPledgeId = transaction.pledgeId;
+    const finalType = args.type ?? transaction.type;
     const updates: Record<string, any> = {};
 
     if (args.date !== undefined) updates.date = args.date;
     if (args.description !== undefined) updates.description = args.description;
     if (args.amount !== undefined) updates.amount = roundMoney(args.amount);
     if (args.type !== undefined) updates.type = args.type;
-    if (args.category !== undefined) updates.category = args.category;
+    if (args.category !== undefined || args.type !== undefined) {
+      const categories = await ensureTypedCategories(ctx, user.organizationId);
+      updates.category = requireCanonicalCategory(
+        categories,
+        args.category ?? transaction.category,
+        finalType
+      );
+    }
     if (args.fundId !== undefined) updates.fundId = args.fundId;
     if (args.notes !== undefined) updates.notes = args.notes;
     if (args.isGiftAidEligible !== undefined)
       updates.isGiftAidEligible = args.isGiftAidEligible;
+    if (finalType === "Expenditure") updates.isGiftAidEligible = false;
     if (args.donorName !== undefined) updates.donorName = args.donorName;
     if (args.donorId !== undefined) updates.donorId = args.donorId;
-    if (args.pledgeId !== undefined) updates.pledgeId = args.pledgeId;
-
-    await ctx.db.patch(args.transactionId, updates);
-
-    // Check pledge completion for new pledge
-    let pledgeCompleted = null;
-    const newPledgeId = args.pledgeId ?? transaction.pledgeId;
-    const transactionType = args.type ?? transaction.type;
-
-    if (newPledgeId && transactionType === "Income") {
-      pledgeCompleted = await refreshPledgeStatus(
-        ctx,
-        newPledgeId,
-        user.organizationId
-      );
+    if (finalType !== "Income") {
+      updates.pledgeId = undefined;
+    } else if (args.pledgeId !== undefined) {
+      updates.pledgeId = args.pledgeId;
     }
 
-    // If pledge was unlinked (set to null), check if old pledge should be reactivated
-    if (oldPledgeId && args.pledgeId === null) {
-      const oldPledge = await ctx.db.get(oldPledgeId);
-      if (
-        oldPledge &&
-        oldPledge.organizationId === user.organizationId &&
-        oldPledge.status === "Completed"
-      ) {
-        const linkedTransactions = await ctx.db
-          .query("transactions")
-          .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
-          .collect();
+    await patchTransaction(ctx, transaction, updates);
 
-        const totalReceived = sumReportableIncome(linkedTransactions);
+    const nextPledgeId =
+      finalType === "Income"
+        ? args.pledgeId !== undefined
+          ? args.pledgeId
+          : transaction.pledgeId
+        : undefined;
+    const pledgeIds = new Set<Id<"pledges">>();
+    if (oldPledgeId) pledgeIds.add(oldPledgeId);
+    if (nextPledgeId) pledgeIds.add(nextPledgeId);
 
-        if (!meetsMoneyTarget(totalReceived, oldPledge.amount)) {
-          await ctx.db.patch(oldPledgeId, { status: "Active" });
-        }
+    let pledgeCompleted = null;
+    for (const pledgeId of pledgeIds) {
+      const result = await refreshPledgeStatus(
+        ctx,
+        pledgeId,
+        user.organizationId
+      );
+      if (result?.completed && pledgeId === nextPledgeId) {
+        pledgeCompleted = result;
       }
     }
 
@@ -382,17 +298,20 @@ export const bulkCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     if (args.transactions.length > 500) {
       throw new Error("Cannot import more than 500 transactions at once");
     }
 
     // ids stays index-aligned with args.transactions; skipped duplicates are null
     const transactionIds: (Id<"transactions"> | null)[] = [];
+    const canonicalCategories: Array<string | null> = [];
     const pledgesToCheck = new Set<string>();
     const validatedConnections = new Set<string>();
+    const validatedCollections = new Set<string>();
     const seenProviderIds = new Set<string>();
     let skippedDuplicates = 0;
+    const categories = await ensureTypedCategories(ctx, user.organizationId);
 
     for (const t of args.transactions) {
       assertValidTransactionAmount(t.amount);
@@ -420,6 +339,16 @@ export const bulkCreate = mutation({
         }
       }
 
+      if (t.cashCollectionId && !validatedCollections.has(t.cashCollectionId)) {
+        const collection = await ctx.db.get(t.cashCollectionId);
+        if (!collection || collection.organizationId !== user.organizationId) {
+          throw new Error(`Invalid cash collection: ${t.cashCollectionId}`);
+        }
+        validatedCollections.add(t.cashCollectionId);
+      }
+
+      const category = requireCanonicalCategory(categories, t.category, t.type);
+
       // Source-level dedup for bank-synced transactions: skip anything already
       // imported from the same connection with the same provider id.
       if (t.bankConnectionId && t.providerTransactionId) {
@@ -444,6 +373,7 @@ export const bulkCreate = mutation({
               .first();
         if (existing) {
           transactionIds.push(null);
+          canonicalCategories.push(null);
           skippedDuplicates += 1;
           continue;
         }
@@ -456,11 +386,11 @@ export const bulkCreate = mutation({
         description: t.description,
         amount: roundMoney(t.amount),
         type: t.type,
-        category: t.category,
+        category,
         fundId: t.fundId,
         isReconciled: t.isReconciled ?? false,
         notes: t.notes,
-        isGiftAidEligible: t.isGiftAidEligible,
+        isGiftAidEligible: t.type === "Expenditure" ? false : t.isGiftAidEligible,
         donorName: t.donorName,
         donorId: t.donorId,
         pledgeId: t.pledgeId,
@@ -472,6 +402,7 @@ export const bulkCreate = mutation({
       });
 
       transactionIds.push(transactionId);
+      canonicalCategories.push(category);
 
       if (t.pledgeId && t.type === "Income") {
         pledgesToCheck.add(t.pledgeId as string);
@@ -487,12 +418,12 @@ export const bulkCreate = mutation({
           transactionId,
           searchText: buildRAGSearchText({
             description: t.description,
-            category: t.category,
+            category: canonicalCategories[idx] ?? t.category,
             type: t.type,
             donorName: t.donorName,
           }),
           metadata: {
-            category: t.category,
+            category: canonicalCategories[idx] ?? t.category,
             fundId: t.fundId,
             type: t.type,
             isGiftAidEligible: t.isGiftAidEligible,
@@ -518,7 +449,7 @@ export const bulkCreate = mutation({
     // Check all affected pledges
     const completedPledges: any[] = [];
     for (const pledgeId of pledgesToCheck) {
-      const result = await checkPledgeCompletion(
+      const result = await refreshPledgeStatus(
         ctx,
         pledgeId as Id<"pledges">,
         user.organizationId
@@ -548,7 +479,7 @@ export const bulkUpdate = mutation({
     }),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     // Verify new fund if provided
     if (args.updates.fundId) {
@@ -559,20 +490,28 @@ export const bulkUpdate = mutation({
     }
 
     let updatedCount = 0;
+    const categories =
+      args.updates.category !== undefined
+        ? await ensureTypedCategories(ctx, user.organizationId)
+        : [];
 
     for (const transactionId of args.transactionIds) {
       const transaction = await ctx.db.get(transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
-        await assertNotLockedByReconciliation(ctx, transaction);
         const updates: Record<string, any> = {};
-        if (args.updates.category !== undefined)
-          updates.category = args.updates.category;
+        if (args.updates.category !== undefined) {
+          updates.category = requireCanonicalCategory(
+            categories,
+            args.updates.category,
+            transaction.type
+          );
+        }
         if (args.updates.fundId !== undefined)
           updates.fundId = args.updates.fundId;
         if (args.updates.isGiftAidEligible !== undefined)
           updates.isGiftAidEligible = args.updates.isGiftAidEligible;
 
-        await ctx.db.patch(transactionId, updates);
+        await patchTransaction(ctx, transaction, updates);
         updatedCount++;
       }
     }
@@ -598,19 +537,26 @@ export const batchUpdate = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     let updatedCount = 0;
     const pledgesToCheck = new Set<string>();
+    const categories = await ensureTypedCategories(ctx, user.organizationId);
 
     for (const update of args.updates) {
       const transaction = await ctx.db.get(update.transactionId);
       if (transaction && transaction.organizationId === user.organizationId) {
-        await assertNotLockedByReconciliation(ctx, transaction);
         const changes: Record<string, any> = {};
+        if (transaction.pledgeId) pledgesToCheck.add(transaction.pledgeId);
 
-        if (update.changes.category !== undefined)
-          changes.category = update.changes.category;
+        if (update.changes.category !== undefined) {
+          changes.category = requireCanonicalCategory(
+            categories,
+            update.changes.category,
+            transaction.type
+          );
+        }
+        if (transaction.type === "Expenditure") changes.isGiftAidEligible = false;
         if (update.changes.fundId !== undefined) {
           // Verify fund
           const fund = await ctx.db.get(update.changes.fundId);
@@ -635,10 +581,11 @@ export const batchUpdate = mutation({
             changes.pledgeId = update.changes.pledgeId;
           } else {
             changes.pledgeId = null;
+            if (transaction.pledgeId) pledgesToCheck.add(transaction.pledgeId);
           }
         }
 
-        await ctx.db.patch(update.transactionId, changes);
+        await patchTransaction(ctx, transaction, changes);
         updatedCount++;
       }
     }
@@ -646,7 +593,7 @@ export const batchUpdate = mutation({
     // Check pledge completions
     const completedPledges: any[] = [];
     for (const pledgeId of pledgesToCheck) {
-      const result = await checkPledgeCompletion(
+      const result = await refreshPledgeStatus(
         ctx,
         pledgeId as Id<"pledges">,
         user.organizationId
@@ -667,7 +614,7 @@ export const linkToPledge = mutation({
     pledgeId: v.id("pledges"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
@@ -683,10 +630,15 @@ export const linkToPledge = mutation({
       throw new Error("Pledge not found");
     }
 
-    await ctx.db.patch(args.transactionId, { pledgeId: args.pledgeId });
+
+    const previousPledgeId = transaction.pledgeId;
+    await patchTransaction(ctx, transaction, { pledgeId: args.pledgeId });
+    if (previousPledgeId && previousPledgeId !== args.pledgeId) {
+      await refreshPledgeStatus(ctx, previousPledgeId, user.organizationId);
+    }
 
     // Check pledge completion
-    const pledgeCompleted = await checkPledgeCompletion(
+    const pledgeCompleted = await refreshPledgeStatus(
       ctx,
       args.pledgeId,
       user.organizationId
@@ -702,41 +654,32 @@ export const unlinkFromPledge = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
 
+
     const oldPledgeId = transaction.pledgeId;
     if (!oldPledgeId) {
       return { transactionId: args.transactionId, reactivated: false };
     }
 
-    await ctx.db.patch(args.transactionId, { pledgeId: null });
-
-    // Check if pledge should be reactivated
     const oldPledge = await ctx.db.get(oldPledgeId);
-    if (
-      oldPledge &&
-      oldPledge.organizationId === user.organizationId &&
-      oldPledge.status === "Completed"
-    ) {
-      const linkedTransactions = await ctx.db
-        .query("transactions")
-        .withIndex("by_pledge", (q) => q.eq("pledgeId", oldPledgeId))
-        .collect();
+    const wasCompleted = oldPledge?.status === "Completed";
+    await patchTransaction(ctx, transaction, { pledgeId: null });
+    const result = await refreshPledgeStatus(
+      ctx,
+      oldPledgeId,
+      user.organizationId
+    );
 
-      const totalReceived = sumReportableIncome(linkedTransactions);
-
-      if (!meetsMoneyTarget(totalReceived, oldPledge.amount)) {
-        await ctx.db.patch(oldPledgeId, { status: "Active" });
-        return { transactionId: args.transactionId, reactivated: true };
-      }
-    }
-
-    return { transactionId: args.transactionId, reactivated: false };
+    return {
+      transactionId: args.transactionId,
+      reactivated: wasCompleted && result === null,
+    };
   },
 });
 
@@ -746,37 +689,19 @@ export const remove = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin"]);
+    const user = await requireCapability(ctx, "ledger.delete");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const pledgeId = transaction.pledgeId;
 
-    await ctx.db.delete(args.transactionId);
+    await deleteTransaction(ctx, transaction);
 
-    // Check if pledge should be reactivated
     if (pledgeId) {
-      const pledge = await ctx.db.get(pledgeId);
-      if (
-        pledge &&
-        pledge.organizationId === user.organizationId &&
-        pledge.status === "Completed"
-      ) {
-        const linkedTransactions = await ctx.db
-          .query("transactions")
-          .withIndex("by_pledge", (q) => q.eq("pledgeId", pledgeId))
-          .collect();
-
-        const totalReceived = sumReportableIncome(linkedTransactions);
-
-        if (!meetsMoneyTarget(totalReceived, pledge.amount)) {
-          await ctx.db.patch(pledgeId, { status: "Active" });
-        }
-      }
+      await refreshPledgeStatus(ctx, pledgeId, user.organizationId);
     }
 
     return args.transactionId;
@@ -789,7 +714,7 @@ export const voidTransaction = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     const reason = args.reason.trim();
     if (reason.length < 3) {
       throw new Error("Void reason must be at least 3 characters");
@@ -799,9 +724,8 @@ export const voidTransaction = mutation({
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: true,
       voidReason: reason,
       voidedAt: Date.now(),
@@ -821,15 +745,14 @@ export const unvoidTransaction = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: false,
       unvoidedAt: Date.now(),
       unvoidedBy: user._id,
@@ -849,16 +772,15 @@ export const toggleVoided = mutation({
     transactionId: v.id("transactions"),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const transaction = await ctx.db.get(args.transactionId);
     if (!transaction || transaction.organizationId !== user.organizationId) {
       throw new Error("Transaction not found");
     }
-    await assertNotLockedByReconciliation(ctx, transaction);
 
     const nextVoided = !transaction.isVoided;
-    await ctx.db.patch(args.transactionId, {
+    await patchTransaction(ctx, transaction, {
       isVoided: nextVoided,
       ...(nextVoided
         ? {
@@ -891,6 +813,8 @@ export const recordCorrections = mutation({
         aiConfidence: v.string(),
         predictionSource: v.union(
           v.literal("gemini"),
+          v.literal("openrouter"),
+          v.literal("openai"),
           v.literal("rag"),
           v.literal("memory"),
           v.literal("none")
@@ -908,7 +832,7 @@ export const recordCorrections = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
     const categories = await ctx.db
       .query("categories")
       .withIndex("by_organization", (q) =>
@@ -994,7 +918,7 @@ export const recordCorrections = mutation({
       if (learned) {
         await ctx.scheduler.runAfter(
           0,
-          upsertAcceptedCategorizationMemory,
+          internal.intelligence.categorizationMemory.upsertAccepted,
           {
             organizationId: user.organizationId,
             signature: feedbackEvent.signature,
@@ -1063,7 +987,7 @@ export const recordCorrections = mutation({
 export const getCategorizationStats = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "ledger.write");
 
     const allCorrections = await ctx.db
       .query("categorizationCorrections")
@@ -1076,6 +1000,10 @@ export const getCategorizationStats = query({
     const correct = allCorrections.filter((c) => c.wasCorrect).length;
     const bySource = {
       gemini: allCorrections.filter((c) => c.predictionSource === "gemini"),
+      openrouter: allCorrections.filter(
+        (c) => c.predictionSource === "openrouter"
+      ),
+      openai: allCorrections.filter((c) => c.predictionSource === "openai"),
       rag: allCorrections.filter((c) => c.predictionSource === "rag"),
       memory: allCorrections.filter((c) => c.predictionSource === "memory"),
     };
@@ -1088,6 +1016,18 @@ export const getCategorizationStats = query({
         bySource.gemini.length > 0
           ? (bySource.gemini.filter((c) => c.wasCorrect).length /
               bySource.gemini.length) *
+            100
+          : 0,
+      openrouterAccuracy:
+        bySource.openrouter.length > 0
+          ? (bySource.openrouter.filter((c) => c.wasCorrect).length /
+              bySource.openrouter.length) *
+            100
+          : 0,
+      openaiAccuracy:
+        bySource.openai.length > 0
+          ? (bySource.openai.filter((c) => c.wasCorrect).length /
+              bySource.openai.length) *
             100
           : 0,
       ragAccuracy:
@@ -1104,6 +1044,8 @@ export const getCategorizationStats = query({
           : 0,
       ragCount: bySource.rag.length,
       geminiCount: bySource.gemini.length,
+      openrouterCount: bySource.openrouter.length,
+      openaiCount: bySource.openai.length,
       memoryCount: bySource.memory.length,
     };
   },

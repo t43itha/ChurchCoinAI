@@ -20,6 +20,11 @@ const categories: CategoryLike[] = [
     transactionType: "Expenditure",
     mainCategory: "Admin & Governance",
   },
+  {
+    name: "Merchandise",
+    transactionType: "Income",
+    mainCategory: "Other Income",
+  },
 ];
 
 const funds: FundLike[] = [{ _id: "fund1", name: "General Fund" }];
@@ -101,6 +106,84 @@ describe("Gemini categorization helpers", () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  it("removes donor and Gift Aid values from merchandise purchases", () => {
+    const result = validateGeminiSuggestion(
+      {
+        category: "Merchandise",
+        fundName: "General Fund",
+        confidence: "High",
+        isGiftAidEligible: true,
+        donorName: "Priya Shah",
+      },
+      {
+        description: "[GA] PRIYA SHAH BOOKSTALL PURCHASE",
+        amount: 25,
+        type: "Income",
+      },
+      categories,
+      funds,
+      "openai"
+    );
+
+    expect(result).toMatchObject({
+      category: "Merchandise",
+      isGiftAidEligible: false,
+      donorName: null,
+      predictionSource: "openai",
+      evidence: [{ source: "openai" }],
+    });
+  });
+
+  it("removes donor and Gift Aid values from expenditure", () => {
+    const result = validateGeminiSuggestion(
+      {
+        category: "Bank Charges",
+        fundName: "General Fund",
+        confidence: "High",
+        isGiftAidEligible: true,
+        donorName: "Stripe",
+      },
+      {
+        description: "STRIPE CARD PROCESSING CHARGE",
+        amount: 12,
+        type: "Expenditure",
+      },
+      categories,
+      funds,
+      "openai"
+    );
+
+    expect(result).toMatchObject({
+      category: "Bank Charges",
+      isGiftAidEligible: false,
+      donorName: null,
+      predictionSource: "openai",
+    });
+  });
+
+  it("tracks Luna predictions routed through OpenRouter", () => {
+    const result = validateGeminiSuggestion(
+      {
+        category: "Offerings",
+        fundName: "General Fund",
+        confidence: "High",
+        isGiftAidEligible: false,
+        donorName: null,
+      },
+      { description: "Sunday offering", amount: 100, type: "Income" },
+      categories,
+      funds,
+      "openrouter"
+    );
+
+    expect(result).toMatchObject({
+      predictionSource: "openrouter",
+      evidence: [
+        { source: "openrouter", reason: "Luna suggestion via OpenRouter." },
+      ],
+    });
   });
 
   it.each([undefined, "", "   "])(

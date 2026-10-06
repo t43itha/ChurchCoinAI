@@ -68,9 +68,12 @@ export const useFundCategoryActions = ({
     }
   };
 
-  const handleAddCategory = async (categoryName: string) => {
+  const handleAddCategory = async (
+    categoryName: string,
+    transactionType: "Income" | "Expenditure"
+  ) => {
     try {
-      await createCategory({ name: categoryName });
+      await createCategory({ name: categoryName, transactionType });
       showNotification("Category Added", `"${categoryName}" has been added.`);
     } catch (error: any) {
       console.error("Failed to add category:", error);

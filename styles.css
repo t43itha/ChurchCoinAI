@@ -1,6 +1,164 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Keep utilities and component styles in the same cascade as Tailwind 3. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css";
+@import "tailwindcss/utilities.css";
+
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* Retain the v3 palette values used by existing app utilities. */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-red-50: #fef2f2;
+  --color-red-200: #fecaca;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-blue-100: #dbeafe;
+  --color-blue-500: #3b82f6;
+  --color-blue-700: #1d4ed8;
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-stone-600: #57534e;
+  --default-ring-width: 3px;
+  --default-ring-color: #3b82f6;
+
+  --color-ink: #1c1917;
+  --color-paper: #faf9f7;
+  --color-charcoal: #2a2522;
+  --color-ledger: #e7e5e1;
+
+  --color-grey-dark: #44403c;
+  --color-grey-mid: #78716c;
+  --color-grey-light: #f7f6f4;
+
+  --color-sage: #557555;
+  --color-sage-light: #eef3ee;
+  --color-sage-dark: #557555;
+
+  --color-amber: #a9743f;
+  --color-amber-light: #faf2e9;
+  --color-amber-dark: #8c5d31;
+
+  --color-error: #b53d3d;
+  --color-error-light: #fbeded;
+
+  --color-slate-50: #fafaf9;
+  --color-slate-100: #f5f5f4;
+  --color-slate-200: #e5e5e5;
+  --color-slate-300: #d4d4d4;
+  --color-slate-400: #a3a3a3;
+  --color-slate-500: #666666;
+  --color-slate-600: #525252;
+  --color-slate-700: #44403c;
+  --color-slate-800: #1a1a1a;
+  --color-slate-900: #000000;
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --inset-shadow-sm: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+
+  --shadow-soft-sm: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-soft-md:
+    0 1px 2px rgba(28, 25, 23, 0.04), 0 14px 32px -18px rgba(28, 25, 23, 0.22);
+  --shadow-soft-lg: 0 16px 40px -16px rgba(28, 25, 23, 0.28);
+  --shadow-hard-sm: 2px 2px 0px 0px rgba(28, 25, 23, 1);
+  --shadow-hard-md: 4px 4px 0px 0px rgba(28, 25, 23, 1);
+  --shadow-hard-lg: 8px 8px 0px 0px rgba(28, 25, 23, 1);
+  --shadow-hard-amber: 4px 4px 0px 0px #a9743f;
+}
+
+/* Preserve sibling spacing, hidden-child handling, and child margin precedence. */
+@utility ledger-space-y-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(--value(number) * var(--spacing) * (1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(--value(number) * var(--spacing) * var(--tw-space-y-reverse));
+    margin-top: calc(--value([*]) * (1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(--value([*]) * var(--tw-space-y-reverse));
+  }
+}
+
+@utility ledger-space-x-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-x-reverse: 0;
+    margin-right: calc(--value(number) * var(--spacing) * var(--tw-space-x-reverse));
+    margin-left: calc(--value(number) * var(--spacing) * (1 - var(--tw-space-x-reverse)));
+    margin-right: calc(--value([*]) * var(--tw-space-x-reverse));
+    margin-left: calc(--value([*]) * (1 - var(--tw-space-x-reverse)));
+  }
+}
+
+/* Preserve the v3 border side and sibling selection in tables and FAQs. */
+@utility ledger-divide-x {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-left-width: 1px;
+    border-right-width: 0;
+  }
+}
+
+@utility ledger-divide-y {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-top-width: 1px;
+    border-bottom-width: 0;
+  }
+}
+
+@utility ledger-divide-* {
+  & > :not([hidden]) ~ :not([hidden]) {
+    border-color: --value(--color-*, [color]);
+  }
+}
+
+@utility outline-hidden {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+  border-color: var(--color-gray-200);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-gray-400);
+  opacity: 1;
+}
+
+button,
+[role="button"] {
+  cursor: pointer;
+}
 
 /* Swiss Ledger Design System - Base Styles */
 body {
@@ -15,6 +173,7 @@ input,
 select,
 textarea {
   border-color: #e7e5e1;
+  background-color: white;
 }
 
 input:focus,
@@ -118,6 +277,41 @@ button {
 }
 .animate-enter {
   animation: enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes ledgerProcessingScan {
+  0% {
+    transform: translateX(-110%);
+  }
+  55%,
+  100% {
+    transform: translateX(310%);
+  }
+}
+
+.ledger-processing-scan {
+  animation: ledgerProcessingScan 2.2s cubic-bezier(0.65, 0, 0.35, 1)
+    infinite;
+}
+
+@keyframes ledgerProcessingCell {
+  0%,
+  18%,
+  100% {
+    border-color: #e7e5e1;
+    color: #78716c;
+    transform: translateY(0);
+  }
+  38%,
+  62% {
+    border-color: #a9bfa9;
+    color: #557555;
+    transform: translateY(-2px);
+  }
+}
+
+.ledger-processing-cell {
+  animation: ledgerProcessingCell 2.8s ease-in-out infinite;
 }
 
 @keyframes slideUp {
@@ -234,6 +428,10 @@ button {
     transition: none;
   }
   .animate-enter {
+    animation: none;
+  }
+  .ledger-processing-scan,
+  .ledger-processing-cell {
     animation: none;
   }
 }

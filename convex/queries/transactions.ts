@@ -1,7 +1,7 @@
 import { query, internalQuery } from "../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { requireAuth, requireRole } from "../lib/auth";
+import { redactDonorFields, requireCapability } from "../lib/auth";
 import { ALL_INCOME_SUBCATEGORIES } from "../../constants/rciCategories";
 import {
   filterReportableTransactions,
@@ -20,7 +20,7 @@ const getDateBounds = (startDate?: string, endDate?: string) => ({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const transactions = await ctx.db
       .query("transactions")
@@ -30,7 +30,7 @@ export const list = query({
       .order("desc")
       .collect();
 
-    return transactions;
+    return transactions.map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -38,15 +38,20 @@ export const list = query({
 export const listPaginated = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
-    return await ctx.db
+    const result = await ctx.db
       .query("transactions")
       .withIndex("by_organization", (q) =>
         q.eq("organizationId", user.organizationId)
       )
       .order("desc")
       .paginate(args.paginationOpts);
+
+    return {
+      ...result,
+      page: result.page.map((transaction) => redactDonorFields(user, transaction)),
+    };
   },
 });
 
@@ -54,7 +59,7 @@ export const listPaginated = query({
 export const byFund = query({
   args: { fundId: v.id("funds") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     // Verify fund belongs to organization
     const fund = await ctx.db.get(args.fundId);
@@ -68,7 +73,7 @@ export const byFund = query({
       .order("desc")
       .collect();
 
-    return transactions;
+    return transactions.map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -76,7 +81,7 @@ export const byFund = query({
 export const byDonor = query({
   args: { donorId: v.id("donors") },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "donors.read");
 
     // Ensure the donor belongs to the caller's organization
     const donor = await ctx.db.get(args.donorId);
@@ -90,7 +95,11 @@ export const byDonor = query({
       .order("desc")
       .collect();
 
-    return filterReportableTransactions(transactions);
+    return filterReportableTransactions(
+      transactions.filter(
+        (transaction) => transaction.organizationId === user.organizationId
+      )
+    ).map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -98,7 +107,7 @@ export const byDonor = query({
 export const byPledge = query({
   args: { pledgeId: v.id("pledges") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     // Verify pledge belongs to organization
     const pledge = await ctx.db.get(args.pledgeId);
@@ -112,7 +121,9 @@ export const byPledge = query({
       .order("desc")
       .collect();
 
-    return transactions;
+    return transactions
+      .filter((transaction) => transaction.organizationId === user.organizationId)
+      .map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -123,7 +134,7 @@ export const byDateRange = query({
     endDate: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const transactions = await ctx.db
       .query("transactions")
@@ -135,7 +146,7 @@ export const byDateRange = query({
       )
       .collect();
 
-    return transactions;
+    return transactions.map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -143,7 +154,7 @@ export const byDateRange = query({
 export const recent = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
     const limit = args.limit ?? 20;
 
     const transactions = await ctx.db
@@ -154,7 +165,7 @@ export const recent = query({
       .order("desc")
       .take(limit);
 
-    return transactions;
+    return transactions.map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -162,7 +173,7 @@ export const recent = query({
 export const listUnreconciled = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "reconciliation.manage");
 
     const transactions = await ctx.db
       .query("transactions")
@@ -173,7 +184,7 @@ export const listUnreconciled = query({
       .order("desc")
       .collect();
 
-    return transactions;
+    return transactions.map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -184,7 +195,7 @@ export const listGiftAidEligible = query({
     endDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "giftAid.read");
 
     if (args.startDate || args.endDate) {
       const { startDate, endDate } = getDateBounds(args.startDate, args.endDate);
@@ -201,7 +212,7 @@ export const listGiftAidEligible = query({
         (t) =>
           t.isGiftAidEligible === true &&
           isReportableIncomeTransaction(t)
-      );
+      ).map((transaction) => redactDonorFields(user, transaction));
     }
 
     const transactions = await ctx.db
@@ -222,7 +233,7 @@ export const listGiftAidEligible = query({
       (t) =>
         t.isGiftAidEligible === true &&
         isReportableIncomeTransaction(t)
-    );
+    ).map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
@@ -236,7 +247,7 @@ export const aggregateByCategory = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
     const dateBounds = getDateBounds(args.startDate, args.endDate);
 
     const transactions = args.startDate || args.endDate
@@ -284,7 +295,7 @@ export const aggregateByCategory = query({
 export const listUnlinkedIncome = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireRole(ctx, ["Admin", "Finance Team"]);
+    const user = await requireCapability(ctx, "pledges.write");
 
     const transactions = await ctx.db
       .query("transactions")
@@ -297,20 +308,20 @@ export const listUnlinkedIncome = query({
 
     return transactions.filter(
       (t) => t.pledgeId == null && isReportableIncomeTransaction(t)
-    );
+    ).map((transaction) => redactDonorFields(user, transaction));
   },
 });
 
 // Get monthly summary (for dashboard chart)
 export const monthlySummary = query({
-  args: { months: v.optional(v.number()) },
+  args: { months: v.optional(v.number()), today: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
     const monthsBack = args.months ?? 6;
-
-    // Calculate start date
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - monthsBack + 1, 1);
+    const [yearText, monthText] = args.today.split("-");
+    const startDate = new Date(
+      Date.UTC(Number(yearText), Number(monthText) - monthsBack, 1)
+    );
     const startDateStr = startDate.toISOString().split("T")[0];
 
     const transactions = await ctx.db

@@ -41,13 +41,14 @@ export const resolveCategoryForTransaction = (
   const canonicalName = NORMALIZED_CATEGORY_ALIASES[normalizedRawName] ?? rawName;
   const normalized = normalizeCategoryName(canonicalName);
 
-  const match = categories.find(
-    (category) =>
-      normalizeCategoryName(category.name) === normalized &&
-      category.transactionType === transactionType
+  const named = categories.filter(
+    (category) => normalizeCategoryName(category.name) === normalized
   );
-
-  return match ?? null;
+  return (
+    named.find((category) => category.transactionType === transactionType) ??
+    named.find((category) => !category.transactionType) ??
+    null
+  );
 };
 
 export const resolveReportingMainCategory = (

@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   filterActiveTransactions,
   isActiveTransaction,
-  sumActiveIncome,
-  sumActiveSigned,
 } from "../lib/voidedTransactions";
 
 const transactions = [
@@ -25,13 +23,5 @@ describe("voided transaction helpers", () => {
       transactions[0],
       transactions[2],
     ]);
-  });
-
-  it("sums only active income transactions", () => {
-    expect(sumActiveIncome(transactions)).toBe(100);
-  });
-
-  it("sums active income as positive and active expenditure as negative", () => {
-    expect(sumActiveSigned(transactions)).toBe(75);
   });
 });

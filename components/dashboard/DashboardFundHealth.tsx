@@ -22,7 +22,7 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
         </span>
       </div>
 
-      <div className="divide-y divide-[#efeee9]">
+      <div className="ledger-divide-y ledger-divide-[#efeee9]">
         <div className="p-5 md:px-6 flex items-start gap-4 min-w-0">
           <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-sage-light text-[#6b8e6b] shrink-0">
             <WalletCards size={20} strokeWidth={1.9} aria-hidden="true" />
@@ -101,7 +101,7 @@ export default function DashboardFundHealth({ summary }: DashboardSummaryProps) 
               No low-balance funds for this period.
             </p>
           ) : (
-            <div className="divide-y divide-[#efeee9] border-y border-[#efeee9]">
+            <div className="ledger-divide-y ledger-divide-[#efeee9] border-y border-[#efeee9]">
               {funds.lowBalanceFunds.map((fund) => (
                 <div
                   key={fund.fundId}

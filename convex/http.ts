@@ -3,40 +3,20 @@ import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { getPlanFromStripeProduct, getStripe } from "./lib/stripe";
 import { getPlaid } from "./lib/plaid";
-import { authorizeSession, getConsentValidUntil } from "./lib/enableBanking";
 import type Stripe from "stripe";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
+import {
+  getGitHubSupportConfig,
+  verifyGitHubWebhookSignature,
+} from "./lib/githubSupport";
+import { statusFromGithubIssue } from "../lib/supportTickets";
 
 const http = httpRouter();
-
-type EnableBankingCallbackAccount = {
-  uid?: unknown;
-  identification_hash?: unknown;
-  identification_hashes?: unknown;
-  name?: unknown;
-  details?: {
-    name?: unknown;
-    currency?: unknown;
-    product?: unknown;
-    cash_account_type?: unknown;
-    iban?: unknown;
-    bban?: unknown;
-  };
-};
-
-const nonEmptyString = (value: unknown) => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-};
 
 const trimCallbackValue = (value: string | null) => {
   const trimmed = value?.trim();
   return trimmed || undefined;
 };
-
-const safeErrorMessage = (message: string, fallback: string) =>
-  (message.trim() || fallback).slice(0, 500);
 
 const isLocalCallbackOrigin = (origin: URL) =>
   origin.hostname === "localhost" ||
@@ -63,22 +43,30 @@ const getBankSettingsOrigin = (request: Request) => {
   }
 };
 
-const settingsBankUrl = (request: Request, result: "success" | "error") => {
+const settingsBankUrl = (
+  request: Request,
+  result: "success" | "error" | "processing",
+  attemptState?: string
+) => {
   const url = new URL("/settings", getBankSettingsOrigin(request));
   url.searchParams.set("tab", "bank");
   url.searchParams.set("bankConnection", result);
+  if (attemptState) {
+    url.searchParams.set("bankConnectionState", attemptState);
+  }
   return url.toString();
 };
 
 const redirectToBankSettings = (
   request: Request,
-  result: "success" | "error"
+  result: "success" | "error" | "processing",
+  attemptState?: string
 ) => {
   let location: string;
   try {
-    location = settingsBankUrl(request, result);
+    location = settingsBankUrl(request, result, attemptState);
   } catch (error: any) {
-    console.error("Enable Banking callback redirect is not configured:", error?.message);
+    console.error("Bank callback redirect is not configured:", error?.message);
     return new Response("APP_BASE_URL not configured", { status: 500 });
   }
 
@@ -88,49 +76,6 @@ const redirectToBankSettings = (
       Location: location,
     },
   });
-};
-
-const getAccountMask = (account: EnableBankingCallbackAccount) => {
-  const identifier =
-    nonEmptyString(account.details?.iban) || nonEmptyString(account.details?.bban);
-  if (!identifier) return undefined;
-  const compactIdentifier = identifier.replace(/\s+/g, "");
-  return compactIdentifier.slice(-4) || undefined;
-};
-
-const mapEnableBankingAccount = (account: EnableBankingCallbackAccount) => {
-  const accountId = nonEmptyString(account.uid);
-  if (!accountId) {
-    throw new Error("Enable Banking account is missing uid");
-  }
-
-  const identificationHashes = Array.isArray(account.identification_hashes)
-    ? account.identification_hashes
-        .map(nonEmptyString)
-        .filter((hash): hash is string => Boolean(hash))
-    : undefined;
-
-  const name =
-    nonEmptyString(account.name) ||
-    nonEmptyString(account.details?.name) ||
-    nonEmptyString(account.details?.product) ||
-    nonEmptyString(account.details?.iban) ||
-    nonEmptyString(account.details?.bban) ||
-    "Bank account";
-
-  return {
-    accountId,
-    providerAccountHash: nonEmptyString(account.identification_hash),
-    providerAccountHashes: identificationHashes?.length
-      ? identificationHashes
-      : undefined,
-    name,
-    mask: getAccountMask(account),
-    type:
-      nonEmptyString(account.details?.cash_account_type) ||
-      nonEmptyString(account.details?.product),
-    currency: nonEmptyString(account.details?.currency),
-  };
 };
 
 const bytesToHex = (bytes: Uint8Array) =>
@@ -268,7 +213,7 @@ http.route({
       event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     } catch (err: any) {
       console.error("Webhook signature verification failed:", err.message);
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+      return new Response("Invalid webhook", { status: 400 });
     }
 
     // Handle the event
@@ -378,6 +323,7 @@ http.route({
               stripeSubscriptionId: subscriptionId,
               status: "past_due",
               eventTimestamp: event.created * 1000,
+              source: "invoice",
             });
           }
           break;
@@ -395,6 +341,8 @@ http.route({
               stripeSubscriptionId: subscriptionId,
               status: "active",
               eventTimestamp: event.created * 1000,
+              amountPaid: invoice.amount_paid ?? 0,
+              source: "invoice",
             });
           }
           break;
@@ -414,7 +362,7 @@ http.route({
       console.error(`Error handling event ${event.type}:`, err.message);
       // Return 500 so Stripe will retry the webhook
       return new Response(
-        JSON.stringify({ error: err.message }),
+        JSON.stringify({ error: "Webhook handler failed" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -517,7 +465,7 @@ http.route({
     } catch (err: any) {
       console.error(`Error handling Plaid webhook ${webhook_type}/${webhook_code}:`, err.message);
       return new Response(
-        JSON.stringify({ error: err.message }),
+        JSON.stringify({ error: "Webhook handler failed" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -529,93 +477,150 @@ http.route({
   }),
 });
 
-// Enable Banking callback endpoint
+// Yapily Connect sends the browser here with a short-lived one-time token.
+// Claim the state and redirect immediately; token exchange and account lookup
+// continue in a scheduled action so the callback stays below Yapily's 100 ms
+// user-experience target.
 http.route({
-  path: "/enable-banking/callback",
+  path: "/yapily/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
-    const code = trimCallbackValue(url.searchParams.get("code"));
     const state = trimCallbackValue(url.searchParams.get("state"));
-    const providerError = trimCallbackValue(url.searchParams.get("error"));
-    const providerErrorDescription = trimCallbackValue(
-      url.searchParams.get("error_description")
+    const oneTimeToken = trimCallbackValue(
+      url.searchParams.get("one-time-token") ||
+        url.searchParams.get("oneTimeToken")
     );
+    const providerError = trimCallbackValue(url.searchParams.get("error"));
 
     if (!state) {
-      return new Response("Enable Banking callback endpoint is ready.", {
+      return new Response("Yapily callback endpoint is ready.", {
         status: 200,
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-        },
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
     }
 
-    // Atomically consume the state token before doing anything else so a
-    // replayed, raced, or guessed callback URL can never re-enter the flow.
-    // Expired states are marked as errors inside the claim mutation.
     const claim = await ctx.runMutation(
       internal.mutations.bankConnections.claimPendingState,
-      { state }
+      { state, provider: "yapily" }
     );
-
     if (!claim.claimed) {
       return redirectToBankSettings(request, "error");
     }
 
-    if (providerError) {
+    if (providerError || !oneTimeToken) {
       await ctx.runMutation(
         internal.mutations.bankConnections.markPendingError,
         {
+          organizationId: claim.organizationId,
           state,
-          errorCode: providerError.slice(0, 100),
-          errorMessage: safeErrorMessage(
-            providerErrorDescription || "",
-            "Bank authorization was not completed"
-          ),
+          errorCode: providerError?.slice(0, 100) || "MISSING_ONE_TIME_TOKEN",
+          errorMessage: providerError
+            ? "Bank authorization was not completed"
+            : "Yapily callback did not include a one-time token",
         }
       );
       return redirectToBankSettings(request, "error");
     }
 
-    if (!code) {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          state,
-          errorCode: "MISSING_CODE",
-          errorMessage: "Bank authorization callback did not include a code",
-        }
-      );
-      return redirectToBankSettings(request, "error");
-    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.bankConnections.completeYapilyConnection,
+      {
+        organizationId: claim.organizationId,
+        state,
+        oneTimeToken,
+      }
+    );
+    return redirectToBankSettings(request, "processing", state);
+  }),
+});
 
+// Private GitHub support-repository webhook. Only customer-safe ticket status
+// is mirrored back into ChurchCoin; engineering comments remain internal.
+http.route({
+  path: "/github/support-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    let config;
     try {
-      const session = await authorizeSession(code);
-      const consentExpiresAt = new Date(getConsentValidUntil()).getTime();
-
-      await ctx.runMutation(
-        internal.mutations.bankConnections.completePending,
-        {
-          state,
-          providerConnectionId: session.session_id,
-          accounts: session.accounts.map(mapEnableBankingAccount),
-          consentExpiresAt,
-        }
+      config = getGitHubSupportConfig();
+    } catch (error) {
+      console.error(
+        "GitHub support webhook is not configured:",
+        error instanceof Error ? error.message : error
       );
-
-      return redirectToBankSettings(request, "success");
-    } catch {
-      await ctx.runMutation(
-        internal.mutations.bankConnections.markPendingError,
-        {
-          state,
-          errorCode: "SESSION_EXCHANGE_FAILED",
-          errorMessage: "Failed to authorize bank session",
-        }
-      );
-      return redirectToBankSettings(request, "error");
+      return new Response("Server configuration error", { status: 500 });
     }
+
+    if (!config.webhookSecret) {
+      console.error("GITHUB_WEBHOOK_SECRET not configured");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const rawBody = await request.text();
+    const validSignature = await verifyGitHubWebhookSignature(
+      rawBody,
+      request.headers.get("x-hub-signature-256"),
+      config.webhookSecret
+    );
+    if (!validSignature) {
+      return new Response("Invalid webhook signature", { status: 401 });
+    }
+
+    const event = request.headers.get("x-github-event");
+    if (event === "ping") {
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (event !== "issues") {
+      return new Response(JSON.stringify({ ignored: true }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let payload: {
+      repository?: { full_name?: unknown };
+      issue?: {
+        number?: unknown;
+        state?: unknown;
+        labels?: Array<string | { name?: unknown }>;
+      };
+    };
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
+
+    if (payload.repository?.full_name !== config.repository) {
+      return new Response("Unexpected repository", { status: 403 });
+    }
+    const issueNumber = payload.issue?.number;
+    const issueState = payload.issue?.state;
+    if (typeof issueNumber !== "number" || typeof issueState !== "string") {
+      return new Response("Invalid issue payload", { status: 400 });
+    }
+
+    const labels = (payload.issue?.labels ?? [])
+      .map((label) => (typeof label === "string" ? label : label.name))
+      .filter((label): label is string => typeof label === "string");
+    await ctx.runMutation(
+      internal.mutations.supportTickets.applyGithubStatus,
+      {
+        repository: config.repository,
+        issueNumber,
+        status: statusFromGithubIssue({ state: issueState, labels }),
+      }
+    );
+
+    return new Response(JSON.stringify({ received: true }), {
+      status: 202,
+      headers: { "Content-Type": "application/json" },
+    });
   }),
 });
 

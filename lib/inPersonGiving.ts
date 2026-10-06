@@ -1,3 +1,5 @@
+import { isReportableIncomeTransaction } from "./reportableTransactions";
+
 type PaymentMethod = "Cash" | "Cheque" | "Bank" | "Card" | "Online";
 
 interface GivingCollection {
@@ -125,8 +127,7 @@ export function groupInPersonGivingCollections({
       const collectionTransactions = transactions.filter(
         (transaction) =>
           transaction.cashCollectionId === collection._id &&
-          transaction.type === "Income" &&
-          transaction.isVoided !== true
+          isReportableIncomeTransaction(transaction)
       );
 
       const rowsByKey = new Map<string, InPersonGivingLedgerRow>();
