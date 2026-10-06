@@ -66,6 +66,7 @@ export type DashboardCashReconciliation = {
 
 export type DashboardStatementSession = {
   fundId: string;
+  periodStart: string;
   periodEnd: string;
   status: string;
 };
@@ -232,13 +233,14 @@ export function buildExecutiveDashboardSummary({
   bankAccountFundIds,
 }: BuildExecutiveDashboardSummaryInput): ExecutiveDashboardSummary {
   const period = getDashboardPeriod(periodKey, now);
+  const elapsed = { startDate: period.startDate, endDate: period.throughDate };
   const activeTransactions = filterActiveTransactions(transactions);
   const reportableTransactions = filterReportableTransactions(transactions);
   const periodTransactions = activeTransactions.filter((transaction) =>
-    isWithinRange(transaction.date, period)
+    isWithinRange(transaction.date, elapsed)
   );
   const reportablePeriodTransactions = reportableTransactions.filter((transaction) =>
-    isWithinRange(transaction.date, period)
+    isWithinRange(transaction.date, elapsed)
   );
   const unrestrictedFundIds = new Set(
     funds.filter((fund) => fund.type === "Unrestricted").map((fund) => fund._id)
@@ -273,7 +275,7 @@ export function buildExecutiveDashboardSummary({
     ) * 0.1
   );
   const cashBankingPendingWeeks = countCashBankingPendingWeeks(
-    period,
+    elapsed,
     periodTransactions,
     cashCollections,
     cashReconciliations
@@ -463,7 +465,7 @@ function isCashOrCheque(transaction: DashboardTransaction) {
 }
 
 function countCashBankingPendingWeeks(
-  period: DashboardPeriod,
+  period: DateRange,
   transactions: DashboardTransaction[],
   cashCollections: DashboardCashCollection[],
   cashReconciliations: DashboardCashReconciliation[]
@@ -511,9 +513,10 @@ function buildSixMonthTrend(
   const trendEnd = parseDate(selectedPeriod.endDate);
   const months = Array.from({ length: 6 }, (_, index) => {
     const date = new Date(Date.UTC(trendEnd.getUTCFullYear(), trendEnd.getUTCMonth() - (5 - index), 1));
+    const monthEnd = formatDate(endOfMonth(date.getUTCFullYear(), date.getUTCMonth()));
     const range = {
       startDate: formatDate(date),
-      endDate: formatDate(endOfMonth(date.getUTCFullYear(), date.getUTCMonth())),
+      endDate: monthEnd < selectedPeriod.throughDate ? monthEnd : selectedPeriod.throughDate,
     };
     const monthTransactions = transactions.filter(
       (transaction) =>
@@ -585,6 +588,7 @@ function buildDonorFollowUp(
       transaction.type === "Income" &&
       transaction.donorId !== undefined &&
       declaredDonorIds.has(transaction.donorId) &&
+      isGivingCategory(transaction.category) &&
       transaction.isGiftAidEligible !== true
   );
   const pledgesBehind = pledges.filter((pledge) => {
@@ -642,10 +646,12 @@ function buildFundBalances(funds: DashboardFund[], transactions: DashboardTransa
 
   transactions.forEach((transaction) => {
     if (transaction.fundId) {
-      transactionsByFund.set(transaction.fundId, [
-        ...(transactionsByFund.get(transaction.fundId) ?? []),
-        transaction,
-      ]);
+      const fundTransactions = transactionsByFund.get(transaction.fundId);
+      if (fundTransactions) {
+        fundTransactions.push(transaction);
+      } else {
+        transactionsByFund.set(transaction.fundId, [transaction]);
+      }
     }
   });
 
@@ -692,25 +698,45 @@ function buildStatementsBehind(
   bankAccountFundIds: string[],
   dueThrough: string
 ) {
-  const reconciledThrough = new Map<string, string>();
+  const completedByFund = new Map<string, DashboardStatementSession[]>();
 
   statementSessions
     .filter((session) => session.status === "completed")
     .forEach((session) => {
-      const current = reconciledThrough.get(session.fundId);
-      if (!current || session.periodEnd > current) {
-        reconciledThrough.set(session.fundId, session.periodEnd);
+      const sessions = completedByFund.get(session.fundId);
+      if (sessions) {
+        sessions.push(session);
+      } else {
+        completedByFund.set(session.fundId, [session]);
       }
     });
 
-  const accountFundIds = new Set([...bankAccountFundIds, ...reconciledThrough.keys()]);
+  const accountFundIds = new Set([...bankAccountFundIds, ...completedByFund.keys()]);
 
   return funds
     .filter((fund) => accountFundIds.has(fund._id))
     .map((fund) => ({
       fundId: fund._id,
       name: fund.name,
-      reconciledThrough: reconciledThrough.get(fund._id) ?? null,
+      reconciledThrough: contiguousReconciledThrough(completedByFund.get(fund._id) ?? []),
     }))
     .filter((fund) => fund.reconciledThrough === null || fund.reconciledThrough < dueThrough);
+}
+
+// End of the unbroken run of completed statements from the first one. A
+// reopened or missing month ends the run, so a later completion cannot hide it.
+function contiguousReconciledThrough(completed: DashboardStatementSession[]) {
+  const sorted = [...completed].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+  let reconciledThrough: string | null = null;
+
+  for (const session of sorted) {
+    if (reconciledThrough !== null && session.periodStart > addDays(reconciledThrough, 1)) {
+      break;
+    }
+    if (reconciledThrough === null || session.periodEnd > reconciledThrough) {
+      reconciledThrough = session.periodEnd;
+    }
+  }
+
+  return reconciledThrough;
 }

@@ -169,15 +169,19 @@ function DataFreshness({ connections }: { connections: BankConnectionSummary[] |
     return <p className="mt-2 h-[22px]" aria-hidden="true" />;
   }
 
-  const lastSyncAt = Math.max(0, ...connections.map((connection) => connection.lastSyncAt ?? 0));
+  // The oldest feed bounds how current the figures are, so one fresh feed
+  // cannot vouch for the others.
+  const oldestSyncAt = Math.min(...connections.map((connection) => connection.lastSyncAt ?? 0));
   const message =
     connections.length === 0
       ? "No bank feed connected. Figures cover entered and imported transactions."
-      : lastSyncAt === 0
-        ? "Bank feeds connected but not yet synced."
-        : `Bank data last synced ${formatSyncDate(lastSyncAt)}.`;
+      : oldestSyncAt === 0
+        ? "A bank feed has not synced yet."
+        : connections.length === 1
+          ? `Bank data last synced ${formatSyncDate(oldestSyncAt)}.`
+          : `All bank feeds synced since ${formatSyncDate(oldestSyncAt)}.`;
   const isStale =
-    connections.length > 0 && Date.now() - lastSyncAt > STALE_SYNC_DAYS * 24 * 60 * 60 * 1000;
+    connections.length > 0 && Date.now() - oldestSyncAt > STALE_SYNC_DAYS * 24 * 60 * 60 * 1000;
 
   return (
     <p

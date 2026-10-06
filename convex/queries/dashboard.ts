@@ -146,6 +146,7 @@ export const executiveSummary = query({
       })),
       statementSessions: statementSessions.map((session) => ({
         fundId: String(session.fundId),
+        periodStart: session.periodStart,
         periodEnd: session.periodEnd,
         status: session.status,
       })),

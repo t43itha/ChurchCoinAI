@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
+import { sumMoney } from "../../convex/lib/money";
 import { formatCurrency } from "./formatters";
 import type { DashboardSummaryProps, ExecutiveDashboardSummary } from "./types";
 
@@ -105,7 +106,7 @@ function buildHealthCards(summary: ExecutiveDashboardSummary) {
   return [
     {
       title: "Funds Held",
-      value: formatCurrency(funds.generalFundBalance + funds.restrictedBalance),
+      value: formatCurrency(sumMoney([funds.generalFundBalance, funds.restrictedBalance], (balance) => balance)),
       detail: `${formatCurrency(funds.generalFundBalance)} unrestricted, ${formatCurrency(funds.restrictedBalance)} restricted`,
       badge: overdrawnCount === 0 ? "In credit" : `${overdrawnCount} overdrawn`,
       tone: overdrawnCount === 0 ? "neutral" : "critical",
