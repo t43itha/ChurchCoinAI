@@ -20,7 +20,7 @@
     "@google/genai": "^2.16.0",
     "@sentry/react": "^10.70.0",
     "ai": "^6.0.300",
-    "convex": "^1.43.0",
+    "convex": "^1.46.0",
     "framer-motion": "^12.23.25",
     "html2canvas": "^1.4.1",
     "jose": "^6.1.0",
