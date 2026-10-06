@@ -126,7 +126,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
   ];
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
       <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Funds & Balances</h2>
@@ -148,7 +148,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
           >
             {s.tone && (
               <span
-                className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r"
+                className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r-sm"
                 style={{ background: TONE[s.tone].mid }}
               />
             )}
@@ -176,7 +176,7 @@ const FundManager: React.FC<FundManagerProps> = ({ funds, transactions, onViewLe
             return (
               <div key={fund._id} className="swiss-card relative px-6 pt-[22px] pb-5 group">
                 <span
-                  className="absolute left-0 top-[22px] bottom-[22px] w-[3px] rounded-r"
+                  className="absolute left-0 top-[22px] bottom-[22px] w-[3px] rounded-r-sm"
                   style={{ background: TONE[barTone].mid }}
                 />
                 <div className="flex items-start justify-between gap-4 pl-2">

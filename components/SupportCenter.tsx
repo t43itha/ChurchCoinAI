@@ -301,7 +301,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-6 p-5 sm:p-6">
+              <form onSubmit={handleSubmit} className="ledger-space-y-6 p-5 sm:p-6">
                 <fieldset>
                   <legend className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
                     What can we help with?
@@ -350,7 +350,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                       maxLength={120}
                       required
                       placeholder="e.g. Imported transaction will not save"
-                      className="w-full rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] text-ink outline-none"
+                      className="w-full rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] text-ink outline-hidden"
                     />
                   </label>
 
@@ -367,7 +367,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                       required
                       rows={4}
                       placeholder="Describe what you were trying to do and what went wrong. Please leave out donor, transaction and banking details."
-                      className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none"
+                      className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-hidden"
                     />
                   </label>
 
@@ -385,7 +385,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                           maxLength={2_000}
                           rows={3}
                           placeholder="What should have happened?"
-                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none"
+                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-hidden"
                         />
                       </label>
                       <label>
@@ -400,7 +400,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                           maxLength={3_000}
                           rows={3}
                           placeholder="1. Open…  2. Select…  3. See…"
-                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none"
+                          className="w-full resize-y rounded-[10px] border border-ledger bg-white px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-hidden"
                         />
                       </label>
                     </>
@@ -488,7 +488,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="ledger-space-y-3">
                   <div className="mb-5 flex items-end justify-between gap-4">
                     <div>
                       <h3 className="text-[14px] font-bold text-ink">Your recent requests</h3>

@@ -345,7 +345,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                 type="date"
                 value={weekEndingDate}
                 onChange={(e) => setWeekEndingDate(e.target.value)}
-                className="block w-full min-w-0 max-w-full h-10 pl-9 pr-2 sm:pr-3 text-[16px] sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black font-mono appearance-none"
+                className="block w-full min-w-0 max-w-full h-10 pl-9 pr-2 sm:pr-3 text-[16px] sm:text-sm border border-gray-300 rounded-md focus:outline-hidden focus:ring-2 focus:ring-black/10 focus:border-black font-mono appearance-none"
               />
             </div>
           </div>
@@ -406,7 +406,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                           type="date"
                           value={row.serviceDate}
                           onChange={(e) => updateServiceRow(row.id, { serviceDate: e.target.value })}
-                          className="block w-full min-w-0 max-w-full h-9 px-2 border border-gray-300 rounded-md font-mono text-[16px] sm:text-xs focus:outline-none focus:ring-2 focus:ring-black/10 appearance-none"
+                          className="block w-full min-w-0 max-w-full h-9 px-2 border border-gray-300 rounded-md font-mono text-[16px] sm:text-xs focus:outline-hidden focus:ring-2 focus:ring-black/10 appearance-none"
                         />
                       </td>
                       <td className="border border-gray-300 px-3 py-2">
@@ -415,14 +415,14 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                           value={row.serviceNote}
                           onChange={(e) => updateServiceRow(row.id, { serviceNote: e.target.value })}
                           placeholder="e.g., Sunday Service"
-                          className="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
+                          className="w-full h-9 px-2 border border-gray-300 rounded-md text-sm focus:outline-hidden focus:ring-2 focus:ring-black/10"
                         />
                       </td>
                       <td className="border border-gray-300 px-3 py-2">
                         <select
                           value={row.fundId}
                           onChange={(e) => updateServiceRow(row.id, { fundId: e.target.value })}
-                          className="w-full h-9 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                          className="w-full h-9 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                         >
                           <option value="">Select fund...</option>
                           {funds.map((fund) => (
@@ -443,7 +443,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                               value={row[field]}
                               onChange={(e) => updateServiceRow(row.id, { [field]: e.target.value })}
                               placeholder="0.00"
-                              className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                              className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-hidden focus:ring-2 focus:ring-black/10"
                             />
                           </div>
                         </td>
@@ -487,7 +487,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             </table>
           </div>
 
-          <div className="md:hidden space-y-3">
+          <div className="md:hidden ledger-space-y-3">
             {serviceRows.map((row, index) => {
               const rowTotal =
                 parseMoney(row.cash) +
@@ -495,7 +495,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                 parseMoney(row.cheque);
 
               return (
-                <div key={row.id} className="border border-gray-300 rounded-md p-3 space-y-3 bg-white">
+                <div key={row.id} className="border border-gray-300 rounded-md p-3 ledger-space-y-3 bg-white">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-xs font-bold uppercase tracking-wide text-gray-500">
@@ -523,7 +523,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                         type="date"
                         value={row.serviceDate}
                         onChange={(e) => updateServiceRow(row.id, { serviceDate: e.target.value })}
-                        className="block w-full min-w-0 h-10 px-3 border border-gray-300 rounded-md font-mono text-[16px] focus:outline-none focus:ring-2 focus:ring-black/10 appearance-none"
+                        className="block w-full min-w-0 h-10 px-3 border border-gray-300 rounded-md font-mono text-[16px] focus:outline-hidden focus:ring-2 focus:ring-black/10 appearance-none"
                       />
                     </div>
                     <div>
@@ -533,7 +533,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                         value={row.serviceNote}
                         onChange={(e) => updateServiceRow(row.id, { serviceNote: e.target.value })}
                         placeholder="e.g., Sunday Service"
-                        className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black/10"
+                        className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm focus:outline-hidden focus:ring-2 focus:ring-black/10"
                       />
                     </div>
                     <div>
@@ -541,7 +541,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       <select
                         value={row.fundId}
                         onChange={(e) => updateServiceRow(row.id, { fundId: e.target.value })}
-                        className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                        className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                       >
                         <option value="">Select fund...</option>
                         {funds.map((fund) => (
@@ -564,7 +564,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                             value={row[field]}
                             onChange={(e) => updateServiceRow(row.id, { [field]: e.target.value })}
                             placeholder="0.00"
-                            className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                            className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-hidden focus:ring-2 focus:ring-black/10"
                           />
                         </div>
                       ))}
@@ -579,7 +579,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               );
             })}
 
-            <div className="border border-gray-300 bg-gray-100 rounded-md p-3 space-y-2 font-bold">
+            <div className="border border-gray-300 bg-gray-100 rounded-md p-3 ledger-space-y-2 font-bold">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span>Cash</span>
                 <span className="text-right font-mono">{formatCurrency(totals.cash)}</span>
@@ -607,7 +607,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             )}
 
             {activeEntryTab === "namedDonations" && (
-              <div className="space-y-4">
+              <div className="ledger-space-y-4">
                 {namedDonations.length === 0 ? (
                   <div className="border border-dashed border-gray-300 rounded-md p-6 text-center">
                     <button
@@ -657,7 +657,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                 <select
                                   value={row.category}
                                   onChange={(e) => updateNamedDonation(row.id, { category: e.target.value })}
-                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   {incomeCategories.length === 0 && <option value="Donation">Donation</option>}
                                   {incomeCategories.map((category) => (
@@ -671,7 +671,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                 <select
                                   value={row.fundId}
                                   onChange={(e) => updateNamedDonation(row.id, { fundId: e.target.value })}
-                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   <option value="">Select fund...</option>
                                   {funds.map((fund) => (
@@ -689,7 +689,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                       paymentMethod: e.target.value as NamedDonationPaymentMethod,
                                     })
                                   }
-                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   <option value="Cash">Cash</option>
                                   <option value="Cheque">Cheque</option>
@@ -704,7 +704,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                   value={row.amount}
                                   onChange={(e) => updateNamedDonation(row.id, { amount: e.target.value })}
                                   placeholder="0.00"
-                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 />
                               </td>
                               <td className="border border-gray-300 px-3 py-2 text-center align-top">
@@ -716,7 +716,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                       isGiftAidEligible: e.target.checked,
                                     })
                                   }
-                                  className="mt-3 h-4 w-4 rounded border-gray-300"
+                                  className="mt-3 h-4 w-4 rounded-sm border-gray-300"
                                 />
                               </td>
                               <td className="border border-gray-300 px-2 py-2 text-center align-top">
@@ -744,9 +744,9 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                       </table>
                     </div>
 
-                    <div className="lg:hidden space-y-3">
+                    <div className="lg:hidden ledger-space-y-3">
                       {namedDonations.map((row, index) => (
-                        <div key={row.id} className="border border-gray-300 rounded-md p-3 space-y-3 bg-white">
+                        <div key={row.id} className="border border-gray-300 rounded-md p-3 ledger-space-y-3 bg-white">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-xs font-bold uppercase tracking-wide text-gray-500">
                               Donation {index + 1}
@@ -784,7 +784,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                 <select
                                   value={row.category}
                                   onChange={(e) => updateNamedDonation(row.id, { category: e.target.value })}
-                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   {incomeCategories.length === 0 && <option value="Donation">Donation</option>}
                                   {incomeCategories.map((category) => (
@@ -799,7 +799,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                 <select
                                   value={row.fundId}
                                   onChange={(e) => updateNamedDonation(row.id, { fundId: e.target.value })}
-                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   <option value="">Select fund...</option>
                                   {funds.map((fund) => (
@@ -820,7 +820,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                       paymentMethod: e.target.value as NamedDonationPaymentMethod,
                                     })
                                   }
-                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   <option value="Cash">Cash</option>
                                   <option value="Cheque">Cheque</option>
@@ -836,7 +836,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                   value={row.amount}
                                   onChange={(e) => updateNamedDonation(row.id, { amount: e.target.value })}
                                   placeholder="0.00"
-                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-none focus:ring-2 focus:ring-black/10"
+                                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm text-right font-mono focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 />
                               </div>
                             </div>
@@ -849,7 +849,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                     isGiftAidEligible: e.target.checked,
                                   })
                                 }
-                                className="h-4 w-4 rounded border-gray-300"
+                                className="h-4 w-4 rounded-sm border-gray-300"
                               />
                               Gift Aid Eligible
                             </label>
@@ -905,7 +905,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add notes (optional)..."
-              className="flex-1 h-9 px-3 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-black"
+              className="flex-1 h-9 px-3 text-sm border border-gray-200 rounded-md focus:outline-hidden focus:ring-2 focus:ring-black/10 focus:border-black"
             />
             <div className="flex items-center justify-end gap-2">
               <button

@@ -66,7 +66,7 @@ const SectionCard: React.FC<{
 );
 
 const inputClass =
-  'w-full p-3 bg-white border border-ledger rounded-[10px] text-sm text-ink focus:ring-1 focus:ring-ink outline-none transition-shadow';
+  'w-full p-3 bg-white border border-ledger rounded-[10px] text-sm text-ink focus:ring-1 focus:ring-ink outline-hidden transition-shadow';
 const labelClass = 'block text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-1.5';
 const primaryBtnClass =
   'inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50';
@@ -375,7 +375,7 @@ ${currentUser.name}`;
   );
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-20">
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Settings</h2>
         <p className="text-grey-mid mt-2 text-[15px] font-medium">Organization profile, funds, users, bank connections, and data controls</p>
@@ -424,7 +424,7 @@ ${currentUser.name}`;
                 ) : undefined}
             >
                     {isEditingDetails && can(currentUser.role, "organization.update") ? (
-                        <form onSubmit={handleSaveChurchDetails} className="space-y-8">
+                        <form onSubmit={handleSaveChurchDetails} className="ledger-space-y-8">
                              <div className="flex items-start gap-6">
                                 <div className="w-[88px] h-[88px] bg-paper border border-ledger border-dashed rounded-[14px] flex items-center justify-center shrink-0 overflow-hidden relative group">
                                     {localChurchDetails.logoUrl ? (
@@ -587,7 +587,7 @@ ${currentUser.name}`;
                     ].map((s, i) => (
                         <div key={s.label} className={`relative px-6 py-5 ${i < 2 ? 'sm:border-r border-[#efeee9]' : ''}`}>
                             {s.tone && (
-                                <span className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r" style={{ background: TONE[s.tone].mid }} />
+                                <span className="absolute left-0 top-[18px] bottom-[18px] w-[3px] rounded-r-sm" style={{ background: TONE[s.tone].mid }} />
                             )}
                             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-grey-mid whitespace-nowrap">{s.label}</p>
                             <p className="font-mono text-[22px] font-bold tracking-tight mt-1.5" style={{ color: s.tone ? TONE[s.tone].fg : '#1c1917' }}>
@@ -598,7 +598,7 @@ ${currentUser.name}`;
                 </div>
 
                 {/* Mobile Cards View */}
-                <div className="md:hidden p-4 space-y-3">
+                <div className="md:hidden p-4 ledger-space-y-3">
                     {funds.map(fund => {
                         const progress = calculateProgress(fund);
                         return (
@@ -705,7 +705,7 @@ ${currentUser.name}`;
 
         {/* USERS TAB */}
         {activeTab === 'users' && (
-            <div className="space-y-[18px]">
+            <div className="ledger-space-y-[18px]">
                 {/* Active Users */}
                 <SectionCard
                     icon={Users}
@@ -738,7 +738,7 @@ ${currentUser.name}`;
                                         value={user.role}
                                         onChange={(e) => onUpdateUserRole(user._id, e.target.value as UserRole)}
                                         disabled={user._id === currentUser._id}
-                                        className="w-full sm:w-auto bg-white border border-ledger hover:border-grey-mid rounded-[9px] px-3 py-1.5 text-xs font-medium text-grey-dark outline-none focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                        className="w-full sm:w-auto bg-white border border-ledger hover:border-grey-mid rounded-[9px] px-3 py-1.5 text-xs font-medium text-grey-dark outline-hidden focus:ring-1 focus:ring-ink cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                     >
                                         {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
                                     </select>
@@ -824,13 +824,13 @@ ${currentUser.name}`;
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value)}
                             placeholder="Add a category…"
-                            className="flex-1 max-w-xs h-10 px-3.5 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none focus:ring-1 focus:ring-ink transition-shadow"
+                            className="flex-1 max-w-xs h-10 px-3.5 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-hidden focus:ring-1 focus:ring-ink transition-shadow"
                         />
                         <select
                             aria-label="Category type"
                             value={newCategoryType}
                             onChange={(e) => setNewCategoryType(e.target.value as 'Income' | 'Expenditure')}
-                            className="h-10 px-3 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-none"
+                            className="h-10 px-3 bg-white border border-ledger rounded-[10px] text-sm text-ink outline-hidden"
                         >
                             <option value="Income">Income</option>
                             <option value="Expenditure">Expenditure</option>
@@ -885,7 +885,7 @@ ${currentUser.name}`;
 
       {/* Invite User Modal */}
       {showAddUser && can(currentUser.role, "invitations.manage") && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-sm rounded-xl shadow-soft-lg border border-ledger animate-enter">
                 <div className="px-5 py-4 border-b border-grey-light flex justify-between items-center bg-[#fcfbf9] rounded-t-xl">
                     <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">
@@ -896,7 +896,7 @@ ${currentUser.name}`;
 
                 {inviteSuccess ? (
                     // Success state with copy option
-                    <div className="p-6 space-y-4">
+                    <div className="p-6 ledger-space-y-4">
                         <div className="text-center">
                             <div className={`w-12 h-12 ${inviteSuccess.emailSent ? 'bg-sage-light' : 'bg-amber-light'} rounded-full flex items-center justify-center mx-auto mb-3`}>
                                 <Check size={24} className={inviteSuccess.emailSent ? 'text-sage' : 'text-amber'} />
@@ -954,7 +954,7 @@ ${currentUser.name}`;
                     </div>
                 ) : (
                     // Form state
-                    <form onSubmit={handleCreateInvitation} className="p-6 space-y-4">
+                    <form onSubmit={handleCreateInvitation} className="p-6 ledger-space-y-4">
                         <div>
                             <label className={labelClass}>Email Address</label>
                             <input
@@ -996,7 +996,7 @@ ${currentUser.name}`;
 
       {/* Fund Modal */}
       {showFundModal && (
-          <div className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter">
                 <div className="px-5 py-4 border-b border-grey-light flex justify-between items-center bg-[#fcfbf9] rounded-t-xl">
                     <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">
@@ -1004,7 +1004,7 @@ ${currentUser.name}`;
                     </h3>
                     <button onClick={() => setShowFundModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
                 </div>
-                <form onSubmit={handleSaveFund} className="p-6 space-y-4">
+                <form onSubmit={handleSaveFund} className="p-6 ledger-space-y-4">
                      {/* Fund Logo Upload */}
                     <div className="flex items-center gap-4">
                         <div

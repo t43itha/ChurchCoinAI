@@ -207,7 +207,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
           disabled={disabled}
           autoFocus={autoFocus}
           className="w-full h-10 pl-9 pr-8 text-sm border border-ledger rounded-md bg-white
-                     focus:outline-none focus:ring-1 focus:ring-ink focus:border-ink
+                     focus:outline-hidden focus:ring-1 focus:ring-ink focus:border-ink
                      disabled:bg-grey-light disabled:cursor-not-allowed
                      font-mono"
         />
@@ -224,7 +224,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
               });
               inputRef.current?.focus();
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-grey-light rounded"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-grey-light rounded-sm"
             aria-label="Clear donor search"
           >
             <X className="h-3 w-3 text-grey-mid" />
@@ -272,7 +272,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 {showGiftAidBadge && donor.isGiftAidActive && (
-                  <span className="bg-sage-100 text-sage-700 border border-sage-300 px-1.5 py-0.5 text-[10px] rounded font-medium">
+                  <span className="bg-sage-100 text-sage-700 border border-sage-300 px-1.5 py-0.5 text-[10px] rounded-sm font-medium">
                     Gift Aid
                   </span>
                 )}

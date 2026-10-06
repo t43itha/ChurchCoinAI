@@ -167,7 +167,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ledger-space-y-6">
       {/* Header with controls */}
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <p className="text-grey-mid text-sm font-medium">
@@ -187,7 +187,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
               <select
                 value={month}
                 onChange={(e) => setMonth(Number(e.target.value))}
-                className="text-sm font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                className="text-sm font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
               >
                 {monthOptions.map((m) => (
                   <option key={m.value} value={m.value}>{m.label}</option>
@@ -196,7 +196,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
               <select
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
-                className="text-sm font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                className="text-sm font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
               >
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}</option>
@@ -531,7 +531,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
                         <td className="px-5 py-2.5 text-sm text-grey-dark">{tithe.donorName}</td>
                         <td className="px-5 py-2.5 text-center">
                           {tithe.isGiftAidEligible ? (
-                            <span className="inline-block px-2 py-0.5 bg-sage-light text-sage text-xs font-bold rounded">
+                            <span className="inline-block px-2 py-0.5 bg-sage-light text-sage text-xs font-bold rounded-sm">
                               Yes
                             </span>
                           ) : (
@@ -563,7 +563,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
             <PoundSterling size={18} />
             Gift Aid Summary
           </h3>
-          <div className="space-y-4">
+          <div className="ledger-space-y-4">
             <div className="flex justify-between items-center py-3 border-b border-ledger">
               <span className="text-sm text-grey-dark">Total Gift Aid Eligible</span>
               <span className="font-mono font-bold text-ink">
@@ -686,7 +686,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
   }
 
   return (
-    <div className="space-y-6">
+    <div className="ledger-space-y-6">
       {/* Header with controls */}
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <p className="text-grey-mid text-sm font-medium">
@@ -706,7 +706,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
               <select
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
-                className="text-sm font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+                className="text-sm font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
               >
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>{y}</option>
@@ -956,7 +956,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
               <TrendingUp size={18} />
               Year-over-Year Comparison
             </h3>
-            <div className="space-y-4">
+            <div className="ledger-space-y-4">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div></div>
                 <div className="text-xs font-bold uppercase tracking-wide text-grey-mid">{year - 1}</div>
@@ -1000,7 +1000,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
             <PoundSterling size={18} />
             Gift Aid Annual Summary
           </h3>
-          <div className="space-y-4">
+          <div className="ledger-space-y-4">
             <div className="flex justify-between items-center py-3 border-b border-ledger">
               <span className="text-sm text-grey-dark">Total Gift Aid Eligible</span>
               <span className="font-mono font-bold text-ink">
@@ -1054,7 +1054,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
                   <tr key={fund.fund} className={`border-b border-[#efeee9] ${idx % 2 === 0 ? '' : 'bg-[#fcfbf9]'}`}>
                     <td className="px-5 py-3 text-sm font-medium text-ink">{fund.fund}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
+                      <span className={`inline-block px-2 py-0.5 rounded-sm text-xs font-bold ${
                         fund.type === 'Unrestricted' ? 'bg-sage-light text-sage' :
                         fund.type === 'Restricted' ? 'bg-amber-light text-amber' :
                         fund.type === 'Designated' ? 'bg-blue-100 text-blue-700' :
@@ -1337,7 +1337,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
   };
 
   return (
-    <div className="space-y-6">
+    <div className="ledger-space-y-6">
       {/* Header with tax year selector */}
       <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
         <p className="text-grey-mid text-sm font-medium">
@@ -1349,7 +1349,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
             <select
               value={taxYear}
               onChange={(e) => setTaxYear(e.target.value)}
-              className="text-sm font-medium text-grey-dark outline-none bg-transparent cursor-pointer"
+              className="text-sm font-medium text-grey-dark outline-hidden bg-transparent cursor-pointer"
             >
               <option value="current">
                 Current {churchDetails?.reportingPeriod === 'calendar_year' ? 'Calendar' : 'Tax'} Year
@@ -1364,7 +1364,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="space-y-4">
+        <div className="ledger-space-y-4">
           {/* Treasurer Report Card */}
           <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateTreasurerReport}>
             <div className="flex justify-between items-start mb-4">
@@ -1395,13 +1395,13 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
             <div className="flex gap-2">
               <button
                 onClick={(e) => { e.stopPropagation(); handleGenerateAnnualStatement(); }}
-                className="flex-1 py-1.5 bg-ink text-white rounded text-xs font-bold uppercase tracking-wide hover:bg-charcoal transition-colors"
+                className="flex-1 py-1.5 bg-ink text-white rounded-sm text-xs font-bold uppercase tracking-wide hover:bg-charcoal transition-colors"
               >
                 Annual
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); handleGenerateMonthlyBreakdown(); }}
-                className="flex-1 py-1.5 bg-white border border-ledger text-grey-dark rounded text-xs font-bold uppercase tracking-wide hover:border-grey-mid transition-colors"
+                className="flex-1 py-1.5 bg-white border border-ledger text-grey-dark rounded-sm text-xs font-bold uppercase tracking-wide hover:border-grey-mid transition-colors"
               >
                 Monthly
               </button>
@@ -1436,7 +1436,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
               Create a newsletter update for a specific restricted fund.
             </p>
             <select
-              className="w-full mb-4 text-xs p-2 bg-white border border-ledger rounded-lg outline-none focus:ring-1 focus:ring-ink cursor-pointer"
+              className="w-full mb-4 text-xs p-2 bg-white border border-ledger rounded-lg outline-hidden focus:ring-1 focus:ring-ink cursor-pointer"
               value={selectedFundId}
               onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
               onClick={(e) => e.stopPropagation()}
@@ -1460,7 +1460,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
               Analyze fundraising metrics, donor count, and projection to goal.
             </p>
             <select
-              className="w-full mb-4 text-xs p-2 bg-white border border-ledger rounded-lg outline-none focus:ring-1 focus:ring-ink cursor-pointer"
+              className="w-full mb-4 text-xs p-2 bg-white border border-ledger rounded-lg outline-hidden focus:ring-1 focus:ring-ink cursor-pointer"
               value={selectedFundId}
               onChange={(e) => { e.stopPropagation(); setSelectedFundId(e.target.value); }}
               onClick={(e) => e.stopPropagation()}
@@ -1478,10 +1478,10 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
         <div className="lg:col-span-2">
           <div className="swiss-card min-h-[600px] p-10 relative">
             <div className="absolute top-6 right-6 flex gap-2">
-              <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded transition-colors" title="Download">
+              <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded-sm transition-colors" title="Download">
                 <Download size={18} />
               </button>
-              <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded transition-colors" title="Share">
+              <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded-sm transition-colors" title="Share">
                 <Share2 size={18} />
               </button>
             </div>
@@ -1571,7 +1571,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
   const [activeTab, setActiveTab] = useState<ReportTab>('monthly');
 
   return (
-    <div className="space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
+    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
       {/* Header */}
       <header className="swiss-card-static p-6 md:p-[26px]">
         <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Reports</h2>

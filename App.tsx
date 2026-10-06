@@ -313,7 +313,7 @@ function App() {
       <SupportCenter open={isSupportOpen} onClose={closeSupport} />
 
       <main className="flex-1 md:ml-[248px] flex flex-col h-screen overflow-hidden">
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-sm sticky top-0 z-10">
+        <header className="md:hidden flex items-center justify-between p-4 border-b border-ledger bg-paper/95 backdrop-blur-xs sticky top-0 z-10">
           <img
             src="/churchcoin-logo.png"
             alt="ChurchCoin Finance Platform"

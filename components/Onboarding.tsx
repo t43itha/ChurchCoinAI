@@ -35,7 +35,7 @@ interface OnboardingProps {
 type View = "invites" | "enter-link" | "create-org";
 
 const inputClass =
-  "w-full px-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-none transition-all placeholder-grey-mid";
+  "w-full px-4 py-3 bg-grey-light border border-ledger rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-all placeholder-grey-mid";
 
 const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }) => {
   const [inviteToken, setInviteToken] = useState<string | null>(
@@ -157,8 +157,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
   if (view === "invites" && inviteToken && tokenInvite && tokenInvite.status === "valid") {
     return (
       <Shell>
-        <div className="p-8 space-y-6 animate-enter">
-          <div className="space-y-2">
+        <div className="p-8 ledger-space-y-6 animate-enter">
+          <div className="ledger-space-y-2">
             <h2 className="text-2xl font-bold font-mono text-ink">
               You're invited
             </h2>
@@ -167,7 +167,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
             </p>
           </div>
 
-          <div className="p-4 rounded-xl border border-ledger bg-grey-light space-y-1">
+          <div className="p-4 rounded-xl border border-ledger bg-grey-light ledger-space-y-1">
             <div className="text-sm font-bold text-ink">
               {tokenInvite.organizationName}
             </div>
@@ -220,9 +220,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
         : "This invitation has expired.";
     return (
       <Shell>
-        <div className="p-8 space-y-6 animate-enter text-center">
+        <div className="p-8 ledger-space-y-6 animate-enter text-center">
           <AlertTriangle size={32} className="text-amber mx-auto" />
-          <div className="space-y-2">
+          <div className="ledger-space-y-2">
             <h2 className="text-xl font-bold font-mono text-ink">
               Invitation unavailable
             </h2>
@@ -246,8 +246,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
   if (view === "invites" && emailInvites && emailInvites.length > 0) {
     return (
       <Shell>
-        <div className="p-8 space-y-6 animate-enter">
-          <div className="space-y-2">
+        <div className="p-8 ledger-space-y-6 animate-enter">
+          <div className="ledger-space-y-2">
             <h2 className="text-2xl font-bold font-mono text-ink">
               You're invited
             </h2>
@@ -260,7 +260,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
 
           {errorBox}
 
-          <div className="space-y-3">
+          <div className="ledger-space-y-3">
             {emailInvites.map((invite) => (
               <div
                 key={invite.invitationId}
@@ -305,8 +305,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
   if (view === "enter-link") {
     return (
       <Shell>
-        <div className="p-8 space-y-6 animate-enter">
-          <div className="space-y-2">
+        <div className="p-8 ledger-space-y-6 animate-enter">
+          <div className="ledger-space-y-2">
             <h2 className="text-2xl font-bold font-mono text-ink">
               Join your church
             </h2>
@@ -364,8 +364,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
   if (view === "create-org") {
     return (
       <Shell>
-        <div className="p-8 space-y-6 animate-enter">
-          <div className="space-y-2">
+        <div className="p-8 ledger-space-y-6 animate-enter">
+          <div className="ledger-space-y-2">
             <h2 className="text-2xl font-bold font-mono text-ink">
               Create your organization
             </h2>
@@ -380,7 +380,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
             </p>
           </div>
 
-          <div className="space-y-4">
+          <div className="ledger-space-y-4">
             <div>
               <label className="block text-xs font-bold text-grey-mid uppercase tracking-wide mb-1.5">
                 Your Full Name
@@ -490,8 +490,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
   // ----- No invitation found: guard against accidental duplicate orgs -----
   return (
     <Shell>
-      <div className="p-8 space-y-6 animate-enter">
-        <div className="space-y-2">
+      <div className="p-8 ledger-space-y-6 animate-enter">
+        <div className="ledger-space-y-2">
           <h2 className="text-2xl font-bold font-mono text-ink">
             Welcome to ChurchCoin
           </h2>
@@ -519,7 +519,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ clerkUser, onComplete, selected
 
         {errorBox}
 
-        <div className="space-y-3">
+        <div className="ledger-space-y-3">
           <button
             onClick={() => setView("enter-link")}
             className="w-full py-3 bg-white border border-ledger text-ink rounded-lg font-bold text-sm uppercase tracking-wide hover:bg-grey-light transition-all flex items-center justify-center gap-2"

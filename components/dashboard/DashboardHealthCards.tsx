@@ -56,7 +56,7 @@ export default function DashboardHealthCards({ summary }: DashboardSummaryProps)
             className="swiss-card relative bg-white overflow-hidden min-w-0 min-h-44 flex flex-col"
           >
             <span
-              className="absolute left-0 top-[14px] bottom-[14px] w-[3px] rounded-r"
+              className="absolute left-0 top-[14px] bottom-[14px] w-[3px] rounded-r-sm"
               style={{ background: classes.rail }}
             />
             <div className="pl-[26px] pr-[22px] py-[22px] flex flex-col gap-[18px] flex-1">

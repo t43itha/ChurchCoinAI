@@ -117,7 +117,7 @@ export default function LegalPage({ type }: LegalPageProps) {
           {content.intro}
         </p>
 
-        <div className="space-y-7">
+        <div className="ledger-space-y-7">
           {content.items.map((item) => (
             <section key={item.heading} className="border-t border-ledger pt-6">
               <h2 className="mb-2 text-lg font-bold text-ink">{item.heading}</h2>

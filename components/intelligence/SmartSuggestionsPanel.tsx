@@ -115,7 +115,7 @@ export const SmartSuggestionsPanel: React.FC<SmartSuggestionsPanelProps> = ({
           <button
             onClick={handleRegenerate}
             disabled={regenerating}
-            className="p-1.5 rounded hover:bg-sage-light text-grey-mid hover:text-sage transition-colors disabled:opacity-50"
+            className="p-1.5 rounded-sm hover:bg-sage-light text-grey-mid hover:text-sage transition-colors disabled:opacity-50"
             title="Refresh suggestions"
           >
             <RefreshCw
@@ -126,7 +126,7 @@ export const SmartSuggestionsPanel: React.FC<SmartSuggestionsPanelProps> = ({
         </div>
       </div>
 
-      <div className="divide-y divide-ledger">
+      <div className="ledger-divide-y ledger-divide-ledger">
         {loading && (
           <div className="p-12 text-center">
             <div className="animate-spin h-5 w-5 border-2 border-sage border-t-transparent rounded-full mx-auto mb-2" />
@@ -156,7 +156,7 @@ export const SmartSuggestionsPanel: React.FC<SmartSuggestionsPanelProps> = ({
                   <span className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">
                     {getSeverityLabel(suggestion.severity)}
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-grey-light text-grey-mid font-medium">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-grey-light text-grey-mid font-medium">
                     {suggestion.insightType}
                   </span>
                 </div>
@@ -179,21 +179,21 @@ export const SmartSuggestionsPanel: React.FC<SmartSuggestionsPanelProps> = ({
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={() => handleAccept(suggestion)}
-                  className="p-1.5 rounded hover:bg-sage-light text-sage"
+                  className="p-1.5 rounded-sm hover:bg-sage-light text-sage"
                   title="Accept & Take Action"
                 >
                   <CheckCircle2 size={16} />
                 </button>
                 <button
                   onClick={() => handleDefer(suggestion._id)}
-                  className="p-1.5 rounded hover:bg-grey-light text-grey-mid"
+                  className="p-1.5 rounded-sm hover:bg-grey-light text-grey-mid"
                   title="Remind me in 7 days"
                 >
                   <Clock size={16} />
                 </button>
                 <button
                   onClick={() => handleDismiss(suggestion._id)}
-                  className="p-1.5 rounded hover:bg-red-50 text-red-400"
+                  className="p-1.5 rounded-sm hover:bg-red-50 text-red-400"
                   title="Dismiss"
                 >
                   <X size={16} />
