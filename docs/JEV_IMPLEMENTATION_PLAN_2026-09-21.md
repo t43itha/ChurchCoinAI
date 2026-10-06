@@ -1,9 +1,7 @@
 # Jev implementation review and plan
 
-Date: 21 September 2026
-
-Reviewed checkout: `codex/jev`, commit `8ac40d7192be56412fc1851c6f197fc33830fbca`
-
+Date: 21 September 2026  
+Reviewed checkout: `codex/jev`, commit `8ac40d7192be56412fc1851c6f197fc33830fbca`  
 Latest update: **22 September 2026**, following the Vercel form-router review. Implemented and validated in the working tree; Jev defaults to **off**. No hosted ChurchCoin deployment or tenant rollout was changed.
 
 ## Recommendation
@@ -325,3 +323,22 @@ Roll out through a tenant allowlist, then gradually expand while measuring corre
 - Establish whether donor extraction dominates residual calls; this determines whether the category/fund stage produces worthwhile end-to-end savings.
 
 The baseline, evaluation adapter, gated integration and first go/no-go report are complete above. The next experiment should reduce question/extraction overhead and evaluate an independent holdout plus full imports. Production adoption remains gated on evidence.
+
+## Holdout results (2026-10-06)
+
+**Blocked by contamination; stopped before API evaluation.** The 52-row `jev-holdout-2026-09-22.json` is reviewed development data. Its `labelReview` records post-evaluation corrections to rows 25/26; the fixture-review paragraph above records adding donor criteria after the first run. Both facts already appear in historical commit `ca92ff2`, and the current fixture matches that historical blob. The retained initial/final pipeline results identify this same dataset and all 52 row IDs. Family separation also fails: rows 07/09 reuse the development fixtures' Zoom/Microsoft payees, and row 39 exactly repeats `focus-inc-15`'s `THANKSGIVING SERVICE CASH COLLECTION`. No exact expected donor-name overlap was found in the 100-case development fixture (including its 50-case base).
+
+| Independent holdout metric | Rules/defaults + Luna baseline | Rules/defaults + Jev-gated Luna |
+|---|---:|---:|
+| Newly evaluated rows / independent sample size | 0 / 0 | 0 / 0 |
+| Category / fund / donor accuracy; confidence intervals | Not measured | Not measured |
+| Jev coverage / generative-work reduction | Not measured | Not measured |
+| Review rate | Not measured | Not measured |
+| Median / p95 latency | Not measured | Not measured |
+| Provider cost per row | Not measured | Not measured |
+
+No paid evaluation calls were made. The frozen v3 template, category/fund gates (0.95/0.98), 0.20 margins and 10-row Jev batches were unchanged. The full-pipeline runner is `scripts/eval-jev-pipeline.mjs` (`luna,jev-batch`); it requires a process-level `OPENROUTER_API_KEY` and no Convex deployment. Credential availability was not assessed after the contamination stop. `npm run eval:categorization` is a model-stage comparison with a different fixture contract.
+
+**Decision: no-go for broad rollout on this evidence.** Obtain a fresh independently labelled holdout separated by donor/payee/reference family before evaluating the frozen pipelines. The existing development numbers do not establish the >=99% empirical joint-precision target or the holdout coverage, cost and speed gates; no independent confidence interval can be reported with n=0. Keep Jev off by default and preserve import review.
+
+Validation: `npm test` passed all 335 tests across 44 files. `npm run typecheck` failed on the nested `churchcoin-launch-video` project's conflicting React types, as previously documented above. A supplementary application-only TypeScript check passed for 220 source files with that nested project excluded in memory; no configuration or implementation files were changed.
