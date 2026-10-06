@@ -256,6 +256,8 @@ export default defineSchema({
     // Source-level dedup for bank-synced transactions
     bankConnectionId: v.optional(v.id("bankConnections")),
     providerTransactionId: v.optional(v.string()),
+    // Source-level dedup for statement imports (see lib/importKeys)
+    importKey: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
@@ -270,7 +272,8 @@ export default defineSchema({
     .index("by_connection_providerTransaction", [
       "bankConnectionId",
       "providerTransactionId",
-    ]),
+    ])
+    .index("by_organization_importKey", ["organizationId", "importKey"]),
 
   // Cash Collections (batch entry for weekly cash takings)
   cashCollections: defineTable({

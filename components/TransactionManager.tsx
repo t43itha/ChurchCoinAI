@@ -14,6 +14,7 @@ import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/csvImport';
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
+import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
 import { isVoidedTransaction, sumReportableIncome, sumReportableSigned } from '../lib/reportableTransactions';
 import { roundMoney } from '../convex/lib/money';
@@ -52,6 +53,7 @@ type PendingReviewTransaction = Partial<Transaction> & {
   source?: 'bank';
   providerTransactionId?: string;
   bankConnectionId?: Id<"bankConnections">;
+  importKey?: string;
 };
 
 type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
@@ -154,6 +156,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Bank Sync State
   const [showBankSelector, setShowBankSelector] = useState(false);
   const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
+  const [alreadyImportedRows, setAlreadyImportedRows] = useState<PendingReviewTransaction[]>([]);
   const [nextBankSyncCursor, setNextBankSyncCursor] = useState<BankSyncCursor | null>(null);
   const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"bankConnections"> | null>(null);
   const [bankSyncReviewConnectionId, setBankSyncReviewConnectionId] = useState<Id<"bankConnections"> | null>(null);
@@ -635,7 +638,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           return;
       }
 
-      const parsed: PendingReviewTransaction[] = [];
+      const parsed: Array<PendingReviewTransaction & StatementRow> = [];
       let skippedInvalidAmounts = 0;
       csvRows.forEach((row) => {
           const description = row[descIdx];
@@ -692,24 +695,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           notify("Invalid amounts", `${skippedInvalidAmounts} row${skippedInvalidAmounts === 1 ? "" : "s"} had an amount that could not be read and ${skippedInvalidAmounts === 1 ? "was" : "were"} left out.`);
       }
 
-      const duplicateIndexes = new Set<number>();
-      const seenRows = new Map<string, number>();
-      parsed.forEach((row, index) => {
-          const key = `${row.date}|${row.amount}|${row.description}`;
-          const previous = seenRows.get(key);
-          if (previous !== undefined) {
-              duplicateIndexes.add(previous);
-              duplicateIndexes.add(index);
-          } else {
-              seenRows.set(key, index);
-          }
-      });
+      const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(withImportKeys(parsed), transactions);
 
-      setDuplicateWarnings(duplicateIndexes);
+      setDuplicateWarnings(possibleDuplicates);
+      setAlreadyImportedRows(alreadyImported);
       setNextBankSyncCursor(null);
       setNextBankSyncConnectionId(null);
       setBankSyncReviewConnectionId(null);
-      setPendingTransactions(parsed);
+      setPendingTransactions(fresh);
       setShowColumnMapper(false);
       setShowReviewModal(true);
   };
@@ -722,6 +715,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setCategorizationTransactionCount(0);
     setPendingTransactions([]);
     setDuplicateWarnings(new Set());
+    setAlreadyImportedRows([]);
     setNextBankSyncCursor(null);
     setNextBankSyncConnectionId(null);
     setBankSyncReviewConnectionId(null);
@@ -732,6 +726,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
     setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
   }, []);
+
+  // Statement rows can match a ledger row from another account's statement, so
+  // the user may override; bank rows matched by provider id are never re-imported.
+  const includeAlreadyImportedStatementRows = () => {
+    const rows = alreadyImportedRows.filter((row) => row.importKey).map((row) => ({ ...row, importKey: undefined }));
+    const startIndex = pendingTransactions.length;
+    setPendingTransactions((current) => [...current, ...rows]);
+    setDuplicateWarnings((current) => new Set([...current, ...rows.map((_, index) => startIndex + index)]));
+    setAlreadyImportedRows((current) => current.filter((row) => !row.importKey));
+  };
 
   const updatePendingTransactionAt = useCallback((index: number, updates: Partial<PendingReviewTransaction>) => {
     setPendingTransactions((current) => current.map((transaction, currentIndex) => (
@@ -751,7 +755,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     append: boolean,
     bankConnectionId: Id<"bankConnections">
   ) => {
-    const pending: PendingReviewTransaction[] = syncedTransactions.map((tx) => applySmallIncomeDefaults({
+    const pending: Array<PendingReviewTransaction & StatementRow> = syncedTransactions.map((tx) => applySmallIncomeDefaults({
       reviewRowId: crypto.randomUUID(),
       date: tx.date,
       description: tx.description,
@@ -765,24 +769,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       bankConnectionId,
     }, categories, funds));
 
+    const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(pending, transactions);
+    setAlreadyImportedRows((current) => (append ? [...current, ...alreadyImported] : alreadyImported));
     setPendingTransactions((current) => {
       const startIndex = append ? current.length : 0;
       setDuplicateWarnings((currentWarnings) => {
         const duplicates = new Set<number>(append ? currentWarnings : []);
-        syncedTransactions.forEach((syncedTx, idx) => {
-          const isDuplicate = transactions.some(
-            (existingTx) =>
-              existingTx.date === syncedTx.date &&
-              Math.abs(existingTx.amount - syncedTx.amount) < 0.01
-          );
-          if (isDuplicate) {
-            duplicates.add(startIndex + idx);
-          }
-        });
+        possibleDuplicates.forEach((index) => duplicates.add(startIndex + index));
         return duplicates;
       });
 
-      return append ? [...current, ...pending] : pending;
+      return append ? [...current, ...fresh] : fresh;
     });
   };
 
@@ -819,6 +816,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     } else {
       setIsUploading(true);
       setDuplicateWarnings(new Set());
+      setAlreadyImportedRows([]);
       setNextBankSyncCursor(null);
       setNextBankSyncConnectionId(null);
       setOriginalPredictions(new Map());
@@ -999,10 +997,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 // No auto-linking: donorId and pledgeId left undefined
                 // User can manually link transactions to donors/pledges later
                 notes: pt.notes?.replace(/ \| New Donor:.*$/, '').replace(/ \| Donor:.*$/, '').replace(/ \| Pledge:.*$/, '') || undefined,
-                // Bank-synced rows carry provider identifiers so the server can
-                // skip anything already imported from the same connection
+                // Bank rows carry provider ids and statement rows carry import keys
+                // so the server can skip anything already imported
                 bankConnectionId: pt.bankConnectionId as Id<"bankConnections"> | undefined,
                 providerTransactionId: pt.providerTransactionId,
+                importKey: pt.importKey,
             };
         });
 
@@ -1075,7 +1074,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         if (result?.skippedDuplicates) {
             notify(
                 "Duplicates Skipped",
-                `${result.skippedDuplicates} transaction${result.skippedDuplicates === 1 ? ' was' : 's were'} already imported from this bank connection and ${result.skippedDuplicates === 1 ? 'was' : 'were'} skipped.`
+                `${result.skippedDuplicates} transaction${result.skippedDuplicates === 1 ? ' was' : 's were'} already imported and ${result.skippedDuplicates === 1 ? 'was' : 'were'} skipped.`
             );
         }
 
@@ -2442,12 +2441,31 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     {isProcessingAI && (
                       <ImportCategorizationProgress transactionCount={categorizationTransactionCount} />
                     )}
+                    {alreadyImportedRows.length > 0 && (
+                      <div className="mb-4 p-3 bg-paper border border-ledger rounded-lg flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="flex items-center gap-2 text-xs text-grey-dark">
+                          <CheckCircle2 size={16} className="shrink-0 text-sage-dark" />
+                          <span>
+                            <strong>{alreadyImportedRows.length} row{alreadyImportedRows.length > 1 ? 's were' : ' was'} already imported</strong> and {alreadyImportedRows.length > 1 ? 'have' : 'has'} been left out.
+                          </span>
+                        </p>
+                        {alreadyImportedRows.some((row) => row.importKey) && (
+                          <button
+                            type="button"
+                            onClick={includeAlreadyImportedStatementRows}
+                            className="self-start text-xs font-bold text-grey-dark underline hover:text-ink sm:self-auto"
+                          >
+                            Import anyway
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {duplicateWarnings.size > 0 && (
                       <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
                         <AlertTriangle size={16} className="text-amber-600" />
                         <p className="text-xs text-amber-800">
                           <strong>{duplicateWarnings.size} potential duplicate{duplicateWarnings.size > 1 ? 's' : ''} found</strong> -
-                          transactions with matching date and amount already exist. Review and remove if needed.
+                          the ledger already has a transaction with the same date and amount, possibly from another source. Review and remove if needed.
                         </p>
                       </div>
                     )}

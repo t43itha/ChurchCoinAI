@@ -15,7 +15,9 @@ export type LockOverride =
   | "reconciliation-owner"
   // Renaming a category or donor relabels history, including locked rows.
   | "category-rename-cascade"
-  | "donor-cascade";
+  | "donor-cascade"
+  // Backfilling import dedup keys changes no amount, date, fund or category.
+  | "import-key-backfill";
 
 export type TransactionWriteOptions = { lockOverride?: LockOverride };
 

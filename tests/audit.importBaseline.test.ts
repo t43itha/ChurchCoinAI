@@ -1,7 +1,5 @@
 // Audit characterization only: these assertions document defects, not acceptance criteria.
 // No network, provider, Convex deployment, or real identity is used.
-import { readFileSync } from "node:fs";
-import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { bulkCreate } from "../convex/mutations/transactions";
 import { create } from "../convex/mutations/organizations";
@@ -13,24 +11,8 @@ import { isRealIsoDate, parseImportedAmount, parseImportedDate } from "../lib/cs
 import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
 import { effectiveCategories } from "../lib/transactionCategories";
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
-
-const source = readFileSync(new URL("../components/TransactionManager.tsx", import.meta.url), "utf8");
-const ast = ts.createSourceFile("TransactionManager.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-function uiFunction(name: string, scope: Record<string, unknown>): (...args: any[]) => any {
-  let expression = "";
-  function visit(node: ts.Node) {
-    if (ts.isVariableDeclaration(node) && node.name.getText(ast) === name && node.initializer) {
-      expression = node.initializer.getText(ast);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(ast);
-  if (!expression) throw new Error(`Missing source handler ${name}`);
-  const js = ts.transpileModule(`const extracted = ${expression};`, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
-  }).outputText;
-  return new Function(...Object.keys(scope), `${js}; return extracted;`)(...Object.values(scope));
-}
+import { screenImportRows, withImportKeys } from "../lib/importKeys";
+import { uiFunction } from "./helpers/transactionManagerHandlers";
 
 function database() {
   const records: Record<string, any[]> = { users: [], organizations: [], funds: [], categories: [], transactions: [] };
@@ -65,8 +47,8 @@ describe("import category and date acceptance", () => {
       csvRows: [["21/09/2026", "Unidentified credit", "30"]], csvHeaders: ["Date", "Description", "Amount"],
       columnMapping: { date: "Date", description: "Description", amount: "Amount" },
       parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveCategoryForTransaction,
-      parseAmountString: parseImportedAmount,
-      notify: vi.fn(), setDuplicateWarnings: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
+      parseAmountString: parseImportedAmount, screenImportRows, withImportKeys, transactions: records.transactions,
+      notify: vi.fn(), setDuplicateWarnings: vi.fn(), setAlreadyImportedRows: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
       setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
       setPendingTransactions: (rows: any[]) => { scope.pendingTransactions = rows; },
       isProcessingAI: false, bankSyncReviewConnectionId: null, originalPredictions: new Map(), onPledgeCompleted: undefined,
@@ -135,8 +117,8 @@ describe("import category and date acceptance", () => {
       useSplitAmount: false, funds: records.funds, categoryNames: ["Tithes & First Fruits", "Utilities"],
       parseImportedAmount, parseImportedDate, isRealIsoDate,
       applySmallIncomeDefaults, effectiveCategories, resolveCategoryForTransaction, categories: getRCICategorySeedData(),
-      parseAmountString: parseImportedAmount,
-      notify: vi.fn(), setDuplicateWarnings: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
+      parseAmountString: parseImportedAmount, screenImportRows, withImportKeys, transactions: records.transactions,
+      notify: vi.fn(), setDuplicateWarnings: vi.fn(), setAlreadyImportedRows: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
       setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
       setPendingTransactions: (rows: any[]) => { scope.pendingTransactions = rows; },
     };
