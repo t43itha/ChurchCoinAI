@@ -1007,8 +1007,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
         const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
 
+        // Rows left out as already imported were still fetched by this sync.
         const bankTransactionDates = bankSyncReviewConnectionId
-            ? pendingTransactions
+            ? [...pendingTransactions, ...alreadyImportedRows]
                 .filter((pt) => pt.source === 'bank' && pt.bankConnectionId === bankSyncReviewConnectionId && pt.date)
                 .map((pt) => pt.date as string)
             : [];

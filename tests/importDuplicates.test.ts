@@ -177,3 +177,23 @@ describe("import key backfill", () => {
     expect(reupload.scope.pendingTransactions).toEqual([]);
   });
 });
+
+describe("bank sync acknowledgement", () => {
+  it("advances the sync checkpoint past rows that were already imported", async () => {
+    const { ctx } = database();
+    const acknowledgeBankSync = vi.fn();
+    const scope: any = {
+      isProcessingAI: false, bankSyncReviewConnectionId: "connection", nextBankSyncCursor: null,
+      funds: [{ _id: "general", name: "General Fund" }], categories: getRCICategorySeedData(),
+      pendingTransactions: [],
+      alreadyImportedRows: [{ source: "bank", bankConnectionId: "connection", providerTransactionId: "p1", date: "2026-09-30" }],
+      applySmallIncomeDefaults, resolveCategoryForTransaction, effectiveCategories, isRealIsoDate,
+      setPendingTransactions: vi.fn(), notify: vi.fn(), acknowledgeBankSync,
+      bulkCreateTransactions: (args: any) => (bulkCreate as any)._handler(ctx, args),
+      originalPredictions: new Map(), onPledgeCompleted: undefined,
+      setShowReviewModal: vi.fn(), clearBankSyncReviewState: vi.fn(),
+    };
+    await uiFunction("handleConfirmImport", scope)();
+    expect(acknowledgeBankSync).toHaveBeenCalledWith({ bankConnectionId: "connection", lastSyncedThrough: "2026-09-30" });
+  });
+});
