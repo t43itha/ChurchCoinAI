@@ -996,5 +996,22 @@ describe("dashboard KPI helpers", () => {
       expect(summary.readiness.unreconciledExpenditureCount).toBe(0);
       expect(summary.trends.monthlyIncomeExpenditure.at(-1)?.net).toBe(500);
     });
+
+    it("counts a collection awaiting banking before its week-ending Sunday", () => {
+      const summary = summarize({
+        periodKey: "currentMonth",
+        now: new Date("2026-06-10T12:00:00Z"),
+        transactions: [
+          income("midweek-cash", "2026-06-10", 120, {
+            isReconciled: false,
+            cashCollectionId: "this-week",
+            paymentMethod: "Cash",
+          }),
+        ],
+        cashCollections: [{ _id: "this-week", weekEndingDate: "2026-06-14", status: "submitted" }],
+      });
+
+      expect(summary.readiness.cashBankingPendingWeeks).toBe(1);
+    });
   });
 });
