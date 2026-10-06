@@ -31,7 +31,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - **AI:** Google Gemini 2.5 Flash + Convex RAG for transaction categorization
 - **Banking:** Yapily for manual UK Open Banking transaction sync, with a provider discriminator retained only for legacy-record compatibility
 - **Payments:** Stripe (subscription billing with webhook handling)
-- **Styling:** Tailwind CSS via PostCSS (`tailwind.config.cjs` + `styles.css`) with the "Refined Ledger" design system
+- **Styling:** Tailwind CSS 4 via `@tailwindcss/vite`, with CSS theme tokens and the "Refined Ledger" design system in `styles.css`
 - **Exports:** html2canvas + jsPDF for PDF, XLSX (SheetJS 0.20.x from cdn.sheetjs.com) for Excel
 
 ### Frontend Structure
@@ -78,7 +78,7 @@ Four roles with descending permissions: **Admin** > **Finance Team** > **Pastora
 Donor records are readable by Admin, Finance Team, and Pastorate within their own organization. Pastorate donor access is read-only; Guest cannot view donor records, and queries returning transactions or pledges pass rows through `redactDonorFields()` so Guests see them without donor identity. Donor writes remain restricted to Admin and Finance Team, with deletion restricted to Admin. Only Admin manages users, invitations, billing, the organisation profile, fund/category deletion, and bank connection removal; reconciliation is Admin and Finance Team only; Guest has no Reports access.
 
 ### Design System
-The "Refined Ledger" design system is defined in `tailwind.config.cjs` and `styles.css`. Key tokens:
+The "Refined Ledger" design system is defined in the `@theme` block and component styles in `styles.css`. Key tokens:
 - Colors: ink, paper, charcoal, sage, amber
 - Fonts: DM Sans (body), JetBrains Mono (code)
 - Borders/shadows: `border-ledger` + soft shadows (`shadow-soft`)
