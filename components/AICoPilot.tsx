@@ -104,7 +104,7 @@ const AICoPilot: React.FC = () => {
     const showStarterPrompts = messages.length === 1 && messages[0].id === 'welcome' && !isThinking;
 
     return (
-        <div className="space-y-[22px] max-w-7xl mx-auto pb-10 animate-enter">
+        <div className="ledger-space-y-[22px] max-w-7xl mx-auto pb-10 animate-enter">
             <header className="swiss-card-static p-6 md:p-[26px] flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-start gap-4">
                     <div className="w-12 h-12 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0">
@@ -127,7 +127,7 @@ const AICoPilot: React.FC = () => {
             </header>
 
             <section className="swiss-card bg-white overflow-hidden flex flex-col min-h-[540px] h-[calc(100vh-13rem)]">
-                <div className="flex-1 overflow-y-auto bg-[#fcfbf9] p-5 md:p-6 space-y-5">
+                <div className="flex-1 overflow-y-auto bg-[#fcfbf9] p-5 md:p-6 ledger-space-y-5">
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                             {msg.sender === 'ai' && (
@@ -188,7 +188,7 @@ const AICoPilot: React.FC = () => {
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             placeholder="Ask Ward about your finances…"
-                            className="flex-1 h-12 bg-paper border border-ledger rounded-xl px-4 text-sm focus:outline-none focus:ring-[3px] focus:ring-ink/10 focus:border-ink transition-all"
+                            className="flex-1 h-12 bg-paper border border-ledger rounded-xl px-4 text-sm focus:outline-hidden focus:ring-[3px] focus:ring-ink/10 focus:border-ink transition-all"
                         />
                         <button
                             type="button"

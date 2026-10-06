@@ -66,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
       {/* Mobile Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-ink/50 backdrop-blur-sm z-20 md:hidden"
+          className="fixed inset-0 bg-ink/50 backdrop-blur-xs z-20 md:hidden"
           onClick={onClose}
         />
       )}
@@ -95,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
         </div>
         
         {/* Navigation */}
-        <nav className="min-h-0 flex-1 px-[18px] space-y-[3px] overflow-y-auto">
+        <nav className="min-h-0 flex-1 px-[18px] ledger-space-y-[3px] overflow-y-auto">
           {menuItems.filter(item => !item.hidden).map((item) => {
             const Icon = item.icon;
             const isWard = item.path === '/copilot';
@@ -137,7 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
         </nav>
 
         {/* User Section */}
-        <div className="px-[18px] pt-[18px] pb-5 border-t border-ledger mt-auto space-y-4">
+        <div className="px-[18px] pt-[18px] pb-5 border-t border-ledger mt-auto ledger-space-y-4">
           {trialProgress && (
             <section
               className="rounded-[12px] border border-[#dfd3c5] bg-[#fffdf9] p-3.5 shadow-hard-sm"
@@ -176,7 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
                 <Link
                   to="/settings?tab=billing"
                   onClick={onClose}
-                  className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[9px] bg-ink px-3 text-[11px] font-bold uppercase tracking-[0.05em] text-white transition-colors hover:bg-charcoal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+                  className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[9px] bg-ink px-3 text-[11px] font-bold uppercase tracking-[0.05em] text-white transition-colors hover:bg-charcoal focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
                 >
                   Upgrade now
                 </Link>
@@ -194,7 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
               onOpenSupport();
               onClose();
             }}
-            className="flex min-h-10 w-full items-center gap-3 rounded-[10px] border border-ledger bg-[#fcfbf9] px-3 text-left text-[12px] font-semibold text-grey-dark transition-colors hover:border-grey-mid hover:bg-white hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+            className="flex min-h-10 w-full items-center gap-3 rounded-[10px] border border-ledger bg-[#fcfbf9] px-3 text-left text-[12px] font-semibold text-grey-dark transition-colors hover:border-grey-mid hover:bg-white hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
           >
             <LifeBuoy size={16} className="text-amber-dark" strokeWidth={2} />
             <span className="flex-1">Help & feedback</span>

@@ -121,7 +121,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
   };
 
   const header = (
-    <header className="border-b border-ledger bg-white/90 backdrop-blur-sm">
+    <header className="border-b border-ledger bg-white/90 backdrop-blur-xs">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img
@@ -188,7 +188,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
               Stripe has returned you to ChurchCoin. Access will open after the signed billing event is verified.
             </p>
             {processingTimedOut && (
-              <div className="mt-6 space-y-3">
+              <div className="mt-6 ledger-space-y-3">
                 <p className="text-xs text-amber-dark">
                   This is taking longer than expected. Your payment has not been charged again.
                 </p>
@@ -302,7 +302,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
                     <span className="text-4xl font-bold text-ink font-mono">£{plan.price}</span>
                     <span className="text-grey-mid text-sm">/month</span>
                   </div>
-                  <ul className="space-y-3 mb-6 min-h-28">
+                  <ul className="ledger-space-y-3 mb-6 min-h-28">
                     {plan.features.map((feature) => (
                       <li key={feature} className="flex items-start gap-2 text-sm">
                         <Check size={16} className="text-sage-dark shrink-0 mt-0.5" />
@@ -313,7 +313,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
                   <button
                     onClick={() => handleSubscribe(plan.id)}
                     disabled={loading !== null}
-                    className={`w-full py-3 rounded text-sm font-bold uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
+                    className={`w-full py-3 rounded-sm text-sm font-bold uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
                       preferred
                         ? "bg-ink text-white hover:bg-charcoal"
                         : "bg-white border border-ledger text-grey-dark hover:border-ink"

@@ -26,7 +26,7 @@ export default function FundsPreview() {
       <div className="relative grid h-full grid-cols-[12%_1fr] overflow-hidden bg-[#fbfaf8]">
         <aside className={`flex flex-col border-r border-[#e9e6e0] bg-white px-[9%] py-[7%] ${mini} text-[#5f5a55]`}>
           <img src="/ChurchCoin-Variation 01-transparent-s.png" alt="" className="mx-auto mb-[16%] w-[66%]" />
-          <nav className="space-y-[3%]" aria-hidden="true">
+          <nav className="ledger-space-y-[3%]" aria-hidden="true">
             {["Dashboard", "Transactions", "Funds & Balances", "Donors", "Campaigns", "Reports", "Settings", "Ask Ward"].map((item) => (
               <div key={item} className={`rounded-[4px] px-[9%] py-[6%] ${item === "Funds & Balances" ? "bg-[#f8ecdc] font-semibold text-[#a9743f]" : ""}`}>
                 {item}
@@ -45,7 +45,7 @@ export default function FundsPreview() {
             <span className="rounded-full bg-[#fcf2e7] px-[1.4%] py-[.55%] font-mono text-[clamp(3px,.42vw,6px)] font-semibold uppercase tracking-[.12em] text-[#a9743f]">7 funds</span>
           </header>
 
-          <div className="mt-[1.5%] grid grid-cols-4 divide-x divide-[#efeee9] overflow-hidden rounded-[6px] border border-[#ebe8e2] bg-white">
+          <div className="mt-[1.5%] grid grid-cols-4 ledger-divide-x ledger-divide-[#efeee9] overflow-hidden rounded-[6px] border border-[#ebe8e2] bg-white">
             {[
               ["Total funds", "£52,396", "Across 7 funds"],
               ["Unrestricted", "£7,791", "General use"],
@@ -61,10 +61,10 @@ export default function FundsPreview() {
           </div>
 
           <div className="mt-[1.5%] grid grid-cols-[1.37fr_1fr] gap-[1.5%]">
-            <div className="space-y-[1.7%]">
+            <div className="ledger-space-y-[1.7%]">
               {funds.map(([name, type, balance, description]) => (
                 <div key={name} className="relative rounded-[6px] border border-[#ebe8e2] bg-white px-[4.4%] py-[3.1%] shadow-[0_2px_6px_rgba(28,25,23,.025)]">
-                  <span className="absolute inset-y-[12%] left-0 w-[2px] rounded-r bg-[#6b8e6b]" />
+                  <span className="absolute inset-y-[12%] left-0 w-[2px] rounded-r-sm bg-[#6b8e6b]" />
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-[4%]">
                       <span className="flex aspect-square w-[13%] min-w-4 items-center justify-center rounded-[4px] bg-[#f8f3ea] text-[#b2834f]"><Wallet className="h-[52%] w-[52%]" strokeWidth={1.8} /></span>
@@ -90,13 +90,13 @@ export default function FundsPreview() {
               ))}
             </div>
 
-            <div className="space-y-[4%]">
+            <div className="ledger-space-y-[4%]">
               <div className="rounded-[6px] border border-[#ebe8e2] bg-white px-[5%] py-[5%]">
                 <div className="flex items-center gap-[3%]">
                   <span className="flex aspect-square w-[9%] items-center justify-center rounded-[4px] bg-[#edf4ed] text-[#6b8e6b]"><Activity className="h-[55%] w-[55%]" /></span>
                   <div><p className="text-[clamp(4px,.53vw,8px)] font-bold">General Fund expenditure</p><p className="text-[clamp(3px,.31vw,5px)] uppercase tracking-[.08em] text-[#78716c]">Top categories · all time</p></div>
                 </div>
-                <div className="mt-[5%] space-y-[4%]">
+                <div className="mt-[5%] ledger-space-y-[4%]">
                   {spending.map(([label, value, width]) => (
                     <div key={label} className="grid grid-cols-[27%_1fr_18%] items-center gap-[3%] text-[clamp(3px,.36vw,5px)]">
                       <span className="truncate text-[#625d58]">{label}</span>
@@ -111,7 +111,7 @@ export default function FundsPreview() {
                 <p className="text-[clamp(4px,.53vw,8px)] font-bold">Capital allocation</p><p className="text-[clamp(3px,.31vw,5px)] uppercase tracking-[.08em] text-[#78716c]">By restriction type</p>
                 <div className="mt-[4%] flex items-center gap-[7%]">
                   <div className="flex aspect-square w-[34%] items-center justify-center rounded-full bg-[conic-gradient(#c79a5f_0_84%,#9bb39b_84%_99%,#7d8a99_99%)]"><div className="flex h-[58%] w-[58%] flex-col items-center justify-center rounded-full bg-white"><strong className="font-mono text-[clamp(4px,.58vw,8px)]">£52k</strong><span className="text-[clamp(2px,.28vw,4px)] uppercase">Total</span></div></div>
-                  <div className="flex-1 space-y-[5%] text-[clamp(3px,.35vw,5px)]"><p><span className="text-[#9bb39b]">■</span> &nbsp;Unrestricted <b className="float-right">15%</b></p><p><span className="text-[#c79a5f]">■</span> &nbsp;Restricted <b className="float-right">84%</b></p><p><span className="text-[#7d8a99]">■</span> &nbsp;Designated <b className="float-right">1%</b></p></div>
+                  <div className="flex-1 ledger-space-y-[5%] text-[clamp(3px,.35vw,5px)]"><p><span className="text-[#9bb39b]">■</span> &nbsp;Unrestricted <b className="float-right">15%</b></p><p><span className="text-[#c79a5f]">■</span> &nbsp;Restricted <b className="float-right">84%</b></p><p><span className="text-[#7d8a99]">■</span> &nbsp;Designated <b className="float-right">1%</b></p></div>
                 </div>
                 <p className="mt-[4%] rounded-[4px] border border-[#ecd8bd] bg-[#fcf7f0] px-[3%] py-[2.5%] text-[clamp(3px,.3vw,5px)] leading-relaxed text-[#7a5a30]">Restricted funds must be reported separately in year-end accounts.</p>
               </div>

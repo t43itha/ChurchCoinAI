@@ -624,8 +624,8 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white p-3 rounded-lg border border-ledger shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+    <div className="ledger-space-y-4">
+      <div className="bg-white p-3 rounded-lg border border-ledger shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-ink uppercase tracking-wide flex items-center gap-2">
             <Banknote size={16} />
@@ -711,7 +711,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleCollection(collection._id)}
-                            className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer"
+                            className="w-4 h-4 text-ink rounded-sm border-slate-300 focus:ring-0 cursor-pointer"
                             aria-label={`Select collection ${formatDate(
                               collection.weekEndingDate
                             )}`}
@@ -751,7 +751,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
         </section>
 
         <section className="swiss-card overflow-hidden">
-          <div className="p-4 border-b border-ledger bg-paper space-y-3">
+          <div className="p-4 border-b border-ledger bg-paper ledger-space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wide text-ink">
@@ -775,7 +775,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                 value={bankSearchTerm}
                 onChange={(event) => setBankSearchTerm(event.target.value)}
                 placeholder="Search bank credits..."
-                className="w-full pl-9 pr-3 py-2 text-xs border border-ledger rounded-md focus:ring-1 focus:ring-slate-900 outline-none"
+                className="w-full pl-9 pr-3 py-2 text-xs border border-ledger rounded-md focus:ring-1 focus:ring-slate-900 outline-hidden"
               />
             </div>
           </div>
@@ -820,7 +820,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleBankCredit(credit)}
-                            className="w-4 h-4 text-ink rounded border-slate-300 focus:ring-0 cursor-pointer"
+                            className="w-4 h-4 text-ink rounded-sm border-slate-300 focus:ring-0 cursor-pointer"
                             aria-label={`Select bank credit ${credit.description}`}
                           />
                         </td>
@@ -846,7 +846,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                               )
                             }
                             disabled={!isSelected}
-                            className="border border-ledger rounded px-2 py-1 text-xs bg-white disabled:bg-grey-light disabled:text-grey-mid"
+                            className="border border-ledger rounded-sm px-2 py-1 text-xs bg-white disabled:bg-grey-light disabled:text-grey-mid"
                           >
                             <option value="cash">Cash</option>
                             <option value="cheque">Cheque</option>
@@ -870,7 +870,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                                       event.target.value
                                     )
                                   }
-                                  className="mt-1 w-24 px-2 py-1 border border-ledger rounded text-xs font-mono text-right"
+                                  className="mt-1 w-24 px-2 py-1 border border-ledger rounded-sm text-xs font-mono text-right"
                                 />
                               </label>
                               <label className="text-[10px] uppercase tracking-wide text-grey-mid">
@@ -887,7 +887,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                                       event.target.value
                                     )
                                   }
-                                  className="mt-1 w-24 px-2 py-1 border border-ledger rounded text-xs font-mono text-right"
+                                  className="mt-1 w-24 px-2 py-1 border border-ledger rounded-sm text-xs font-mono text-right"
                                 />
                               </label>
                             </div>
@@ -920,7 +920,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
         </section>
       </div>
 
-      <section className="swiss-card p-4 space-y-4">
+      <section className="swiss-card p-4 ledger-space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="border border-ledger rounded-md p-3 bg-paper">
             <div className="text-[10px] uppercase tracking-wide font-bold text-grey-mid">
@@ -1051,7 +1051,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                                 event.target.value
                               )
                             }
-                            className="w-28 px-2 py-1 border border-ledger rounded text-xs font-mono text-right"
+                            className="w-28 px-2 py-1 border border-ledger rounded-sm text-xs font-mono text-right"
                             aria-label={`Cash amount to bank for ${formatDate(
                               collection.weekEndingDate
                             )}`}
@@ -1074,7 +1074,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                                 event.target.value
                               )
                             }
-                            className="w-28 px-2 py-1 border border-ledger rounded text-xs font-mono text-right"
+                            className="w-28 px-2 py-1 border border-ledger rounded-sm text-xs font-mono text-right"
                             aria-label={`Cheque amount to bank for ${formatDate(
                               collection.weekEndingDate
                             )}`}
@@ -1111,7 +1111,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                 onChange={(event) =>
                   setVarianceType(event.target.value as CashBankingVarianceType | "")
                 }
-                className="mt-1 w-full border border-ledger rounded-md px-3 py-2 text-xs bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                className="mt-1 w-full border border-ledger rounded-md px-3 py-2 text-xs bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
               >
                 <option value="">Select variance type</option>
                 {varianceOptions.map((option) => (
@@ -1130,7 +1130,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                 value={varianceNote}
                 onChange={(event) => setVarianceNote(event.target.value)}
                 placeholder="Explain the difference before completing"
-                className="mt-1 w-full border border-ledger rounded-md px-3 py-2 text-xs bg-white focus:ring-1 focus:ring-slate-900 outline-none"
+                className="mt-1 w-full border border-ledger rounded-md px-3 py-2 text-xs bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
               />
             </div>
           </div>
@@ -1152,7 +1152,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
             type="button"
             onClick={handleComplete}
             disabled={!canSubmit}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-ink text-white rounded-md hover:bg-charcoal transition-all shadow-sm font-semibold text-xs uppercase tracking-wide btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-ink text-white rounded-md hover:bg-charcoal transition-all shadow-xs font-semibold text-xs uppercase tracking-wide btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {isCompleting ? (
               <Loader2 size={14} className="animate-spin" />
@@ -1241,7 +1241,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
       )}
 
       {reopenTarget && (
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-ledger animate-enter">
             <div className="p-4 border-b border-ledger bg-paper rounded-t-lg flex items-start justify-between gap-3">
               <div>
@@ -1263,8 +1263,8 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                 <X size={16} />
               </button>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="rounded border border-ledger bg-paper p-3">
+            <div className="p-5 ledger-space-y-4">
+              <div className="rounded-sm border border-ledger bg-paper p-3">
                 <div className="text-xs font-bold text-ink">
                   {formatCurrency(reopenTarget.bankedTotal)} banked
                 </div>
@@ -1280,7 +1280,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                   value={reopenReason}
                   onChange={(event) => setReopenReason(event.target.value)}
                   rows={3}
-                  className="w-full p-2.5 border border-ledger rounded text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-none resize-none"
+                  className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden resize-none"
                   placeholder="e.g. Bank split needs correcting"
                   disabled={isReopening}
                 />
@@ -1289,7 +1289,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                 <button
                   type="button"
                   onClick={() => setReopenTarget(null)}
-                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded transition-colors"
+                  className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors"
                   disabled={isReopening}
                 >
                   Cancel
@@ -1298,7 +1298,7 @@ const CashChequeBanking: React.FC<CashChequeBankingProps> = ({
                   type="button"
                   onClick={handleReopen}
                   disabled={isReopening}
-                  className="px-4 py-2 bg-ink text-white rounded font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
+                  className="px-4 py-2 bg-ink text-white rounded-sm font-bold uppercase text-xs tracking-wide flex items-center gap-2 disabled:opacity-60"
                 >
                   {isReopening ? (
                     <Loader2 size={14} className="animate-spin" />

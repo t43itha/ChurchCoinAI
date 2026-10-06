@@ -116,11 +116,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode = "signi
         <div className="mt-10 text-center text-xs text-grey-mid">
           <p>Secure church finance management</p>
           <div className="mt-1.5 flex items-center justify-center gap-2">
-            <a href="/privacy" className="rounded-sm hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20">
+            <a href="/privacy" className="rounded-xs hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ink/20">
               Privacy
             </a>
             <span aria-hidden="true">·</span>
-            <a href="/terms" className="rounded-sm hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20">
+            <a href="/terms" className="rounded-xs hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ink/20">
               Terms
             </a>
           </div>

@@ -99,7 +99,7 @@ const ImportCategorizationProgress: React.FC<
           {["Category", "Fund", "Gift Aid"].map((label, index) => (
             <span
               key={label}
-              className="ledger-processing-cell rounded border border-ledger bg-paper px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide text-grey-mid"
+              className="ledger-processing-cell rounded-sm border border-ledger bg-paper px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide text-grey-mid"
               style={{ animationDelay: `${index * 240}ms` }}
             >
               {label}

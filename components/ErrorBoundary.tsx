@@ -51,7 +51,7 @@ class ErrorBoundary extends React.Component<
           <p className="text-sm text-grey-dark mb-4">
             The app hit an unexpected error and could not continue rendering.
           </p>
-          <p className="text-xs font-mono bg-paper border border-ledger rounded p-3 mb-5 break-words">
+          <p className="text-xs font-mono bg-paper border border-ledger rounded-sm p-3 mb-5 break-words">
             {this.state.errorMessage}
           </p>
           <div className="flex flex-wrap gap-3">
