@@ -12,7 +12,6 @@
   "convex/queries/aiContext.ts": 11,
   "convex/queries/cashBankingReconciliations.ts": 2,
   "convex/queries/cashCollections.ts": 4,
-  "convex/queries/dashboard.ts": 7,
   "convex/queries/donors.ts": 1,
   "convex/queries/reports.ts": 36,
   "convex/queries/transactions.ts": 3,
