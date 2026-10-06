@@ -2,15 +2,16 @@ import { can } from "../lib/permissions";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "convex/react";
-import { Banknote, CalendarRange, ChevronDown, UsersRound } from "lucide-react";
+import { Banknote, CalendarRange, ChevronDown } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import { AppUser, Category, Fund } from "../types";
 import CashTakingsEntry from "./CashTakingsEntry";
+import DashboardDonorFollowUp from "./dashboard/DashboardDonorFollowUp";
 import DashboardFundHealth from "./dashboard/DashboardFundHealth";
 import DashboardHealthCards from "./dashboard/DashboardHealthCards";
-import DashboardLeadershipAlerts from "./dashboard/DashboardLeadershipAlerts";
-import DashboardReadinessStrip from "./dashboard/DashboardReadinessStrip";
+import DashboardMonthEndChecks from "./dashboard/DashboardMonthEndChecks";
 import DashboardTrendPanel from "./dashboard/DashboardTrendPanel";
+import { buildMonthEndChecks } from "../lib/dashboardChecks";
 import type { DashboardPeriodKey } from "./dashboard/types";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import LoadingSpinner from "./LoadingSpinner";
@@ -36,6 +37,8 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
     periodKey,
     today: formatLocalDateInputValue(new Date()),
   });
+  const bankConnections = useQuery(api.queries.bankConnections.list);
+  const bankFeedsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention);
   const selectedPeriodLabel =
     summary?.period.label ?? PERIOD_OPTIONS.find((period) => period.key === periodKey)?.label;
 
@@ -46,9 +49,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
           <h2 className="text-[32px] md:text-4xl leading-tight font-bold text-ink tracking-tight">
             Leadership Dashboard
           </h2>
-          <p className="mt-2 text-[15px] text-grey-mid font-medium max-w-2xl">
-            Controls, cash position, fund health, and donor follow-up at a glance.
-          </p>
+          <DataFreshness connections={bankConnections} />
         </div>
 
         <div className="w-full lg:w-auto lg:min-w-[360px] bg-[#fcfbf9] border border-ledger rounded-xl p-3">
@@ -106,53 +107,26 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
       ) : (
         <>
           <DashboardHealthCards summary={summary} />
-          <DashboardReadinessStrip summary={summary} />
+
+          <DashboardMonthEndChecks
+            periodLabel={summary.period.label}
+            checks={buildMonthEndChecks(summary, {
+              role: currentUser.role,
+              bankFeedIssues: bankFeedsNeedingAttention?.length ?? 0,
+            })}
+          />
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 xl:gap-5">
             <div className="xl:col-span-2 min-w-0">
               <DashboardTrendPanel summary={summary} />
             </div>
-            <DashboardLeadershipAlerts summary={summary} />
+            <DashboardDonorFollowUp
+              summary={summary}
+              canOpenDonors={can(currentUser.role, "donors.read")}
+            />
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 xl:gap-5">
-            <div className="xl:col-span-2">
-              <DashboardFundHealth summary={summary} />
-            </div>
-            <section
-              className="swiss-card bg-white overflow-hidden"
-              aria-label="Pastoral follow-up"
-            >
-              <div className="px-6 py-[18px] border-b border-[#efeee9] flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <span className="inline-flex items-center justify-center w-[38px] h-[38px] rounded-lg bg-amber-light text-[#c79a5f] shrink-0">
-                    <UsersRound size={18} strokeWidth={1.9} aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <h3 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em] break-words">
-                      Pastoral Follow-Up
-                    </h3>
-                    <p className="text-[13.5px] text-grey-mid font-medium mt-1 leading-snug">
-                      Aggregate attention count for {summary.period.label}
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-grey-mid shrink-0">
-                  Private
-                </span>
-              </div>
-
-              <div className="p-6">
-                <p className="text-[40px] leading-none font-bold text-ink font-mono tabular-nums tracking-tight">
-                  {summary.health.donorAttentionCount.toLocaleString("en-GB")}
-                </p>
-                <p className="mt-4 text-sm text-grey-mid font-medium leading-relaxed">
-                  Giving records, pledge status, or Gift Aid details may need
-                  review. Donor identities are kept out of this leadership view.
-                </p>
-              </div>
-            </section>
-          </div>
+          <DashboardFundHealth summary={summary} />
         </>
       )}
 
@@ -183,6 +157,47 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
     </div>
   );
 };
+
+type BankConnectionSummary = {
+  lastSyncAt?: number;
+};
+
+const STALE_SYNC_DAYS = 7;
+
+function DataFreshness({ connections }: { connections: BankConnectionSummary[] | undefined }) {
+  if (connections === undefined) {
+    return <p className="mt-2 h-[22px]" aria-hidden="true" />;
+  }
+
+  const lastSyncAt = Math.max(0, ...connections.map((connection) => connection.lastSyncAt ?? 0));
+  const message =
+    connections.length === 0
+      ? "No bank feed connected. Figures cover entered and imported transactions."
+      : lastSyncAt === 0
+        ? "Bank feeds connected but not yet synced."
+        : `Bank data last synced ${formatSyncDate(lastSyncAt)}.`;
+  const isStale =
+    connections.length > 0 && Date.now() - lastSyncAt > STALE_SYNC_DAYS * 24 * 60 * 60 * 1000;
+
+  return (
+    <p
+      className={`mt-2 text-[15px] font-medium max-w-2xl ${
+        isStale ? "text-[#a9743f]" : "text-grey-mid"
+      }`}
+    >
+      {message}
+      {isStale ? " Sync before relying on these figures." : null}
+    </p>
+  );
+}
+
+function formatSyncDate(timestamp: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(timestamp));
+}
 
 function formatDisplayDate(date: string) {
   const parsed = new Date(`${date}T00:00:00Z`);

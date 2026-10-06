@@ -29,6 +29,8 @@ export const executiveSummary = query({
       pledges,
       cashCollections,
       cashReconciliations,
+      statementSessions,
+      bankConnections,
     ] = await Promise.all([
       ctx.db
         .query("funds")
@@ -67,6 +69,18 @@ export const executiveSummary = query({
           q.eq("organizationId", user.organizationId).eq("status", "completed")
         )
         .collect(),
+      ctx.db
+        .query("reconciliationSessions")
+        .withIndex("by_organization_status", (q) =>
+          q.eq("organizationId", user.organizationId).eq("status", "completed")
+        )
+        .collect(),
+      ctx.db
+        .query("bankConnections")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", user.organizationId)
+        )
+        .take(100),
     ]);
 
     const [yearText, monthText, dayText] = args.today.split("-");
@@ -78,6 +92,7 @@ export const executiveSummary = query({
         name: fund.name,
         type: fund.type,
         targetAmount: fund.targetAmount,
+        deadline: fund.deadline,
       })),
       transactions: transactions.map((transaction) => ({
         _id: String(transaction._id),
@@ -112,6 +127,7 @@ export const executiveSummary = query({
         amount: pledge.amount,
         frequency: pledge.frequency,
         startDate: pledge.startDate,
+        endDate: pledge.endDate,
         status: pledge.status,
       })),
       cashCollections: cashCollections.map((collection) => ({
@@ -128,6 +144,14 @@ export const executiveSummary = query({
           chequeAmount: split.chequeAmount,
         })),
       })),
+      statementSessions: statementSessions.map((session) => ({
+        fundId: String(session.fundId),
+        periodEnd: session.periodEnd,
+        status: session.status,
+      })),
+      bankAccountFundIds: bankConnections.flatMap((connection) =>
+        connection.accounts.flatMap((account) => (account.fundId ? [String(account.fundId)] : []))
+      ),
     });
   },
 });

@@ -285,6 +285,8 @@ describe("dashboard KPI helpers", () => {
         pledges,
         cashCollections,
         cashReconciliations,
+        statementSessions: [],
+        bankAccountFundIds: [],
       };
       const completedOnly = buildExecutiveDashboardSummary(input);
       const withIncomplete = buildExecutiveDashboardSummary({
