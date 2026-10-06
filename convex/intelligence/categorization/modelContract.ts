@@ -1,5 +1,5 @@
 import { categoryNamesForPrompt } from "./categoryResolver";
-import { accountingCriteria } from "../../../lib/categorizationPolicy";
+import { accountingCriteria } from "./policy";
 import {
   CategoryLike,
   CategorizationEvidence,

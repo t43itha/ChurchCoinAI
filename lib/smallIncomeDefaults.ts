@@ -1,20 +1,9 @@
-import { getRCICategorySeedData } from "../constants/rciCategories";
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
+import { effectiveCategories } from "./transactionCategories";
 
 type Category = { name: string; transactionType?: "Income" | "Expenditure" };
 type Fund = { _id: string; name: string };
 type Row = { amount?: number; type?: string; category?: string; fundId?: string };
-
-// Mirrors the canonical backfill performed by writes, without changing records.
-export function effectiveCategories<T extends Category>(categories: T[]): Category[] {
-  const result: Category[] = categories.map((category) => ({ ...category }));
-  for (const seed of getRCICategorySeedData()) {
-    const existing = result.find((category) => category.name.trim().toLowerCase() === seed.name.toLowerCase());
-    if (existing) existing.transactionType ??= seed.transactionType;
-    else result.push(seed);
-  }
-  return result;
-}
 
 export const isSmallIncome = (row: Row): boolean =>
   row.type === "Income" && typeof row.amount === "number" &&

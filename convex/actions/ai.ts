@@ -21,7 +21,7 @@ import {
 import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
-import { effectiveCategories } from "../../lib/smallIncomeDefaults";
+import { effectiveCategories } from "../../lib/transactionCategories";
 
 const AI_RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;

@@ -4,7 +4,8 @@ import { validateGeminiSuggestion } from "./gemini";
 import { buildMemorySuggestion } from "./memory";
 import { normalizeDescription, normalizeTransaction } from "./normalize";
 import { applyDeterministicRules } from "./rules";
-import { applySmallIncomeDefaults, effectiveCategories, isSmallIncome } from "../../../lib/smallIncomeDefaults";
+import { applySmallIncomeDefaults, isSmallIncome } from "../../../lib/smallIncomeDefaults";
+import { effectiveCategories } from "../../../lib/transactionCategories";
 import { resolveCategoryForTransaction } from "./categoryResolver";
 import {
   CategoryLike,

@@ -15,8 +15,7 @@ import {
 export const CATEGORIZATION_MODEL = "gemini-2.5-flash-lite";
 export const COMPLEX_AI_MODEL = "gemini-2.5-flash";
 
-export { CATEGORIZATION_RULES } from "../../../lib/categorizationPolicy";
-import { accountingCriteria } from "../../../lib/categorizationPolicy";
+import { accountingCriteria } from "./policy";
 
 export const confidenceFromModelLabel = (label: unknown): number => {
   if (typeof label !== "string") return 0.65;

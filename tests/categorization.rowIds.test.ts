@@ -3,7 +3,7 @@ import { categorizeWithPipelinePreview } from "../convex/actions/ai";
 import { categorizeFromContext, mergeAIFallback } from "../convex/intelligence/categorization/pipeline";
 import { categorizationModelInstructions } from "../convex/intelligence/categorization/modelContract";
 import { buildGeminiCategorizationPrompt } from "../convex/intelligence/categorization/gemini";
-import { categoryCriterion, fundCriterion } from "../lib/categorizationPolicy";
+import { categoryCriterion, fundCriterion } from "../convex/intelligence/categorization/policy";
 
 vi.mock("../convex/lib/ragInstance", () => ({ transactionRAG: {} }));
 

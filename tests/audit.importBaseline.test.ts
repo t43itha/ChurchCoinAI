@@ -10,7 +10,8 @@ import { allowedCategoriesForType } from "../convex/intelligence/categorization/
 import { validateGeminiSuggestion } from "../convex/intelligence/categorization/gemini";
 import { getRCICategorySeedData } from "../constants/rciCategories";
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from "../lib/csvImport";
-import { applySmallIncomeDefaults, effectiveCategories } from "../lib/smallIncomeDefaults";
+import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
+import { effectiveCategories } from "../lib/transactionCategories";
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
 
 const source = readFileSync(new URL("../components/TransactionManager.tsx", import.meta.url), "utf8");
