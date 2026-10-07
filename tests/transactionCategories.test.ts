@@ -92,6 +92,11 @@ describe("transaction category options", () => {
         patch: async (id: Id<"categories">, patch: Partial<Category>) => {
           Object.assign(rows.find((row) => row._id === id)!, patch);
         },
+        insert: async (_table: string, value: Category & { organizationId: Id<"organizations"> }) => {
+          const _id = `category-${rows.length}` as Id<"categories">;
+          rows.push({ ...value, _id });
+          return _id;
+        },
       },
     } as unknown as MutationCtx;
 

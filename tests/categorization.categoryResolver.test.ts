@@ -33,6 +33,17 @@ describe("category resolver", () => {
     ]);
   });
 
+  it("offers movement categories for both types but not other untyped categories", () => {
+    const withMovement: CategoryLike[] = [
+      ...categories,
+      { name: "Loan", movementKind: "loan" },
+      { name: "Legacy untyped" },
+    ];
+    expect(categoryNamesForPrompt(withMovement, "Income")).toContain("Loan");
+    expect(categoryNamesForPrompt(withMovement, "Expenditure")).toContain("Loan");
+    expect(categoryNamesForPrompt(withMovement, "Income")).not.toContain("Legacy untyped");
+  });
+
   it("resolves aliases only when the canonical category type matches", () => {
     expect(resolveCategoryForTransaction("Tithe", "Income", categories)?.name).toBe(
       "Tithes & First Fruits"

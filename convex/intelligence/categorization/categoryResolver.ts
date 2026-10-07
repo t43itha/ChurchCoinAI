@@ -1,4 +1,5 @@
 import { CATEGORY_ALIASES } from "../../../constants/rciCategories";
+import { isMovementCategory } from "../../../lib/movementCategories";
 import { CategoryLike, TransactionType } from "./types";
 
 const normalizeCategoryName = (value: string): string =>
@@ -17,7 +18,10 @@ export const allowedCategoriesForType = (
 ): CategoryLike[] =>
   categories
     .map((category, index) => ({ category, index }))
-    .filter(({ category }) => category.transactionType === transactionType)
+    .filter(
+      ({ category }) =>
+        category.transactionType === transactionType || isMovementCategory(category)
+    )
     .sort((a, b) => {
       const orderA = a.category.displayOrder ?? Number.MAX_SAFE_INTEGER;
       const orderB = b.category.displayOrder ?? Number.MAX_SAFE_INTEGER;

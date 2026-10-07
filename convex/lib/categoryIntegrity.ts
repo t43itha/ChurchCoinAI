@@ -1,6 +1,7 @@
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
+import { missingMovementCategories, type MovementKind } from "../../lib/movementCategories";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 
 type CategoryCtx = QueryCtx | MutationCtx;
@@ -20,6 +21,29 @@ export async function seedOrganizationCategories(
       createdAt: now,
     });
   }
+  await insertMissingMovementCategories(ctx, organizationId, [], now);
+}
+
+// Movement categories carry no transaction type: the resolver accepts an
+// untyped category for both income and expenditure.
+async function insertMissingMovementCategories(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  existing: Array<{ name: string; movementKind?: MovementKind }>,
+  now: number
+) {
+  const missing = missingMovementCategories(existing);
+  for (const category of missing) {
+    await ctx.db.insert("categories", {
+      organizationId,
+      name: category.name,
+      mainCategory: category.mainCategory,
+      movementKind: category.movementKind,
+      displayOrder: category.displayOrder,
+      createdAt: now,
+    });
+  }
+  return missing.length > 0;
 }
 
 // Older organisations were seeded with names only. The categoriser ignores a
@@ -62,6 +86,10 @@ export async function ensureTypedCategories(
     });
   }
 
+  if (await insertMissingMovementCategories(ctx, organizationId, existing, now)) {
+    changed = true;
+  }
+
   if (!changed) return existing;
 
   return await ctx.db
@@ -76,10 +104,11 @@ export const requireCanonicalCategory = (
     mainCategory?: string;
     transactionType?: "Income" | "Expenditure";
     displayOrder?: number;
+    movementKind?: MovementKind;
   }>,
   categoryName: string,
   transactionType: "Income" | "Expenditure"
-) => {
+): { category: string; movementKind: MovementKind | undefined } => {
   const resolved = resolveCategoryForTransaction(
     categoryName,
     transactionType,
@@ -90,7 +119,8 @@ export const requireCanonicalCategory = (
       `Choose a valid ${transactionType.toLowerCase()} category`
     );
   }
-  return resolved.name;
+  // Callers write both fields, so leaving a movement category clears the kind.
+  return { category: resolved.name, movementKind: resolved.movementKind };
 };
 
 export async function loadOrganizationCategories(

@@ -1,4 +1,5 @@
 import { Id } from "../../_generated/dataModel";
+import type { MovementKind } from "../../../lib/movementCategories";
 
 export type TransactionType = "Income" | "Expenditure";
 
@@ -19,6 +20,7 @@ export type CategoryLike = {
   mainCategory?: string;
   transactionType?: TransactionType;
   displayOrder?: number;
+  movementKind?: MovementKind;
 };
 
 export type FundLike = {
