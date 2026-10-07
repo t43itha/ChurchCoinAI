@@ -61,7 +61,8 @@ The existing helpers become views over this function:
 |---|---|---|
 | `filterReportableTransactions` | `filterIncomeAndExpenditure` (activity is income or expenditure) | Reports, PDF, dashboard KPIs, insights, AI context |
 | `sumReportableSigned` | `sumFundBalance` (fund is yes) | `queries/funds.ts`, dashboard General Fund and per-fund balances, TransactionManager's net figure |
-| `sumReportableIncome` | unchanged name, activity is income | Campaigns, donors, pledges, in-person giving |
+| `sumReportableIncome` | unchanged name, activity is income | Donors, pledges, in-person giving |
+| `sumReportableIncome` in Campaigns | `sumRaised` (activity is income, or a transfer into the fund) | Campaigns |
 | `!t.isVoided` in reconciliation | `ledgerEffect(t).bank` | `reconciliationSessions` query and mutation |
 | new | `transfersByFund` (net transfer in or out per fund) | Reports, PDF |
 
@@ -104,7 +105,7 @@ Three built-in categories, valid for both income and expenditure, carry a `movem
 - "Returned payment" (`reversal`), for bounced debits, unpaid standing orders and refunds of a payment
 - "Loan" (`loan`), for a loan received or a repayment of the amount borrowed. Interest stays ordinary expenditure.
 
-Choosing one in the import review, the edit form or bulk edit is how a row is marked. The AI categoriser can suggest them like any other category.
+Choosing one in the import review, the edit form or bulk edit is how a row is marked. There is no separate type selector. The AI categoriser can suggest them like any other category.
 
 A marked row shows "Link other side". It lists unlinked rows of the same kind, the opposite direction and the same amount, within 14 days, closest date first. Linking creates the movement. "New transfer between funds" creates a journal pair from a form (from fund, to fund, amount, date, note).
 
@@ -115,7 +116,7 @@ Fund-to-fund loans are transfers. The note records that they are a loan, and rep
 - Income and expenditure totals, category breakdowns, the PDF and dashboard income and spending use `filterIncomeAndExpenditure`, so all three movement kinds drop out.
 - Fund balances use `sumFundBalance`, so they still move.
 - Reports and the PDF gain a "Transfers between funds" section with each fund's money in, money out and net. The total is zero when every transfer is complete. Otherwise the difference shows as "unmatched".
-- Campaign progress counts giving only, so a transfer into a campaign fund raises its balance but not its "raised" total.
+- Campaign "raised" totals count giving plus transfers into the campaign fund. A transfer out does not reduce "raised", the same as spending. Donor and pledge totals still count giving only, because transfers have no donor.
 - A new month-end check lists movement legs waiting for their other side.
 
 ## Existing data
