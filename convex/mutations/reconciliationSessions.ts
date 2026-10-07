@@ -135,7 +135,11 @@ export const setCleared = mutation({
         throw new Error("Transaction belongs to a different fund");
       }
       if (!hasBankEffect(transaction)) {
-        throw new Error("Voided transactions cannot be reconciled");
+        throw new Error(
+          transaction.isVoided
+            ? "Voided transactions cannot be reconciled"
+            : "Transfers between funds that stay in one bank account cannot be reconciled"
+        );
       }
       await patchTransaction(ctx, args.transactionId, {
         reconciliationSessionId: args.sessionId,

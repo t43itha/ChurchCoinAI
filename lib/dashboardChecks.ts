@@ -81,6 +81,17 @@ export function buildMonthEndChecks(
     });
   }
 
+  if (readiness.unlinkedMovementLegs > 0) {
+    checks.push({
+      id: "unlinked-movements",
+      label: "Transfers to pair",
+      value: readiness.unlinkedMovementLegs.toLocaleString("en-GB"),
+      detail: "Transfers and returned payments with only one side recorded",
+      status: "attention",
+      href: transactionsHref,
+    });
+  }
+
   if (funds.overdrawnFunds.length > 0) {
     checks.push({
       id: "overdrawn-funds",
