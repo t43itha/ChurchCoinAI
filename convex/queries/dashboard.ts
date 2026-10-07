@@ -97,6 +97,7 @@ export const executiveSummary = query({
       transactions: transactions.map((transaction) => ({
         _id: String(transaction._id),
         date: transaction.date,
+        description: transaction.description,
         amount: transaction.amount,
         type: transaction.type,
         category: transaction.category,

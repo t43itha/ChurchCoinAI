@@ -74,11 +74,36 @@ describe("unpaired transfers check", () => {
 
   it("asks for attention when transfers have one side recorded", () => {
     expect(buildMonthEndChecks(withUnlinked(2), { role: "Admin", bankFeedIssues: 0 }).find((check) => check.id === "unlinked-movements"))
-      .toMatchObject({ value: "2", status: "attention", href: "/transactions" });
+      .toMatchObject({ value: "2", status: "attention", href: "/transactions?status=awaiting-link" });
   });
 
   it("stays hidden when every transfer is paired", () => {
     expect(buildMonthEndChecks(withUnlinked(0), { role: "Admin", bankFeedIssues: 0 }).map((check) => check.id))
       .not.toContain("unlinked-movements");
+  });
+});
+
+describe("possible double count check", () => {
+  const withDoubleCount = (months: string[]) => ({
+    ...summary,
+    readiness: { ...summary.readiness, possibleDoubleCountMonths: months },
+  });
+
+  it("asks for attention with the flagged months named", () => {
+    expect(
+      buildMonthEndChecks(withDoubleCount(["2025-12", "2026-02"]), { role: "Admin", bankFeedIssues: 0 }).find(
+        (check) => check.id === "possible-double-count"
+      )
+    ).toMatchObject({
+      value: "2",
+      status: "attention",
+      href: "/transactions?view=cash-banking",
+      detail: expect.stringContaining("Dec 2025, Feb 2026"),
+    });
+  });
+
+  it("stays hidden when no month is flagged", () => {
+    expect(buildMonthEndChecks(withDoubleCount([]), { role: "Admin", bankFeedIssues: 0 }).map((check) => check.id))
+      .not.toContain("possible-double-count");
   });
 });

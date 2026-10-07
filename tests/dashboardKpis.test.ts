@@ -1072,3 +1072,112 @@ describe("dashboard with transfers, returned payments and loans", () => {
     expect(summary.readiness.unlinkedMovementLegs).toBe(3);
   });
 });
+
+describe("possible double counted cash", () => {
+  const counterDeposit = (overrides: Partial<DashboardTransaction> = {}): DashboardTransaction => ({
+    _id: "counter",
+    date: "2025-12-15",
+    amount: 400,
+    type: "Income",
+    category: "Offerings",
+    fundId: "general",
+    isReconciled: true,
+    description: "Counter deposit",
+    ...overrides,
+  });
+  const decemberCollection: DashboardCashCollection = {
+    _id: "dec-cash",
+    weekEndingDate: "2025-12-14",
+    status: "submitted",
+  };
+  const decemberCash: DashboardTransaction = {
+    _id: "dec-cash-gift",
+    date: "2025-12-07",
+    amount: 300,
+    type: "Income",
+    category: "Offerings",
+    fundId: "general",
+    isReconciled: false,
+    cashCollectionId: "dec-cash",
+    paymentMethod: "Cash",
+  };
+  const flaggedMonths = (
+    transactions: DashboardTransaction[],
+    overrides: Partial<BuildExecutiveDashboardSummaryInput> = {}
+  ) =>
+    buildExecutiveDashboardSummary({
+      periodKey: "previousMonth",
+      now: new Date("2026-01-20T12:00:00Z"),
+      funds,
+      transactions,
+      donors: [],
+      pledges: [],
+      cashCollections: [decemberCollection],
+      cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
+      ...overrides,
+    }).readiness.possibleDoubleCountMonths;
+
+  it("flags a month with a counter deposit and an unbanked cash collection", () => {
+    expect(flaggedMonths([counterDeposit(), decemberCash])).toEqual(["2025-12"]);
+  });
+
+  it("does not flag a collection covered by a completed cash banking reconciliation", () => {
+    expect(
+      flaggedMonths([counterDeposit(), decemberCash], {
+        cashReconciliations: [
+          {
+            _id: "rec",
+            status: "completed",
+            cashCollectionSplits: [{ cashCollectionId: "dec-cash", cashAmount: 300, chequeAmount: 0 }],
+          },
+        ],
+      })
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["a cash banking deposit", counterDeposit({ cashBankingRole: "bank_deposit" })],
+    ["a voided row", counterDeposit({ isVoided: true })],
+    ["a row from a collection", counterDeposit({ cashCollectionId: "dec-cash" })],
+    ["a row without a counter or cash deposit description", counterDeposit({ description: "Gift" })],
+  ])("does not flag %s", (_label, row) => {
+    expect(flaggedMonths([row, decemberCash])).toEqual([]);
+  });
+
+  it("does not flag a month after the period's through date", () => {
+    expect(
+      flaggedMonths(
+        [
+          counterDeposit({ _id: "jan", date: "2026-01-05" }),
+          { ...decemberCash, _id: "jan-cash", date: "2026-01-04", cashCollectionId: "jan-cash" },
+        ],
+        {
+          cashCollections: [{ _id: "jan-cash", weekEndingDate: "2026-01-11", status: "submitted" }],
+        }
+      )
+    ).toEqual([]);
+  });
+
+  it("returns flagged months in ascending order across all history", () => {
+    expect(
+      flaggedMonths(
+        [
+          counterDeposit({ _id: "feb", date: "2026-02-12", description: "Cash deposit" }),
+          counterDeposit(),
+          { ...decemberCash, _id: "feb-cash", date: "2026-02-07", cashCollectionId: "feb-cash" },
+          decemberCash,
+        ],
+        {
+          now: new Date("2026-03-20T12:00:00Z"),
+          periodKey: "previousMonth",
+          cashCollections: [
+            decemberCollection,
+            { _id: "feb-cash", weekEndingDate: "2026-02-08", status: "banked" },
+          ],
+        }
+      )
+    ).toEqual(["2025-12", "2026-02"]);
+  });
+});

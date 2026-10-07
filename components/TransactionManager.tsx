@@ -201,7 +201,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [importCategories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
-  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
+  const [searchParams] = useSearchParams();
+  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>(() =>
+    searchParams.get('view') === 'cash-banking' && can(currentUser.role, "reconciliation.manage") ? 'cashChequeBanking' : 'all'
+  );
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
   const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
   const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
@@ -229,7 +232,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [filterYear, setFilterYear] = useState<number | null>(today.getFullYear());
   const [filterCategory, setFilterCategory] = useState('');
   const [filterFund, setFilterFund] = useState(initialFundId || '');
-  const [searchParams] = useSearchParams();
   const [filterStatus, setFilterStatus] = useState<StatusFilter>(() => parseStatusFilter(searchParams.get('status')));
 
   // Date filter options (matching Reports page)
