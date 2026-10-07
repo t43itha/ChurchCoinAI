@@ -402,6 +402,8 @@ export default defineSchema({
     organizationId: v.id("organizations"),
     kind: movementKind,
     note: v.optional(v.string()),
+    lender: v.optional(v.string()), // Loans only
+    dueDate: v.optional(v.string()), // Loans only, YYYY-MM-DD
     createdBy: v.id("users"),
     createdAt: v.number(),
   }).index("by_organization", ["organizationId"]),
@@ -414,6 +416,7 @@ export default defineSchema({
     transactionType: v.optional(v.union(v.literal("Income"), v.literal("Expenditure"))),
     displayOrder: v.optional(v.number()),
     movementKind: v.optional(movementKind),
+    isRetired: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])

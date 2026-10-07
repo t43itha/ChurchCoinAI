@@ -285,6 +285,16 @@ export interface Category {
   transactionType?: TransactionType;
   displayOrder?: number;
   movementKind?: MovementKind;
+  isRetired?: boolean;
+}
+
+export interface Movement {
+  _id: string;
+  kind: MovementKind;
+  note?: string;
+  lender?: string;
+  dueDate?: string;
+  createdAt: number;
 }
 
 export interface CategoryGroup {
