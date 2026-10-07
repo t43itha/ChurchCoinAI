@@ -1,4 +1,4 @@
-import { resolveCategoryForTransaction } from "./categoryResolver";
+import { resolveAssignableCategory } from "./categoryResolver";
 import { confidenceLabel, confidenceNeedsReview } from "./confidence";
 import { normalizeDescription } from "./normalize";
 import {
@@ -97,7 +97,7 @@ export const applyDeterministicRules = (
     if (rule.id === "utilities" && /\bmanse\b/.test(normalized)) continue;
     if (rule.id === "offerings" && /\b(women|womens|women's|men|mens|men's|mission|missions|relief|outreach|building|roof|renovation|charity)\b/.test(normalized)) continue;
 
-    const category = resolveCategoryForTransaction(
+    const category = resolveAssignableCategory(
       rule.category,
       transaction.type,
       categories

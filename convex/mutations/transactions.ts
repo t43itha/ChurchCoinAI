@@ -229,6 +229,7 @@ export const update = mutation({
         updates,
         requireCanonicalCategory(categories, args.category ?? transaction.category, finalType, {
           cashCollectionId: transaction.cashCollectionId,
+          currentCategory: transaction.category,
         })
       );
     }
@@ -544,6 +545,7 @@ export const bulkUpdate = mutation({
             updates,
             requireCanonicalCategory(categories, args.updates.category, transaction.type, {
               cashCollectionId: transaction.cashCollectionId,
+              currentCategory: transaction.category,
             })
           );
         }
@@ -595,6 +597,7 @@ export const batchUpdate = mutation({
             changes,
             requireCanonicalCategory(categories, update.changes.category, transaction.type, {
               cashCollectionId: transaction.cashCollectionId,
+              currentCategory: transaction.category,
             })
           );
         }

@@ -10,7 +10,7 @@ import { getRCICategorySeedData } from "../constants/rciCategories";
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from "../lib/csvImport";
 import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
 import { effectiveCategories } from "../lib/transactionCategories";
-import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
+import { resolveAssignableCategory } from "../convex/intelligence/categorization/categoryResolver";
 import { screenImportRows, withImportKeys } from "../lib/importKeys";
 import { uiFunction } from "./helpers/transactionManagerHandlers";
 import { MOVEMENT_CATEGORIES } from "../lib/movementCategories";
@@ -47,7 +47,7 @@ describe("import category and date acceptance", () => {
       useSplitAmount: false, funds: records.funds, categories: getRCICategorySeedData(),
       csvRows: [["21/09/2026", "Unidentified credit", "30"]], csvHeaders: ["Date", "Description", "Amount"],
       columnMapping: { date: "Date", description: "Description", amount: "Amount" },
-      parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveCategoryForTransaction,
+      parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory,
       parseAmountString: parseImportedAmount, screenImportRows, withImportKeys, transactions: records.transactions,
       notify: vi.fn(), setDuplicateWarnings: vi.fn(), setAlreadyImportedRows: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
       setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
@@ -117,7 +117,7 @@ describe("import category and date acceptance", () => {
     const scope: any = {
       useSplitAmount: false, funds: records.funds, categoryNames: ["Tithes & First Fruits", "Utilities"],
       parseImportedAmount, parseImportedDate, isRealIsoDate,
-      applySmallIncomeDefaults, effectiveCategories, resolveCategoryForTransaction, categories: getRCICategorySeedData(),
+      applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory, categories: getRCICategorySeedData(),
       parseAmountString: parseImportedAmount, screenImportRows, withImportKeys, transactions: records.transactions,
       notify: vi.fn(), setDuplicateWarnings: vi.fn(), setAlreadyImportedRows: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
       setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),

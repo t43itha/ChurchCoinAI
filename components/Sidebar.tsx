@@ -2,7 +2,7 @@ import { can, type UserRole } from "../lib/permissions";
 import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { Link, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, Users, X, Sparkles, Settings as SettingsIcon, Hourglass, LifeBuoy } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, HandCoins, Users, X, Sparkles, Settings as SettingsIcon, Hourglass, LifeBuoy } from 'lucide-react';
 import {
   clerkUserButtonAppearance,
   clerkUserProfileAppearance,
@@ -51,6 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
     { path: '/funds', label: 'Funds & Balances', icon: Wallet },
     { path: '/donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
     { path: '/campaigns', label: 'Campaigns', icon: HeartHandshake },
+    { path: '/loans', label: 'Loans', icon: HandCoins, hidden: !can(currentUser.role, "ledger.read") },
     { path: '/reports', label: 'Reports', icon: PieChart, hidden: !can(currentUser.role, "reports.read") },
     { path: '/settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
     { path: '/copilot', label: 'Ask Ward', icon: Sparkles },

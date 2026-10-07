@@ -385,3 +385,35 @@ describe("locks across reconciliation systems", () => {
     expect(get("deposit")?.isReconciled).toBe(true);
   });
 });
+
+describe("re-saving a collection with a retired category", () => {
+  const donation = (category: string) => ({
+    donorId: "donor", donorName: "Ama Mensah", amount: 50, fundId: "fund",
+    category, paymentMethod: "Cash", isGiftAidEligible: false,
+  });
+  const save = (ctx: MutationCtx, category: string) =>
+    invoke(replaceCollectionEntries, ctx, {
+      cashCollectionId: "collection", weekEndingDate: "2026-10-05", collectionDate: "2026-10-05", status: "submitted",
+      serviceRows: [], namedDonations: [donation(category)],
+    });
+  const setup = () => fixture({
+    donors: [{ _id: "donor", organizationId: "org", name: "Ama Mensah" }],
+    cashCollections: [{ _id: "collection", organizationId: "org", status: "submitted" }],
+    categories: [
+      { _id: "harvest", organizationId: "org", name: "Harvest Appeal", transactionType: "Income", isRetired: true },
+      { _id: "gift", organizationId: "org", name: "Building Gift", transactionType: "Income", isRetired: true },
+    ],
+    transactions: [transaction("named", { cashCollectionId: "collection", category: "Building Gift", donorId: "donor" })],
+  });
+
+  it("keeps a retired category the collection's rows already had", async () => {
+    const { ctx, records } = setup();
+    await save(ctx, "Building Gift");
+    expect(records.transactions.map((row) => row.category)).toEqual(["Building Gift"]);
+  });
+
+  it("refuses a retired category the collection didn't have", async () => {
+    const { ctx } = setup();
+    await expect(save(ctx, "Harvest Appeal")).rejects.toThrow("Harvest Appeal is retired");
+  });
+});

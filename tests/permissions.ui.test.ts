@@ -44,9 +44,9 @@ function renderSettings(role: UserRole, tab: string) {
       { _id: "fund", name: "General", type: "Unrestricted", balance: 0 },
       { _id: "campaign", name: "Roof", type: "Restricted", balance: 0, targetAmount: 100 },
     ],
-    categories: ["Tithes"], churchDetails: { name: "Test Church" },
+    categories: [{ _id: "tithes", name: "Tithes" }], churchDetails: { name: "Test Church" },
     pendingInvitations: [{ _id: "invite", organizationId: "org", email: "invite@example.invalid", role: "Guest", invitedBy: "user", status: "pending", createdAt: 0, expiresAt: Date.now() + 100000 }],
-    onUpdateUserRole: vi.fn(), onAddCategory: vi.fn(), onRemoveCategory: vi.fn(),
+    onUpdateUserRole: vi.fn(), onAddCategory: vi.fn(), onRemoveCategory: vi.fn(), onSetCategoryRetired: vi.fn(),
     onInviteUser: vi.fn(), onResendInvitation: vi.fn(), onCancelInvitation: vi.fn(),
     onUpdateChurchDetails: vi.fn(), onAddFund: vi.fn(), onUpdateFund: vi.fn(), onRemoveFund: vi.fn(),
   };
@@ -73,14 +73,20 @@ it.each([
   expect(renderSettings("Admin", tab)).toContain(control);
 });
 
+const SIDEBAR_HREFS: Record<UserRole, string[]> = {
+  Admin: ["/dashboard", "/transactions", "/funds", "/donors", "/campaigns", "/loans", "/reports", "/settings", "/copilot"],
+  "Finance Team": ["/dashboard", "/transactions", "/funds", "/donors", "/campaigns", "/loans", "/reports", "/settings", "/copilot"],
+  Pastorate: ["/dashboard", "/transactions", "/funds", "/donors", "/campaigns", "/loans", "/reports", "/copilot"],
+  Guest: ["/dashboard", "/transactions", "/funds", "/campaigns", "/loans", "/copilot"],
+};
+
 it.each(ROLES)("shows the correct navigation to %s", (role) => {
   const html = render(createElement(Sidebar, {
     currentUser: user(role), isOpen: true, onClose: vi.fn(), onOpenSupport: vi.fn(),
     access: { state: "legacy_grant", expiresAt: null, plan: null },
   }));
-  expect(html.includes('href="/reports"')).toBe(role !== "Guest");
-  expect(html.includes('href="/donors"')).toBe(role !== "Guest");
-  expect(html.includes('href="/settings"')).toBe(role === "Admin" || role === "Finance Team");
+  const hrefs = [...html.matchAll(/<a [^>]*href="(\/[^"?]*)"/g)].map((match) => match[1]);
+  expect(hrefs).toEqual(SIDEBAR_HREFS[role]);
 });
 
 describe.each<UserRole>(["Pastorate", "Guest"])("%s reconciliation UI", (role) => {

@@ -6,7 +6,7 @@ import { normalizeDescription, normalizeTransaction } from "./normalize";
 import { applyDeterministicRules } from "./rules";
 import { applySmallIncomeDefaults, isSmallIncome } from "../../../lib/smallIncomeDefaults";
 import { effectiveCategories } from "../../../lib/transactionCategories";
-import { resolveCategoryForTransaction } from "./categoryResolver";
+import { resolveAssignableCategory } from "./categoryResolver";
 import {
   CategoryLike,
   CategorizationInput,
@@ -90,7 +90,7 @@ export const categorizeFromContext = (
   const suggestions: CategorizationSuggestion[] = [];
 
   for (const normalized of normalizedTransactions) {
-    const preservedCategory = resolveCategoryForTransaction(normalized.category ?? "", normalized.type, categories);
+    const preservedCategory = resolveAssignableCategory(normalized.category ?? "", normalized.type, categories);
     const preservedFund = funds.find((fund) => String(fund._id) === normalized.fundId);
     if (preservedCategory && preservedFund) {
       suggestions.push({ ...unresolvedSuggestion(normalized), category: preservedCategory.name, categoryTransactionType: normalized.type, fundId: String(preservedFund._id), fundName: preservedFund.name, predictionSource: "rule", donorName: normalized.donorName ?? null, evidence: [{ source: "rule", reason: "Preserved existing category and fund." }] });
@@ -126,7 +126,7 @@ export const categorizeFromContext = (
 };
 
 export function preserveCategorizationFields(suggestion: CategorizationSuggestion, input: CategorizationInput, categories: CategoryLike[], funds: FundLike[]): CategorizationSuggestion {
-  const category = resolveCategoryForTransaction(input.category ?? "", input.type, categories);
+  const category = resolveAssignableCategory(input.category ?? "", input.type, categories);
   const fund = funds.find((item) => String(item._id) === input.fundId);
   return { ...suggestion, ...(input.rowId ? { rowId: input.rowId } : {}), ...(category ? { category: category.name, categoryTransactionType: input.type } : {}), ...(fund ? { fundId: String(fund._id), fundName: fund.name } : {}), ...(input.donorName ? { donorName: input.donorName } : {}) };
 }

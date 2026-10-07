@@ -20,7 +20,8 @@ export const allowedCategoriesForType = (
     .map((category, index) => ({ category, index }))
     .filter(
       ({ category }) =>
-        category.transactionType === transactionType || isMovementCategory(category)
+        !category.isRetired &&
+        (category.transactionType === transactionType || isMovementCategory(category))
     )
     .sort((a, b) => {
       const orderA = a.category.displayOrder ?? Number.MAX_SAFE_INTEGER;
@@ -53,6 +54,17 @@ export const resolveCategoryForTransaction = (
     named.find((category) => !category.transactionType) ??
     null
   );
+};
+
+// A category a new or changed row may be given: retired ones still resolve for
+// rows already in them, but are never suggested or newly assigned.
+export const resolveAssignableCategory = (
+  categoryName: string,
+  transactionType: TransactionType,
+  categories: CategoryLike[]
+): CategoryLike | null => {
+  const category = resolveCategoryForTransaction(categoryName, transactionType, categories);
+  return category && !category.isRetired ? category : null;
 };
 
 export const resolveReportingMainCategory = (

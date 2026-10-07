@@ -1,11 +1,12 @@
 import { can } from "../lib/permissions";
 import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
@@ -15,17 +16,21 @@ import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/cs
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
-import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
-import { filterFundBalanceRows, isVoidedTransaction } from '../lib/reportableTransactions';
+import { resolveAssignableCategory } from '../convex/intelligence/categorization/categoryResolver';
+import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
+import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
+import LinkMovementModal from './transactions/LinkMovementModal';
+import JournalTransferModal from './transactions/JournalTransferModal';
 
 interface Category {
   _id: string;
   name: string;
   transactionType?: "Income" | "Expenditure";
+  isRetired?: boolean;
 }
 
 interface TransactionManagerProps {
@@ -39,6 +44,20 @@ interface TransactionManagerProps {
 
 // Pagination for large datasets
 const ITEMS_PER_PAGE = 100;
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Status' },
+  { value: 'active', label: 'Active' },
+  { value: 'voided', label: 'Voided' },
+  { value: 'reconciled', label: 'Reconciled' },
+  { value: 'unreconciled', label: 'Pending' },
+  { value: 'unlinked', label: 'Unlinked Income' },
+  { value: 'awaiting-link', label: 'Waiting for other side' },
+  { value: 'needs-reclassifying', label: 'Needs reclassifying' },
+] as const;
+type StatusFilter = (typeof STATUS_FILTER_OPTIONS)[number]['value'];
+const parseStatusFilter = (value: string | null): StatusFilter =>
+  STATUS_FILTER_OPTIONS.find((option) => option.value === value)?.value ?? 'all';
 
 type BankSyncCursor = {
   dateFrom: string;
@@ -54,6 +73,8 @@ type PendingReviewTransaction = Partial<Transaction> & {
   providerTransactionId?: string;
   bankConnectionId?: Id<"bankConnections">;
   importKey?: string;
+  pairWith?: PairSuggestion;
+  pairBasis?: string;
 };
 
 type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
@@ -113,6 +134,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
   const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
+  const unlinkTransaction = useMutation(api.mutations.movements.unlink);
+  const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
+  const linkTransactions = useMutation(api.mutations.movements.link);
 
   // Bank sync
   const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
@@ -122,8 +146,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
   const importCategories = useMemo(() => effectiveCategories(categories), [categories]);
-  const categoryNamesFor = (type?: TransactionType) =>
-    categoryNamesForTransactionTypes(importCategories, [type]);
+  // A row already in a retired category keeps it selectable so its select shows the saved value.
+  const categoryNamesFor = (type?: TransactionType, current?: string) => {
+    const names = categoryNamesForTransactionTypes(importCategories, [type]);
+    return current && !names.includes(current) ? [...names, current] : names;
+  };
   const fundNamesById = useMemo(
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
     [funds]
@@ -135,6 +162,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(() => new Set());
 
   // Track original AI predictions for correction learning
   const categorizationRun = useRef(0);
@@ -173,9 +201,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [importCategories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
-  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
+  const [searchParams] = useSearchParams();
+  const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>(() =>
+    searchParams.get('view') === 'cash-banking' && can(currentUser.role, "reconciliation.manage") ? 'cashChequeBanking' : 'all'
+  );
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
   const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
+  const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
+  const [showJournalTransfer, setShowJournalTransfer] = useState(false);
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -195,11 +228,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 200);
   const today = new Date();
-  const [filterMonth, setFilterMonth] = useState<number | null>(today.getMonth());
-  const [filterYear, setFilterYear] = useState<number | null>(today.getFullYear());
+  // Status links from the dashboard count rows across all dates.
+  const linkedFromStatus = parseStatusFilter(searchParams.get('status')) !== 'all';
+  const [filterMonth, setFilterMonth] = useState<number | null>(linkedFromStatus ? null : today.getMonth());
+  const [filterYear, setFilterYear] = useState<number | null>(linkedFromStatus ? null : today.getFullYear());
   const [filterCategory, setFilterCategory] = useState('');
   const [filterFund, setFilterFund] = useState(initialFundId || '');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>(() => parseStatusFilter(searchParams.get('status')));
 
   // Date filter options (matching Reports page)
   const monthOptions = Array.from({ length: 12 }, (_, i) => ({
@@ -219,6 +254,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [initialFundId]);
 
   const canEdit = can(currentUser.role, "ledger.write");
+  const editingLinked = editingTransaction !== null && ['linked', 'journal'].includes(linkState(editingTransaction).status);
+
+  const retiredCategoryNames = useMemo(
+    () => new Set(categories.filter((category) => category.isRetired).map((category) => category.name)),
+    [categories]
+  );
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -253,10 +294,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
       if (filterStatus === 'unlinked' && (t.type !== 'Income' || t.pledgeId)) return false;
+      if (filterStatus === 'awaiting-link' && !isUnlinkedMovementLeg(t)) return false;
+      if (filterStatus === 'needs-reclassifying' && (isVoidedTransaction(t) || !retiredCategoryNames.has(t.category))) return false;
 
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
+  }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus, retiredCategoryNames]);
 
   // Summary strip totals for the current filtered view: money moving in and out
   // of funds (no voided rows, no cash banking deposits, so banked cash isn't
@@ -304,6 +347,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       notify("Error", "Failed to void transaction.");
     } finally {
       setIsVoiding(false);
+    }
+  };
+
+  const handleUnlinkTransaction = async (transaction: Transaction) => {
+    try {
+      await unlinkTransaction({ transactionId: transaction._id as Id<"transactions"> });
+      notify("Unlinked", "This transaction is no longer linked to its other side.");
+    } catch (error) {
+      notify("Error", error instanceof Error ? error.message : "Failed to unlink transaction.");
+    }
+  };
+
+  const handleDeleteJournalTransfer = async (transaction: Transaction) => {
+    if (!window.confirm("Delete this transfer between funds? Both sides will be removed.")) return;
+    try {
+      await deleteJournalTransfer({ transactionId: transaction._id as Id<"transactions"> });
+      notify("Transfer Deleted", "Both sides of the transfer have been removed.");
+    } catch (error) {
+      notify("Error", error instanceof Error ? error.message : "Failed to delete transfer.");
     }
   };
 
@@ -458,7 +520,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           const suggestions = await categorizeTransactionsAI({
               descriptions,
               fundNames: funds.map(f => f.name),
-              categories: categoryNames
+              categories: categories.filter((category) => !category.isRetired).map((category) => category.name)
           });
           const updates = [];
           for (let i = 0; i < targetTransactions.length; i++) {
@@ -722,6 +784,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setNextBankSyncConnectionId(null);
     setBankSyncReviewConnectionId(null);
     setOriginalPredictions(new Map());
+    setDismissedPairs(new Set());
   };
 
   const removePendingTransactionAt = useCallback((removedIndex: number) => {
@@ -744,6 +807,68 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       currentIndex === index ? { ...transaction, ...updates } : transaction
     )));
   }, []);
+
+  const pairSuggestions = useMemo(
+    () => suggestImportPairs(importMovementLegs(pendingTransactions, importCategories), ledgerMovementLegs(allTransactions ?? [])),
+    [pendingTransactions, importCategories, allTransactions]
+  );
+  const activePairs = useMemo(() => livePairs(pendingTransactions), [pendingTransactions]);
+  const pendingById = useMemo(
+    () => new Map(pendingTransactions.flatMap((row) => (row.reviewRowId ? [[row.reviewRowId, row] as const] : []))),
+    [pendingTransactions]
+  );
+  const transactionsById = useMemo(
+    () => new Map((allTransactions ?? []).map((transaction) => [String(transaction._id), transaction] as const)),
+    [allTransactions]
+  );
+
+  const pairPartnerLabel = (pair: PairSuggestion) => {
+    const partner = pair.source === 'import' ? pendingById.get(pair.id) : transactionsById.get(pair.id);
+    if (!partner) return 'another transaction';
+    const [year, month, day] = (partner.date ?? '').split('-');
+    return `${partner.description || 'No description'}, ${day}/${month}/${year}`;
+  };
+
+  const acceptPair = (rowId: string, pair: PairSuggestion) => {
+    setPendingTransactions((current) => current.map((row) => {
+      if (row.reviewRowId === rowId) return { ...row, pairWith: pair, pairBasis: pairBasis(row) };
+      if (pair.source === 'import' && row.reviewRowId === pair.id) {
+        return { ...row, pairWith: { source: 'import', id: rowId }, pairBasis: pairBasis(row) };
+      }
+      return row;
+    }));
+  };
+
+  const undoPair = (rowId: string, pair: PairSuggestion) => {
+    setPendingTransactions((current) => current.map((row) => {
+      const isThisRow = row.reviewRowId === rowId;
+      const isPartner = pair.source === 'import' && row.reviewRowId === pair.id && row.pairWith?.id === rowId;
+      return isThisRow || isPartner ? { ...row, pairWith: undefined, pairBasis: undefined } : row;
+    }));
+  };
+
+  const renderPairing = (row: PendingReviewTransaction) => {
+    const rowId = row.reviewRowId ?? '';
+    const active = activePairs.get(rowId);
+    if (active) {
+      return (
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-dark">
+          <LinkIcon size={12} className="shrink-0" />
+          <span>Paired with {pairPartnerLabel(active)}</span>
+          <button type="button" onClick={() => undoPair(rowId, active)} className="font-bold underline hover:text-ink">Undo</button>
+        </p>
+      );
+    }
+    const suggestion = pairSuggestions.get(rowId);
+    if (!suggestion || dismissedPairs.has(rowId)) return null;
+    return (
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-grey-dark">
+        <span>Other side: {pairPartnerLabel(suggestion)}</span>
+        <button type="button" aria-label="Accept other side" onClick={() => acceptPair(rowId, suggestion)} className="font-bold text-sage-dark underline hover:text-ink">Accept</button>
+        <button type="button" aria-label="Dismiss other side" onClick={() => setDismissedPairs((current) => new Set(current).add(rowId))} className="font-bold text-grey-mid underline hover:text-ink">Dismiss</button>
+      </p>
+    );
+  };
 
   const handleSyncedBankTransactions = (
     syncedTransactions: Array<{
@@ -978,7 +1103,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
     const importRows = pendingTransactions.map((transaction) => applySmallIncomeDefaults(transaction, categories, funds));
     setPendingTransactions(importRows);
-    if (importRows.some((transaction) => !resolveCategoryForTransaction(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) || !funds.some((fund) => fund._id === transaction.fundId) || !isRealIsoDate(transaction.date || ""))) {
+    if (importRows.some((transaction) => !resolveAssignableCategory(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) || !funds.some((fund) => fund._id === transaction.fundId) || !isRealIsoDate(transaction.date || ""))) {
       notify("Error", "Every row needs a real date, a valid category and a valid fund before import.");
       return;
     }
@@ -1065,6 +1190,36 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     // Don't block import if correction recording fails
                 }
             }
+        }
+
+        // Accepted pairs are re-checked against current state, then linked.
+        const createdIds = new Map<string, string>();
+        importRows.forEach((row, index) => {
+            const id = result?.ids[index];
+            if (row.reviewRowId && id) createdIds.set(row.reviewRowId, id);
+        });
+        const { links, unmatched } = acceptedPairsToLink({
+            rows: importRows,
+            createdIds,
+            categories: importCategories,
+            ledger: allTransactions ?? [],
+        });
+        let linkedCount = 0;
+        let unlinkedCount = unmatched;
+        for (const [firstId, secondId] of links) {
+            try {
+                await linkTransactions({ transactionIds: [firstId as Id<"transactions">, secondId as Id<"transactions">] });
+                linkedCount += 1;
+            } catch (linkError) {
+                console.warn('Failed to link import pair:', linkError);
+                unlinkedCount += 1;
+            }
+        }
+        if (linkedCount > 0) {
+            notify("Pairs Linked", `${linkedCount} pair${linkedCount === 1 ? ' was' : 's were'} linked.`);
+        }
+        if (unlinkedCount > 0) {
+            notify("Warning", `Imported, but ${unlinkedCount} pair${unlinkedCount === 1 ? " couldn't" : "s couldn't"} be linked. Link them from Transactions.`);
         }
 
         // Notify about completed pledges (if any were manually linked)
@@ -1200,6 +1355,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </button>
                 )}
                 <button
+                    onClick={() => setShowJournalTransfer(true)}
+                    className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
+                >
+                    <ArrowLeftRight size={16} strokeWidth={1.9} className="text-grey-mid" />
+                    New transfer
+                </button>
+                <button
                     onClick={() => startTransition(() => setShowCashTakingsModal(true))}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-[18px] py-[11px] rounded-xl bg-ink text-white text-sm font-semibold hover:bg-charcoal transition-colors shadow-[0_6px_16px_-8px_rgba(28,25,23,0.5)]"
                 >
@@ -1327,13 +1489,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
           {/* Status Filter */}
           <div className="relative h-10">
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterStatus !== 'all' ? 'text-ink' : 'text-grey-dark'}`}>
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="voided">Voided</option>
-                  <option value="reconciled">Reconciled</option>
-                  <option value="unreconciled">Pending</option>
-                  <option value="unlinked">Unlinked Income</option>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(parseStatusFilter(e.target.value))} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterStatus !== 'all' ? 'text-ink' : 'text-grey-dark'}`}>
+                  {STATUS_FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
               </select>
               <Filter size={13} strokeWidth={1.9} className="absolute right-[11px] top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
           </div>
@@ -1397,6 +1556,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const fund = funds.find(f => f._id === t.fundId);
                   const isSelected = selectedIds.has(t._id);
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
+                  const link = linkState(t);
+                  const isJournal = link.status === 'journal';
 
                   return (
                     <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : isVoidedTransaction(t) ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
@@ -1416,6 +1577,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 title={t.voidReason ? `Void reason: ${t.voidReason}` : "Voided transaction"}
                               >
                                 Voided
+                              </span>
+                             )}
+                             {link.status === 'linked' && (
+                              <span className="px-1.5 py-0.5 rounded-[5px] border border-sage/30 bg-sage-light text-[9.5px] font-bold text-sage-dark uppercase tracking-[0.08em] shrink-0" title="Linked to its other side">
+                                Linked
+                              </span>
+                             )}
+                             {isJournal && (
+                              <span className="px-1.5 py-0.5 rounded-[5px] border border-ledger bg-paper text-[9.5px] font-bold text-grey-dark uppercase tracking-[0.08em] shrink-0" title="Transfer between funds made in ChurchCoin">
+                                Journal
                               </span>
                              )}
                           </div>
@@ -1439,7 +1610,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           {t.isReconciled ? <Check size={16} strokeWidth={2} className="mx-auto text-[#6b8e6b]" /> : <div className="w-2 h-2 rounded-full bg-[#d6d3cd] mx-auto"></div>}
                       </td>
                       <td className="px-4 py-3.5 text-center">
-                          {canEdit ? (
+                          {!isJournal && (canEdit ? (
                             isVoidedTransaction(t) ? (
                               <button
                                 type="button"
@@ -1461,9 +1632,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             )
                           ) : (
                             isVoidedTransaction(t) && <X size={14} className="mx-auto text-error/60" />
-                          )}
+                          ))}
                       </td>
-                      <td className="px-4 py-3.5 text-right opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                          {canEdit && link.status === 'waiting' && (
+                              <button type="button" onClick={() => setLinkTarget(t)} className="text-grey-mid hover:text-sage-dark transition-colors p-1" title="Link other side" aria-label="Link other side">
+                                  <Link2 size={15} strokeWidth={1.9} />
+                              </button>
+                          )}
+                          {canEdit && link.status === 'linked' && (
+                              <button type="button" onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-sage-dark transition-colors p-1" title="Unlink from its other side" aria-label="Unlink">
+                                  <Unlink size={15} strokeWidth={1.9} />
+                              </button>
+                          )}
+                          {link.status === 'journal' && can(currentUser.role, "ledger.delete") && (
+                              <button type="button" onClick={() => handleDeleteJournalTransfer(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Delete transfer" aria-label="Delete transfer">
+                                  <Trash2 size={15} strokeWidth={1.9} />
+                              </button>
+                          )}
                           {canEdit && (
                               <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-ink transition-colors p-1" title="Edit">
                                   <Edit2 size={15} strokeWidth={1.9} />
@@ -2199,7 +2385,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     type="number" 
                                     step="0.01"
                                     required
-                                    value={editingTransaction.amount} 
+                                    value={editingTransaction.amount}
+                                    disabled={editingLinked}
                                     onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
                                     className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors font-mono"
                                 />
@@ -2223,16 +2410,18 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Category</label>
                             <select
                                 value={editingTransaction.category}
+                                disabled={editingLinked}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
-                                {categoryNamesFor(editingTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
+                                {categoryNamesFor(editingTransaction.type, editingTransaction.category).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Fund</label>
                              <select
                                 value={editingTransaction.fundId}
+                                disabled={editingLinked}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
@@ -2246,6 +2435,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
                              <select
                                 value={editingTransaction.type}
+                                disabled={editingLinked}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
                                     const categoryStillValid = categoryNamesFor(type).includes(editingTransaction.category);
@@ -2276,6 +2466,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             />
                         </div>
                     </div>
+                    {editingLinked && (
+                        <p className="text-xs text-grey-mid -mt-2">Linked to its other side. Unlink to change these.</p>
+                    )}
 
                     {editingTransaction.type === 'Income' && (
                         <div>
@@ -2340,6 +2533,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             </div>
         </div>,
         document.body
+      )}
+
+      {linkTarget && canEdit && (
+        <LinkMovementModal
+          transaction={linkTarget}
+          transactions={transactions}
+          funds={funds}
+          onClose={() => setLinkTarget(null)}
+        />
+      )}
+
+      {showJournalTransfer && canEdit && (
+        <JournalTransferModal funds={funds} onClose={() => setShowJournalTransfer(false)} />
       )}
 
       {voidTarget && canEdit && createPortal(
@@ -2497,6 +2703,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 {transaction.description || 'No description'}
                               </p>
                               {transaction.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
+                              {renderPairing(transaction)}
                               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <label className="min-w-0">
                                   <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Category</span>
@@ -2573,6 +2780,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <td className="py-3 font-medium text-ink text-sm overflow-hidden">
                                       <div className="truncate" title={t.description}>{t.description}</div>
                                       {t.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
+                                      {renderPairing(t)}
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
                                     <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>

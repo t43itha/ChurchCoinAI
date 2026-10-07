@@ -1,7 +1,7 @@
-import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
+import { resolveAssignableCategory, resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
 import { effectiveCategories } from "./transactionCategories";
 
-type Category = { name: string; transactionType?: "Income" | "Expenditure" };
+type Category = { name: string; transactionType?: "Income" | "Expenditure"; isRetired?: boolean };
 type Fund = { _id: string; name: string };
 type Row = { amount?: number; type?: string; category?: string; fundId?: string };
 
@@ -14,7 +14,7 @@ export const isSmallIncome = (row: Row): boolean =>
 export function applySmallIncomeDefaults<T extends Row>(row: T, categories: Category[], funds: Fund[]): T {
   if (!isSmallIncome(row)) return row;
   const effective = effectiveCategories(categories);
-  const category = resolveCategoryForTransaction(row.category ?? "", "Income", effective);
+  const category = resolveAssignableCategory(row.category ?? "", "Income", effective);
   const offering = resolveCategoryForTransaction("Offerings", "Income", effective);
   const fund = funds.find((candidate) => String(candidate._id) === row.fundId);
   const general = funds.find((candidate) => candidate.name.trim().toLowerCase() === "general fund");

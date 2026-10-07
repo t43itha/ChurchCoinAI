@@ -5,13 +5,14 @@ import { useConvex } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { useLocation } from 'react-router-dom';
-import { AppUser, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
+import { AppUser, Category, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
 import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
 import DataPrivacySettings from './DataPrivacySettings';
 import BillingSettings from './BillingSettings';
 import { notify } from '../lib/notifications';
+import { isMovementCategory } from '../lib/movementCategories';
 
 // Refined Ledger tone palette (dot badges)
 const TONE = {
@@ -77,7 +78,7 @@ interface SettingsProps {
   currentUser: AppUser;
   users: AppUser[];
   funds: Fund[];
-  categories: string[];
+  categories: Category[];
   churchDetails: ChurchDetails;
   pendingInvitations: Invitation[];
   onUpdateUserRole: (userId: string, newRole: UserRole) => void;
@@ -86,6 +87,7 @@ interface SettingsProps {
     transactionType: "Income" | "Expenditure"
   ) => void;
   onRemoveCategory: (category: string) => void;
+  onSetCategoryRetired: (categoryId: string, retired: boolean) => void;
   onInviteUser: (invitation: InvitationCreateInput) => Promise<InvitationSendResult | null>;
   onResendInvitation: (invitationId: string) => Promise<InvitationSendResult | null>;
   onCancelInvitation: (invitationId: string) => void;
@@ -105,6 +107,7 @@ const Settings: React.FC<SettingsProps> = ({
   onUpdateUserRole,
   onAddCategory,
   onRemoveCategory,
+  onSetCategoryRetired,
   onInviteUser,
   onResendInvitation,
   onCancelInvitation,
@@ -846,12 +849,23 @@ ${currentUser.name}`;
 
                     <div className="flex flex-wrap gap-2">
                     {categories.map(category => (
-                        <span key={category} className="inline-flex items-center gap-2 px-3 py-[7px] bg-[#f3f1ed] border border-ledger rounded-full text-[13px] font-medium text-grey-dark">
-                        {category}
+                        <span key={category._id} className={`inline-flex items-center gap-2 px-3 py-[7px] border rounded-full text-[13px] font-medium ${category.isRetired ? 'bg-white border-dashed text-grey-mid' : 'bg-[#f3f1ed] border-ledger text-grey-dark'}`}>
+                        {category.name}
+                        {category.isRetired && <span className="text-[10.5px] font-bold uppercase tracking-[0.06em]">Retired</span>}
+                        {can(currentUser.role, "categories.write") && !isMovementCategory(category) && (
+                            <button
+                                type="button"
+                                aria-label={`${category.isRetired ? 'Restore' : 'Retire'} category ${category.name}`}
+                                onClick={() => onSetCategoryRetired(category._id, !category.isRetired)}
+                                className="text-[11.5px] font-semibold text-grey-dark hover:text-ink transition-colors"
+                            >
+                                {category.isRetired ? 'Restore' : 'Retire'}
+                            </button>
+                        )}
                         {can(currentUser.role, "categories.delete") && (
                             <button
-                                aria-label={`Delete category ${category}`}
-                                onClick={() => onRemoveCategory(category)}
+                                aria-label={`Delete category ${category.name}`}
+                                onClick={() => onRemoveCategory(category.name)}
                                 className="text-grey-mid hover:text-error transition-colors inline-flex"
                             >
                                 <X size={13} strokeWidth={2} />
@@ -862,7 +876,7 @@ ${currentUser.name}`;
                     </div>
 
                     <div className="mt-6 bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px] text-xs text-[#7a5a30] leading-relaxed">
-                        <strong className="font-bold">Note:</strong> Deleting a category will not remove it from historical transactions, but it will no longer be available for new entries or the AI auto-categorization.
+                        <strong className="font-bold">Note:</strong> Deleting a category will not remove it from historical transactions, but it will no longer be available for new entries or the AI auto-categorization. Retiring a category has the same effect on new entries, but rows already in it keep it and appear under Needs reclassifying in Transactions.
                     </div>
             </SectionCard>
         )}

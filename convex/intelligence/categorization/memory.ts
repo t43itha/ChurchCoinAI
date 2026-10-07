@@ -1,4 +1,4 @@
-import { resolveCategoryForTransaction } from "./categoryResolver";
+import { resolveAssignableCategory } from "./categoryResolver";
 import { confidenceLabel } from "./confidence";
 import {
   CategoryLike,
@@ -122,7 +122,7 @@ export const buildMemorySuggestion = (
   if (memory.transactionType !== transaction.type) return null;
   if (!shouldUseMemorySuggestion(memory)) return null;
 
-  const category = resolveCategoryForTransaction(
+  const category = resolveAssignableCategory(
     memory.category,
     transaction.type,
     categories

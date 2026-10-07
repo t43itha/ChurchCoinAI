@@ -1,6 +1,6 @@
 import {
   categoryNamesForPrompt,
-  resolveCategoryForTransaction,
+  resolveAssignableCategory,
 } from "./categoryResolver";
 import { confidenceLabel } from "./confidence";
 import {
@@ -88,7 +88,7 @@ export const validateGeminiSuggestion = (
 ): CategorizationSuggestion | null => {
   const categoryName =
     typeof rawSuggestion.category === "string" ? rawSuggestion.category : "";
-  const category = resolveCategoryForTransaction(
+  const category = resolveAssignableCategory(
     categoryName,
     transaction.type,
     categories

@@ -1,8 +1,50 @@
 import * as XLSX from 'xlsx';
-import { MonthlyReportData, AnnualReportData, ChurchDetails, CategoryGroup } from '../types';
+import { MonthlyReportData, AnnualReportData, ChurchDetails, CategoryGroup, LoanReportRow } from '../types';
+import type { TransferSummary } from '../lib/reportableTransactions';
+import { sumMoney } from '../convex/lib/money';
 
 type SheetCell = string | number;
 type SheetRows = SheetCell[][];
+
+export const transfersSheetRows = (transfers: TransferSummary): SheetRows => {
+  const { funds, unmatched } = transfers;
+  const rows: SheetRows = [["Fund", "Money in", "Money out", "Net"]];
+  funds.forEach((fund) => rows.push([fund.fund, fund.in, fund.out, fund.net]));
+  rows.push([
+    "Total",
+    sumMoney(funds, (fund) => fund.in),
+    sumMoney(funds, (fund) => fund.out),
+    sumMoney(funds, (fund) => fund.net),
+  ]);
+  if (unmatched !== 0) rows.push(["Unmatched", "", "", unmatched]);
+  return rows;
+};
+
+export const loansSheetRows = (loans: LoanReportRow[]): SheetRows => {
+  const rows: SheetRows = [["Lender", "Borrowed", "Repaid", "Outstanding", "Due"]];
+  loans.forEach((loan) => rows.push([loan.lender, loan.borrowed, loan.repaid, loan.outstanding, loan.dueDate ?? ""]));
+  rows.push([
+    "Total",
+    sumMoney(loans, (loan) => loan.borrowed),
+    sumMoney(loans, (loan) => loan.repaid),
+    sumMoney(loans, (loan) => loan.outstanding),
+    "",
+  ]);
+  return rows;
+};
+
+const appendTransfersAndLoans = (
+  workbook: XLSX.WorkBook,
+  transfers: TransferSummary,
+  loans: LoanReportRow[]
+) => {
+  if (transfers.funds.length > 0) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(transfersSheetRows(transfers)), 'Transfers');
+  }
+  if (loans.length > 0) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(loansSheetRows(loans)), 'Loans');
+  }
+};
 
 // Generate Monthly Report Excel workbook
 export const generateMonthlyReportXLSX = async (
@@ -138,6 +180,8 @@ export const generateMonthlyReportXLSX = async (
     XLSX.utils.book_append_sheet(workbook, tithesSheet, 'Tithes');
   }
 
+  appendTransfersAndLoans(workbook, reportData.transfers, reportData.loans);
+
   // Write workbook to blob
   const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -264,6 +308,8 @@ export const generateAnnualReportXLSX = async (
 
   const fundsSheet = XLSX.utils.aoa_to_sheet(fundsData);
   XLSX.utils.book_append_sheet(workbook, fundsSheet, 'Fund Balances');
+
+  appendTransfersAndLoans(workbook, reportData.transfers, reportData.loans);
 
   // Write workbook to blob
   const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });

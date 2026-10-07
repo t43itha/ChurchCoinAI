@@ -1,6 +1,7 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { WithoutSystemFields } from "convex/server";
+import { movementProblem } from "../../lib/movementMatching";
 
 // The only module allowed to patch, replace, or delete `transactions` rows
 // (tests/transactionWriteOwnership.test.ts enforces this). Every write runs the
@@ -89,16 +90,66 @@ async function guard(
   ctx: Pick<MutationCtx, "db">,
   target: TransactionTarget,
   options: TransactionWriteOptions | undefined
-): Promise<Id<"transactions">> {
-  if (typeof target !== "string") {
-    if (!options?.lockOverride) await assertNotLockedByReconciliation(ctx, target);
-    return target._id;
-  }
+): Promise<Doc<"transactions">> {
+  const doc = typeof target === "string" ? await ctx.db.get(target) : target;
+  if (!doc) throw new Error("Transaction not found");
+  if (!options?.lockOverride) await assertNotLockedByReconciliation(ctx, doc);
+  return doc;
+}
+
+const MOVEMENT_LOCKED_FIELDS = ["amount", "type", "fundId", "movementKind", "isJournal"] as const;
+const UNLINK_MESSAGE =
+  "Unlink this transaction from its other side before changing its amount, direction, fund or category.";
+const JOURNAL_MESSAGE = "Delete the transfer between funds instead.";
+
+const pence = (amount: number) => Math.round(amount * 100);
+
+// A linked leg's amount, direction, fund and kind belong to the pair. Unlink
+// first, then change them, so the other side can't drift out of balance.
+function assertMovementLockAllows(doc: Doc<"transactions">, patch: TransactionPatch) {
+  if (!doc.movementId) return;
+  const changes = MOVEMENT_LOCKED_FIELDS.some((field) => {
+    if (!(field in patch)) return false;
+    if (field === "amount") return pence(patch.amount ?? 0) !== pence(doc.amount);
+    return patch[field] !== doc[field];
+  });
+  if (changes) throw new Error(UNLINK_MESSAGE);
+}
+
+// Removes a leg from its movement and clears its movementId. A movement that
+// is no longer complete is dissolved and every remaining leg is unlinked. All
+// reconciliation checks run before the first write, since Convex only rolls
+// back the whole mutation when a throw escapes it.
+export async function detachFromMovement(
+  ctx: Pick<MutationCtx, "db">,
+  doc: Doc<"transactions">,
+  options?: TransactionWriteOptions
+) {
+  if (doc.isJournal) throw new Error(JOURNAL_MESSAGE);
+  if (!doc.movementId) return;
+
+  const movementId = doc.movementId;
+  const movement = await ctx.db.get(movementId);
+  const legs = await ctx.db
+    .query("transactions")
+    .withIndex("by_movement", (q) => q.eq("movementId", movementId))
+    .collect();
+  const remaining = legs.filter((leg) => leg._id !== doc._id);
+  const stillComplete =
+    movement !== null && movementProblem(movement.kind, remaining) === null;
+
   if (!options?.lockOverride) {
-    const transaction = await ctx.db.get(target);
-    if (transaction) await assertNotLockedByReconciliation(ctx, transaction);
+    await assertNotLockedByReconciliation(ctx, doc);
+    if (!stillComplete) {
+      for (const leg of remaining) await assertNotLockedByReconciliation(ctx, leg);
+    }
   }
-  return target;
+
+  if (!stillComplete) {
+    if (movement) await ctx.db.delete(movement._id);
+    for (const leg of remaining) await ctx.db.patch(leg._id, { movementId: undefined });
+  }
+  await ctx.db.patch(doc._id, { movementId: undefined });
 }
 
 export async function patchTransaction(
@@ -107,8 +158,12 @@ export async function patchTransaction(
   value: TransactionPatch,
   options?: TransactionWriteOptions
 ) {
-  const id = await guard(ctx, target, options);
-  await ctx.db.patch(id, value);
+  const doc = await guard(ctx, target, options);
+  assertMovementLockAllows(doc, value);
+  if (value.isVoided === true && !doc.isVoided && doc.movementId) {
+    await detachFromMovement(ctx, doc, options);
+  }
+  await ctx.db.patch(doc._id, value);
 }
 
 export async function deleteTransaction(
@@ -116,6 +171,23 @@ export async function deleteTransaction(
   target: TransactionTarget,
   options?: TransactionWriteOptions
 ) {
-  const id = await guard(ctx, target, options);
-  await ctx.db.delete(id);
+  const doc = await guard(ctx, target, options);
+
+  if (doc.movementId && doc.isJournal) {
+    const movementId = doc.movementId;
+    const legs = await ctx.db
+      .query("transactions")
+      .withIndex("by_movement", (q) => q.eq("movementId", movementId))
+      .collect();
+    if (!options?.lockOverride) {
+      for (const leg of legs) await assertNotLockedByReconciliation(ctx, leg);
+    }
+    for (const leg of legs) await ctx.db.delete(leg._id);
+    const movement = await ctx.db.get(movementId);
+    if (movement) await ctx.db.delete(movement._id);
+    return;
+  }
+
+  if (doc.movementId) await detachFromMovement(ctx, doc, options);
+  await ctx.db.delete(doc._id);
 }

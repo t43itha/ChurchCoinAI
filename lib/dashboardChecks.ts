@@ -86,9 +86,20 @@ export function buildMonthEndChecks(
       id: "unlinked-movements",
       label: "Transfers to pair",
       value: readiness.unlinkedMovementLegs.toLocaleString("en-GB"),
-      detail: "Transfers and returned payments with only one side recorded",
+      detail: "Transfers, returned payments and loans with no other side linked",
       status: "attention",
-      href: transactionsHref,
+      href: "/transactions?status=awaiting-link",
+    });
+  }
+
+  if (readiness.possibleDoubleCountMonths.length > 0) {
+    checks.push({
+      id: "possible-double-count",
+      label: "Possible double count",
+      value: readiness.possibleDoubleCountMonths.length.toLocaleString("en-GB"),
+      detail: `Counter deposits recorded as income in months with unbanked cash collections. Check the collection sheets: ${readiness.possibleDoubleCountMonths.map(formatMonth).join(", ")}`,
+      status: "attention",
+      href: "/transactions?view=cash-banking",
     });
   }
 
@@ -152,6 +163,14 @@ function countCheck(
     status: count === 0 ? "clear" : "attention",
     href,
   };
+}
+
+function formatMonth(month: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${month}-01T00:00:00Z`));
 }
 
 function formatShortDate(date: string) {

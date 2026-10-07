@@ -285,6 +285,16 @@ export interface Category {
   transactionType?: TransactionType;
   displayOrder?: number;
   movementKind?: MovementKind;
+  isRetired?: boolean;
+}
+
+export interface Movement {
+  _id: string;
+  kind: MovementKind;
+  note?: string;
+  lender?: string;
+  dueDate?: string;
+  createdAt: number;
 }
 
 export interface CategoryGroup {
@@ -294,6 +304,16 @@ export interface CategoryGroup {
 }
 
 // Monthly Report Types (RCI Monthly Accounts)
+// A loan as it stood at a report period end. Reports need reports.read, which
+// leadership holds with donors.read, so the lender name is shown unredacted.
+export interface LoanReportRow {
+  lender: string;
+  dueDate?: string;
+  borrowed: number;
+  repaid: number;
+  outstanding: number;
+}
+
 export interface MonthlyReportData {
   year: number;
   month: number;
@@ -317,6 +337,7 @@ export interface MonthlyReportData {
     netBankable: number;
   };
   transfers: TransferSummary;
+  loans: LoanReportRow[];
 }
 
 export interface WeeklyBreakdownItem {
@@ -360,4 +381,5 @@ export interface AnnualReportData {
     netMovement: number;
   };
   transfers: TransferSummary;
+  loans: LoanReportRow[];
 }

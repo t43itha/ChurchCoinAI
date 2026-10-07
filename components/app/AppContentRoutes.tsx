@@ -27,6 +27,7 @@ const TransactionManager = lazy(() => import("../TransactionManager"));
 const FundManager = lazy(() => import("../FundManager"));
 const DonorManager = lazy(() => import("../DonorManager"));
 const Campaigns = lazy(() => import("../Campaigns"));
+const Loans = lazy(() => import("../Loans"));
 const Reports = lazy(() => import("../Reports"));
 const AICoPilot = lazy(() => import("../AICoPilot"));
 const Settings = lazy(() => import("../Settings"));
@@ -218,13 +219,14 @@ const SettingsRoute: React.FC<RouteContext> = ({
     <Settings
       currentUser={currentUser}
       users={users ?? []}
-      categories={categories.map((category) => category.name)}
+      categories={categories}
       funds={funds}
       churchDetails={churchDetails}
       pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
       onUpdateUserRole={adminActions.handleUpdateUserRole}
       onAddCategory={fundCategoryActions.handleAddCategory}
       onRemoveCategory={fundCategoryActions.handleRemoveCategory}
+      onSetCategoryRetired={fundCategoryActions.handleSetCategoryRetired}
       onInviteUser={adminActions.handleInviteUser}
       onResendInvitation={adminActions.handleResendInvitation}
       onCancelInvitation={adminActions.handleCancelInvitation}
@@ -254,6 +256,7 @@ const AppContentRoutes: React.FC<RouteContext> = (context) => {
         <Route path="/funds" element={<FundsRoute {...context} />} />
         <Route path="/donors" element={<DonorsRoute {...context} />} />
         <Route path="/campaigns" element={<CampaignsRoute {...context} />} />
+        <Route path="/loans" element={can(context.currentUser.role, "ledger.read") ? <Loans currentUser={context.currentUser} /> : <Navigate to="/dashboard" replace />} />
         <Route path="/reports" element={can(context.currentUser.role, "reports.read") ? <ReportsRoute {...context} /> : <Navigate to="/dashboard" replace />} />
         <Route path="/copilot" element={<AICoPilot />} />
         <Route path="/settings" element={<SettingsRoute {...context} />} />

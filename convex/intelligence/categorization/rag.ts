@@ -1,4 +1,4 @@
-import { resolveCategoryForTransaction } from "./categoryResolver";
+import { resolveAssignableCategory } from "./categoryResolver";
 import { confidenceLabel } from "./confidence";
 import {
   CategoryLike,
@@ -32,7 +32,7 @@ export const metadataToSuggestion = (
 ): CategorizationSuggestion | null => {
   if (metadata.type !== transaction.type) return null;
 
-  const category = resolveCategoryForTransaction(
+  const category = resolveAssignableCategory(
     metadata.category,
     transaction.type,
     categories

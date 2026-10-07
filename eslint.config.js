@@ -51,9 +51,12 @@ export default tseslint.config(
       "lib/voidedTransactions.ts",
       "lib/reportableTransactions.ts",
       "lib/movementCategories.ts",
+      "lib/movementMatching.ts",
       "lib/cashChequeBanking.ts",
       "convex/schema.ts",
       "convex/mutations/**",
+      // Write decisions (void and link state), not reporting decisions.
+      "convex/lib/transactionWrites.ts",
       "convex/queries/cashBankingReconciliations.ts",
       "tests/**",
     ],

@@ -1,81 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import type { MutationCtx } from "../convex/_generated/server";
+import { describe, expect, it } from "vitest";
 import type { Id } from "../convex/_generated/dataModel";
 import * as transactions from "../convex/mutations/transactions";
 import * as categories from "../convex/mutations/categories";
 import { ensureTypedCategories } from "../convex/lib/categoryIntegrity";
-
-type Row = { _id: string } & Record<string, unknown>;
-type FilterBuilder = typeof filterBuilder;
-
-const filterBuilder = {
-  field: (name: string) => name,
-  eq: (field: string, value: unknown) => (row: Row) => row[field] === value,
-};
-
-// Run real handlers against an indexed, mutable in-memory database.
-function fixture(extra: Record<string, Row[]> = {}) {
-  const records: Record<string, Row[]> = {
-    users: [{ _id: "user", clerkId: "clerk-user", organizationId: "org", role: "Admin" }],
-    organizations: [{ _id: "org", accessMode: "legacy" }],
-    funds: [{ _id: "fund", organizationId: "org" }],
-    categories: [],
-    transactions: [],
-    ...extra,
-  };
-  const get = (id: string) => Object.values(records).flat().find((row) => row._id === id) ?? null;
-  const db = {
-    get: vi.fn(async (id: string) => get(id)),
-    query: vi.fn((table: string) => {
-      let rows = records[table] ?? [];
-      const index = {
-        eq: (field: string, value: unknown) => {
-          rows = rows.filter((row) => row[field] === value);
-          return index;
-        },
-      };
-      const chain = {
-        withIndex: (_name: string, configure: (q: typeof index) => unknown) => {
-          configure(index);
-          return chain;
-        },
-        // Only the equality filter the rename cascade uses.
-        filter: (build: (q: FilterBuilder) => (row: Row) => boolean) => {
-          rows = rows.filter(build(filterBuilder));
-          return chain;
-        },
-        collect: async () => rows,
-        first: async () => rows[0] ?? null,
-      };
-      return chain;
-    }),
-    patch: vi.fn(async (id: string, value: Record<string, unknown>) => {
-      const row = get(id);
-      if (!row) throw new Error(`Missing row: ${id}`);
-      Object.assign(row, value);
-    }),
-    insert: vi.fn(async (table: string, value: Record<string, unknown>) => {
-      const rows = (records[table] ??= []);
-      const id = `new-${table}-${rows.length}`;
-      rows.push({ ...value, _id: id });
-      return id;
-    }),
-  };
-  const ctx = {
-    auth: { getUserIdentity: async () => ({ subject: "clerk-user" }) },
-    db,
-    scheduler: { runAfter: vi.fn() },
-  } as unknown as MutationCtx;
-  return { ctx, db, get, records };
-}
-
-const invoke = (fn: unknown, ctx: MutationCtx, args: Record<string, unknown>) =>
-  (fn as { _handler: (ctx: MutationCtx, args: Record<string, unknown>) => Promise<unknown> })._handler(ctx, args);
-
-const row = (id: string, extra: Record<string, unknown> = {}): Row => ({
-  _id: id, organizationId: "org", fundId: "fund", type: "Income", amount: 100, date: "2026-10-01",
-  description: "Row", category: "Offerings", isReconciled: false, ...extra,
-});
+import { fixture, invoke, row, type Row } from "./helpers/convexFixture";
 
 const lastPatch = (db: ReturnType<typeof fixture>["db"], id: string) =>
   db.patch.mock.calls.filter(([patchedId]) => patchedId === id).at(-1)?.[1] as Record<string, unknown>;
@@ -201,5 +129,70 @@ describe("cash collection rows stay giving", () => {
     await expect(invoke(transactions.create, ctx, {
       date: "2026-10-01", description: "Loan", amount: 100, type: "Income", category: "Loan", fundId: "fund", cashCollectionId: "c1",
     })).rejects.toThrow(message);
+  });
+});
+
+describe("retired categories", () => {
+  const retired = (): Row => ({
+    _id: "choir", organizationId: "org", name: "Choir robes", transactionType: "Expenditure", isRetired: true, createdAt: 1,
+  });
+  const expenditure = (id: string, extra: Record<string, unknown> = {}) =>
+    row(id, { type: "Expenditure", category: "Utilities", ...extra });
+  const base = { date: "2026-10-01", description: "Robes", amount: 40, fundId: "fund" };
+
+  it("refuses to retire a built-in movement category", async () => {
+    const { ctx, get } = fixture({
+      categories: [{ _id: "loan", organizationId: "org", name: "Loan", movementKind: "loan", createdAt: 1 }],
+    });
+    await expect(invoke(categories.setRetired, ctx, { categoryId: "loan", retired: true }))
+      .rejects.toThrow("Built-in transfer, returned payment and loan categories can't be retired.");
+    expect(get("loan")?.isRetired).toBeUndefined();
+  });
+
+  it("retires and restores an ordinary category", async () => {
+    const { ctx, get } = fixture({ categories: [{ _id: "choir", organizationId: "org", name: "Choir robes", transactionType: "Expenditure", createdAt: 1 }] });
+    await invoke(categories.setRetired, ctx, { categoryId: "choir", retired: true });
+    expect(get("choir")?.isRetired).toBe(true);
+    await invoke(categories.setRetired, ctx, { categoryId: "choir", retired: false });
+    expect(get("choir")?.isRetired).toBeUndefined();
+  });
+
+  it("refuses to create a row in a retired category", async () => {
+    const { ctx } = fixture({ categories: [retired()] });
+    await expect(invoke(transactions.create, ctx, { ...base, type: "Expenditure", category: "Choir robes" }))
+      .rejects.toThrow(/is retired/);
+  });
+
+  it("refuses to move a row into a retired category", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx")] });
+    await expect(invoke(transactions.update, ctx, { transactionId: "tx", category: "Choir robes" }))
+      .rejects.toThrow(/is retired/);
+    expect(get("tx")?.category).toBe("Utilities");
+  });
+
+  it("lets a row already in a retired category change its description", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx", { category: "Choir robes" })] });
+    await invoke(transactions.update, ctx, { transactionId: "tx", description: "Choir gowns" });
+    expect(get("tx")).toMatchObject({ description: "Choir gowns", category: "Choir robes" });
+  });
+
+  it("refuses to retire Offerings, which cash collections write", async () => {
+    const { ctx, get } = fixture({ categories: [{ _id: "offerings", organizationId: "org", name: "Offerings", transactionType: "Income", createdAt: 1 }] });
+    await expect(invoke(categories.setRetired, ctx, { categoryId: "offerings", retired: true }))
+      .rejects.toThrow(/Offerings can't be retired/);
+    expect(get("offerings")?.isRetired).toBeUndefined();
+  });
+
+  it("treats a row's retired category as its own whatever its case", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx", { category: "choir robes" })] });
+    await invoke(transactions.update, ctx, { transactionId: "tx", category: "Choir robes", description: "Choir gowns" });
+    expect(get("tx")?.description).toBe("Choir gowns");
+  });
+
+  it("refuses a bulk edit that sets a retired category", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx")] });
+    await expect(invoke(transactions.bulkUpdate, ctx, { transactionIds: ["tx"], updates: { category: "Choir robes" } }))
+      .rejects.toThrow(/is retired/);
+    expect(get("tx")?.category).toBe("Utilities");
   });
 });

@@ -152,12 +152,7 @@ export function buildTransferSummary<T extends LedgerRow & { fundId: string }>(
   };
 }
 
-// A transfer or returned payment leg still waiting for its other side. Loans
-// are left out: their other side is the lender, outside the ledger.
+// A transfer, returned payment or loan leg not yet linked to its other side.
 export function isUnlinkedMovementLeg(row: LedgerRow) {
-  return (
-    isActiveTransaction(row) &&
-    (row.movementKind === "transfer" || row.movementKind === "reversal") &&
-    row.movementId === undefined
-  );
+  return isActiveTransaction(row) && row.movementKind !== undefined && row.movementId === undefined;
 }

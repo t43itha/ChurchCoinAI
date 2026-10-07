@@ -7,6 +7,7 @@ interface CategoryOption {
   name: string;
   transactionType?: TransactionType;
   movementKind?: MovementKind;
+  isRetired?: boolean;
 }
 
 const normalizeName = (name: string) => name.trim().toLowerCase();
@@ -44,6 +45,7 @@ export function categoryNamesForTransactionTypes(
 
   return categories
     .filter((category) =>
+      !category.isRetired &&
       types.every((type) =>
         type && resolveCategoryForTransaction(category.name, type, categoriesAfterBackfill)
       )

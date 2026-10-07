@@ -6,6 +6,7 @@ import {
   filterIncomeAndExpenditure,
   hasBankEffect,
   isUnlinkedMovementLeg,
+  ledgerEffect,
   sumFundBalance,
 } from "./reportableTransactions";
 import type { MovementKind } from "./movementCategories";
@@ -78,6 +79,7 @@ export type DashboardStatementSession = {
 export type DashboardTransaction = {
   _id: string;
   date: string;
+  description?: string;
   amount: number;
   type: "Income" | "Expenditure";
   category?: string;
@@ -114,6 +116,7 @@ export type ExecutiveDashboardSummary = {
     reconciledPercent: number | null;
     categorizedPercent: number | null;
     cashBankingPendingWeeks: number;
+    possibleDoubleCountMonths: string[];
     unreconciledExpenditureCount: number;
     unlinkedMovementLegs: number;
     giftAidClaimable: number;
@@ -282,8 +285,15 @@ export function buildExecutiveDashboardSummary({
       )
     ) * 0.1
   );
-  const cashBankingPendingWeeks = countCashBankingPendingWeeks(
+  const cashBankingPendingWeeks = pendingCashCollections(
     periodTransactions,
+    cashCollections,
+    cashReconciliations
+  ).length;
+  const possibleDoubleCountMonths = buildPossibleDoubleCountMonths(
+    period.throughDate,
+    transactions,
+    bankTransactions,
     cashCollections,
     cashReconciliations
   );
@@ -324,6 +334,7 @@ export function buildExecutiveDashboardSummary({
       reconciledPercent,
       categorizedPercent,
       cashBankingPendingWeeks,
+      possibleDoubleCountMonths,
       unreconciledExpenditureCount,
       unlinkedMovementLegs: transactions.filter(
         (transaction) =>
@@ -475,9 +486,20 @@ function isCashOrCheque(transaction: DashboardTransaction) {
   return transaction.paymentMethod === "Cash" || transaction.paymentMethod === "Cheque";
 }
 
+// Heuristic: only the collection sheets confirm a double count.
+const COUNTER_DEPOSIT_PATTERN = /\b(counter|cash) deposit\b/i;
+
+export function isCounterDeposit(row: DashboardTransaction) {
+  return (
+    ledgerEffect(row).activity === "income" &&
+    !row.cashCollectionId &&
+    COUNTER_DEPOSIT_PATTERN.test(row.description ?? "")
+  );
+}
+
 // A collection belongs to the period when its gifts do. Its week-ending label is
 // the coming Sunday, so it can fall after a period that already holds its gifts.
-function countCashBankingPendingWeeks(
+function pendingCashCollections(
   transactions: DashboardTransaction[],
   cashCollections: DashboardCashCollection[],
   cashReconciliations: DashboardCashReconciliation[]
@@ -510,7 +532,42 @@ function countCashBankingPendingWeeks(
     );
 
     return !meetsMoneyTarget(coveredTotal, expectedTotal);
-  }).length;
+  });
+}
+
+function buildPossibleDoubleCountMonths(
+  throughDate: string,
+  transactions: DashboardTransaction[],
+  bankTransactions: DashboardTransaction[],
+  cashCollections: DashboardCashCollection[],
+  cashReconciliations: DashboardCashReconciliation[]
+) {
+  const throughMonth = throughDate.slice(0, 7);
+  // A collection's week-ending label can fall in the next month, so use the
+  // dates of the gifts it holds.
+  const pendingIds = new Set(
+    pendingCashCollections(bankTransactions, cashCollections, cashReconciliations).map(
+      (collection) => collection._id
+    )
+  );
+  const unbankedMonths = new Set(
+    bankTransactions
+      .filter(
+        (transaction) =>
+          transaction.type === "Income" &&
+          transaction.cashCollectionId !== undefined &&
+          pendingIds.has(transaction.cashCollectionId) &&
+          isCashOrCheque(transaction)
+      )
+      .map((transaction) => transaction.date.slice(0, 7))
+  );
+  const counterDepositMonths = new Set(
+    transactions.filter(isCounterDeposit).map((transaction) => transaction.date.slice(0, 7))
+  );
+
+  return [...counterDepositMonths]
+    .filter((month) => month <= throughMonth && unbankedMonths.has(month))
+    .sort();
 }
 
 function buildSixMonthTrend(
