@@ -1,5 +1,5 @@
 import { CATEGORY_ALIASES, RCI_INCOME_CATEGORIES } from "../constants/rciCategories";
-import { filterReportableTransactions, sumReportableSigned } from "./reportableTransactions";
+import { filterIncomeAndExpenditure, sumFundBalance } from "./reportableTransactions";
 // Operational KPIs (reconciled/categorised %, unreconciled spend) deliberately
 // count every non-voided row, including cash banking deposits. Money totals
 // below use the reportable helpers.
@@ -235,7 +235,7 @@ export function buildExecutiveDashboardSummary({
   const period = getDashboardPeriod(periodKey, now);
   const elapsed = { startDate: period.startDate, endDate: period.throughDate };
   const activeTransactions = filterActiveTransactions(transactions);
-  const reportableTransactions = filterReportableTransactions(transactions);
+  const reportableTransactions = filterIncomeAndExpenditure(transactions);
   const periodTransactions = activeTransactions.filter((transaction) =>
     isWithinRange(transaction.date, elapsed)
   );
@@ -284,8 +284,8 @@ export function buildExecutiveDashboardSummary({
   ).length;
   const trends = buildSixMonthTrend(period, reportableTransactions, unrestrictedFundIds);
   const generalFundBalance = roundMoney(
-    sumReportableSigned(
-      reportableTransactions.filter((transaction) =>
+    sumFundBalance(
+      transactions.filter((transaction) =>
         isUnrestrictedTransaction(transaction, unrestrictedFundIds)
       )
     )
@@ -653,7 +653,7 @@ function buildFundBalances(funds: DashboardFund[], transactions: DashboardTransa
 
   return funds.map((fund) => ({
     fund,
-    balance: roundMoney(sumReportableSigned(transactionsByFund.get(fund._id) ?? [])),
+    balance: roundMoney(sumFundBalance(transactionsByFund.get(fund._id) ?? [])),
   }));
 }
 

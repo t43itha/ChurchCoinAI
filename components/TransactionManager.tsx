@@ -16,7 +16,7 @@ import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/tr
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
-import { isVoidedTransaction, sumReportableIncome, sumReportableSigned } from '../lib/reportableTransactions';
+import { isVoidedTransaction, sumFundBalance, sumReportableIncome } from '../lib/reportableTransactions';
 import { roundMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
@@ -263,7 +263,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // isn't counted twice; the review count covers every non-voided row.
   const stripTotals = useMemo(() => {
     const totalIn = sumReportableIncome(filteredTransactions);
-    const net = sumReportableSigned(filteredTransactions);
+    const net = sumFundBalance(filteredTransactions);
     const needsReview = filteredTransactions.filter(
       (t) => !isVoidedTransaction(t) && (!t.isReconciled || !t.category)
     ).length;

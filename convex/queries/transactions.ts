@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { redactDonorFields, requireCapability } from "../lib/auth";
 import { ALL_INCOME_SUBCATEGORIES } from "../../constants/rciCategories";
 import {
-  filterReportableTransactions,
+  filterIncomeAndExpenditure,
   isReportableIncomeTransaction,
 } from "../../lib/reportableTransactions";
 
@@ -95,7 +95,7 @@ export const byDonor = query({
       .order("desc")
       .collect();
 
-    return filterReportableTransactions(
+    return filterIncomeAndExpenditure(
       transactions.filter(
         (transaction) => transaction.organizationId === user.organizationId
       )
@@ -267,7 +267,7 @@ export const aggregateByCategory = query({
           )
           .collect();
 
-    const reportableTransactions = filterReportableTransactions(transactions);
+    const reportableTransactions = filterIncomeAndExpenditure(transactions);
     const filtered = args.transactionType
       ? reportableTransactions.filter((t) => t.type === args.transactionType)
       : reportableTransactions;
@@ -334,7 +334,7 @@ export const monthlySummary = query({
     // Group by month
     const monthly: Record<string, { income: number; expenditure: number }> = {};
 
-    filterReportableTransactions(transactions).forEach((t) => {
+    filterIncomeAndExpenditure(transactions).forEach((t) => {
       const month = t.date.substring(0, 7); // YYYY-MM
       if (!monthly[month]) {
         monthly[month] = { income: 0, expenditure: 0 };

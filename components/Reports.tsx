@@ -31,7 +31,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { filterReportableTransactions } from '../lib/reportableTransactions';
+import { filterIncomeAndExpenditure } from '../lib/reportableTransactions';
 
 // ============ TYPE DEFINITIONS ============
 
@@ -1115,7 +1115,7 @@ interface AIReportsContentProps {
 }
 
 const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds, pledges, churchDetails }) => {
-  const activeTransactions = useMemo(() => filterReportableTransactions(transactions), [transactions]);
+  const activeTransactions = useMemo(() => filterIncomeAndExpenditure(transactions), [transactions]);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
   const [isGenerating, setIsGenerating] = useState(false);

@@ -7,7 +7,7 @@ import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, 
 import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
-import { filterReportableTransactions, sumReportableIncome } from '../lib/reportableTransactions';
+import { filterIncomeAndExpenditure, sumReportableIncome } from '../lib/reportableTransactions';
 import { meetsMoneyTarget } from '../convex/lib/money';
 
 // WhatsApp message template types
@@ -139,7 +139,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const donorStats = useMemo(() => {
     const stats = new Map<string, { ytd: number; lastGift: number }>();
     const year = new Date().getFullYear();
-    for (const t of filterReportableTransactions(transactions)) {
+    for (const t of filterIncomeAndExpenditure(transactions)) {
       if (t.type !== 'Income') continue;
       const keys = [t.donorId, t.donorName].filter(Boolean) as string[];
       const time = new Date(t.date).getTime();
@@ -169,7 +169,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       if (lastGift >= yearAgo) active++;
       if (!d.isGiftAidActive || lastGift < sixtyDaysAgo) needsReview++;
     }
-    const monthTotal = filterReportableTransactions(transactions)
+    const monthTotal = filterIncomeAndExpenditure(transactions)
       .filter(t => t.type === 'Income' && new Date(t.date).getMonth() === month && new Date(t.date).getFullYear() === year)
       .reduce((acc, t) => acc + t.amount, 0);
     return {
@@ -202,7 +202,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const selectedDonor = donors.find(d => d._id === selectedDonorId);
   const donorTransactions = transactions.filter(t => t.donorId === selectedDonorId || t.donorName === selectedDonor?.name)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const reportableDonorTransactions = filterReportableTransactions(donorTransactions);
+  const reportableDonorTransactions = filterIncomeAndExpenditure(donorTransactions);
     
   const lifetimeValue = sumReportableIncome(donorTransactions);
   const donorPledges = pledges.filter(p => p.donorId === selectedDonorId || p.donorName === selectedDonor?.name);

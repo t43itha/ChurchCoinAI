@@ -41,7 +41,7 @@ export const reportableTransactions = {
     },
     messages: {
       inline:
-        "Don't check `{{field}}` inline. Use isReportableTransaction / filterReportableTransactions / sumReportableIncome / sumReportableSigned from lib/reportableTransactions (they exclude voided rows AND cash banking deposits), or isVoidedTransaction for display-only void badges.",
+        "Don't check `{{field}}` inline. Use the ledgerEffect views from lib/reportableTransactions: filterIncomeAndExpenditure / sumReportableIncome for income and spending, sumFundBalance / filterFundBalanceRows for fund balances, hasBankEffect for bank reconciliation. They exclude voided rows AND cash banking deposits. Use isVoidedTransaction for display-only void badges.",
     },
     schema: [],
   },

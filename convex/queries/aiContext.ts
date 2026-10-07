@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { requireAuth, redactDonorFields } from "../lib/auth";
-import { filterReportableTransactions } from "../../lib/reportableTransactions";
+import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
 
 const AI_CONTEXT_MONTH_WINDOW = 24;
 const AI_CONTEXT_MAX_TRANSACTIONS = 5000;
@@ -45,7 +45,7 @@ export const getAIContext = query({
     const isTruncated = rawTransactions.length > AI_CONTEXT_MAX_TRANSACTIONS;
 
     transactions.push(
-      ...filterReportableTransactions(rawTransactions)
+      ...filterIncomeAndExpenditure(rawTransactions)
         .slice(0, AI_CONTEXT_MAX_TRANSACTIONS)
         .map((transaction) => redactDonorFields(user, transaction))
         .map((transaction) => ({

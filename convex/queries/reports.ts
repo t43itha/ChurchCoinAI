@@ -4,8 +4,9 @@ import { Id } from "../_generated/dataModel";
 import { requireCapability } from "../lib/auth";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
 import {
-  filterReportableTransactions,
+  filterIncomeAndExpenditure,
   isReportableIncomeTransaction,
+  sumFundBalance,
 } from "../../lib/reportableTransactions";
 import { resolveReportingMainCategory } from "../intelligence/categorization/categoryResolver";
 
@@ -381,7 +382,7 @@ export const monthlyReportData = query({
         )
       )
       .collect();
-    const reportableTransactions = filterReportableTransactions(allTransactions);
+    const reportableTransactions = filterIncomeAndExpenditure(allTransactions);
 
     // Get categories with mainCategory data
     const categories = await ctx.db
@@ -696,7 +697,7 @@ export const annualReportData = query({
         )
       )
       .collect();
-    const reportableTransactions = filterReportableTransactions(allTransactions);
+    const reportableTransactions = filterIncomeAndExpenditure(allTransactions);
 
     // Get previous year transactions for comparison
     const prevStartDate = `${args.year - 1}-01-01`;
@@ -716,7 +717,7 @@ export const annualReportData = query({
       )
       .collect();
     const prevYearReportableTransactions =
-      filterReportableTransactions(prevYearTransactions);
+      filterIncomeAndExpenditure(prevYearTransactions);
 
     // Get categories with mainCategory data
     const categories = await ctx.db
@@ -859,24 +860,12 @@ export const annualReportData = query({
       )
       .filter((q) => q.neq(q.field("isVoided"), true))
       .collect();
-    const allTimeReportableTransactions =
-      filterReportableTransactions(allTimeTransactions);
 
-    const fundBalances = funds.map((fund) => {
-      const fundTransactions = allTimeReportableTransactions.filter((t) => t.fundId === fund._id);
-      const income = fundTransactions
-        .filter((t) => t.type === "Income")
-        .reduce((sum, t) => sum + t.amount, 0);
-      const expenditure = fundTransactions
-        .filter((t) => t.type === "Expenditure")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      return {
-        fund: fund.name,
-        balance: income - expenditure,
-        type: fund.type,
-      };
-    });
+    const fundBalances = funds.map((fund) => ({
+      fund: fund.name,
+      balance: sumFundBalance(allTimeTransactions.filter((t) => t.fundId === fund._id)),
+      type: fund.type,
+    }));
 
     return {
       year: args.year,

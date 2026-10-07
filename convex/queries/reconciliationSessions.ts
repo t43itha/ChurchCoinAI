@@ -2,6 +2,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability, redactDonorFields } from "../lib/auth";
+import { hasBankEffect } from "../../lib/reportableTransactions";
 
 // All sessions for the organization, newest first, with fund names
 export const list = query({
@@ -47,7 +48,7 @@ export const workspace = query({
       .collect();
 
     // Candidates: anything in this fund dated on/before period end that is
-    // not voided and not attached to any session. Items BEFORE periodStart
+    // reaches the bank and is not attached to any session. Items BEFORE periodStart
     // are included deliberately — they are uncleared stragglers from earlier
     // periods (e.g. deposits in transit) that may clear in this statement.
     const fundTransactions = await ctx.db
@@ -58,7 +59,7 @@ export const workspace = query({
     const candidates = fundTransactions.filter(
       (t) =>
         t.date <= session.periodEnd &&
-        !t.isVoided &&
+        hasBankEffect(t) &&
         t.reconciliationSessionId == null
     );
 
