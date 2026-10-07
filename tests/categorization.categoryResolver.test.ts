@@ -108,3 +108,18 @@ describe("category resolver", () => {
     ]);
   });
 });
+
+describe("retired categories", () => {
+  const retiredCategories: CategoryLike[] = [
+    { name: "Bank Charges", mainCategory: "Admin & Governance", transactionType: "Expenditure" },
+    { name: "Choir robes", mainCategory: "Premises Costs", transactionType: "Expenditure", isRetired: true },
+  ];
+
+  it("omits a retired category from allowed categories", () => {
+    expect(allowedCategoriesForType(retiredCategories, "Expenditure").map((c) => c.name)).toEqual(["Bank Charges"]);
+  });
+
+  it("still resolves a retired category so existing rows validate", () => {
+    expect(resolveCategoryForTransaction("Choir robes", "Expenditure", retiredCategories)?.name).toBe("Choir robes");
+  });
+});

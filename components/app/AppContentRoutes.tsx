@@ -219,13 +219,14 @@ const SettingsRoute: React.FC<RouteContext> = ({
     <Settings
       currentUser={currentUser}
       users={users ?? []}
-      categories={categories.map((category) => category.name)}
+      categories={categories}
       funds={funds}
       churchDetails={churchDetails}
       pendingInvitations={(pendingInvitations ?? []) as Invitation[]}
       onUpdateUserRole={adminActions.handleUpdateUserRole}
       onAddCategory={fundCategoryActions.handleAddCategory}
       onRemoveCategory={fundCategoryActions.handleRemoveCategory}
+      onSetCategoryRetired={fundCategoryActions.handleSetCategoryRetired}
       onInviteUser={adminActions.handleInviteUser}
       onResendInvitation={adminActions.handleResendInvitation}
       onCancelInvitation={adminActions.handleCancelInvitation}

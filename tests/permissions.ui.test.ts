@@ -44,9 +44,9 @@ function renderSettings(role: UserRole, tab: string) {
       { _id: "fund", name: "General", type: "Unrestricted", balance: 0 },
       { _id: "campaign", name: "Roof", type: "Restricted", balance: 0, targetAmount: 100 },
     ],
-    categories: ["Tithes"], churchDetails: { name: "Test Church" },
+    categories: [{ _id: "tithes", name: "Tithes" }], churchDetails: { name: "Test Church" },
     pendingInvitations: [{ _id: "invite", organizationId: "org", email: "invite@example.invalid", role: "Guest", invitedBy: "user", status: "pending", createdAt: 0, expiresAt: Date.now() + 100000 }],
-    onUpdateUserRole: vi.fn(), onAddCategory: vi.fn(), onRemoveCategory: vi.fn(),
+    onUpdateUserRole: vi.fn(), onAddCategory: vi.fn(), onRemoveCategory: vi.fn(), onSetCategoryRetired: vi.fn(),
     onInviteUser: vi.fn(), onResendInvitation: vi.fn(), onCancelInvitation: vi.fn(),
     onUpdateChurchDetails: vi.fn(), onAddFund: vi.fn(), onUpdateFund: vi.fn(), onRemoveFund: vi.fn(),
   };

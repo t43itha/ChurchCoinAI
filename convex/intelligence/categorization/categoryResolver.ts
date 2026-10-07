@@ -20,7 +20,8 @@ export const allowedCategoriesForType = (
     .map((category, index) => ({ category, index }))
     .filter(
       ({ category }) =>
-        category.transactionType === transactionType || isMovementCategory(category)
+        !category.isRetired &&
+        (category.transactionType === transactionType || isMovementCategory(category))
     )
     .sort((a, b) => {
       const orderA = a.category.displayOrder ?? Number.MAX_SAFE_INTEGER;

@@ -136,10 +136,11 @@ export const requireCanonicalCategory = (
     transactionType?: "Income" | "Expenditure";
     displayOrder?: number;
     movementKind?: MovementKind;
+    isRetired?: boolean;
   }>,
   categoryName: string,
   transactionType: "Income" | "Expenditure",
-  { cashCollectionId }: { cashCollectionId?: string } = {}
+  { cashCollectionId, currentCategory }: { cashCollectionId?: string; currentCategory?: string } = {}
 ): { category: string; movementKind: MovementKind | undefined } => {
   const resolved = resolveCategoryForTransaction(
     categoryName,
@@ -150,6 +151,10 @@ export const requireCanonicalCategory = (
     throw new Error(
       `Choose a valid ${transactionType.toLowerCase()} category`
     );
+  }
+  // A row already in a retired category may be edited, but not moved into one.
+  if (resolved.isRetired === true && resolved.name !== currentCategory) {
+    throw new Error(`${resolved.name} is retired. Choose another category.`);
   }
   // Cash collections hold giving, and the collection editor rewrites its rows
   // as giving, so a movement mark there would be lost on the next save.

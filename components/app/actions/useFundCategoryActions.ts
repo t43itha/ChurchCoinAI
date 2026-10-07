@@ -19,6 +19,7 @@ export const useFundCategoryActions = ({
 
   const createCategory = useMutation(api.mutations.categories.create);
   const removeCategory = useMutation(api.mutations.categories.remove);
+  const setCategoryRetired = useMutation(api.mutations.categories.setRetired);
 
   const handleAddFund = async (fund: FundCreateInput) => {
     try {
@@ -103,11 +104,36 @@ export const useFundCategoryActions = ({
     }
   };
 
+  const handleSetCategoryRetired = async (categoryId: string, retired: boolean) => {
+    const category = categories?.find((item) => item._id === categoryId);
+    if (!category) {
+      showNotification("Error", "Category not found.");
+      return;
+    }
+
+    try {
+      await setCategoryRetired({ categoryId: categoryId as Id<"categories">, retired });
+      showNotification(
+        retired ? "Category retired" : "Category restored",
+        retired
+          ? `"${category.name}" is hidden from new entries and auto-categorisation.`
+          : `"${category.name}" is available again.`
+      );
+    } catch (error: any) {
+      console.error("Failed to update category:", error);
+      showNotification(
+        "Error",
+        error.message || "Failed to update category. Please try again."
+      );
+    }
+  };
+
   return {
     handleAddFund,
     handleUpdateFund,
     handleRemoveFund,
     handleAddCategory,
     handleRemoveCategory,
+    handleSetCategoryRetired,
   };
 };

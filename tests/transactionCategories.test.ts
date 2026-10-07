@@ -128,3 +128,14 @@ describe("movement categories before the first write", () => {
     expect(names).not.toContain("Loan");
   });
 });
+
+describe("retired categories", () => {
+  it("does not offer a retired category, but keeps rows that already use it valid", () => {
+    const categories = [
+      { name: "Bank Charges", transactionType: "Expenditure" as const },
+      { name: "Choir robes", transactionType: "Expenditure" as const, isRetired: true },
+    ];
+    expect(categoryNamesForTransactionTypes(categories, ["Expenditure"])).toEqual(["Bank Charges"]);
+    expect(effectiveCategories(categories).find((category) => category.name === "Choir robes")?.isRetired).toBe(true);
+  });
+});

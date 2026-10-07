@@ -203,3 +203,55 @@ describe("cash collection rows stay giving", () => {
     })).rejects.toThrow(message);
   });
 });
+
+describe("retired categories", () => {
+  const retired = (): Row => ({
+    _id: "choir", organizationId: "org", name: "Choir robes", transactionType: "Expenditure", isRetired: true, createdAt: 1,
+  });
+  const expenditure = (id: string, extra: Record<string, unknown> = {}) =>
+    row(id, { type: "Expenditure", category: "Utilities", ...extra });
+  const base = { date: "2026-10-01", description: "Robes", amount: 40, fundId: "fund" };
+
+  it("refuses to retire a built-in movement category", async () => {
+    const { ctx, get } = fixture({
+      categories: [{ _id: "loan", organizationId: "org", name: "Loan", movementKind: "loan", createdAt: 1 }],
+    });
+    await expect(invoke(categories.setRetired, ctx, { categoryId: "loan", retired: true }))
+      .rejects.toThrow("Built-in transfer, returned payment and loan categories can't be retired.");
+    expect(get("loan")?.isRetired).toBeUndefined();
+  });
+
+  it("retires and restores an ordinary category", async () => {
+    const { ctx, get } = fixture({ categories: [{ _id: "choir", organizationId: "org", name: "Choir robes", transactionType: "Expenditure", createdAt: 1 }] });
+    await invoke(categories.setRetired, ctx, { categoryId: "choir", retired: true });
+    expect(get("choir")?.isRetired).toBe(true);
+    await invoke(categories.setRetired, ctx, { categoryId: "choir", retired: false });
+    expect(get("choir")?.isRetired).toBeUndefined();
+  });
+
+  it("refuses to create a row in a retired category", async () => {
+    const { ctx } = fixture({ categories: [retired()] });
+    await expect(invoke(transactions.create, ctx, { ...base, type: "Expenditure", category: "Choir robes" }))
+      .rejects.toThrow(/is retired/);
+  });
+
+  it("refuses to move a row into a retired category", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx")] });
+    await expect(invoke(transactions.update, ctx, { transactionId: "tx", category: "Choir robes" }))
+      .rejects.toThrow(/is retired/);
+    expect(get("tx")?.category).toBe("Utilities");
+  });
+
+  it("lets a row already in a retired category change its description", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx", { category: "Choir robes" })] });
+    await invoke(transactions.update, ctx, { transactionId: "tx", description: "Choir gowns" });
+    expect(get("tx")).toMatchObject({ description: "Choir gowns", category: "Choir robes" });
+  });
+
+  it("refuses a bulk edit that sets a retired category", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx")] });
+    await expect(invoke(transactions.bulkUpdate, ctx, { transactionIds: ["tx"], updates: { category: "Choir robes" } }))
+      .rejects.toThrow(/is retired/);
+    expect(get("tx")?.category).toBe("Utilities");
+  });
+});

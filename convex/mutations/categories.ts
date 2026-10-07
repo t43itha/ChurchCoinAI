@@ -178,6 +178,29 @@ export const update = mutation({
   },
 });
 
+// Hide a category from pickers and the categoriser; rows already in it keep it
+export const setRetired = mutation({
+  args: {
+    categoryId: v.id("categories"),
+    retired: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireCapability(ctx, "categories.write");
+
+    const category = await ctx.db.get(args.categoryId);
+    if (!category || category.organizationId !== user.organizationId) {
+      throw new Error("Category not found");
+    }
+    if (category.movementKind) {
+      throw new Error("Built-in transfer, returned payment and loan categories can't be retired.");
+    }
+
+    await ctx.db.patch(args.categoryId, { isRetired: args.retired || undefined });
+
+    return null;
+  },
+});
+
 // Seed RCI categories for a new organization
 export const seedRCICategories = mutation({
   args: {},

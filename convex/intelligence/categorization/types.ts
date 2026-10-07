@@ -21,6 +21,7 @@ export type CategoryLike = {
   transactionType?: TransactionType;
   displayOrder?: number;
   movementKind?: MovementKind;
+  isRetired?: boolean;
 };
 
 export type FundLike = {

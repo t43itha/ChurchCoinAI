@@ -30,6 +30,7 @@ interface Category {
   _id: string;
   name: string;
   transactionType?: "Income" | "Expenditure";
+  isRetired?: boolean;
 }
 
 interface TransactionManagerProps {
@@ -52,6 +53,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'unreconciled', label: 'Pending' },
   { value: 'unlinked', label: 'Unlinked Income' },
   { value: 'awaiting-link', label: 'Waiting for other side' },
+  { value: 'needs-reclassifying', label: 'Needs reclassifying' },
 ] as const;
 type StatusFilter = (typeof STATUS_FILTER_OPTIONS)[number]['value'];
 const parseStatusFilter = (value: string | null): StatusFilter =>
@@ -141,8 +143,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
   const importCategories = useMemo(() => effectiveCategories(categories), [categories]);
-  const categoryNamesFor = (type?: TransactionType) =>
-    categoryNamesForTransactionTypes(importCategories, [type]);
+  // A row already in a retired category keeps it selectable so its select shows the saved value.
+  const categoryNamesFor = (type?: TransactionType, current?: string) => {
+    const names = categoryNamesForTransactionTypes(importCategories, [type]);
+    return current && !names.includes(current) ? [...names, current] : names;
+  };
   const fundNamesById = useMemo(
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
     [funds]
@@ -243,6 +248,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const canEdit = can(currentUser.role, "ledger.write");
   const editingLinked = editingTransaction !== null && ['linked', 'journal'].includes(linkState(editingTransaction).status);
 
+  const retiredCategoryNames = useMemo(
+    () => new Set(categories.filter((category) => category.isRetired).map((category) => category.name)),
+    [categories]
+  );
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       // Global Search
@@ -277,10 +287,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
       if (filterStatus === 'unlinked' && (t.type !== 'Income' || t.pledgeId)) return false;
       if (filterStatus === 'awaiting-link' && !isUnlinkedMovementLeg(t)) return false;
+      if (filterStatus === 'needs-reclassifying' && (isVoidedTransaction(t) || !retiredCategoryNames.has(t.category))) return false;
 
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
+  }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus, retiredCategoryNames]);
 
   // Summary strip totals for the current filtered view: money moving in and out
   // of funds (no voided rows, no cash banking deposits, so banked cash isn't
@@ -2302,7 +2313,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
-                                {categoryNamesFor(editingTransaction.type).map(c => <option key={c} value={c}>{c}</option>)}
+                                {categoryNamesFor(editingTransaction.type, editingTransaction.category).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
                         <div>
