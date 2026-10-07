@@ -297,6 +297,8 @@ function App() {
 
   return (
     <div className="flex bg-paper min-h-screen text-ink selection:bg-amber-light selection:text-amber-dark animate-enter relative">
+      {/* React hoists this into <head>; public pages keep the SEO title from index.html. */}
+      <title>Church Finance Management</title>
       <AppNotificationToast
         notification={notification}
         onClose={() => setNotification((prev) => ({ ...prev, visible: false }))}
