@@ -1,11 +1,12 @@
 import { can } from "../lib/permissions";
 import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
 import CashTakingsEntry from './CashTakingsEntry';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
@@ -16,11 +17,13 @@ import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/tr
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
-import { filterFundBalanceRows, isVoidedTransaction } from '../lib/reportableTransactions';
+import { filterFundBalanceRows, isJournalLeg, isUnlinkedMovementLeg, isVoidedTransaction, movementIdOf } from '../lib/reportableTransactions';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
+import LinkMovementModal from './transactions/LinkMovementModal';
+import JournalTransferModal from './transactions/JournalTransferModal';
 
 interface Category {
   _id: string;
@@ -39,6 +42,19 @@ interface TransactionManagerProps {
 
 // Pagination for large datasets
 const ITEMS_PER_PAGE = 100;
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Status' },
+  { value: 'active', label: 'Active' },
+  { value: 'voided', label: 'Voided' },
+  { value: 'reconciled', label: 'Reconciled' },
+  { value: 'unreconciled', label: 'Pending' },
+  { value: 'unlinked', label: 'Unlinked Income' },
+  { value: 'awaiting-link', label: 'Waiting for other side' },
+] as const;
+type StatusFilter = (typeof STATUS_FILTER_OPTIONS)[number]['value'];
+const parseStatusFilter = (value: string | null): StatusFilter =>
+  STATUS_FILTER_OPTIONS.find((option) => option.value === value)?.value ?? 'all';
 
 type BankSyncCursor = {
   dateFrom: string;
@@ -113,6 +129,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
   const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
+  const unlinkTransaction = useMutation(api.mutations.movements.unlink);
+  const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
 
   // Bank sync
   const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
@@ -176,6 +194,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');
   const [expandedGivingIds, setExpandedGivingIds] = useState<Set<string>>(new Set());
   const [editingGivingLedger, setEditingGivingLedger] = useState<InPersonGivingLedger | null>(null);
+  const [linkTarget, setLinkTarget] = useState<Transaction | null>(null);
+  const [showJournalTransfer, setShowJournalTransfer] = useState(false);
 
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -199,7 +219,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [filterYear, setFilterYear] = useState<number | null>(today.getFullYear());
   const [filterCategory, setFilterCategory] = useState('');
   const [filterFund, setFilterFund] = useState(initialFundId || '');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchParams] = useSearchParams();
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>(() => parseStatusFilter(searchParams.get('status')));
 
   // Date filter options (matching Reports page)
   const monthOptions = Array.from({ length: 12 }, (_, i) => ({
@@ -219,6 +240,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [initialFundId]);
 
   const canEdit = can(currentUser.role, "ledger.write");
+  const editingLinked = editingTransaction !== null && movementIdOf(editingTransaction) !== undefined;
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -253,6 +275,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (filterStatus === 'unreconciled' && t.isReconciled) return false;
       // Unlinked: Income transactions without a linked pledge (for manual intervention)
       if (filterStatus === 'unlinked' && (t.type !== 'Income' || t.pledgeId)) return false;
+      if (filterStatus === 'awaiting-link' && !isUnlinkedMovementLeg(t)) return false;
 
       return true;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -304,6 +327,27 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       notify("Error", "Failed to void transaction.");
     } finally {
       setIsVoiding(false);
+    }
+  };
+
+  const handleUnlinkTransaction = async (transaction: Transaction) => {
+    try {
+      await unlinkTransaction({ transactionId: transaction._id as Id<"transactions"> });
+      notify("Unlinked", "This transaction is no longer linked to its other side.");
+    } catch (error) {
+      notify("Error", error instanceof Error ? error.message : "Failed to unlink transaction.");
+    }
+  };
+
+  const handleDeleteJournalTransfer = async (transaction: Transaction) => {
+    const movementId = movementIdOf(transaction);
+    if (!movementId) return;
+    if (!window.confirm("Delete this transfer between funds? Both sides will be removed.")) return;
+    try {
+      await deleteJournalTransfer({ movementId: movementId as Id<"movements"> });
+      notify("Transfer Deleted", "Both sides of the transfer have been removed.");
+    } catch (error) {
+      notify("Error", error instanceof Error ? error.message : "Failed to delete transfer.");
     }
   };
 
@@ -1200,6 +1244,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </button>
                 )}
                 <button
+                    onClick={() => setShowJournalTransfer(true)}
+                    className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
+                >
+                    <ArrowLeftRight size={16} strokeWidth={1.9} className="text-grey-mid" />
+                    New transfer
+                </button>
+                <button
                     onClick={() => startTransition(() => setShowCashTakingsModal(true))}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-[18px] py-[11px] rounded-xl bg-ink text-white text-sm font-semibold hover:bg-charcoal transition-colors shadow-[0_6px_16px_-8px_rgba(28,25,23,0.5)]"
                 >
@@ -1327,13 +1378,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
           {/* Status Filter */}
           <div className="relative h-10">
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterStatus !== 'all' ? 'text-ink' : 'text-grey-dark'}`}>
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="voided">Voided</option>
-                  <option value="reconciled">Reconciled</option>
-                  <option value="unreconciled">Pending</option>
-                  <option value="unlinked">Unlinked Income</option>
+              <select value={filterStatus} onChange={(e) => setFilterStatus(parseStatusFilter(e.target.value))} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterStatus !== 'all' ? 'text-ink' : 'text-grey-dark'}`}>
+                  {STATUS_FILTER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
               </select>
               <Filter size={13} strokeWidth={1.9} className="absolute right-[11px] top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
           </div>
@@ -1397,6 +1445,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const fund = funds.find(f => f._id === t.fundId);
                   const isSelected = selectedIds.has(t._id);
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
+                  const movementId = movementIdOf(t);
+                  const isJournal = isJournalLeg(t);
 
                   return (
                     <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : isVoidedTransaction(t) ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
@@ -1416,6 +1466,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 title={t.voidReason ? `Void reason: ${t.voidReason}` : "Voided transaction"}
                               >
                                 Voided
+                              </span>
+                             )}
+                             {movementId && !isJournal && (
+                              <span className="px-1.5 py-0.5 rounded-[5px] border border-sage/30 bg-sage-light text-[9.5px] font-bold text-sage-dark uppercase tracking-[0.08em] shrink-0" title="Linked to its other side">
+                                Linked
+                              </span>
+                             )}
+                             {isJournal && (
+                              <span className="px-1.5 py-0.5 rounded-[5px] border border-ledger bg-paper text-[9.5px] font-bold text-grey-dark uppercase tracking-[0.08em] shrink-0" title="Transfer between funds made in ChurchCoin">
+                                Journal
                               </span>
                              )}
                           </div>
@@ -1439,7 +1499,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           {t.isReconciled ? <Check size={16} strokeWidth={2} className="mx-auto text-[#6b8e6b]" /> : <div className="w-2 h-2 rounded-full bg-[#d6d3cd] mx-auto"></div>}
                       </td>
                       <td className="px-4 py-3.5 text-center">
-                          {canEdit ? (
+                          {!isJournal && (canEdit ? (
                             isVoidedTransaction(t) ? (
                               <button
                                 type="button"
@@ -1461,9 +1521,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             )
                           ) : (
                             isVoidedTransaction(t) && <X size={14} className="mx-auto text-error/60" />
-                          )}
+                          ))}
                       </td>
-                      <td className="px-4 py-3.5 text-right opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                          {canEdit && isUnlinkedMovementLeg(t) && (
+                              <button type="button" onClick={() => setLinkTarget(t)} className="text-grey-mid hover:text-sage-dark transition-colors p-1" title="Link other side" aria-label="Link other side">
+                                  <Link2 size={15} strokeWidth={1.9} />
+                              </button>
+                          )}
+                          {canEdit && movementId && !isJournal && (
+                              <button type="button" onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-sage-dark transition-colors p-1" title="Unlink from its other side" aria-label="Unlink">
+                                  <Unlink size={15} strokeWidth={1.9} />
+                              </button>
+                          )}
+                          {isJournal && can(currentUser.role, "ledger.delete") && (
+                              <button type="button" onClick={() => handleDeleteJournalTransfer(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Delete transfer" aria-label="Delete transfer">
+                                  <Trash2 size={15} strokeWidth={1.9} />
+                              </button>
+                          )}
                           {canEdit && (
                               <button onClick={() => setEditingTransaction(t)} className="text-grey-mid hover:text-ink transition-colors p-1" title="Edit">
                                   <Edit2 size={15} strokeWidth={1.9} />
@@ -2199,7 +2274,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     type="number" 
                                     step="0.01"
                                     required
-                                    value={editingTransaction.amount} 
+                                    value={editingTransaction.amount}
+                                    disabled={editingLinked}
                                     onChange={(e) => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})}
                                     className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors font-mono"
                                 />
@@ -2223,6 +2299,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Category</label>
                             <select
                                 value={editingTransaction.category}
+                                disabled={editingLinked}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, category: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
@@ -2233,6 +2310,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Fund</label>
                              <select
                                 value={editingTransaction.fundId}
+                                disabled={editingLinked}
                                 onChange={(e) => setEditingTransaction({...editingTransaction, fundId: e.target.value})}
                                 className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden"
                             >
@@ -2246,6 +2324,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label>
                              <select
                                 value={editingTransaction.type}
+                                disabled={editingLinked}
                                 onChange={(e) => {
                                     const type = e.target.value as TransactionType;
                                     const categoryStillValid = categoryNamesFor(type).includes(editingTransaction.category);
@@ -2276,6 +2355,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             />
                         </div>
                     </div>
+                    {editingLinked && (
+                        <p className="text-xs text-grey-mid -mt-2">Linked to its other side. Unlink to change these.</p>
+                    )}
 
                     {editingTransaction.type === 'Income' && (
                         <div>
@@ -2340,6 +2422,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
             </div>
         </div>,
         document.body
+      )}
+
+      {linkTarget && canEdit && (
+        <LinkMovementModal
+          transaction={linkTarget}
+          transactions={transactions}
+          funds={funds}
+          onClose={() => setLinkTarget(null)}
+        />
+      )}
+
+      {showJournalTransfer && canEdit && (
+        <JournalTransferModal funds={funds} onClose={() => setShowJournalTransfer(false)} />
       )}
 
       {voidTarget && canEdit && createPortal(
