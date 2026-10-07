@@ -9,6 +9,11 @@ const funds = [{ _id: "restricted", name: "Building Fund", organizationId: "org"
 const row = { date: "2026-09-21", description: "Unrecognised reference", amount: 30, type: "Income" as const, category: "", fundId: "" };
 
 describe("small income defaults", () => {
+  it("replaces a retired category with Offerings", () => {
+    const withRetired = [...categories, { name: "Building Gift", transactionType: "Income" as const, isRetired: true }];
+    expect(applySmallIncomeDefaults({ ...row, category: "Building Gift", fundId: "general" }, withRetired, funds).category).toBe("Offerings");
+  });
+
   it.each([0.01, 29.99, 30])("defaults £%s without guessing Gift Aid", (amount) => {
     expect(applySmallIncomeDefaults({ ...row, amount }, categories, funds)).toMatchObject({ amount, category: "Offerings", fundId: "general" });
     expect(applySmallIncomeDefaults({ ...row, amount }, categories, funds)).not.toHaveProperty("isGiftAidEligible");

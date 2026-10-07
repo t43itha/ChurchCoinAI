@@ -520,7 +520,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           const suggestions = await categorizeTransactionsAI({
               descriptions,
               fundNames: funds.map(f => f.name),
-              categories: categoryNames
+              categories: categories.filter((category) => !category.isRetired).map((category) => category.name)
           });
           const updates = [];
           for (let i = 0; i < targetTransactions.length; i++) {
