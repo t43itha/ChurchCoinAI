@@ -1,3 +1,5 @@
+import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
+import type { CategoryLike } from "../convex/intelligence/categorization/types";
 import { roundMoney, sumMoney } from "../convex/lib/money";
 import type { MovementKind } from "./movementCategories";
 import { isUnlinkedMovementLeg, isVoidedTransaction, type LedgerRow } from "./reportableTransactions";
@@ -157,4 +159,125 @@ export function suggestImportPairs(
     if (partnerIsImport) pairs.set(partner._id, { source: "import", id: leg._id });
   }
   return pairs;
+}
+
+// A review row as the import screen holds it. Fields are optional because a
+// row is edited before it is complete; legs are only built from complete rows.
+export type PairingRow = {
+  reviewRowId?: string;
+  date?: string;
+  amount?: number;
+  type?: "Income" | "Expenditure";
+  fundId?: string;
+  category?: string;
+  pairWith?: PairSuggestion;
+  pairBasis?: string;
+};
+
+export function reviewLeg(row: {
+  reviewRowId: string;
+  date: string;
+  amount: number;
+  type: "Income" | "Expenditure";
+  fundId?: string;
+  movementKind?: MovementKind;
+}): MovementLeg {
+  return {
+    _id: row.reviewRowId,
+    date: row.date,
+    amount: row.amount,
+    type: row.type,
+    fundId: row.fundId ?? "",
+    movementKind: row.movementKind,
+  };
+}
+
+// What an accepted pair was agreed against. Changing any of these voids the pair.
+export function pairBasis(row: { amount?: number; type?: string; fundId?: string; category?: string }): string {
+  return [pence(row.amount ?? 0), row.type, row.fundId, row.category].join("|");
+}
+
+const movementLegFor = (row: PairingRow, categories: CategoryLike[]): MovementLeg | null => {
+  if (!row.reviewRowId || !row.date || row.amount === undefined || !row.type) return null;
+  const movementKind = resolveCategoryForTransaction(row.category ?? "", row.type, categories)?.movementKind;
+  if (movementKind !== "transfer" && movementKind !== "reversal") return null;
+  return reviewLeg({
+    reviewRowId: row.reviewRowId,
+    date: row.date,
+    amount: row.amount,
+    type: row.type,
+    fundId: row.fundId,
+    movementKind,
+  });
+};
+
+export function importMovementLegs(rows: PairingRow[], categories: CategoryLike[]): MovementLeg[] {
+  return rows.flatMap((row) => movementLegFor(row, categories) ?? []);
+}
+
+export function ledgerMovementLegs(transactions: MovementLeg[]): MovementLeg[] {
+  return transactions.filter((transaction) => isUnlinkedMovementLeg(transaction));
+}
+
+// An accepted pair counts only while its rows still match what was accepted,
+// and an import pair only while both rows point at each other.
+export function livePairs(rows: PairingRow[]): Map<string, PairSuggestion> {
+  const rowsById = new Map(rows.flatMap((row) => (row.reviewRowId ? [[row.reviewRowId, row] as const] : [])));
+  const live = new Map<string, PairSuggestion>();
+  for (const row of rows) {
+    const rowId = row.reviewRowId;
+    const pair = row.pairWith;
+    if (!rowId || !pair || row.pairBasis !== pairBasis(row)) continue;
+    if (pair.source === "import") {
+      const partner = rowsById.get(pair.id);
+      if (!partner || partner.pairWith?.id !== rowId || partner.pairBasis !== pairBasis(partner)) continue;
+    }
+    live.set(rowId, pair);
+  }
+  return live;
+}
+
+// Pairs to link at import, as [created id, partner id], after re-checking each
+// pair against current state. `unmatched` counts pairs that no longer match.
+// Pairs with a skipped duplicate on either side are left out silently.
+export function acceptedPairsToLink(input: {
+  rows: PairingRow[];
+  createdIds: Map<string, string>;
+  categories: CategoryLike[];
+  ledger: MovementLeg[];
+}): { links: Array<[string, string]>; unmatched: number } {
+  const legs = new Map(importMovementLegs(input.rows, input.categories).map((leg) => [leg._id, leg]));
+  const ledgerById = new Map(input.ledger.map((transaction) => [transaction._id, transaction]));
+  const used = new Set<string>();
+  const links: Array<[string, string]> = [];
+  let unmatched = 0;
+
+  for (const [rowId, pair] of livePairs(input.rows)) {
+    const leg = legs.get(rowId);
+    const createdId = input.createdIds.get(rowId);
+    if (!leg || !createdId) continue;
+
+    if (pair.source === "import") {
+      // Each import pair is handled once, from its smaller row id.
+      if (rowId > pair.id) continue;
+      const partnerLeg = legs.get(pair.id);
+      const partnerId = input.createdIds.get(pair.id);
+      if (!partnerLeg || !partnerId) continue;
+      if (linkCandidates(leg, [partnerLeg]).length === 0) {
+        unmatched += 1;
+        continue;
+      }
+      links.push([createdId, partnerId]);
+      continue;
+    }
+
+    const ledgerRow = ledgerById.get(pair.id);
+    if (!ledgerRow || used.has(pair.id) || !isUnlinkedMovementLeg(ledgerRow) || linkCandidates(leg, [ledgerRow]).length === 0) {
+      unmatched += 1;
+      continue;
+    }
+    used.add(pair.id);
+    links.push([createdId, pair.id]);
+  }
+  return { links, unmatched };
 }

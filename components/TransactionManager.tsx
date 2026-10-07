@@ -18,7 +18,7 @@ import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
-import { linkState } from '../lib/movementMatching';
+import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
@@ -73,6 +73,8 @@ type PendingReviewTransaction = Partial<Transaction> & {
   providerTransactionId?: string;
   bankConnectionId?: Id<"bankConnections">;
   importKey?: string;
+  pairWith?: PairSuggestion;
+  pairBasis?: string;
 };
 
 type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
@@ -134,6 +136,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
   const unlinkTransaction = useMutation(api.mutations.movements.unlink);
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
+  const linkTransactions = useMutation(api.mutations.movements.link);
 
   // Bank sync
   const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
@@ -159,6 +162,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
   const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(() => new Set());
 
   // Track original AI predictions for correction learning
   const categorizationRun = useRef(0);
@@ -776,6 +780,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     setNextBankSyncConnectionId(null);
     setBankSyncReviewConnectionId(null);
     setOriginalPredictions(new Map());
+    setDismissedPairs(new Set());
   };
 
   const removePendingTransactionAt = useCallback((removedIndex: number) => {
@@ -798,6 +803,68 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       currentIndex === index ? { ...transaction, ...updates } : transaction
     )));
   }, []);
+
+  const pairSuggestions = useMemo(
+    () => suggestImportPairs(importMovementLegs(pendingTransactions, importCategories), ledgerMovementLegs(allTransactions ?? [])),
+    [pendingTransactions, importCategories, allTransactions]
+  );
+  const activePairs = useMemo(() => livePairs(pendingTransactions), [pendingTransactions]);
+  const pendingById = useMemo(
+    () => new Map(pendingTransactions.flatMap((row) => (row.reviewRowId ? [[row.reviewRowId, row] as const] : []))),
+    [pendingTransactions]
+  );
+  const transactionsById = useMemo(
+    () => new Map((allTransactions ?? []).map((transaction) => [String(transaction._id), transaction] as const)),
+    [allTransactions]
+  );
+
+  const pairPartnerLabel = (pair: PairSuggestion) => {
+    const partner = pair.source === 'import' ? pendingById.get(pair.id) : transactionsById.get(pair.id);
+    if (!partner) return 'another transaction';
+    const [year, month, day] = (partner.date ?? '').split('-');
+    return `${partner.description || 'No description'}, ${day}/${month}/${year}`;
+  };
+
+  const acceptPair = (rowId: string, pair: PairSuggestion) => {
+    setPendingTransactions((current) => current.map((row) => {
+      if (row.reviewRowId === rowId) return { ...row, pairWith: pair, pairBasis: pairBasis(row) };
+      if (pair.source === 'import' && row.reviewRowId === pair.id) {
+        return { ...row, pairWith: { source: 'import', id: rowId }, pairBasis: pairBasis(row) };
+      }
+      return row;
+    }));
+  };
+
+  const undoPair = (rowId: string, pair: PairSuggestion) => {
+    setPendingTransactions((current) => current.map((row) => {
+      const isThisRow = row.reviewRowId === rowId;
+      const isPartner = pair.source === 'import' && row.reviewRowId === pair.id && row.pairWith?.id === rowId;
+      return isThisRow || isPartner ? { ...row, pairWith: undefined, pairBasis: undefined } : row;
+    }));
+  };
+
+  const renderPairing = (row: PendingReviewTransaction) => {
+    const rowId = row.reviewRowId ?? '';
+    const active = activePairs.get(rowId);
+    if (active) {
+      return (
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-dark">
+          <LinkIcon size={12} className="shrink-0" />
+          <span>Paired with {pairPartnerLabel(active)}</span>
+          <button type="button" onClick={() => undoPair(rowId, active)} className="font-bold underline hover:text-ink">Undo</button>
+        </p>
+      );
+    }
+    const suggestion = pairSuggestions.get(rowId);
+    if (!suggestion || dismissedPairs.has(rowId)) return null;
+    return (
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-grey-dark">
+        <span>Other side: {pairPartnerLabel(suggestion)}</span>
+        <button type="button" aria-label="Accept other side" onClick={() => acceptPair(rowId, suggestion)} className="font-bold text-sage-dark underline hover:text-ink">Accept</button>
+        <button type="button" aria-label="Dismiss other side" onClick={() => setDismissedPairs((current) => new Set(current).add(rowId))} className="font-bold text-grey-mid underline hover:text-ink">Dismiss</button>
+      </p>
+    );
+  };
 
   const handleSyncedBankTransactions = (
     syncedTransactions: Array<{
@@ -1119,6 +1186,36 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     // Don't block import if correction recording fails
                 }
             }
+        }
+
+        // Accepted pairs are re-checked against current state, then linked.
+        const createdIds = new Map<string, string>();
+        importRows.forEach((row, index) => {
+            const id = result?.ids[index];
+            if (row.reviewRowId && id) createdIds.set(row.reviewRowId, id);
+        });
+        const { links, unmatched } = acceptedPairsToLink({
+            rows: importRows,
+            createdIds,
+            categories: importCategories,
+            ledger: allTransactions ?? [],
+        });
+        let linkedCount = 0;
+        let unlinkedCount = unmatched;
+        for (const [firstId, secondId] of links) {
+            try {
+                await linkTransactions({ transactionIds: [firstId as Id<"transactions">, secondId as Id<"transactions">] });
+                linkedCount += 1;
+            } catch (linkError) {
+                console.warn('Failed to link import pair:', linkError);
+                unlinkedCount += 1;
+            }
+        }
+        if (linkedCount > 0) {
+            notify("Pairs Linked", `${linkedCount} pair${linkedCount === 1 ? ' was' : 's were'} linked.`);
+        }
+        if (unlinkedCount > 0) {
+            notify("Warning", `Imported, but ${unlinkedCount} pair${unlinkedCount === 1 ? " couldn't" : "s couldn't"} be linked. Link them from Transactions.`);
         }
 
         // Notify about completed pledges (if any were manually linked)
@@ -2602,6 +2699,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 {transaction.description || 'No description'}
                               </p>
                               {transaction.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
+                              {renderPairing(transaction)}
                               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <label className="min-w-0">
                                   <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Category</span>
@@ -2678,6 +2776,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     <td className="py-3 font-medium text-ink text-sm overflow-hidden">
                                       <div className="truncate" title={t.description}>{t.description}</div>
                                       {t.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
+                                      {renderPairing(t)}
                                     </td>
                                     <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
                                     <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
