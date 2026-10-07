@@ -2,7 +2,7 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability, redactDonorFields } from "../lib/auth";
 import {
-  filterReportableTransactions,
+  filterIncomeAndExpenditure,
   isReportableIncomeTransaction,
 } from "../../lib/reportableTransactions";
 
@@ -85,7 +85,7 @@ export const getWithHistory = query({
       (transaction) => transaction.organizationId === user.organizationId
     );
 
-    const reportableTransactions = filterReportableTransactions(orgTransactions);
+    const reportableTransactions = filterIncomeAndExpenditure(orgTransactions);
 
     // Calculate total giving
     const totalGiving = reportableTransactions

@@ -16,8 +16,8 @@ import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/tr
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
-import { isVoidedTransaction, sumReportableIncome, sumReportableSigned } from '../lib/reportableTransactions';
-import { roundMoney } from '../convex/lib/money';
+import { filterFundBalanceRows, isVoidedTransaction } from '../lib/reportableTransactions';
+import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
@@ -258,16 +258,18 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions, debouncedSearchTerm, filterMonth, filterYear, filterCategory, filterFund, filterStatus]);
 
-  // Summary strip totals for the current filtered view. Totals use the
-  // reportable rule (no voided rows, no cash banking deposits) so banked cash
-  // isn't counted twice; the review count covers every non-voided row.
+  // Summary strip totals for the current filtered view: money moving in and out
+  // of funds (no voided rows, no cash banking deposits, so banked cash isn't
+  // counted twice). In minus out is the net. The review count covers every
+  // non-voided row.
   const stripTotals = useMemo(() => {
-    const totalIn = sumReportableIncome(filteredTransactions);
-    const net = sumReportableSigned(filteredTransactions);
+    const fundRows = filterFundBalanceRows(filteredTransactions);
+    const totalIn = sumMoney(fundRows.filter((t) => t.type === TransactionType.INCOME), (t) => t.amount);
+    const totalOut = sumMoney(fundRows.filter((t) => t.type === TransactionType.EXPENDITURE), (t) => t.amount);
     const needsReview = filteredTransactions.filter(
       (t) => !isVoidedTransaction(t) && (!t.isReconciled || !t.category)
     ).length;
-    return { totalIn, totalOut: roundMoney(totalIn - net), net, needsReview };
+    return { totalIn, totalOut, net: roundMoney(totalIn - totalOut), needsReview };
   }, [filteredTransactions]);
 
   const stripPeriodLabel =

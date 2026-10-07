@@ -1,7 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth, requireCapability, redactDonorFields } from "../lib/auth";
-import { filterReportableTransactions } from "../../lib/reportableTransactions";
+import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
 
 // List all cash collections for the organization
 export const list = query({
@@ -73,7 +73,7 @@ export const getWithTransactions = query({
         q.eq("cashCollectionId", args.cashCollectionId)
       )
       .collect();
-    const activeTransactions = filterReportableTransactions(
+    const activeTransactions = filterIncomeAndExpenditure(
       transactions.filter(
         (transaction) => transaction.organizationId === user.organizationId
       )

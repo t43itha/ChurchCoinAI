@@ -5,6 +5,7 @@ import {
   computeDifferencePence,
   canCompleteSession,
 } from "../../lib/reconciliation";
+import { hasBankEffect } from "../../lib/reportableTransactions";
 import { getCompletedReconciliationLock, patchTransaction } from "../lib/transactionWrites";
 
 // Start a new statement reconciliation session for a fund/period
@@ -133,7 +134,7 @@ export const setCleared = mutation({
       if (transaction.fundId !== session.fundId) {
         throw new Error("Transaction belongs to a different fund");
       }
-      if (transaction.isVoided) {
+      if (!hasBankEffect(transaction)) {
         throw new Error("Voided transactions cannot be reconciled");
       }
       await patchTransaction(ctx, args.transactionId, {
@@ -176,7 +177,7 @@ export const complete = mutation({
       .collect();
 
     const invalid = cleared.filter(
-      (t) => t.isVoided || t.fundId !== session.fundId
+      (t) => !hasBankEffect(t) || t.fundId !== session.fundId
     );
     if (invalid.length > 0) {
       throw new Error(

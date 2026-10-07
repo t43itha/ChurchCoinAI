@@ -54,7 +54,6 @@ export default tseslint.config(
       "convex/schema.ts",
       "convex/mutations/**",
       "convex/queries/cashBankingReconciliations.ts",
-      "convex/queries/reconciliationSessions.ts",
       "tests/**",
     ],
     plugins: { churchcoin },
@@ -67,7 +66,7 @@ export default tseslint.config(
             {
               group: ["**/voidedTransactions"],
               message:
-                "Void-only helpers keep cash banking deposits, so totals double count. Use filterReportableTransactions / sumReportableIncome / sumReportableSigned from lib/reportableTransactions.",
+                "Void-only helpers keep cash banking deposits, so totals double count. Use filterIncomeAndExpenditure / sumReportableIncome / sumFundBalance from lib/reportableTransactions.",
             },
           ],
         },

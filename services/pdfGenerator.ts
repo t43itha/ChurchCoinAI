@@ -1,6 +1,6 @@
 
 import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup } from "../types";
-import { filterReportableTransactions } from "../lib/reportableTransactions";
+import { filterIncomeAndExpenditure } from "../lib/reportableTransactions";
 
 // Escape HTML entities to prevent injection when rendering user-supplied data
 const escapeHtml = (value?: string) =>
@@ -52,7 +52,7 @@ export const generateScheduleHTML = (
     : 'All Time';
 
   // Filter transactions for this donor and sort by date (newest first)
-  const donorTransactions = filterReportableTransactions(transactions || [])
+  const donorTransactions = filterIncomeAndExpenditure(transactions || [])
     .filter(t => t.type === 'Income')
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

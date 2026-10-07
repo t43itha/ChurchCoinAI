@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  filterReportableTransactions,
-  isCashBankingDeposit,
+  filterFundBalanceRows,
+  filterIncomeAndExpenditure,
+  hasBankEffect,
   isReportableIncomeTransaction,
+  ledgerEffect,
+  sumFundBalance,
   sumReportableIncome,
-  sumReportableSigned,
 } from "../lib/reportableTransactions";
 
 const transactions = [
@@ -25,14 +27,48 @@ const transactions = [
   { _id: "voided-income", amount: 50, type: "Income" as const, isVoided: true },
 ];
 
-describe("reportable transaction helpers", () => {
-  it("identifies cash/cheque banking deposit transactions", () => {
-    expect(isCashBankingDeposit(transactions[1])).toBe(true);
-    expect(isCashBankingDeposit(transactions[0])).toBe(false);
-    expect(isCashBankingDeposit(transactions[2])).toBe(false);
+describe("ledgerEffect", () => {
+  it.each([
+    {
+      row: { amount: 50, type: "Income" as const, isVoided: true },
+      effect: { bank: false, fund: false, activity: "none" },
+    },
+    {
+      row: { amount: 50, type: "Expenditure" as const, isVoided: true },
+      effect: { bank: false, fund: false, activity: "none" },
+    },
+    {
+      row: { amount: 100, type: "Income" as const, cashBankingRole: "bank_deposit" as const },
+      effect: { bank: true, fund: false, activity: "none" },
+    },
+    {
+      row: { amount: 100, type: "Income" as const, cashBankingRole: "bank_deposit" as const, isVoided: true },
+      effect: { bank: false, fund: false, activity: "none" },
+    },
+    {
+      // Older reopen code left the deposit tag on rows later edited to expenditure.
+      row: { amount: 100, type: "Expenditure" as const, cashBankingRole: "bank_deposit" as const },
+      effect: { bank: true, fund: true, activity: "expenditure" },
+    },
+    {
+      row: { amount: 100, type: "Income" as const, cashBankingRole: "source_giving" as const },
+      effect: { bank: true, fund: true, activity: "income" },
+    },
+    {
+      row: { amount: 75, type: "Income" as const },
+      effect: { bank: true, fund: true, activity: "income" },
+    },
+    {
+      row: { amount: 20, type: "Expenditure" as const },
+      effect: { bank: true, fund: true, activity: "expenditure" },
+    },
+  ])("classifies $row as $effect", ({ row, effect }) => {
+    expect(ledgerEffect(row)).toEqual(effect);
   });
+});
 
-  it("keeps original source giving reportable and excludes linked bank deposits", () => {
+describe("ledger effect views", () => {
+  it("keeps original source giving as income and excludes linked bank deposits", () => {
     expect(isReportableIncomeTransaction(transactions[0])).toBe(true);
     expect(isReportableIncomeTransaction(transactions[1])).toBe(false);
     expect(isReportableIncomeTransaction(transactions[2])).toBe(true);
@@ -40,15 +76,27 @@ describe("reportable transaction helpers", () => {
     expect(isReportableIncomeTransaction(transactions[4])).toBe(false);
   });
 
-  it("filters active reportable transactions while keeping expenditure", () => {
-    expect(filterReportableTransactions(transactions).map((t) => t._id)).toEqual(
+  it("filters active income and expenditure while dropping banking deposits", () => {
+    expect(filterIncomeAndExpenditure(transactions).map((t) => t._id)).toEqual(
       ["source-cash", "direct-bank-gift", "expense"]
     );
   });
 
-  it("sums reportable income and expenditure without double-counting banking deposits", () => {
+  it("keeps the same rows for fund balances", () => {
+    expect(filterFundBalanceRows(transactions).map((t) => t._id)).toEqual(
+      ["source-cash", "direct-bank-gift", "expense"]
+    );
+  });
+
+  it("keeps banking deposits but not voided rows for bank reconciliation", () => {
+    expect(transactions.filter(hasBankEffect).map((t) => t._id)).toEqual(
+      ["source-cash", "bank-deposit", "direct-bank-gift", "expense"]
+    );
+  });
+
+  it("sums income and fund balances without double-counting banking deposits", () => {
     expect(sumReportableIncome(transactions)).toBe(175);
-    expect(sumReportableSigned(transactions)).toBe(155);
+    expect(sumFundBalance(transactions)).toBe(155);
   });
 
   it("rounds accumulated report totals to the nearest penny", () => {
@@ -59,6 +107,6 @@ describe("reportable transaction helpers", () => {
     ];
 
     expect(sumReportableIncome(fractionalTransactions)).toBe(0.3);
-    expect(sumReportableSigned(fractionalTransactions)).toBe(0.2);
+    expect(sumFundBalance(fractionalTransactions)).toBe(0.2);
   });
 });
