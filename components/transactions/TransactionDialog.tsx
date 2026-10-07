@@ -33,6 +33,10 @@ export default function TransactionDialog({ title, onClose, children }: Transact
   );
 }
 
+export const FORM_LABEL_CLASS = "block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1";
+export const FORM_INPUT_CLASS =
+  "w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors";
+
 type DialogFooterProps = {
   submitLabel: string;
   submitDisabled: boolean;

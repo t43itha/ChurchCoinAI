@@ -6,21 +6,22 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { meetsMoneyTarget } from "../../convex/lib/money";
 import type { MovementKind } from "../../lib/movementCategories";
 import { linkCandidates, linkState, MOVEMENT_LABELS } from "../../lib/movementMatching";
+import { formatUkDate } from "../../lib/dateUtils";
 import { notify } from "../../lib/notifications";
 import type { Fund, Transaction } from "../../types";
-import TransactionDialog, { DialogFooter } from "./TransactionDialog";
+import TransactionDialog, {
+  DialogFooter,
+  FORM_INPUT_CLASS as INPUT_CLASS,
+  FORM_LABEL_CLASS as LABEL_CLASS,
+} from "./TransactionDialog";
 
 type LinkArgs = FunctionArgs<typeof api.mutations.movements.link>;
 type Loan = FunctionReturnType<typeof api.queries.movements.listLoans>[number];
 
-const LABEL_CLASS = "block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1";
-const INPUT_CLASS =
-  "w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors";
 const CHOICE_CLASS =
   "flex items-start gap-3 p-3 rounded-sm border border-ledger cursor-pointer hover:bg-paper transition-colors";
 
 const money = (amount: number) => `£${amount.toFixed(2)}`;
-const formatUkDate = (date: string) => new Date(`${date}T00:00:00`).toLocaleDateString("en-GB");
 const fundName = (funds: Fund[], fundId: string) =>
   funds.find((fund) => fund._id === fundId)?.name ?? "Unknown fund";
 

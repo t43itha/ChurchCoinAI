@@ -8,6 +8,10 @@ export function getWeekEndingSunday(dateInput: string | Date): string {
   return formatLocalDateInputValue(sunday);
 }
 
+export function formatUkDate(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-GB");
+}
+
 export function formatLocalDateInputValue(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");

@@ -1,11 +1,13 @@
-import { createElement, type ReactElement } from "react";
+import { createElement, type ComponentProps, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { getFunctionName } from "convex/server";
 import { describe, expect, it, vi } from "vitest";
+import Loans, { EditLoanPanel } from "../components/Loans";
 import TransactionManager from "../components/TransactionManager";
 import { LinkMovementPanel } from "../components/transactions/LinkMovementModal";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
+import type { Id } from "../convex/_generated/dataModel";
 import type { UserRole } from "../lib/permissions";
 import type { Fund, Transaction } from "../types";
 
@@ -119,5 +121,80 @@ describe("LinkMovementPanel", () => {
     const html = panel([leg]);
     expect(html).toContain("No unlinked transfer between funds of £300.00 going the other way within 14 days.");
     expect(html).toContain("Mark the other side with the same category first.");
+  });
+});
+
+type Loan = ComponentProps<typeof EditLoanPanel>["loan"];
+const movementId = (id: string) => id as Id<"movements">;
+const transactionId = (id: string) => id as Id<"transactions">;
+const loan = (overrides: Partial<Loan>): Loan => ({
+  _id: movementId("loan"),
+  lender: "Lender",
+  note: undefined,
+  dueDate: undefined,
+  createdAt: 1,
+  borrowed: 0,
+  repaid: 0,
+  outstanding: 0,
+  isRepaid: false,
+  legs: [],
+  ...overrides,
+});
+const loans: Loan[] = [
+  loan({
+    _id: movementId("alex"),
+    lender: "Alex Sackey",
+    borrowed: 1852,
+    repaid: 1000,
+    outstanding: 852,
+    legs: [
+      { _id: transactionId("leg-in"), date: "2026-08-03", description: "ALEX SACKEY PAYE LOAN", amount: 1852, type: "Income", isVoided: false },
+      { _id: transactionId("leg-out"), date: "2026-09-01", description: "Repayment", amount: 1000, type: "Expenditure", isVoided: true },
+    ],
+  }),
+  loan({ _id: movementId("bank"), lender: "Church Bank", dueDate: "2020-01-01", borrowed: 5000, repaid: 1000, outstanding: 4000 }),
+  loan({ _id: movementId("diocese"), lender: "Diocese Fund", borrowed: 500, repaid: 500, outstanding: 0, isRepaid: true }),
+];
+
+function renderLoans(role: UserRole, data: Loan[]) {
+  queryMock.mockImplementation(() => data);
+  return render(createElement(Loans, { currentUser: user(role) }), "/loans");
+}
+
+describe("Loans page", () => {
+  it("shows each loan with its amounts, status and the totals", () => {
+    const html = renderLoans("Finance Team", loans);
+    for (const text of [
+      "Alex Sackey", "£1,852.00", "£1,000.00", "£852.00",
+      "Church Bank", "£5,000.00", "£4,000.00",
+      "Diocese Fund", "£500.00",
+    ]) expect(html).toContain(text);
+    expect(html).toContain(">Open</span>");
+    expect(html).toContain(">Overdue</span>");
+    expect(html).toContain(">Repaid</span>");
+    expect(html).toContain("<tfoot>");
+    for (const total of ["£7,352.00", "£2,500.00", "£4,852.00"]) expect(html).toContain(total);
+  });
+
+  it("explains how to record a loan when there are none", () => {
+    const html = renderLoans("Finance Team", []);
+    expect(html).toContain("No loans recorded yet.");
+    expect(html).toContain("Mark the money received as Loan in Transactions, then choose Link other side.");
+  });
+
+  it("shows the server-redacted lender to a Guest without an edit control", () => {
+    const redacted = loans.map((item) => ({ ...item, lender: "Lender hidden" }));
+    const html = renderLoans("Guest", redacted);
+    expect(html).toContain("Lender hidden");
+    expect(html).not.toContain("Alex Sackey");
+    expect(html).not.toContain('aria-label="Edit loan"');
+    expect(renderLoans("Finance Team", loans)).toContain('aria-label="Edit loan"');
+  });
+
+  it("pre-fills the edit form with the loan's details", () => {
+    const html = render(createElement(EditLoanPanel, { loan: loans[1], isSaving: false, onSave: vi.fn(), onClose: vi.fn() }));
+    expect(html).toContain('value="Church Bank"');
+    expect(html).toContain('value="2020-01-01"');
+    expect(html).toContain(">Save<");
   });
 });
