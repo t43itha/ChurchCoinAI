@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { MutationCtx } from "../convex/_generated/server";
 import * as transactions from "../convex/mutations/transactions";
 import * as categories from "../convex/mutations/categories";
+import * as movementMutations from "../convex/mutations/movements";
+import * as movementQueries from "../convex/queries/movements";
+import { sumFundBalance, type LedgerRow } from "../lib/reportableTransactions";
+import type { UserRole } from "../lib/permissions";
 
 type Row = { _id: string } & Record<string, unknown>;
 type FilterBuilder = typeof filterBuilder;
@@ -20,9 +24,9 @@ const builtInCategories = (): Row[] => [
 ];
 
 // Run real handlers against an indexed, mutable in-memory database.
-function fixture(extra: Record<string, Row[]> = {}) {
+function fixture(extra: Record<string, Row[]> = {}, role: UserRole = "Admin") {
   const records: Record<string, Row[]> = {
-    users: [{ _id: "user", clerkId: "clerk-user", organizationId: "org", role: "Admin" }],
+    users: [{ _id: "user", clerkId: "clerk-user", organizationId: "org", role }],
     organizations: [{ _id: "org", accessMode: "legacy" }],
     funds: [
       { _id: "general", organizationId: "org", name: "General Fund" },
@@ -270,5 +274,237 @@ describe("renaming a movement category", () => {
     expect(get("cat-reversal")?.name).toBe("Bounced payment");
     expect(get("ret-in")).toMatchObject({ category: "Bounced payment", movementId: "m1", movementKind: "reversal" });
     expect(get("ret-out")).toMatchObject({ category: "Bounced payment", movementId: "m1", movementKind: "reversal" });
+  });
+});
+
+const unlinkedTransfer = (id: string, extra: Record<string, unknown> = {}): Row =>
+  leg(id, { category: "Transfer between funds", movementKind: "transfer", ...extra });
+const unlinkedLoan = (id: string, type: "Income" | "Expenditure", amount: number, extra: Record<string, unknown> = {}): Row =>
+  leg(id, { type, amount, category: "Loan", movementKind: "loan", ...extra });
+const unlinkedPair = (): Row[] => [
+  unlinkedTransfer("out", { type: "Expenditure", amount: 250, fundId: "general" }),
+  unlinkedTransfer("in", { type: "Income", amount: 250, fundId: "building", date: "2026-10-02" }),
+];
+
+// A refused link must leave both the movements and the transactions untouched.
+async function expectLinkRefused(extra: Record<string, Row[]>, args: Record<string, unknown>, message: RegExp) {
+  const { ctx, records } = fixture(extra);
+  const before = structuredClone({ movements: records.movements, transactions: records.transactions });
+  await expect(invoke(movementMutations.link, ctx, args)).rejects.toThrow(message);
+  expect({ movements: records.movements, transactions: records.transactions }).toEqual(before);
+}
+
+describe("linking movement legs", () => {
+  it("links a transfer pair into one movement", async () => {
+    const { ctx, get, records } = fixture({ transactions: unlinkedPair() });
+    const movementId = await invoke(movementMutations.link, ctx, { transactionIds: ["out", "in"] });
+
+    expect(records.movements).toEqual([
+      expect.objectContaining({ _id: movementId, organizationId: "org", kind: "transfer", createdBy: "user" }),
+    ]);
+    expect(get("out")?.movementId).toBe(movementId);
+    expect(get("in")?.movementId).toBe(movementId);
+  });
+
+  it("refuses a transfer between the same fund", async () => {
+    await expectLinkRefused(
+      {
+        transactions: [
+          unlinkedTransfer("out", { type: "Expenditure", amount: 250, fundId: "general" }),
+          unlinkedTransfer("in", { type: "Income", amount: 250, fundId: "general" }),
+        ],
+      },
+      { transactionIds: ["out", "in"] },
+      /different funds/
+    );
+  });
+
+  it("refuses unequal amounts and names both", async () => {
+    await expectLinkRefused(
+      {
+        transactions: [
+          unlinkedTransfer("out", { type: "Expenditure", amount: 250, fundId: "general" }),
+          unlinkedTransfer("in", { type: "Income", amount: 249.99, fundId: "building" }),
+        ],
+      },
+      { transactionIds: ["out", "in"] },
+      /£249\.99.*£250\.00/
+    );
+  });
+
+  it("refuses a leg that is already linked", async () => {
+    await expectLinkRefused(
+      {
+        movements: [movement("m1", "transfer")],
+        transactions: [
+          transferLeg("out", { type: "Expenditure", amount: 250, fundId: "general" }),
+          unlinkedTransfer("in", { type: "Income", amount: 250, fundId: "building" }),
+        ],
+      },
+      { transactionIds: ["out", "in"] },
+      /already linked/
+    );
+  });
+
+  it("refuses a leg from another organisation", async () => {
+    await expectLinkRefused(
+      {
+        transactions: [
+          unlinkedTransfer("out", { type: "Expenditure", amount: 250, fundId: "general" }),
+          unlinkedTransfer("in", { type: "Income", amount: 250, fundId: "building", organizationId: "other-org" }),
+        ],
+      },
+      { transactionIds: ["out", "in"] },
+      /Transaction not found/
+    );
+  });
+
+  it("refuses a voided leg", async () => {
+    await expectLinkRefused(
+      {
+        transactions: [
+          unlinkedTransfer("out", { type: "Expenditure", amount: 250, fundId: "general" }),
+          unlinkedTransfer("in", { type: "Income", amount: 250, fundId: "building", isVoided: true }),
+        ],
+      },
+      { transactionIds: ["out", "in"] },
+      /can't be linked/
+    );
+  });
+
+  it("asks for the lender before recording a loan", async () => {
+    await expectLinkRefused(
+      { transactions: [unlinkedLoan("received", "Income", 1852)] },
+      { transactionIds: ["received"] },
+      /Enter who lent the money/
+    );
+  });
+
+  it("records a loan with its lender, then links repayments up to the amount received", async () => {
+    const { ctx, get, records } = fixture({
+      transactions: [
+        unlinkedLoan("received", "Income", 1852, { date: "2026-08-03" }),
+        unlinkedLoan("repay-1", "Expenditure", 400),
+        unlinkedLoan("repay-2", "Expenditure", 1500),
+      ],
+    });
+    const loanId = await invoke(movementMutations.link, ctx, {
+      transactionIds: ["received"], lender: "Alex Sackey", dueDate: "2026-12-31",
+    });
+
+    expect(records.movements).toEqual([
+      expect.objectContaining({ _id: loanId, kind: "loan", lender: "Alex Sackey", dueDate: "2026-12-31" }),
+    ]);
+    expect(get("received")?.movementId).toBe(loanId);
+
+    await invoke(movementMutations.link, ctx, { transactionIds: ["repay-1"], movementId: loanId });
+    expect(get("repay-1")?.movementId).toBe(loanId);
+
+    await expect(invoke(movementMutations.link, ctx, { transactionIds: ["repay-2"], movementId: loanId }))
+      .rejects.toThrow(/can't be more than the amount received/);
+    expect(get("repay-2")?.movementId).toBeUndefined();
+  });
+});
+
+describe("unlinking a movement leg", () => {
+  it("clears both sides of a transfer and deletes the movement", async () => {
+    const { ctx, get } = fixture({ movements: [movement("m1", "transfer")], transactions: transferPair() });
+    await invoke(movementMutations.unlink, ctx, { transactionId: "out" });
+
+    expect(get("m1")).toBeNull();
+    expect(get("out")?.movementId).toBeUndefined();
+    expect(get("in")?.movementId).toBeUndefined();
+  });
+});
+
+describe("journal transfers", () => {
+  it("refuses the same fund on both sides", async () => {
+    const { ctx, records } = fixture();
+    await expect(invoke(movementMutations.createJournalTransfer, ctx, {
+      fromFundId: "general", toFundId: "general", amount: 150, date: "2026-10-03",
+    })).rejects.toThrow("Choose two different funds.");
+
+    expect(records.movements).toHaveLength(0);
+    expect(records.transactions).toHaveLength(0);
+  });
+
+  it("writes a linked pair of journal legs that move the fund balances", async () => {
+    const { ctx, records } = fixture();
+    const movementId = await invoke(movementMutations.createJournalTransfer, ctx, {
+      fromFundId: "general", toFundId: "building", amount: 150, date: "2026-10-03", note: "Building project",
+    });
+    const legs = records.transactions;
+    const inFund = (fundId: string) => legs.filter((leg) => leg.fundId === fundId) as unknown as LedgerRow[];
+
+    expect(records.movements).toEqual([expect.objectContaining({ _id: movementId, kind: "transfer" })]);
+    expect(legs).toHaveLength(2);
+    expect(legs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "Expenditure", fundId: "general", amount: 150, movementId, isJournal: true,
+        movementKind: "transfer", category: "Transfer between funds", description: "Transfer to Building Fund",
+      }),
+      expect.objectContaining({
+        type: "Income", fundId: "building", amount: 150, movementId, isJournal: true,
+        movementKind: "transfer", description: "Transfer from General Fund",
+      }),
+    ]));
+    expect(sumFundBalance(inFund("general"))).toBe(-150);
+    expect(sumFundBalance(inFund("building"))).toBe(150);
+  });
+
+  it("lets only Admin delete a journal transfer", async () => {
+    const journal = (role: UserRole) => fixture({
+      movements: [movement("j1", "transfer")],
+      transactions: [
+        transferLeg("j-out", { type: "Expenditure", amount: 150, fundId: "general", movementId: "j1", isJournal: true }),
+        transferLeg("j-in", { type: "Income", amount: 150, fundId: "building", movementId: "j1", isJournal: true }),
+      ],
+    }, role);
+
+    const financeTeam = journal("Finance Team");
+    await expect(invoke(movementMutations.deleteJournalTransfer, financeTeam.ctx, { movementId: "j1" }))
+      .rejects.toThrow(/requires ledger\.delete/);
+    expect(financeTeam.get("j1")).not.toBeNull();
+
+    const admin = journal("Admin");
+    await invoke(movementMutations.deleteJournalTransfer, admin.ctx, { movementId: "j1" });
+    expect(admin.get("j1")).toBeNull();
+    expect(admin.get("j-out")).toBeNull();
+    expect(admin.get("j-in")).toBeNull();
+  });
+});
+
+describe("loan register", () => {
+  const loanFixture = (role: UserRole = "Admin", repayment = 400) => fixture({
+    movements: [movement("loan", "loan", { lender: "Alex Sackey", dueDate: "2027-01-01", createdAt: 5 })],
+    transactions: [
+      loanLeg("received", "Income", 1852, { date: "2026-08-03", description: "ALEX SACKEY PAYE LOAN" }),
+      loanLeg("repay-1", "Expenditure", repayment),
+    ],
+  }, role);
+
+  it("summarises what is borrowed, repaid and outstanding", async () => {
+    const { ctx } = loanFixture();
+    const [loan] = (await invoke(movementQueries.listLoans, ctx, {})) as Array<Record<string, unknown>>;
+
+    expect(loan).toMatchObject({
+      _id: "loan", lender: "Alex Sackey", dueDate: "2027-01-01",
+      borrowed: 1852, repaid: 400, outstanding: 1452, isRepaid: false,
+    });
+    expect(loan.legs).toHaveLength(2);
+  });
+
+  it("marks a loan repaid once repayments reach the amount received", async () => {
+    const { ctx } = loanFixture("Admin", 1852);
+    const [loan] = (await invoke(movementQueries.listLoans, ctx, {})) as Array<Record<string, unknown>>;
+
+    expect(loan).toMatchObject({ outstanding: 0, isRepaid: true });
+  });
+
+  it("hides the lender from a Guest", async () => {
+    const { ctx } = loanFixture("Guest");
+    const [loan] = (await invoke(movementQueries.listLoans, ctx, {})) as Array<Record<string, unknown>>;
+
+    expect(loan.lender).toBe("Lender hidden");
   });
 });
