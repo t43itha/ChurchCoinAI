@@ -1,6 +1,6 @@
 
 import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup } from "../types";
-import { filterIncomeAndExpenditure } from "../lib/reportableTransactions";
+import { filterIncomeAndExpenditure, type TransferSummary } from "../lib/reportableTransactions";
 
 // Escape HTML entities to prevent injection when rendering user-supplied data
 const escapeHtml = (value?: string) =>
@@ -398,6 +398,46 @@ export function buildDonorSchedulePdfFilename(args: {
 
 // Format currency for PDF display
 const formatCurrency = (amount: number) => `£${amount.toFixed(2)}`;
+const formatSignedCurrency = (amount: number) =>
+  `${amount < 0 ? "−" : ""}£${Math.abs(amount).toFixed(2)}`;
+
+// SORP "Transfers between funds" line. Omitted when nothing moved between funds.
+export const transfersSectionHTML = (transfers: TransferSummary) => {
+  if (transfers.funds.length === 0) return "";
+  return `
+      <div class="section-title">Transfers between funds</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Fund</th>
+            <th class="right">In</th>
+            <th class="right">Out</th>
+            <th class="right">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transfers.funds.map((fund) => `
+            <tr>
+              <td>${escapeHtml(fund.fund)}</td>
+              <td class="amount">${formatCurrency(fund.in)}</td>
+              <td class="amount">${formatCurrency(fund.out)}</td>
+              <td class="amount">${formatSignedCurrency(fund.net)}</td>
+            </tr>
+          `).join("")}
+          ${transfers.unmatched !== 0 ? `
+            <tr>
+              <td colspan="3">Unmatched (a transfer with one side recorded)</td>
+              <td class="amount">${formatSignedCurrency(transfers.unmatched)}</td>
+            </tr>
+          ` : ""}
+          <tr class="total-row">
+            <td colspan="3">Total</td>
+            <td class="amount">${formatSignedCurrency(transfers.unmatched)}</td>
+          </tr>
+        </tbody>
+      </table>
+  `;
+};
 
 // Common PDF styles for reports
 const getReportStyles = () => `
@@ -748,6 +788,8 @@ export const generateMonthlyReportHTML = (
         </tbody>
       </table>
 
+      ${transfersSectionHTML(reportData.transfers)}
+
       <div class="footer">
         <div>
           <p><strong>${escapeHtml(churchDetails.name)}</strong></p>
@@ -969,6 +1011,8 @@ export const generateAnnualReportHTML = (
           </tr>
         </tbody>
       </table>
+
+      ${transfersSectionHTML(reportData.transfers)}
 
       <div class="footer">
         <div>

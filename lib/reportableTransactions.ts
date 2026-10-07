@@ -132,6 +132,26 @@ export function transfersByFund<T extends LedgerRow & { fundId: string }>(rows: 
   return { funds, unmatched: sumMoney(funds, (fund) => fund.net) };
 }
 
+export type TransferSummary = {
+  funds: Array<FundTransfers & { fund: string }>;
+  unmatched: number;
+};
+
+// The "Transfers between funds" report section, with fund names, by name.
+export function buildTransferSummary<T extends LedgerRow & { fundId: string }>(
+  rows: T[],
+  funds: Array<{ _id: string; name: string }>
+): TransferSummary {
+  const names = new Map(funds.map((fund) => [fund._id, fund.name]));
+  const { funds: byFund, unmatched } = transfersByFund(rows);
+  return {
+    funds: byFund
+      .map((transfers) => ({ ...transfers, fund: names.get(transfers.fundId) ?? "Unknown fund" }))
+      .sort((a, b) => a.fund.localeCompare(b.fund)),
+    unmatched,
+  };
+}
+
 // A transfer or returned payment leg still waiting for its other side. Loans
 // are left out: their other side is the lender, outside the ledger.
 export function isUnlinkedMovementLeg(row: LedgerRow) {

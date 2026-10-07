@@ -1,5 +1,6 @@
 import type { UserRole } from "./lib/permissions";
 import type { MovementKind } from "./lib/movementCategories";
+import type { TransferSummary } from "./lib/reportableTransactions";
 
 export const TransactionType = {
   INCOME: "Income",
@@ -315,6 +316,7 @@ export interface MonthlyReportData {
     totalExpenditure: number;
     netBankable: number;
   };
+  transfers: TransferSummary;
 }
 
 export interface WeeklyBreakdownItem {
@@ -357,4 +359,5 @@ export interface AnnualReportData {
     totalExpenditure: number;
     netMovement: number;
   };
+  transfers: TransferSummary;
 }

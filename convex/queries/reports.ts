@@ -4,6 +4,7 @@ import { Id } from "../_generated/dataModel";
 import { requireCapability } from "../lib/auth";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
 import {
+  buildTransferSummary,
   filterIncomeAndExpenditure,
   isReportableIncomeTransaction,
   sumFundBalance,
@@ -81,8 +82,10 @@ export const weeklyCashSummary = query({
         .filter((q) => q.neq(q.field("isVoided"), true))
         .collect();
       allTransactions.push(
-        ...transactions.filter(
-          (transaction) => transaction.organizationId === collection.organizationId
+        ...filterIncomeAndExpenditure(
+          transactions.filter(
+            (transaction) => transaction.organizationId === collection.organizationId
+          )
         )
       );
     }
@@ -259,8 +262,10 @@ export const monthlyCashBreakdown = query({
           .filter((q) => q.neq(q.field("isVoided"), true))
           .collect();
         allTransactions.push(
-          ...transactions.filter(
-            (transaction) => transaction.organizationId === collection.organizationId
+          ...filterIncomeAndExpenditure(
+            transactions.filter(
+              (transaction) => transaction.organizationId === collection.organizationId
+            )
           )
         );
       }
@@ -665,6 +670,7 @@ export const monthlyReportData = query({
         totalExpenditure,
         netBankable: grossIncome - totalExpenditure,
       },
+      transfers: buildTransferSummary(allTransactions, funds),
     };
   },
 });
@@ -883,6 +889,7 @@ export const annualReportData = query({
         totalExpenditure,
         netMovement: totalIncome - totalExpenditure,
       },
+      transfers: buildTransferSummary(allTransactions, funds),
     };
   },
 });
