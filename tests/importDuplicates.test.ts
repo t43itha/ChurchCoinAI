@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { bulkCreate } from "../convex/mutations/transactions";
 import { backfillImportKeys } from "../convex/mutations/maintenance";
-import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
+import { resolveAssignableCategory } from "../convex/intelligence/categorization/categoryResolver";
 import { getRCICategorySeedData } from "../constants/rciCategories";
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from "../lib/csvImport";
 import { importKeyPrefix, screenImportRows, withImportKeys } from "../lib/importKeys";
@@ -61,7 +61,7 @@ function importStatement(ctx: any, records: Record<string, Row[]>, csvRows: stri
   const scope: any = {
     useSplitAmount: false, funds: records.funds, categories: getRCICategorySeedData(), transactions: records.transactions,
     csvRows, csvHeaders: ["Date", "Description", "Amount"], columnMapping: { date: "Date", description: "Description", amount: "Amount" },
-    parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveCategoryForTransaction,
+    parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory,
     parseAmountString: parseImportedAmount, screenImportRows, withImportKeys,
     notify: vi.fn(), setDuplicateWarnings: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
     setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
@@ -187,7 +187,7 @@ describe("bank sync acknowledgement", () => {
       funds: [{ _id: "general", name: "General Fund" }], categories: getRCICategorySeedData(),
       pendingTransactions: [],
       alreadyImportedRows: [{ source: "bank", bankConnectionId: "connection", providerTransactionId: "p1", date: "2026-09-30" }],
-      applySmallIncomeDefaults, resolveCategoryForTransaction, effectiveCategories, isRealIsoDate,
+      applySmallIncomeDefaults, resolveAssignableCategory, effectiveCategories, isRealIsoDate,
       setPendingTransactions: vi.fn(), notify: vi.fn(), acknowledgeBankSync,
       bulkCreateTransactions: (args: any) => (bulkCreate as any)._handler(ctx, args),
       originalPredictions: new Map(), onPledgeCompleted: undefined,

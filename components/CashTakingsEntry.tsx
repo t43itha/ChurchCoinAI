@@ -107,6 +107,12 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
     return categories.filter((category) => valid.has(category.name) && !isMovementCategory(category));
   }, [categories]);
   const defaultNamedDonationCategory = getDefaultDonationCategory(incomeCategories);
+  // A saved donation keeps its category even after that category is retired.
+  const categoryOptionsFor = (current: string) => {
+    if (!current || incomeCategories.some((category) => category.name === current)) return incomeCategories;
+    const saved = categories.find((category) => category.name === current);
+    return saved ? [...incomeCategories, saved] : incomeCategories;
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -663,7 +669,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                   className="w-full h-10 px-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   {incomeCategories.length === 0 && <option value="Donation">Donation</option>}
-                                  {incomeCategories.map((category) => (
+                                  {categoryOptionsFor(row.category).map((category) => (
                                     <option key={category._id} value={category.name}>
                                       {category.name}
                                     </option>
@@ -790,7 +796,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
                                   className="w-full h-10 px-3 border border-gray-300 rounded-md text-sm bg-white focus:outline-hidden focus:ring-2 focus:ring-black/10"
                                 >
                                   {incomeCategories.length === 0 && <option value="Donation">Donation</option>}
-                                  {incomeCategories.map((category) => (
+                                  {categoryOptionsFor(row.category).map((category) => (
                                     <option key={category._id} value={category.name}>
                                       {category.name}
                                     </option>

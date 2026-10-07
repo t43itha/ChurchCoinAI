@@ -154,7 +154,7 @@ export const requireCanonicalCategory = (
     );
   }
   // A row already in a retired category may be edited, but not moved into one.
-  if (resolved.isRetired === true && resolved.name !== currentCategory) {
+  if (resolved.isRetired === true && normalizeName(resolved.name) !== normalizeName(currentCategory ?? "")) {
     throw new Error(`${resolved.name} is retired. Choose another category.`);
   }
   // Cash collections hold giving, and the collection editor rewrites its rows

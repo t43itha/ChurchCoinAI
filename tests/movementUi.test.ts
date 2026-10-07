@@ -86,6 +86,12 @@ describe("transaction movement actions", () => {
     expect(renderManager("Pastorate", [])).not.toContain("New transfer");
   });
 
+  it("shows waiting legs from any month when opened from the dashboard", () => {
+    const rows = [transaction({ _id: "old", date: "2024-03-01" })];
+    expect(renderManager("Finance Team", rows)).not.toContain('aria-label="Link other side"');
+    expect(renderManager("Finance Team", rows, "/transactions?status=awaiting-link")).toContain('aria-label="Link other side"');
+  });
+
   it("starts the status filter from a known ?status= value", () => {
     const rows = [transaction({ _id: "unlinked" }), transaction({ _id: "linked", movementId: "m1" })];
     const html = renderManager("Finance Team", rows, "/transactions?status=awaiting-link");

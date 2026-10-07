@@ -176,6 +176,19 @@ describe("retired categories", () => {
     expect(get("tx")).toMatchObject({ description: "Choir gowns", category: "Choir robes" });
   });
 
+  it("refuses to retire Offerings, which cash collections write", async () => {
+    const { ctx, get } = fixture({ categories: [{ _id: "offerings", organizationId: "org", name: "Offerings", transactionType: "Income", createdAt: 1 }] });
+    await expect(invoke(categories.setRetired, ctx, { categoryId: "offerings", retired: true }))
+      .rejects.toThrow(/Offerings can't be retired/);
+    expect(get("offerings")?.isRetired).toBeUndefined();
+  });
+
+  it("treats a row's retired category as its own whatever its case", async () => {
+    const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx", { category: "choir robes" })] });
+    await invoke(transactions.update, ctx, { transactionId: "tx", category: "Choir robes", description: "Choir gowns" });
+    expect(get("tx")?.description).toBe("Choir gowns");
+  });
+
   it("refuses a bulk edit that sets a retired category", async () => {
     const { ctx, get } = fixture({ categories: [retired()], transactions: [expenditure("tx")] });
     await expect(invoke(transactions.bulkUpdate, ctx, { transactionIds: ["tx"], updates: { category: "Choir robes" } }))

@@ -543,10 +543,23 @@ function buildPossibleDoubleCountMonths(
   cashReconciliations: DashboardCashReconciliation[]
 ) {
   const throughMonth = throughDate.slice(0, 7);
-  const unbankedMonths = new Set(
+  // A collection's week-ending label can fall in the next month, so use the
+  // dates of the gifts it holds.
+  const pendingIds = new Set(
     pendingCashCollections(bankTransactions, cashCollections, cashReconciliations).map(
-      (collection) => collection.weekEndingDate.slice(0, 7)
+      (collection) => collection._id
     )
+  );
+  const unbankedMonths = new Set(
+    bankTransactions
+      .filter(
+        (transaction) =>
+          transaction.type === "Income" &&
+          transaction.cashCollectionId !== undefined &&
+          pendingIds.has(transaction.cashCollectionId) &&
+          isCashOrCheque(transaction)
+      )
+      .map((transaction) => transaction.date.slice(0, 7))
   );
   const counterDepositMonths = new Set(
     transactions.filter(isCounterDeposit).map((transaction) => transaction.date.slice(0, 7))

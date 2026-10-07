@@ -56,6 +56,17 @@ export const resolveCategoryForTransaction = (
   );
 };
 
+// A category a new or changed row may be given: retired ones still resolve for
+// rows already in them, but are never suggested or newly assigned.
+export const resolveAssignableCategory = (
+  categoryName: string,
+  transactionType: TransactionType,
+  categories: CategoryLike[]
+): CategoryLike | null => {
+  const category = resolveCategoryForTransaction(categoryName, transactionType, categories);
+  return category && !category.isRetired ? category : null;
+};
+
 export const resolveReportingMainCategory = (
   categoryName: string,
   transactionType: TransactionType,

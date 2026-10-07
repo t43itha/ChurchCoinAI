@@ -53,6 +53,17 @@ describe("deterministic categorization rules", () => {
     expect(suggestion?.category).toBe("Bank Charges");
   });
 
+  it("never suggests a retired category", () => {
+    const retired = categories.map((category) =>
+      category.name === "Bank Charges" ? { ...category, isRetired: true } : category
+    );
+    expect(applyDeterministicRules(
+      { description: "Monthly bank charge", amount: 5, type: "Expenditure" },
+      retired,
+      funds
+    )).toBeNull();
+  });
+
   it("does not apply bank charge rule to income", () => {
     const suggestion = applyDeterministicRules(
       { description: "Bank charge refund", amount: 5, type: "Income" },

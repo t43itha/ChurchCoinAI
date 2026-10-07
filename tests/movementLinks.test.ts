@@ -506,5 +506,9 @@ describe("loan register", () => {
     const [loan] = (await invoke(movementQueries.listLoans, ctx, {})) as Array<Record<string, unknown>>;
 
     expect(loan.lender).toBe("Lender hidden");
+    expect(loan.note).toBeUndefined();
+    expect((loan.legs as Array<{ description: string }>).map((leg) => leg.description))
+      .toEqual(expect.arrayContaining(["Loan received", "Loan repayment"]));
+    expect(JSON.stringify(loan)).not.toMatch(/SACKEY/i);
   });
 });

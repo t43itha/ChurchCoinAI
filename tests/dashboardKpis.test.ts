@@ -1119,6 +1119,14 @@ describe("possible double counted cash", () => {
       ...overrides,
     }).readiness.possibleDoubleCountMonths;
 
+  it("uses the dates of a collection's gifts, not its week-ending label", () => {
+    const spanning: DashboardCashCollection = { _id: "dec-cash", weekEndingDate: "2026-01-04", status: "submitted" };
+    expect(flaggedMonths(
+      [counterDeposit({ date: "2025-12-30" }), { ...decemberCash, date: "2025-12-31" }],
+      { cashCollections: [spanning] }
+    )).toEqual(["2025-12"]);
+  });
+
   it("flags a month with a counter deposit and an unbanked cash collection", () => {
     expect(flaggedMonths([counterDeposit(), decemberCash])).toEqual(["2025-12"]);
   });

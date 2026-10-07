@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { getRCICategorySeedData } from "../constants/rciCategories";
-import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
+import { resolveAssignableCategory } from "../convex/intelligence/categorization/categoryResolver";
 import { isRealIsoDate } from "../lib/csvImport";
 import {
   acceptedPairsToLink,
@@ -147,7 +147,7 @@ describe("confirm import with accepted pairs", () => {
       isProcessingAI: false, bankSyncReviewConnectionId: null, nextBankSyncCursor: null,
       funds, categories, importCategories: categories, pendingTransactions, allTransactions: transactions,
       alreadyImportedRows: [], originalPredictions: new Map(), onPledgeCompleted: undefined,
-      applySmallIncomeDefaults, resolveCategoryForTransaction, effectiveCategories, isRealIsoDate,
+      applySmallIncomeDefaults, resolveAssignableCategory, effectiveCategories, isRealIsoDate,
       acceptedPairsToLink, notify, linkTransactions,
       setPendingTransactions: vi.fn(), setShowReviewModal: vi.fn(), clearBankSyncReviewState: vi.fn(),
       bulkCreateTransactions: vi.fn(async () => ({

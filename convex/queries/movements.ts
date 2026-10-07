@@ -27,7 +27,7 @@ export const listLoans = query({
             _id: movement._id,
             lender: hidesLender ? "Lender hidden" : (movement.lender ?? ""),
             dueDate: movement.dueDate,
-            note: movement.note,
+            note: hidesLender ? undefined : movement.note,
             createdAt: movement.createdAt,
             ...summarizeLoan(legs),
             legs: legs.map((leg) => {
@@ -35,7 +35,8 @@ export const listLoans = query({
               return {
                 _id: visible._id,
                 date: visible.date,
-                description: visible.description,
+                // Bank descriptions often name the lender.
+                description: hidesLender ? (leg.type === "Income" ? "Loan received" : "Loan repayment") : visible.description,
                 amount: visible.amount,
                 type: visible.type,
                 isVoided: visible.isVoided,

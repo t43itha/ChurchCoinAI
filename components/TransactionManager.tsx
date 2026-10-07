@@ -16,7 +16,7 @@ import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/cs
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
-import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
+import { resolveAssignableCategory } from '../convex/intelligence/categorization/categoryResolver';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
 import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
 import { roundMoney, sumMoney } from '../convex/lib/money';
@@ -228,8 +228,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 200);
   const today = new Date();
-  const [filterMonth, setFilterMonth] = useState<number | null>(today.getMonth());
-  const [filterYear, setFilterYear] = useState<number | null>(today.getFullYear());
+  // Status links from the dashboard count rows across all dates.
+  const linkedFromStatus = parseStatusFilter(searchParams.get('status')) !== 'all';
+  const [filterMonth, setFilterMonth] = useState<number | null>(linkedFromStatus ? null : today.getMonth());
+  const [filterYear, setFilterYear] = useState<number | null>(linkedFromStatus ? null : today.getFullYear());
   const [filterCategory, setFilterCategory] = useState('');
   const [filterFund, setFilterFund] = useState(initialFundId || '');
   const [filterStatus, setFilterStatus] = useState<StatusFilter>(() => parseStatusFilter(searchParams.get('status')));
@@ -1101,7 +1103,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
     const importRows = pendingTransactions.map((transaction) => applySmallIncomeDefaults(transaction, categories, funds));
     setPendingTransactions(importRows);
-    if (importRows.some((transaction) => !resolveCategoryForTransaction(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) || !funds.some((fund) => fund._id === transaction.fundId) || !isRealIsoDate(transaction.date || ""))) {
+    if (importRows.some((transaction) => !resolveAssignableCategory(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) || !funds.some((fund) => fund._id === transaction.fundId) || !isRealIsoDate(transaction.date || ""))) {
       notify("Error", "Every row needs a real date, a valid category and a valid fund before import.");
       return;
     }
