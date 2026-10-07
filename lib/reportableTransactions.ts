@@ -27,7 +27,9 @@ const LEDGER_RULES: { matches: (row: LedgerRow) => boolean; effect: LedgerEffect
   {
     // Banking cash already recorded as giving: the money reaches the bank, but
     // the source giving rows already count it towards the fund and income.
-    matches: (row) => row.cashBankingRole === "bank_deposit",
+    // Deposits are always income; older reopen code left the tag on rows that
+    // were later edited to expenditure, and those still count as expenditure.
+    matches: (row) => row.cashBankingRole === "bank_deposit" && row.type === "Income",
     effect: { bank: true, fund: false, activity: "none" },
   },
 ];

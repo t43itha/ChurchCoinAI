@@ -54,7 +54,6 @@ export default tseslint.config(
       "convex/schema.ts",
       "convex/mutations/**",
       "convex/queries/cashBankingReconciliations.ts",
-      "convex/queries/reconciliationSessions.ts",
       "tests/**",
     ],
     plugins: { churchcoin },

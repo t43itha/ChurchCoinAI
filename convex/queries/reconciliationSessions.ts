@@ -47,7 +47,7 @@ export const workspace = query({
       )
       .collect();
 
-    // Candidates: anything in this fund dated on/before period end that is
+    // Candidates: anything in this fund dated on/before period end that
     // reaches the bank and is not attached to any session. Items BEFORE periodStart
     // are included deliberately — they are uncleared stragglers from earlier
     // periods (e.g. deposits in transit) that may clear in this statement.

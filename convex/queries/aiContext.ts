@@ -1,6 +1,10 @@
 import { query } from "../_generated/server";
 import { requireAuth, redactDonorFields } from "../lib/auth";
-import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
+import {
+  filterFundBalanceRows,
+  filterIncomeAndExpenditure,
+  sumFundBalance,
+} from "../../lib/reportableTransactions";
 
 const AI_CONTEXT_MONTH_WINDOW = 24;
 const AI_CONTEXT_MAX_TRANSACTIONS = 5000;
@@ -43,6 +47,10 @@ export const getAIContext = query({
       .take(AI_CONTEXT_MAX_TRANSACTIONS + 1);
 
     const isTruncated = rawTransactions.length > AI_CONTEXT_MAX_TRANSACTIONS;
+    const fundBalanceRows = filterFundBalanceRows(rawTransactions).slice(
+      0,
+      AI_CONTEXT_MAX_TRANSACTIONS
+    );
 
     transactions.push(
       ...filterIncomeAndExpenditure(rawTransactions)
@@ -75,10 +83,7 @@ export const getAIContext = query({
     const donorGivingMap = new Map<string, { id: string; name: string; total: number }>();
     const incomeByCategory: Record<string, number> = {};
     const expenditureByCategory: Record<string, number> = {};
-    const fundMetrics = new Map<
-      string,
-      { balance: number; recentIncome: number; recentExpense: number }
-    >();
+    const fundMetrics = new Map<string, { recentIncome: number; recentExpense: number }>();
 
     let uncategorizedCount = 0;
     let unreconciledCount = 0;
@@ -104,7 +109,6 @@ export const getAIContext = query({
       const category = transaction.category || "Uncategorized";
       const fundId = transaction.fundId;
       const existingFundMetrics = fundMetrics.get(fundId) ?? {
-        balance: 0,
         recentIncome: 0,
         recentExpense: 0,
       };
@@ -113,7 +117,6 @@ export const getAIContext = query({
         monthlyMap[month].income += transaction.amount;
         totalIncome += transaction.amount;
         incomeByCategory[category] = (incomeByCategory[category] || 0) + transaction.amount;
-        existingFundMetrics.balance += transaction.amount;
 
         if (transaction.date >= threeMonthsAgo) {
           existingFundMetrics.recentIncome += transaction.amount;
@@ -137,7 +140,6 @@ export const getAIContext = query({
         totalExpenditure += transaction.amount;
         expenditureByCategory[category] =
           (expenditureByCategory[category] || 0) + transaction.amount;
-        existingFundMetrics.balance -= transaction.amount;
         if (transaction.date >= threeMonthsAgo) {
           existingFundMetrics.recentExpense += transaction.amount;
         }
@@ -172,19 +174,21 @@ export const getAIContext = query({
 
     const fundBalances = funds.map((fund) => {
       const metrics = fundMetrics.get(fund._id as string) ?? {
-        balance: 0,
         recentIncome: 0,
         recentExpense: 0,
       };
+      const balance = sumFundBalance(
+        fundBalanceRows.filter((transaction) => transaction.fundId === fund._id)
+      );
       return {
         name: fund.name,
         type: fund.type,
-        balance: metrics.balance,
+        balance,
         targetAmount: fund.targetAmount,
         recentIncome: metrics.recentIncome,
         recentExpense: metrics.recentExpense,
         progressPercent: fund.targetAmount
-          ? Math.round((metrics.balance / fund.targetAmount) * 100)
+          ? Math.round((balance / fund.targetAmount) * 100)
           : null,
       };
     });

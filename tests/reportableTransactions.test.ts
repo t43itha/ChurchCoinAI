@@ -42,6 +42,15 @@ describe("ledgerEffect", () => {
       effect: { bank: true, fund: false, activity: "none" },
     },
     {
+      row: { amount: 100, type: "Income" as const, cashBankingRole: "bank_deposit" as const, isVoided: true },
+      effect: { bank: false, fund: false, activity: "none" },
+    },
+    {
+      // Older reopen code left the deposit tag on rows later edited to expenditure.
+      row: { amount: 100, type: "Expenditure" as const, cashBankingRole: "bank_deposit" as const },
+      effect: { bank: true, fund: true, activity: "expenditure" },
+    },
+    {
       row: { amount: 100, type: "Income" as const, cashBankingRole: "source_giving" as const },
       effect: { bank: true, fund: true, activity: "income" },
     },

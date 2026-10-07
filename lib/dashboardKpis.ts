@@ -299,7 +299,7 @@ export function buildExecutiveDashboardSummary({
     averageMonthlyUnrestrictedExpenditure > 0
       ? roundToOneDecimal(generalFundBalance / averageMonthlyUnrestrictedExpenditure)
       : null;
-  const fundBalances = buildFundBalances(funds, reportableTransactions);
+  const fundBalances = buildFundBalances(funds, transactions);
   const statementsDueThrough = formatDate(
     new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0))
   );
