@@ -3,7 +3,7 @@ import { getRCICategorySeedData } from "../constants/rciCategories";
 import type { Id } from "../convex/_generated/dataModel";
 import type { MutationCtx } from "../convex/_generated/server";
 import { ensureTypedCategories, requireCanonicalCategory } from "../convex/lib/categoryIntegrity";
-import { categoryNamesForTransactionTypes } from "../lib/transactionCategories";
+import { categoryNamesForTransactionTypes, effectiveCategories } from "../lib/transactionCategories";
 import type { TransactionType } from "../types";
 
 type Category = { name: string; transactionType?: TransactionType };
@@ -113,5 +113,18 @@ describe("transaction category options", () => {
     // converts it to Income, so it cannot be applied to an expenditure row.
     expect(() => requireCanonicalCategory(afterBackfill, "Offerings", "Expenditure"))
       .toThrow("Choose a valid expenditure category");
+  });
+});
+
+describe("movement categories before the first write", () => {
+  it("offers them to an organisation that has not been backfilled yet", () => {
+    const names = categoryNamesForTransactionTypes(effectiveCategories(legacyCategories), ["Income", "Expenditure"]);
+    expect(names).toEqual(expect.arrayContaining(["Transfer between funds", "Returned payment", "Loan"]));
+  });
+
+  it("does not add a second copy of a renamed built-in", () => {
+    const names = effectiveCategories([{ name: "Member loan", movementKind: "loan" }]).map((category) => category.name);
+    expect(names).toContain("Member loan");
+    expect(names).not.toContain("Loan");
   });
 });

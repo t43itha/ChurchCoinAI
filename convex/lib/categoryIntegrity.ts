@@ -1,7 +1,7 @@
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { CATEGORY_ALIASES, getRCICategorySeedData } from "../../constants/rciCategories";
-import { missingMovementCategories, type MovementKind } from "../../lib/movementCategories";
+import { isMovementCategory, missingMovementCategories, type MovementKind } from "../../lib/movementCategories";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 
 type CategoryCtx = QueryCtx | MutationCtx;
@@ -138,7 +138,8 @@ export const requireCanonicalCategory = (
     movementKind?: MovementKind;
   }>,
   categoryName: string,
-  transactionType: "Income" | "Expenditure"
+  transactionType: "Income" | "Expenditure",
+  { cashCollectionId }: { cashCollectionId?: string } = {}
 ): { category: string; movementKind: MovementKind | undefined } => {
   const resolved = resolveCategoryForTransaction(
     categoryName,
@@ -148,6 +149,13 @@ export const requireCanonicalCategory = (
   if (!resolved) {
     throw new Error(
       `Choose a valid ${transactionType.toLowerCase()} category`
+    );
+  }
+  // Cash collections hold giving, and the collection editor rewrites its rows
+  // as giving, so a movement mark there would be lost on the next save.
+  if (isMovementCategory(resolved) && cashCollectionId) {
+    throw new Error(
+      "Rows from a cash collection can't be marked as a transfer, returned payment or loan. Record it in Transactions instead."
     );
   }
   // Callers write both fields, so leaving a movement category clears the kind.

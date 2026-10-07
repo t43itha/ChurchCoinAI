@@ -184,3 +184,22 @@ describe("category names that would hide a movement category", () => {
     expect(get("loan")).toMatchObject({ name: "Member loan", movementKind: "loan" });
   });
 });
+
+describe("cash collection rows stay giving", () => {
+  const message = "Rows from a cash collection can't be marked as a transfer, returned payment or loan";
+
+  it("refuses to mark a collection row as a movement", async () => {
+    const { ctx, get } = fixture({ transactions: [row("service", { cashCollectionId: "c1", notes: "service:Sunday" })] });
+    await expect(invoke(transactions.update, ctx, { transactionId: "service", category: "Loan" })).rejects.toThrow(message);
+    await expect(invoke(transactions.bulkUpdate, ctx, { transactionIds: ["service"], updates: { category: "Loan" } })).rejects.toThrow(message);
+    await expect(invoke(transactions.batchUpdate, ctx, { updates: [{ transactionId: "service", changes: { category: "Loan" } }] })).rejects.toThrow(message);
+    expect(get("service")?.category).toBe("Offerings");
+  });
+
+  it("refuses a new collection row in a movement category", async () => {
+    const { ctx } = fixture({ cashCollections: [{ _id: "c1", organizationId: "org" }] });
+    await expect(invoke(transactions.create, ctx, {
+      date: "2026-10-01", description: "Loan", amount: 100, type: "Income", category: "Loan", fundId: "fund", cashCollectionId: "c1",
+    })).rejects.toThrow(message);
+  });
+});

@@ -1,10 +1,12 @@
 import { getRCICategorySeedData } from "../constants/rciCategories";
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
 import type { TransactionType } from "../types";
+import { missingMovementCategories, type MovementKind } from "./movementCategories";
 
 interface CategoryOption {
   name: string;
   transactionType?: TransactionType;
+  movementKind?: MovementKind;
 }
 
 const normalizeName = (name: string) => name.trim().toLowerCase();
@@ -23,6 +25,9 @@ export function effectiveCategories(categories: CategoryOption[]): CategoryOptio
     } else {
       result.push(seed);
     }
+  }
+  for (const movement of missingMovementCategories(result)) {
+    result.push({ name: movement.name, movementKind: movement.movementKind });
   }
   return result;
 }

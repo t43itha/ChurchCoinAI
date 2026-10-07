@@ -265,7 +265,8 @@ export const submitCollection = mutation({
       const { category, movementKind } = requireCanonicalCategory(
         categories,
         donation.category.trim(),
-        "Income"
+        "Income",
+        { cashCollectionId }
       );
       const amount = positiveAmount(donation.amount);
       if (amount === null) {
@@ -418,7 +419,8 @@ export const replaceCollectionEntries = mutation({
       const { category, movementKind } = requireCanonicalCategory(
         categories,
         donation.category.trim(),
-        "Income"
+        "Income",
+        { cashCollectionId: args.cashCollectionId }
       );
       const amount = positiveAmount(donation.amount);
       if (amount === null) {
