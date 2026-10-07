@@ -17,6 +17,7 @@ import {
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
 import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
+import { importIdentity, importKeyOccurrence } from "../../lib/importKeys";
 
 // Helper to build searchable text for RAG indexing
 function buildRAGSearchText(tx: {
@@ -301,6 +302,7 @@ export const bulkCreate = mutation({
         cashCollectionId: v.optional(v.id("cashCollections")),
         bankConnectionId: v.optional(v.id("bankConnections")),
         providerTransactionId: v.optional(v.string()),
+        importKey: v.optional(v.string()),
       })
     ),
   },
@@ -317,7 +319,7 @@ export const bulkCreate = mutation({
     const pledgesToCheck = new Set<string>();
     const validatedConnections = new Set<string>();
     const validatedCollections = new Set<string>();
-    const seenProviderIds = new Set<string>();
+    const seenIdentities = new Set<string>();
     let skippedDuplicates = 0;
     const categories = await ensureTypedCategories(ctx, user.organizationId);
     let generalFund: Doc<"funds"> | null | undefined;
@@ -369,28 +371,36 @@ export const bulkCreate = mutation({
 
       const category = requireCanonicalCategory(categories, defaulted.category ?? "", t.type);
 
-      // Source-level dedup for bank-synced transactions: skip anything already
-      // imported from the same connection with the same provider id.
-      if (t.bankConnectionId && t.providerTransactionId) {
-        if (!validatedConnections.has(t.bankConnectionId)) {
-          const connection = await ctx.db.get(t.bankConnectionId);
-          if (!connection || connection.organizationId !== user.organizationId) {
-            throw new Error(`Invalid bank connection: ${t.bankConnectionId}`);
-          }
-          validatedConnections.add(t.bankConnectionId);
+      if (t.bankConnectionId && !validatedConnections.has(t.bankConnectionId)) {
+        const connection = await ctx.db.get(t.bankConnectionId);
+        if (!connection || connection.organizationId !== user.organizationId) {
+          throw new Error(`Invalid bank connection: ${t.bankConnectionId}`);
         }
+        validatedConnections.add(t.bankConnectionId);
+      }
+      if (t.importKey && importKeyOccurrence(t.importKey, t) === null) {
+        throw new Error("Import key does not match its transaction");
+      }
 
-        const dedupKey = `${t.bankConnectionId}|${t.providerTransactionId}`;
-        const existing = seenProviderIds.has(dedupKey)
-          ? true
-          : await ctx.db
+      // Source-level dedup: skip anything already imported, by provider id for
+      // bank rows and by import key for statement rows.
+      const identity = importIdentity(t);
+      if (identity) {
+        const existing = seenIdentities.has(identity) || (t.bankConnectionId && t.providerTransactionId
+          ? await ctx.db
               .query("transactions")
               .withIndex("by_connection_providerTransaction", (q) =>
                 q
                   .eq("bankConnectionId", t.bankConnectionId)
                   .eq("providerTransactionId", t.providerTransactionId)
               )
-              .first();
+              .first()
+          : await ctx.db
+              .query("transactions")
+              .withIndex("by_organization_importKey", (q) =>
+                q.eq("organizationId", user.organizationId).eq("importKey", t.importKey)
+              )
+              .first());
         if (existing) {
           transactionIds.push(null);
           canonicalCategories.push(null);
@@ -398,7 +408,7 @@ export const bulkCreate = mutation({
           skippedDuplicates += 1;
           continue;
         }
-        seenProviderIds.add(dedupKey);
+        seenIdentities.add(identity);
       }
 
       const transactionId = await ctx.db.insert("transactions", {
@@ -419,6 +429,7 @@ export const bulkCreate = mutation({
         cashCollectionId: t.cashCollectionId,
         bankConnectionId: t.bankConnectionId,
         providerTransactionId: t.providerTransactionId,
+        importKey: t.importKey,
         createdAt: Date.now(),
       });
 

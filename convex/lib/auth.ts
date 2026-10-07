@@ -77,6 +77,9 @@ export function redactDonorFields<T extends { donorName?: string; donorId?: stri
   if (can(user.role, "donors.read")) return row;
   const redacted = { ...row, donorName: "" };
   const fields = redacted as Record<string, unknown>;
+  // Import keys embed the original description, and readers who can't see
+  // donors never import, so they never need one.
+  delete fields.importKey;
   const hasDonorIdentity = Object.entries(row).some(
     ([key, value]) => /^donor/i.test(key) && Boolean(value)
   ) || Boolean(fields.pledgeId) || fields.isGiftAidEligible === true;

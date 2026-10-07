@@ -1,8 +1,10 @@
-import { mutation } from "../_generated/server";
+import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { patchTransaction } from "../lib/transactionWrites";
+import { importKeyOccurrence, importKeyPrefix } from "../../lib/importKeys";
 
 const normalizeName = (name: string): string => {
   return name
@@ -178,5 +180,36 @@ export const backfillDonorIdsFromDonorName = mutation({
         noMatch: pledgesNoMatch,
       },
     };
+  },
+});
+
+// Keys rows created before import keys existed, so re-uploading an older
+// statement is still caught. Bank, cash collection and cash banking rows are
+// left alone. Keyed rows are skipped, so reruns and resumes converge.
+// Run with: npx convex run mutations/maintenance:backfillImportKeys
+export const backfillImportKeys = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("transactions")
+      .paginate({ cursor: args.cursor ?? null, numItems: 200 });
+    let keyed = 0;
+    for (const row of page.page) {
+      if (row.importKey || row.providerTransactionId || row.cashCollectionId || row.cashBankingRole) continue;
+      const prefix = importKeyPrefix(row);
+      const sameContent = await ctx.db
+        .query("transactions")
+        .withIndex("by_organization_importKey", (q) =>
+          q.eq("organizationId", row.organizationId).gte("importKey", prefix).lt("importKey", `${prefix}\uffff`)
+        )
+        .collect();
+      const occurrence = Math.max(0, ...sameContent.map((other) => importKeyOccurrence(other.importKey ?? "", row) ?? 0)) + 1;
+      await patchTransaction(ctx, row._id, { importKey: `${prefix}${occurrence}` }, { lockOverride: "import-key-backfill" });
+      keyed += 1;
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.mutations.maintenance.backfillImportKeys, { cursor: page.continueCursor });
+    }
+    return { keyed, isDone: page.isDone };
   },
 });

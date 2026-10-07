@@ -77,6 +77,7 @@ describe("donor display text redaction", () => {
     donorId: "primary-donor", donorName: "Alex Smith",
     description: "Tithes - Robin Jones", notes: "Contact Robin Jones at robin@example.invalid",
     voidReason: "Robin Jones requested a correction", isVoided: true,
+    importKey: "2026-01-10|Income|2500|tithes - robin jones|1",
     amount: 25, fundId: "fund-1", date: "2026-01-10", category: "Tithes", paymentMethod: "Cash",
   };
 
@@ -99,7 +100,8 @@ describe("donor display text redaction", () => {
     expect(result).not.toHaveProperty("donorMatched");
     expect(result).not.toHaveProperty("notes");
     expect(result).not.toHaveProperty("voidReason");
-    expect(JSON.stringify(result)).not.toMatch(/Robin Jones|Alex Smith|@example\.invalid/);
+    expect(result).not.toHaveProperty("importKey");
+    expect(JSON.stringify(result)).not.toMatch(/Robin Jones|Alex Smith|@example\.invalid/i);
     expect(original.description).toBe(row.description);
     expect(original.notes).toBe(row.notes);
     expect(original.voidReason).toBe(row.voidReason);
