@@ -204,6 +204,7 @@ export const getCandidateBankCredits = query({
       .filter((transaction) => {
         if (!isActiveTransaction(transaction)) return false;
         if (transaction.type !== "Income") return false;
+        if (transaction.movementKind || transaction.isJournal) return false;
         const isIncludedReconciliationTransaction =
           args.includeReconciliationId !== undefined &&
           transaction.cashBankingReconciliationId === args.includeReconciliationId;

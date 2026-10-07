@@ -2,9 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { MutationCtx } from "../convex/_generated/server";
 import type { Id } from "../convex/_generated/dataModel";
 import * as transactions from "../convex/mutations/transactions";
+import * as categories from "../convex/mutations/categories";
 import { ensureTypedCategories } from "../convex/lib/categoryIntegrity";
 
 type Row = { _id: string } & Record<string, unknown>;
+type FilterBuilder = typeof filterBuilder;
+
+const filterBuilder = {
+  field: (name: string) => name,
+  eq: (field: string, value: unknown) => (row: Row) => row[field] === value,
+};
 
 // Run real handlers against an indexed, mutable in-memory database.
 function fixture(extra: Record<string, Row[]> = {}) {
@@ -30,6 +37,11 @@ function fixture(extra: Record<string, Row[]> = {}) {
       const chain = {
         withIndex: (_name: string, configure: (q: typeof index) => unknown) => {
           configure(index);
+          return chain;
+        },
+        // Only the equality filter the rename cascade uses.
+        filter: (build: (q: FilterBuilder) => (row: Row) => boolean) => {
+          rows = rows.filter(build(filterBuilder));
           return chain;
         },
         collect: async () => rows,
@@ -132,5 +144,43 @@ describe("movementKind follows the category on every write", () => {
     });
 
     expect(get("tx")?.movementKind).toBe("transfer");
+  });
+});
+
+describe("category names that would hide a movement category", () => {
+  const builtIns = (): Row[] => [
+    { _id: "loan", organizationId: "org", name: "Loan", movementKind: "loan", createdAt: 1 },
+    { _id: "offerings", organizationId: "org", name: "Offerings", transactionType: "Income", createdAt: 1 },
+  ];
+
+  it("rejects a new category whose name differs only by case", async () => {
+    const { ctx } = fixture({ categories: builtIns() });
+    await expect(invoke(categories.create, ctx, { name: "loan ", transactionType: "Expenditure" }))
+      .rejects.toThrow('Category "loan" already exists');
+  });
+
+  it("skips case-insensitive duplicates in bulk creation", async () => {
+    const { ctx } = fixture({ categories: builtIns() });
+    await expect(invoke(categories.bulkCreate, ctx, { names: ["LOAN", "Choir robes"], transactionType: "Expenditure" }))
+      .resolves.toEqual({ created: ["Choir robes"], skipped: ["LOAN"] });
+  });
+
+  it("rejects renaming to an alias of another category", async () => {
+    const { ctx, get } = fixture({ categories: builtIns() });
+    await expect(invoke(categories.rename, ctx, { categoryId: "loan", newName: "Tithe" }))
+      .rejects.toThrow('"Tithe" is another name for "Tithes & First Fruits"');
+    expect(get("loan")?.name).toBe("Loan");
+  });
+
+  it("rejects renaming a movement category to a built-in category name", async () => {
+    const { ctx } = fixture({ categories: [builtIns()[0]] });
+    await expect(invoke(categories.rename, ctx, { categoryId: "loan", newName: "Offerings" }))
+      .rejects.toThrow('"Offerings" is a built-in category name');
+  });
+
+  it("still allows a plain rename", async () => {
+    const { ctx, get } = fixture({ categories: builtIns() });
+    await invoke(categories.rename, ctx, { categoryId: "loan", newName: "Member loan" });
+    expect(get("loan")).toMatchObject({ name: "Member loan", movementKind: "loan" });
   });
 });

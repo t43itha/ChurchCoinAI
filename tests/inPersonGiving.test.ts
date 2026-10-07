@@ -320,3 +320,22 @@ describe("in-person giving grouping", () => {
     );
   });
 });
+
+describe("in-person giving with movement rows", () => {
+  it("keeps a collection row marked as a loan, so editing the collection does not drop it", () => {
+    const [ledger] = groupInPersonGivingCollections({
+      collections: [
+        { _id: "c1", weekEndingDate: "2026-10-04", collectionDate: "2026-10-04", status: "submitted", recordedAt: 1, recordedBy: "u", createdAt: 1 },
+      ],
+      transactions: [
+        { _id: "offering", date: "2026-10-04", description: "Sunday Service - Cash", amount: 10, type: "Income", category: "Offerings", fundId: "general", isReconciled: false, paymentMethod: "Cash", cashCollectionId: "c1", notes: "service:Sunday Service" },
+        { _id: "loan", date: "2026-10-04", description: "Loan - Member", amount: 100, type: "Income", category: "Loan", movementKind: "loan", fundId: "general", isReconciled: false, paymentMethod: "Cash", cashCollectionId: "c1", donorName: "Member" },
+        { _id: "voided", date: "2026-10-04", description: "Voided", amount: 5, type: "Income", category: "Offerings", fundId: "general", isReconciled: false, paymentMethod: "Cash", cashCollectionId: "c1", donorName: "Gone", isVoided: true },
+      ],
+      funds: [{ _id: "general", name: "General Fund" }],
+    });
+
+    expect(ledger.total).toBe(110);
+    expect(ledger.namedDonations.map((donation) => [donation.id, donation.category])).toEqual([["loan", "Loan"]]);
+  });
+});

@@ -9,6 +9,7 @@ import {
   CATEGORY_ALIASES,
 } from "../../constants/rciCategories";
 import { patchTransaction } from "../lib/transactionWrites";
+import { categoryNameConflict, loadOrganizationCategories } from "../lib/categoryIntegrity";
 
 // Create a new category
 export const create = mutation({
@@ -21,17 +22,11 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "categories.write");
 
-    // Check for duplicate
-    const existing = await ctx.db
-      .query("categories")
-      .withIndex("by_organization_name", (q) =>
-        q.eq("organizationId", user.organizationId).eq("name", args.name)
-      )
-      .first();
-
-    if (existing) {
-      throw new Error(`Category "${args.name}" already exists`);
-    }
+    const conflict = categoryNameConflict(
+      await loadOrganizationCategories(ctx, user.organizationId),
+      args.name
+    );
+    if (conflict) throw new Error(conflict);
 
     const categoryId = await ctx.db.insert("categories", {
       organizationId: user.organizationId,
@@ -94,17 +89,12 @@ export const rename = mutation({
       throw new Error("Category not found");
     }
 
-    // Check for duplicate
-    const existing = await ctx.db
-      .query("categories")
-      .withIndex("by_organization_name", (q) =>
-        q.eq("organizationId", user.organizationId).eq("name", args.newName)
-      )
-      .first();
-
-    if (existing && existing._id !== args.categoryId) {
-      throw new Error(`Category "${args.newName}" already exists`);
-    }
+    const conflict = categoryNameConflict(
+      await loadOrganizationCategories(ctx, user.organizationId),
+      args.newName,
+      { categoryId: args.categoryId, isMovement: category.movementKind !== undefined }
+    );
+    if (conflict) throw new Error(conflict);
 
     const oldName = category.name;
 
@@ -139,25 +129,20 @@ export const bulkCreate = mutation({
 
     const created: string[] = [];
     const skipped: string[] = [];
+    const existing: Array<{ _id: string; name: string }> =
+      await loadOrganizationCategories(ctx, user.organizationId);
 
     for (const name of args.names) {
-      // Check for duplicate
-      const existing = await ctx.db
-        .query("categories")
-        .withIndex("by_organization_name", (q) =>
-          q.eq("organizationId", user.organizationId).eq("name", name)
-        )
-        .first();
-
-      if (existing) {
+      if (categoryNameConflict(existing, name)) {
         skipped.push(name);
       } else {
-        await ctx.db.insert("categories", {
+        const categoryId = await ctx.db.insert("categories", {
           organizationId: user.organizationId,
           name,
           transactionType: args.transactionType,
           createdAt: Date.now(),
         });
+        existing.push({ _id: categoryId, name });
         created.push(name);
       }
     }

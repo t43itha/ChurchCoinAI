@@ -1,10 +1,41 @@
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { getRCICategorySeedData } from "../../constants/rciCategories";
+import { CATEGORY_ALIASES, getRCICategorySeedData } from "../../constants/rciCategories";
 import { missingMovementCategories, type MovementKind } from "../../lib/movementCategories";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 
 type CategoryCtx = QueryCtx | MutationCtx;
+
+const normalizeName = (name: string) => name.trim().toLowerCase();
+const ALIAS_TARGETS = new Map(
+  Object.entries(CATEGORY_ALIASES).map(([alias, target]) => [normalizeName(alias), target])
+);
+const SEED_NAMES = new Set(getRCICategorySeedData().map((seed) => normalizeName(seed.name)));
+
+// Names resolve case-insensitively and through aliases, so a name that only
+// differs by case, or is an alias of another category, would hide one of them.
+// A movement category also can't take a seed name: the seed backfill would
+// give it a transaction type, and cash collections write "Offerings" directly.
+export function categoryNameConflict(
+  existing: Array<{ _id: string; name: string }>,
+  name: string,
+  { categoryId, isMovement = false }: { categoryId?: string; isMovement?: boolean } = {}
+): string | null {
+  const trimmed = name.trim();
+  const normalized = normalizeName(name);
+  if (!normalized) return "Enter a category name";
+  if (existing.some((category) => category._id !== categoryId && normalizeName(category.name) === normalized)) {
+    return `Category "${trimmed}" already exists`;
+  }
+  const aliasTarget = ALIAS_TARGETS.get(normalized);
+  if (aliasTarget && normalizeName(aliasTarget) !== normalized) {
+    return `"${trimmed}" is another name for "${aliasTarget}"`;
+  }
+  if (isMovement && SEED_NAMES.has(normalized)) {
+    return `"${trimmed}" is a built-in category name`;
+  }
+  return null;
+}
 
 export async function seedOrganizationCategories(
   ctx: MutationCtx,

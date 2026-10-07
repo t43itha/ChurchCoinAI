@@ -111,7 +111,7 @@ export const gatherInsightContext = internalQuery({
       operationsContext: {
         uncategorizedCount,
         unreconciledCount,
-        totalTransactions: transactions.length,
+        totalTransactions: bankTransactions.length,
         pendingTransactionsOver30Days,
         largeUncategorizedExpenses,
         daysSinceLastTransaction,
