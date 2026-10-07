@@ -338,6 +338,9 @@ export const replaceCollectionEntries = mutation({
       throw new Error("Please add at least one service row or named donation with an amount.");
     }
 
+    // Rows are deleted and re-inserted, so a retired category they already
+    // had still counts as theirs.
+    const previousCategories = new Set(existingTransactions.map((transaction) => transaction.category));
     for (const transaction of existingTransactions) {
       await deleteTransaction(ctx, transaction._id, { lockOverride: "reconciliation-owner" });
     }
@@ -420,7 +423,10 @@ export const replaceCollectionEntries = mutation({
         categories,
         donation.category.trim(),
         "Income",
-        { cashCollectionId: args.cashCollectionId }
+        {
+          cashCollectionId: args.cashCollectionId,
+          currentCategory: previousCategories.has(donation.category.trim()) ? donation.category.trim() : undefined,
+        }
       );
       const amount = positiveAmount(donation.amount);
       if (amount === null) {
