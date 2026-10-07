@@ -44,7 +44,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `services/` — PDF and Excel export utilities
 - `types.ts` — Shared TypeScript interfaces
 - `tests/` — Vitest unit tests for lib and categorization logic
-- Routes: /dashboard, /transactions, /funds, /donors, /campaigns, /reports, /copilot, /settings (+ public /privacy, /terms)
+- Routes: /dashboard, /transactions, /funds, /donors, /campaigns, /loans, /reports, /copilot, /settings (+ public /privacy, /terms)
 
 ### Backend Structure (convex/)
 - `schema.ts` — 17 tables, all scoped to `organizationId` for multi-tenancy
@@ -124,6 +124,8 @@ Mistakes reviewers caught more than once, and what now stops them. When you're c
 | Role names, types, defaults, and capability grants live only in `lib/permissions.ts`; UI uses `can()`, server uses `requireCapability()` / `assertCapability()`, validators use `roleValidator` | ESLint `churchcoin/role-literal` + `tests/permissions*.test.ts` (full role × capability table) |
 | Multi-step external workflows (indexing sweeps, GitHub sync, Yapily consent) persist progress before side effects, only mark completion after children finish, and keep retryable and permanent failures distinct | Docs only: judgment call; review against this rule |
 | Async results in the import flow are keyed by stable row IDs and checked against current state before they update or announce anything | Docs only: judgment call |
+| Rules about which transfer, returned payment and loan legs belong together (candidates, "is this movement complete", loan totals, import pair suggestions) live only in `lib/movementMatching`; the server validates with `movementProblem` before linking | Docs only: judgment call |
+| A linked leg's amount, direction, fund and category can't change until it is unlinked; voiding or deleting a leg detaches it and dissolves a movement that is no longer complete; deleting a journal leg deletes the whole transfer | `tests/movementLinks.test.ts` + `patchTransaction` / `deleteTransaction` in `convex/lib/transactionWrites.ts` |
 | Pledge removal, duplicate cleanup, and collection banking respect completed reconciliation locks; each reconciliation keeps the rows it owns, source giving stays locked while any completed cash banking reconciliation uses its collection, and bank and cash banking reconciliations respect each other's locks | `tests/reconciliationLocks.test.ts` + `getCompletedReconciliationLock` in `convex/lib/transactionWrites.ts` |
 | Readers without `donors.read` get neutral descriptions and no notes or void reasons on donor-linked rows; never redact by matching current donor values (names change) | `tests/permissions.test.ts` + `tests/permissionsAccess.test.ts` |
 | Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |

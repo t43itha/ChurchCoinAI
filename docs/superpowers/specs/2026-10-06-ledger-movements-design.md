@@ -138,7 +138,7 @@ None of the 24 rows is in a completed reconciliation, so no lock override is nee
 2. `feat(ledger)`: schema, built-in categories, copying `movementKind` on write, the transfers report section, the PDF and the month-end check.
 3. `feat(transactions)`: "Link other side", the journal transfer form and the "Needs reclassifying" filter.
 
-Later: the loan register, recording the bank account on each transaction, and pair suggestions during import.
+3 also took in the loan register, pair suggestions during import, an Excel transfers and loans sheet, and a month-end "possible double count" check (plan: `docs/superpowers/plans/2026-10-07-ledger-movements-pr3.md`). A loan is one movement holding the money received and every repayment, with the lender's name and an optional due date on the movement; there is no lenders table and no donor link. Recording the bank account on each transaction is a later PR.
 
 ## Separate finding
 
