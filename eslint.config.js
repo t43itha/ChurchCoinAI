@@ -51,6 +51,7 @@ export default tseslint.config(
       "lib/voidedTransactions.ts",
       "lib/reportableTransactions.ts",
       "lib/movementCategories.ts",
+      "lib/movementMatching.ts",
       "lib/cashChequeBanking.ts",
       "convex/schema.ts",
       "convex/mutations/**",

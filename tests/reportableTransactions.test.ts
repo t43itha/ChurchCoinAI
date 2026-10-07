@@ -178,11 +178,13 @@ describe("movement views", () => {
     expect(transfersByFund(movements.filter((t) => t._id !== "in")).unmatched).toBe(-300);
   });
 
-  it("flags transfer and returned payment legs waiting for their other side", () => {
+  it("flags transfer, returned payment and loan legs waiting for their other side", () => {
     const leg = (extra: Partial<LedgerRow>): LedgerRow => ({ amount: 10, type: "Income", ...extra });
     expect(isUnlinkedMovementLeg(leg({ movementKind: "transfer" }))).toBe(true);
     expect(isUnlinkedMovementLeg(leg({ movementKind: "reversal" }))).toBe(true);
-    expect(isUnlinkedMovementLeg(leg({ movementKind: "loan" }))).toBe(false);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "loan" }))).toBe(true);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "loan", movementId: "m1" }))).toBe(false);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "loan", isVoided: true }))).toBe(false);
     expect(isUnlinkedMovementLeg(leg({ movementKind: "transfer", movementId: "m1" }))).toBe(false);
     expect(isUnlinkedMovementLeg(leg({ movementKind: "transfer", isVoided: true }))).toBe(false);
     expect(isUnlinkedMovementLeg(leg({}))).toBe(false);
