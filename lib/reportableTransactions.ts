@@ -156,8 +156,3 @@ export function buildTransferSummary<T extends LedgerRow & { fundId: string }>(
 export function isUnlinkedMovementLeg(row: LedgerRow) {
   return isActiveTransaction(row) && row.movementKind !== undefined && row.movementId === undefined;
 }
-
-// Link state for choosing row actions. Reports never read these.
-export const movementIdOf = (row: LedgerRow) => row.movementId;
-export const movementKindOf = (row: LedgerRow) => row.movementKind;
-export const isJournalLeg = (row: LedgerRow) => row.isJournal === true;

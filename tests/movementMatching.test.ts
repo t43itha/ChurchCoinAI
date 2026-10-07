@@ -3,6 +3,7 @@ import {
   LINK_WINDOW_DAYS,
   isLoanOverdue,
   linkCandidates,
+  linkState,
   movementProblem,
   suggestImportPairs,
   summarizeLoan,
@@ -251,5 +252,21 @@ describe("suggestImportPairs", () => {
     ];
     const ledgerLegs = [out({ _id: "ledger-1", movementKind: undefined })];
     expect(suggestImportPairs(importLegs, ledgerLegs).size).toBe(0);
+  });
+});
+
+describe("linkState", () => {
+  it("offers linking for an unlinked marked leg", () => {
+    expect(linkState(leg({ _id: "a", movementKind: "loan" }))).toEqual({ status: "waiting", kind: "loan" });
+  });
+
+  it("separates bank legs from journal legs once linked", () => {
+    expect(linkState(leg({ _id: "a", movementId: "m1" }))).toEqual({ status: "linked", kind: "transfer" });
+    expect(linkState(leg({ _id: "a", movementId: "m1", isJournal: true }))).toEqual({ status: "journal" });
+  });
+
+  it("offers nothing for plain or voided rows", () => {
+    expect(linkState(leg({ _id: "a", movementKind: undefined }))).toEqual({ status: "none" });
+    expect(linkState(leg({ _id: "a", isVoided: true }))).toEqual({ status: "none" });
   });
 });

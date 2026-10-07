@@ -5,9 +5,8 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { meetsMoneyTarget } from "../../convex/lib/money";
 import type { MovementKind } from "../../lib/movementCategories";
-import { linkCandidates, MOVEMENT_LABELS } from "../../lib/movementMatching";
+import { linkCandidates, linkState, MOVEMENT_LABELS } from "../../lib/movementMatching";
 import { notify } from "../../lib/notifications";
-import { movementKindOf } from "../../lib/reportableTransactions";
 import type { Fund, Transaction } from "../../types";
 import TransactionDialog, { DialogFooter } from "./TransactionDialog";
 
@@ -231,12 +230,12 @@ function RepaymentForm({ transaction, loans, isSaving, onLink, onClose }: LinkFo
 
 export function LinkMovementPanel(props: LinkFormProps) {
   const { transaction } = props;
-  const kind = movementKindOf(transaction);
-  if (kind === "loan") {
+  const state = linkState(transaction);
+  if (state.status !== "waiting") return null;
+  if (state.kind === "loan") {
     return transaction.type === "Income" ? <ReceivedLoanForm {...props} /> : <RepaymentForm {...props} />;
   }
-  if (kind === undefined) return null;
-  return <OtherSideForm {...props} kind={kind} />;
+  return <OtherSideForm {...props} kind={state.kind} />;
 }
 
 type LinkMovementModalProps = {
@@ -248,7 +247,8 @@ type LinkMovementModalProps = {
 
 export default function LinkMovementModal({ transaction, transactions, funds, onClose }: LinkMovementModalProps) {
   const link = useMutation(api.mutations.movements.link);
-  const isLoan = movementKindOf(transaction) === "loan";
+  const state = linkState(transaction);
+  const isLoan = state.status === "waiting" && state.kind === "loan";
   const loans = useQuery(api.queries.movements.listLoans, isLoan ? {} : "skip");
   const [isSaving, setIsSaving] = useState(false);
 

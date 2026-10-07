@@ -462,12 +462,12 @@ describe("journal transfers", () => {
     }, role);
 
     const financeTeam = journal("Finance Team");
-    await expect(invoke(movementMutations.deleteJournalTransfer, financeTeam.ctx, { movementId: "j1" }))
+    await expect(invoke(movementMutations.deleteJournalTransfer, financeTeam.ctx, { transactionId: "j-out" }))
       .rejects.toThrow(/requires ledger\.delete/);
     expect(financeTeam.get("j1")).not.toBeNull();
 
     const admin = journal("Admin");
-    await invoke(movementMutations.deleteJournalTransfer, admin.ctx, { movementId: "j1" });
+    await invoke(movementMutations.deleteJournalTransfer, admin.ctx, { transactionId: "j-out" });
     expect(admin.get("j1")).toBeNull();
     expect(admin.get("j-out")).toBeNull();
     expect(admin.get("j-in")).toBeNull();

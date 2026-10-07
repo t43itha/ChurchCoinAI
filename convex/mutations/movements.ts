@@ -188,25 +188,16 @@ export const createJournalTransfer = mutation({
   },
 });
 
+// Deleting either side deletes the whole transfer (see deleteTransaction).
 export const deleteJournalTransfer = mutation({
-  args: { movementId: v.id("movements") },
+  args: { transactionId: v.id("transactions") },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "ledger.delete");
-    const movement = await ctx.db.get(args.movementId);
-    if (!movement || movement.organizationId !== user.organizationId) {
+    const leg = await ctx.db.get(args.transactionId);
+    if (!leg || leg.organizationId !== user.organizationId || !leg.isJournal) {
       throw new Error("Transfer not found");
     }
-
-    const legs = await legsOf(ctx, movement._id);
-    if (legs.some((leg) => !leg.isJournal)) {
-      throw new Error("Only transfers created in ChurchCoin can be deleted here.");
-    }
-    if (legs.length === 0) {
-      await ctx.db.delete(movement._id);
-      return null;
-    }
-
-    await deleteTransaction(ctx, legs[0]);
+    await deleteTransaction(ctx, leg);
     return null;
   },
 });

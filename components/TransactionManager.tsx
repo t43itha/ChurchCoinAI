@@ -17,7 +17,8 @@ import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/tr
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
 import { resolveCategoryForTransaction } from '../convex/intelligence/categorization/categoryResolver';
-import { filterFundBalanceRows, isJournalLeg, isUnlinkedMovementLeg, isVoidedTransaction, movementIdOf } from '../lib/reportableTransactions';
+import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
+import { linkState } from '../lib/movementMatching';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
@@ -240,7 +241,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [initialFundId]);
 
   const canEdit = can(currentUser.role, "ledger.write");
-  const editingLinked = editingTransaction !== null && movementIdOf(editingTransaction) !== undefined;
+  const editingLinked = editingTransaction !== null && ['linked', 'journal'].includes(linkState(editingTransaction).status);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -340,11 +341,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleDeleteJournalTransfer = async (transaction: Transaction) => {
-    const movementId = movementIdOf(transaction);
-    if (!movementId) return;
     if (!window.confirm("Delete this transfer between funds? Both sides will be removed.")) return;
     try {
-      await deleteJournalTransfer({ movementId: movementId as Id<"movements"> });
+      await deleteJournalTransfer({ transactionId: transaction._id as Id<"transactions"> });
       notify("Transfer Deleted", "Both sides of the transfer have been removed.");
     } catch (error) {
       notify("Error", error instanceof Error ? error.message : "Failed to delete transfer.");
@@ -1445,8 +1444,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                   const fund = funds.find(f => f._id === t.fundId);
                   const isSelected = selectedIds.has(t._id);
                   const linkedPledge = pledges.find(p => p._id === t.pledgeId);
-                  const movementId = movementIdOf(t);
-                  const isJournal = isJournalLeg(t);
+                  const link = linkState(t);
+                  const isJournal = link.status === 'journal';
 
                   return (
                     <tr key={t._id} className={`group transition-colors border-b border-[#efeee9] last:border-0 ${isSelected ? 'bg-[#fbf5ec]' : isVoidedTransaction(t) ? 'bg-[#fdf5f5] opacity-60' : 'hover:bg-[#fcfbf9]'}`}>
@@ -1468,7 +1467,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 Voided
                               </span>
                              )}
-                             {movementId && !isJournal && (
+                             {link.status === 'linked' && (
                               <span className="px-1.5 py-0.5 rounded-[5px] border border-sage/30 bg-sage-light text-[9.5px] font-bold text-sage-dark uppercase tracking-[0.08em] shrink-0" title="Linked to its other side">
                                 Linked
                               </span>
@@ -1524,17 +1523,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                           ))}
                       </td>
                       <td className="px-4 py-3.5 text-right whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                          {canEdit && isUnlinkedMovementLeg(t) && (
+                          {canEdit && link.status === 'waiting' && (
                               <button type="button" onClick={() => setLinkTarget(t)} className="text-grey-mid hover:text-sage-dark transition-colors p-1" title="Link other side" aria-label="Link other side">
                                   <Link2 size={15} strokeWidth={1.9} />
                               </button>
                           )}
-                          {canEdit && movementId && !isJournal && (
+                          {canEdit && link.status === 'linked' && (
                               <button type="button" onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-sage-dark transition-colors p-1" title="Unlink from its other side" aria-label="Unlink">
                                   <Unlink size={15} strokeWidth={1.9} />
                               </button>
                           )}
-                          {isJournal && can(currentUser.role, "ledger.delete") && (
+                          {link.status === 'journal' && can(currentUser.role, "ledger.delete") && (
                               <button type="button" onClick={() => handleDeleteJournalTransfer(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Delete transfer" aria-label="Delete transfer">
                                   <Trash2 size={15} strokeWidth={1.9} />
                               </button>

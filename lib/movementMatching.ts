@@ -1,8 +1,23 @@
 import { roundMoney, sumMoney } from "../convex/lib/money";
 import type { MovementKind } from "./movementCategories";
-import { isVoidedTransaction, type LedgerRow } from "./reportableTransactions";
+import { isUnlinkedMovementLeg, isVoidedTransaction, type LedgerRow } from "./reportableTransactions";
 
 export const LINK_WINDOW_DAYS = 14;
+
+// Which link actions a row offers. A voided row has none: voiding unlinks it.
+export type LinkState =
+  | { status: "none" }
+  | { status: "waiting"; kind: MovementKind }
+  | { status: "linked"; kind: MovementKind }
+  | { status: "journal" };
+
+export function linkState(row: LedgerRow): LinkState {
+  if (isUnlinkedMovementLeg(row)) return { status: "waiting", kind: row.movementKind! };
+  if (isVoidedTransaction(row) || row.movementId === undefined) return { status: "none" };
+  if (row.isJournal) return { status: "journal" };
+  if (row.movementKind === undefined) return { status: "none" };
+  return { status: "linked", kind: row.movementKind };
+}
 
 export type MovementLeg = LedgerRow & { _id: string; date: string; fundId: string };
 
