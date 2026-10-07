@@ -1059,7 +1059,7 @@ describe("dashboard with transfers, returned payments and loans", () => {
     expect(summary.readiness.reconciledPercent).toBe(100);
   });
 
-  it("counts transfer and returned payment legs still waiting for their other side", () => {
+  it("counts transfer, returned payment and loan legs still waiting for their other side", () => {
     const summary = summarise([
       { ...base, _id: "transfer", date: "2026-09-30", amount: 300, type: "Expenditure", fundId: "general", movementKind: "transfer" },
       { ...base, _id: "bounced", date: "2026-10-02", amount: 40, type: "Income", fundId: "general", movementKind: "reversal" },
@@ -1069,6 +1069,6 @@ describe("dashboard with transfers, returned payments and loans", () => {
       { ...base, _id: "later", date: "2026-11-02", amount: 20, type: "Income", fundId: "general", movementKind: "transfer" },
     ]);
 
-    expect(summary.readiness.unlinkedMovementLegs).toBe(2);
+    expect(summary.readiness.unlinkedMovementLegs).toBe(3);
   });
 });

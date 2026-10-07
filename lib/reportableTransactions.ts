@@ -153,13 +153,6 @@ export function buildTransferSummary<T extends LedgerRow & { fundId: string }>(
 }
 
 // A transfer, returned payment or loan leg not yet linked to its other side.
-// Loan legs count too: the loan register links each receipt and repayment.
 export function isUnlinkedMovementLeg(row: LedgerRow) {
-  return (
-    isActiveTransaction(row) &&
-    (row.movementKind === "transfer" ||
-      row.movementKind === "reversal" ||
-      row.movementKind === "loan") &&
-    row.movementId === undefined
-  );
+  return isActiveTransaction(row) && row.movementKind !== undefined && row.movementId === undefined;
 }
