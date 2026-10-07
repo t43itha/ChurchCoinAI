@@ -5,6 +5,7 @@ import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { Fund, TransactionType } from "../types";
 import { categoryNamesForTransactionTypes } from "../lib/transactionCategories";
+import { isMovementCategory, type MovementKind } from "../lib/movementCategories";
 import DonorSearchInput from "./DonorSearchInput";
 import { InPersonGivingLedger } from "../lib/inPersonGiving";
 import { formatLocalDateInputValue, getWeekEndingSunday } from "../lib/dateUtils";
@@ -24,6 +25,7 @@ interface Category {
   _id: string;
   name: string;
   transactionType?: TransactionType;
+  movementKind?: MovementKind;
 }
 
 interface ServiceRowEntry {
@@ -97,11 +99,12 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
   const today = formatLocalDateInputValue(new Date());
   const unrestrictedFund = funds.find((fund) => fund.type === "Unrestricted");
   const defaultFundId = unrestrictedFund?._id || funds[0]?._id || "";
-  // Cash takings are always saved as Income, so offer only categories the
-  // server will accept for Income (after its legacy-category backfill).
+  // Cash takings are always saved as giving, so offer only income categories
+  // the server will accept (after its legacy-category backfill), and no
+  // transfer, returned payment or loan categories.
   const incomeCategories = useMemo(() => {
     const valid = new Set(categoryNamesForTransactionTypes(categories, [TransactionType.INCOME]));
-    return categories.filter((category) => valid.has(category.name));
+    return categories.filter((category) => valid.has(category.name) && !isMovementCategory(category));
   }, [categories]);
   const defaultNamedDonationCategory = getDefaultDonationCategory(incomeCategories);
 

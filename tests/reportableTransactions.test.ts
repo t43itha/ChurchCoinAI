@@ -4,9 +4,13 @@ import {
   filterIncomeAndExpenditure,
   hasBankEffect,
   isReportableIncomeTransaction,
+  isUnlinkedMovementLeg,
   ledgerEffect,
   sumFundBalance,
+  sumRaised,
   sumReportableIncome,
+  transfersByFund,
+  type LedgerRow,
 } from "../lib/reportableTransactions";
 
 const transactions = [
@@ -49,6 +53,34 @@ describe("ledgerEffect", () => {
       // Older reopen code left the deposit tag on rows later edited to expenditure.
       row: { amount: 100, type: "Expenditure" as const, cashBankingRole: "bank_deposit" as const },
       effect: { bank: true, fund: true, activity: "expenditure" },
+    },
+    {
+      row: { amount: 100, type: "Income" as const, cashBankingRole: "bank_deposit" as const, movementKind: "loan" as const },
+      effect: { bank: true, fund: false, activity: "none" },
+    },
+    {
+      row: { amount: 300, type: "Expenditure" as const, movementKind: "transfer" as const, isJournal: true },
+      effect: { bank: false, fund: true, activity: "transfer" },
+    },
+    {
+      row: { amount: 300, type: "Income" as const, movementKind: "transfer" as const },
+      effect: { bank: true, fund: true, activity: "transfer" },
+    },
+    {
+      row: { amount: 300, type: "Expenditure" as const, movementKind: "transfer" as const },
+      effect: { bank: true, fund: true, activity: "transfer" },
+    },
+    {
+      row: { amount: 300, type: "Expenditure" as const, movementKind: "transfer" as const, isVoided: true },
+      effect: { bank: false, fund: false, activity: "none" },
+    },
+    {
+      row: { amount: 40, type: "Income" as const, movementKind: "reversal" as const },
+      effect: { bank: true, fund: true, activity: "none" },
+    },
+    {
+      row: { amount: 5000, type: "Income" as const, movementKind: "loan" as const },
+      effect: { bank: true, fund: true, activity: "none" },
     },
     {
       row: { amount: 100, type: "Income" as const, cashBankingRole: "source_giving" as const },
@@ -108,5 +140,51 @@ describe("ledger effect views", () => {
 
     expect(sumReportableIncome(fractionalTransactions)).toBe(0.3);
     expect(sumFundBalance(fractionalTransactions)).toBe(0.2);
+  });
+});
+
+describe("movement views", () => {
+  const movements = [
+    { _id: "gift", fundId: "general", amount: 1000, type: "Income" as const },
+    { _id: "out", fundId: "general", amount: 300, type: "Expenditure" as const, movementKind: "transfer" as const },
+    { _id: "in", fundId: "building", amount: 300, type: "Income" as const, movementKind: "transfer" as const },
+    { _id: "bounced", fundId: "general", amount: 40, type: "Expenditure" as const, movementKind: "reversal" as const },
+    { _id: "loan", fundId: "building", amount: 5000, type: "Income" as const, movementKind: "loan" as const },
+  ];
+
+  it("keeps movements out of income and spending", () => {
+    expect(filterIncomeAndExpenditure(movements).map((t) => t._id)).toEqual(["gift"]);
+    expect(sumReportableIncome(movements)).toBe(1000);
+  });
+
+  it("still moves fund balances", () => {
+    expect(sumFundBalance(movements.filter((t) => t.fundId === "general"))).toBe(660);
+    expect(sumFundBalance(movements.filter((t) => t.fundId === "building"))).toBe(5300);
+  });
+
+  it("counts giving and transfers in as raised, but not transfers out, returns or loans", () => {
+    expect(sumRaised(movements.filter((t) => t.fundId === "general"))).toBe(1000);
+    expect(sumRaised(movements.filter((t) => t.fundId === "building"))).toBe(300);
+  });
+
+  it("nets transfers per fund and shows the unmatched difference", () => {
+    expect(transfersByFund(movements)).toEqual({
+      funds: [
+        { fundId: "general", in: 0, out: 300, net: -300 },
+        { fundId: "building", in: 300, out: 0, net: 300 },
+      ],
+      unmatched: 0,
+    });
+    expect(transfersByFund(movements.filter((t) => t._id !== "in")).unmatched).toBe(-300);
+  });
+
+  it("flags transfer and returned payment legs waiting for their other side", () => {
+    const leg = (extra: Partial<LedgerRow>): LedgerRow => ({ amount: 10, type: "Income", ...extra });
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "transfer" }))).toBe(true);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "reversal" }))).toBe(true);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "loan" }))).toBe(false);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "transfer", movementId: "m1" }))).toBe(false);
+    expect(isUnlinkedMovementLeg(leg({ movementKind: "transfer", isVoided: true }))).toBe(false);
+    expect(isUnlinkedMovementLeg(leg({}))).toBe(false);
   });
 });

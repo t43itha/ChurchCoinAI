@@ -262,10 +262,11 @@ export const submitCollection = mutation({
       }
 
       const categories = await ensureTypedCategories(ctx, user.organizationId);
-      const category = requireCanonicalCategory(
+      const { category, movementKind } = requireCanonicalCategory(
         categories,
         donation.category.trim(),
-        "Income"
+        "Income",
+        { cashCollectionId }
       );
       const amount = positiveAmount(donation.amount);
       if (amount === null) {
@@ -279,6 +280,7 @@ export const submitCollection = mutation({
         amount,
         type: "Income",
         category,
+        movementKind,
         fundId: donation.fundId,
         isReconciled: false,
         paymentMethod: donation.paymentMethod,
@@ -414,10 +416,11 @@ export const replaceCollectionEntries = mutation({
       }
 
       const categories = await ensureTypedCategories(ctx, user.organizationId);
-      const category = requireCanonicalCategory(
+      const { category, movementKind } = requireCanonicalCategory(
         categories,
         donation.category.trim(),
-        "Income"
+        "Income",
+        { cashCollectionId: args.cashCollectionId }
       );
       const amount = positiveAmount(donation.amount);
       if (amount === null) {
@@ -431,6 +434,7 @@ export const replaceCollectionEntries = mutation({
         amount,
         type: "Income",
         category,
+        movementKind,
         fundId: donation.fundId,
         isReconciled: false,
         paymentMethod: donation.paymentMethod,

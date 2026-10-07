@@ -2,6 +2,13 @@ import { defineSchema, defineTable } from "convex/server";
 import { roleValidator } from "./lib/auth";
 import { v } from "convex/values";
 
+// What a transfer, returned payment or loan row is. See lib/movementCategories.
+const movementKind = v.union(
+  v.literal("transfer"),
+  v.literal("reversal"),
+  v.literal("loan")
+);
+
 export default defineSchema({
   // Multi-tenancy: Each organization is a separate tenant
   organizations: defineTable({
@@ -258,10 +265,18 @@ export default defineSchema({
     providerTransactionId: v.optional(v.string()),
     // Source-level dedup for statement imports (see lib/importKeys)
     importKey: v.optional(v.string()),
+    // Copied from the category on every write; see lib/reportableTransactions.
+    movementKind: v.optional(movementKind),
+    // Links the legs of one movement. A leg with a kind but no movement is
+    // waiting for its other side.
+    movementId: v.optional(v.id("movements")),
+    // App-created leg of a transfer between funds that never leaves the bank.
+    isJournal: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
     .index("by_fund", ["fundId"])
+    .index("by_movement", ["movementId"])
     .index("by_organization_date", ["organizationId", "date"])
     .index("by_pledge", ["pledgeId"])
     .index("by_donor", ["donorId"])
@@ -382,6 +397,15 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_status", ["organizationId", "status"]),
 
+  // Legs of one transfer, returned payment or loan, linked by movementId.
+  movements: defineTable({
+    organizationId: v.id("organizations"),
+    kind: movementKind,
+    note: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_organization", ["organizationId"]),
+
   // Categories (per organization) - RCI hierarchical structure
   categories: defineTable({
     organizationId: v.id("organizations"),
@@ -389,6 +413,7 @@ export default defineSchema({
     mainCategory: v.optional(v.string()), // Parent (e.g., "Donations")
     transactionType: v.optional(v.union(v.literal("Income"), v.literal("Expenditure"))),
     displayOrder: v.optional(v.number()),
+    movementKind: v.optional(movementKind),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])

@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { DONOR_RULES, DonorRuleContext } from "./rules/donorRules";
 import { OPERATIONS_RULES, OperationsRuleContext } from "./rules/operationsRules";
-import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
+import { filterIncomeAndExpenditure, hasBankEffect } from "../../lib/reportableTransactions";
 
 // Internal query to gather context for rules evaluation
 export const gatherInsightContext = internalQuery({
@@ -17,6 +17,9 @@ export const gatherInsightContext = internalQuery({
       )
       .collect();
     const transactions = filterIncomeAndExpenditure(allTransactions);
+    // Bookkeeping checks cover every row that reaches the bank, including
+    // transfers, returned payments and loans that income totals leave out.
+    const bankTransactions = allTransactions.filter(hasBankEffect);
 
     // Get all donors
     const donors = await ctx.db
@@ -63,10 +66,10 @@ export const gatherInsightContext = internalQuery({
         : 0;
 
     // Operations context
-    const uncategorizedCount = transactions.filter(
+    const uncategorizedCount = bankTransactions.filter(
       (t) => !t.category || t.category === "Uncategorized"
     ).length;
-    const unreconciledCount = transactions.filter(
+    const unreconciledCount = bankTransactions.filter(
       (t) => !t.isReconciled
     ).length;
 
@@ -74,7 +77,7 @@ export const gatherInsightContext = internalQuery({
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
 
-    const pendingTransactionsOver30Days = transactions.filter(
+    const pendingTransactionsOver30Days = bankTransactions.filter(
       (t) => !t.isReconciled && t.date < thirtyDaysAgoStr
     ).length;
 
@@ -88,7 +91,7 @@ export const gatherInsightContext = internalQuery({
       .sort((a, b) => b.amount - a.amount);
 
     // Days since last transaction
-    const sortedByDate = [...transactions].sort((a, b) =>
+    const sortedByDate = [...bankTransactions].sort((a, b) =>
       b.date.localeCompare(a.date)
     );
     const lastTransactionDate = sortedByDate[0]?.date;
@@ -108,7 +111,7 @@ export const gatherInsightContext = internalQuery({
       operationsContext: {
         uncategorizedCount,
         unreconciledCount,
-        totalTransactions: transactions.length,
+        totalTransactions: bankTransactions.length,
         pendingTransactionsOver30Days,
         largeUncategorizedExpenses,
         daysSinceLastTransaction,

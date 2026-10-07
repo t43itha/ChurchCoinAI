@@ -544,6 +544,9 @@ export const deleteDataBatch = internalMutation({
       case "transactions":
         records = await ctx.db.query("transactions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
+      case "movements":
+        records = await ctx.db.query("movements").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
       case "cashCollections":
         records = await ctx.db.query("cashCollections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;

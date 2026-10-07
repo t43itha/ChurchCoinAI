@@ -13,6 +13,7 @@ import { effectiveCategories } from "../lib/transactionCategories";
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
 import { screenImportRows, withImportKeys } from "../lib/importKeys";
 import { uiFunction } from "./helpers/transactionManagerHandlers";
+import { MOVEMENT_CATEGORIES } from "../lib/movementCategories";
 
 function database() {
   const records: Record<string, any[]> = { users: [], organizations: [], funds: [], categories: [], transactions: [] };
@@ -100,7 +101,7 @@ describe("import category and date acceptance", () => {
   it("seeds typed income and expenditure categories for a new organization", async () => {
     const { ctx, records } = database();
     await (create as any)._handler(ctx, { name: "Synthetic Audit Church", userName: "Audit Owner", selectedPlan: "starter" });
-    expect(records.categories).toHaveLength(getRCICategorySeedData().length);
+    expect(records.categories).toHaveLength(getRCICategorySeedData().length + MOVEMENT_CATEGORIES.length);
     expect(allowedCategoriesForType(records.categories, "Income").length).toBeGreaterThan(0);
     expect(allowedCategoriesForType(records.categories, "Expenditure").length).toBeGreaterThan(0);
     const input = [{ description: "Monthly bank charges", amount: 12, type: "Expenditure" as const }];

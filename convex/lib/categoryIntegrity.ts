@@ -1,9 +1,41 @@
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { getRCICategorySeedData } from "../../constants/rciCategories";
+import { CATEGORY_ALIASES, getRCICategorySeedData } from "../../constants/rciCategories";
+import { isMovementCategory, missingMovementCategories, type MovementKind } from "../../lib/movementCategories";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 
 type CategoryCtx = QueryCtx | MutationCtx;
+
+const normalizeName = (name: string) => name.trim().toLowerCase();
+const ALIAS_TARGETS = new Map(
+  Object.entries(CATEGORY_ALIASES).map(([alias, target]) => [normalizeName(alias), target])
+);
+const SEED_NAMES = new Set(getRCICategorySeedData().map((seed) => normalizeName(seed.name)));
+
+// Names resolve case-insensitively and through aliases, so a name that only
+// differs by case, or is an alias of another category, would hide one of them.
+// A movement category also can't take a seed name: the seed backfill would
+// give it a transaction type, and cash collections write "Offerings" directly.
+export function categoryNameConflict(
+  existing: Array<{ _id: string; name: string }>,
+  name: string,
+  { categoryId, isMovement = false }: { categoryId?: string; isMovement?: boolean } = {}
+): string | null {
+  const trimmed = name.trim();
+  const normalized = normalizeName(name);
+  if (!normalized) return "Enter a category name";
+  if (existing.some((category) => category._id !== categoryId && normalizeName(category.name) === normalized)) {
+    return `Category "${trimmed}" already exists`;
+  }
+  const aliasTarget = ALIAS_TARGETS.get(normalized);
+  if (aliasTarget && normalizeName(aliasTarget) !== normalized) {
+    return `"${trimmed}" is another name for "${aliasTarget}"`;
+  }
+  if (isMovement && SEED_NAMES.has(normalized)) {
+    return `"${trimmed}" is a built-in category name`;
+  }
+  return null;
+}
 
 export async function seedOrganizationCategories(
   ctx: MutationCtx,
@@ -20,6 +52,29 @@ export async function seedOrganizationCategories(
       createdAt: now,
     });
   }
+  await insertMissingMovementCategories(ctx, organizationId, [], now);
+}
+
+// Movement categories carry no transaction type: the resolver accepts an
+// untyped category for both income and expenditure.
+async function insertMissingMovementCategories(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  existing: Array<{ name: string; movementKind?: MovementKind }>,
+  now: number
+) {
+  const missing = missingMovementCategories(existing);
+  for (const category of missing) {
+    await ctx.db.insert("categories", {
+      organizationId,
+      name: category.name,
+      mainCategory: category.mainCategory,
+      movementKind: category.movementKind,
+      displayOrder: category.displayOrder,
+      createdAt: now,
+    });
+  }
+  return missing.length > 0;
 }
 
 // Older organisations were seeded with names only. The categoriser ignores a
@@ -62,6 +117,10 @@ export async function ensureTypedCategories(
     });
   }
 
+  if (await insertMissingMovementCategories(ctx, organizationId, existing, now)) {
+    changed = true;
+  }
+
   if (!changed) return existing;
 
   return await ctx.db
@@ -76,10 +135,12 @@ export const requireCanonicalCategory = (
     mainCategory?: string;
     transactionType?: "Income" | "Expenditure";
     displayOrder?: number;
+    movementKind?: MovementKind;
   }>,
   categoryName: string,
-  transactionType: "Income" | "Expenditure"
-) => {
+  transactionType: "Income" | "Expenditure",
+  { cashCollectionId }: { cashCollectionId?: string } = {}
+): { category: string; movementKind: MovementKind | undefined } => {
   const resolved = resolveCategoryForTransaction(
     categoryName,
     transactionType,
@@ -90,7 +151,15 @@ export const requireCanonicalCategory = (
       `Choose a valid ${transactionType.toLowerCase()} category`
     );
   }
-  return resolved.name;
+  // Cash collections hold giving, and the collection editor rewrites its rows
+  // as giving, so a movement mark there would be lost on the next save.
+  if (isMovementCategory(resolved) && cashCollectionId) {
+    throw new Error(
+      "Rows from a cash collection can't be marked as a transfer, returned payment or loan. Record it in Transactions instead."
+    );
+  }
+  // Callers write both fields, so leaving a movement category clears the kind.
+  return { category: resolved.name, movementKind: resolved.movementKind };
 };
 
 export async function loadOrganizationCategories(

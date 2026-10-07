@@ -145,6 +145,11 @@ async function getAndValidateBankTransactions(
       throw new Error("Only income transactions can be used as bank deposits");
     }
 
+    // Completing would retag the row as a deposit and drop its movement effect.
+    if (transaction.movementKind || transaction.isJournal) {
+      throw new Error("Transfers, returned payments and loans can't be used as cash banking deposits");
+    }
+
     const isLinkedToCurrentReconciliation =
       currentReconciliationId !== undefined &&
       transaction.cashBankingReconciliationId === currentReconciliationId;

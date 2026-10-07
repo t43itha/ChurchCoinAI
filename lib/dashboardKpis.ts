@@ -1,10 +1,14 @@
 import { CATEGORY_ALIASES, RCI_INCOME_CATEGORIES } from "../constants/rciCategories";
-import { filterIncomeAndExpenditure, sumFundBalance } from "./reportableTransactions";
-// Operational KPIs (reconciled/categorised %, unreconciled spend) deliberately
-// count every non-voided row, including cash banking deposits. Money totals
-// below use the reportable helpers.
-// eslint-disable-next-line no-restricted-imports
-import { filterActiveTransactions } from "./voidedTransactions";
+// Operational KPIs (reconciled/categorised %, unreconciled spend) count every
+// row that reaches the bank, including cash banking deposits but not journal
+// legs. Money totals use the income-and-spending and fund views.
+import {
+  filterIncomeAndExpenditure,
+  hasBankEffect,
+  isUnlinkedMovementLeg,
+  sumFundBalance,
+} from "./reportableTransactions";
+import type { MovementKind } from "./movementCategories";
 import { meetsMoneyTarget, roundMoney, sumMoney } from "../convex/lib/money";
 
 export type DashboardPeriodKey = "currentMonth" | "previousMonth" | "quarter" | "ytd";
@@ -87,6 +91,9 @@ export type DashboardTransaction = {
   cashBankingRole?: "source_giving" | "bank_deposit";
   paymentMethod?: string;
   isVoided?: boolean;
+  movementKind?: MovementKind;
+  movementId?: string;
+  isJournal?: boolean;
 };
 
 type FundBalance = {
@@ -108,6 +115,7 @@ export type ExecutiveDashboardSummary = {
     categorizedPercent: number | null;
     cashBankingPendingWeeks: number;
     unreconciledExpenditureCount: number;
+    unlinkedMovementLegs: number;
     giftAidClaimable: number;
     missionTitheDue: number;
     statementsDueThrough: string;
@@ -234,9 +242,9 @@ export function buildExecutiveDashboardSummary({
 }: BuildExecutiveDashboardSummaryInput): ExecutiveDashboardSummary {
   const period = getDashboardPeriod(periodKey, now);
   const elapsed = { startDate: period.startDate, endDate: period.throughDate };
-  const activeTransactions = filterActiveTransactions(transactions);
+  const bankTransactions = transactions.filter(hasBankEffect);
   const reportableTransactions = filterIncomeAndExpenditure(transactions);
-  const periodTransactions = activeTransactions.filter((transaction) =>
+  const periodTransactions = bankTransactions.filter((transaction) =>
     isWithinRange(transaction.date, elapsed)
   );
   const reportablePeriodTransactions = reportableTransactions.filter((transaction) =>
@@ -317,6 +325,10 @@ export function buildExecutiveDashboardSummary({
       categorizedPercent,
       cashBankingPendingWeeks,
       unreconciledExpenditureCount,
+      unlinkedMovementLegs: transactions.filter(
+        (transaction) =>
+          transaction.date <= period.throughDate && isUnlinkedMovementLeg(transaction)
+      ).length,
       giftAidClaimable,
       missionTitheDue,
       statementsDueThrough,

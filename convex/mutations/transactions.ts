@@ -118,7 +118,9 @@ export const create = mutation({
     }
 
     const categories = await ensureTypedCategories(ctx, user.organizationId);
-    const category = requireCanonicalCategory(categories, args.category, args.type);
+    const { category, movementKind } = requireCanonicalCategory(categories, args.category, args.type, {
+      cashCollectionId: args.cashCollectionId,
+    });
 
     const transactionId = await ctx.db.insert("transactions", {
       organizationId: user.organizationId,
@@ -127,6 +129,7 @@ export const create = mutation({
       amount: roundMoney(args.amount),
       type: args.type,
       category,
+      movementKind,
       fundId: args.fundId,
       isReconciled: false,
       notes: args.notes,
@@ -222,10 +225,11 @@ export const update = mutation({
     if (args.type !== undefined) updates.type = args.type;
     if (args.category !== undefined || args.type !== undefined) {
       const categories = await ensureTypedCategories(ctx, user.organizationId);
-      updates.category = requireCanonicalCategory(
-        categories,
-        args.category ?? transaction.category,
-        finalType
+      Object.assign(
+        updates,
+        requireCanonicalCategory(categories, args.category ?? transaction.category, finalType, {
+          cashCollectionId: transaction.cashCollectionId,
+        })
       );
     }
     if (args.fundId !== undefined) updates.fundId = args.fundId;
@@ -369,7 +373,9 @@ export const bulkCreate = mutation({
         validatedCollections.add(t.cashCollectionId);
       }
 
-      const category = requireCanonicalCategory(categories, defaulted.category ?? "", t.type);
+      const { category, movementKind } = requireCanonicalCategory(categories, defaulted.category ?? "", t.type, {
+        cashCollectionId: t.cashCollectionId,
+      });
 
       if (t.bankConnectionId && !validatedConnections.has(t.bankConnectionId)) {
         const connection = await ctx.db.get(t.bankConnectionId);
@@ -418,6 +424,7 @@ export const bulkCreate = mutation({
         amount: roundMoney(t.amount),
         type: t.type,
         category,
+        movementKind,
         fundId: fund._id,
         isReconciled: t.isReconciled ?? false,
         notes: t.notes,
@@ -533,10 +540,11 @@ export const bulkUpdate = mutation({
       if (transaction && transaction.organizationId === user.organizationId) {
         const updates: Record<string, any> = {};
         if (args.updates.category !== undefined) {
-          updates.category = requireCanonicalCategory(
-            categories,
-            args.updates.category,
-            transaction.type
+          Object.assign(
+            updates,
+            requireCanonicalCategory(categories, args.updates.category, transaction.type, {
+              cashCollectionId: transaction.cashCollectionId,
+            })
           );
         }
         if (args.updates.fundId !== undefined)
@@ -583,10 +591,11 @@ export const batchUpdate = mutation({
         if (transaction.pledgeId) pledgesToCheck.add(transaction.pledgeId);
 
         if (update.changes.category !== undefined) {
-          changes.category = requireCanonicalCategory(
-            categories,
-            update.changes.category,
-            transaction.type
+          Object.assign(
+            changes,
+            requireCanonicalCategory(categories, update.changes.category, transaction.type, {
+              cashCollectionId: transaction.cashCollectionId,
+            })
           );
         }
         if (transaction.type === "Expenditure") changes.isGiftAidEligible = false;

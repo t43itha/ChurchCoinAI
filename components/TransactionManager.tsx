@@ -169,8 +169,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         .filter((transaction) => selectedIds.has(transaction._id))
         .map((transaction) => transaction.type)
     );
-    return categoryNamesForTransactionTypes(categories, selectedTypes);
-  }, [categories, selectedIds, transactions]);
+    return categoryNamesForTransactionTypes(importCategories, selectedTypes);
+  }, [importCategories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>('all');

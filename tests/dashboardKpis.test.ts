@@ -1015,3 +1015,60 @@ describe("dashboard KPI helpers", () => {
     });
   });
 });
+
+describe("dashboard with transfers, returned payments and loans", () => {
+  const funds = [
+    { _id: "general", name: "General Fund", type: "Unrestricted" as const },
+    { _id: "building", name: "Building Fund", type: "Restricted" as const },
+  ];
+  const base = { category: "Offerings", isReconciled: true };
+  const summarise = (transactions: Parameters<typeof buildExecutiveDashboardSummary>[0]["transactions"]) =>
+    buildExecutiveDashboardSummary({
+      periodKey: "currentMonth",
+      now: new Date("2026-10-20T12:00:00Z"),
+      funds,
+      transactions,
+      donors: [],
+      pledges: [],
+      cashCollections: [],
+      cashReconciliations: [],
+      statementSessions: [],
+      bankAccountFundIds: [],
+    });
+
+  it("moves fund balances without counting transfers as income or spending", () => {
+    const summary = summarise([
+      { ...base, _id: "gift", date: "2026-10-05", amount: 1000, type: "Income", fundId: "general" },
+      { ...base, _id: "out", date: "2026-10-06", amount: 300, type: "Expenditure", fundId: "general", category: "Transfer between funds", movementKind: "transfer" },
+      { ...base, _id: "in", date: "2026-10-06", amount: 300, type: "Income", fundId: "building", category: "Transfer between funds", movementKind: "transfer" },
+    ]);
+
+    expect(summary.health.netMovement).toBe(1000);
+    expect(summary.funds.generalFundBalance).toBe(700);
+    expect(summary.funds.restrictedBalance).toBe(300);
+    expect(summary.trends.monthlyIncomeExpenditure.at(-1)).toMatchObject({ income: 1000, expenditure: 0 });
+  });
+
+  it("does not ask for journal legs to be reconciled", () => {
+    const summary = summarise([
+      { ...base, _id: "spend", date: "2026-10-05", amount: 50, type: "Expenditure", fundId: "general", category: "Utilities" },
+      { ...base, _id: "journal", date: "2026-10-06", amount: 300, type: "Expenditure", fundId: "general", category: "Transfer between funds", movementKind: "transfer", movementId: "m1", isJournal: true, isReconciled: false },
+    ]);
+
+    expect(summary.readiness.unreconciledExpenditureCount).toBe(0);
+    expect(summary.readiness.reconciledPercent).toBe(100);
+  });
+
+  it("counts transfer and returned payment legs still waiting for their other side", () => {
+    const summary = summarise([
+      { ...base, _id: "transfer", date: "2026-09-30", amount: 300, type: "Expenditure", fundId: "general", movementKind: "transfer" },
+      { ...base, _id: "bounced", date: "2026-10-02", amount: 40, type: "Income", fundId: "general", movementKind: "reversal" },
+      { ...base, _id: "loan", date: "2026-10-03", amount: 5000, type: "Income", fundId: "general", movementKind: "loan" },
+      { ...base, _id: "linked", date: "2026-10-04", amount: 20, type: "Income", fundId: "general", movementKind: "reversal", movementId: "m1" },
+      { ...base, _id: "voided", date: "2026-10-04", amount: 20, type: "Income", fundId: "general", movementKind: "reversal", isVoided: true },
+      { ...base, _id: "later", date: "2026-11-02", amount: 20, type: "Income", fundId: "general", movementKind: "transfer" },
+    ]);
+
+    expect(summary.readiness.unlinkedMovementLegs).toBe(2);
+  });
+});

@@ -50,6 +50,7 @@ export default tseslint.config(
     ignores: [
       "lib/voidedTransactions.ts",
       "lib/reportableTransactions.ts",
+      "lib/movementCategories.ts",
       "lib/cashChequeBanking.ts",
       "convex/schema.ts",
       "convex/mutations/**",

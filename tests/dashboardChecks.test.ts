@@ -65,3 +65,20 @@ describe("month-end checks", () => {
     expect(links("Guest")).toMatchObject({ "bank-feeds": undefined, "gift-aid": undefined, reconciled: "/transactions" });
   });
 });
+
+describe("unpaired transfers check", () => {
+  const withUnlinked = (count: number) => ({
+    ...summary,
+    readiness: { ...summary.readiness, unlinkedMovementLegs: count },
+  });
+
+  it("asks for attention when transfers have one side recorded", () => {
+    expect(buildMonthEndChecks(withUnlinked(2), { role: "Admin", bankFeedIssues: 0 }).find((check) => check.id === "unlinked-movements"))
+      .toMatchObject({ value: "2", status: "attention", href: "/transactions" });
+  });
+
+  it("stays hidden when every transfer is paired", () => {
+    expect(buildMonthEndChecks(withUnlinked(0), { role: "Admin", bankFeedIssues: 0 }).map((check) => check.id))
+      .not.toContain("unlinked-movements");
+  });
+});

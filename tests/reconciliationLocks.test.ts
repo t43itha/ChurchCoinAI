@@ -329,6 +329,17 @@ describe("locks across reconciliation systems", () => {
     expect(get("deposit-A")).toEqual(before);
   });
 
+  it.each([
+    ["a transfer", { movementKind: "transfer" }],
+    ["a journal leg", { movementKind: "transfer", movementId: "m1", isJournal: true }],
+  ])("cash banking refuses %s as a bank deposit", async (_name, fields) => {
+    const { ctx, db, get } = bankingFixture();
+    Object.assign(get("deposit-A")!, fields);
+    await expect(invoke(cashBanking.complete, ctx, { reconciliationId: "A" }))
+      .rejects.toThrow("Transfers, returned payments and loans can't be used as cash banking deposits");
+    expect(db.patch).not.toHaveBeenCalled();
+  });
+
   it("cash banking completion cannot detach an omitted deposit locked by a bank session", async () => {
     const { ctx, get, records, db } = bankingFixture();
     get("session")!.status = "completed";

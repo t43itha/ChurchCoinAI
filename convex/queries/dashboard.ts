@@ -112,6 +112,9 @@ export const executiveSummary = query({
         cashBankingRole: transaction.cashBankingRole,
         paymentMethod: transaction.paymentMethod,
         isVoided: transaction.isVoided,
+        movementKind: transaction.movementKind,
+        movementId: transaction.movementId,
+        isJournal: transaction.isJournal,
       })),
       donors: donors.map((donor) => ({
         _id: String(donor._id),

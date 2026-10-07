@@ -1,4 +1,5 @@
-import { isReportableIncomeTransaction } from "./reportableTransactions";
+import { ledgerEffect } from "./reportableTransactions";
+import type { MovementKind } from "./movementCategories";
 
 type PaymentMethod = "Cash" | "Cheque" | "Bank" | "Card" | "Online";
 
@@ -30,6 +31,8 @@ interface GivingTransaction {
   paymentMethod?: PaymentMethod;
   cashCollectionId?: string;
   isVoided?: boolean;
+  movementKind?: MovementKind;
+  isJournal?: boolean;
 }
 
 interface GivingFund {
@@ -124,10 +127,13 @@ export function groupInPersonGivingCollections({
 
   return collections
     .map((collection) => {
+      // Every row the collection holds, including any marked as a transfer,
+      // returned payment or loan: saving the editor replaces them all.
       const collectionTransactions = transactions.filter(
         (transaction) =>
           transaction.cashCollectionId === collection._id &&
-          isReportableIncomeTransaction(transaction)
+          transaction.type === "Income" &&
+          ledgerEffect(transaction).fund
       );
 
       const rowsByKey = new Map<string, InPersonGivingLedgerRow>();

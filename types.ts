@@ -1,4 +1,6 @@
 import type { UserRole } from "./lib/permissions";
+import type { MovementKind } from "./lib/movementCategories";
+import type { TransferSummary } from "./lib/reportableTransactions";
 
 export const TransactionType = {
   INCOME: "Income",
@@ -173,6 +175,9 @@ export interface Transaction {
   voidedBy?: string;
   unvoidedAt?: number;
   unvoidedBy?: string;
+  movementKind?: MovementKind;
+  movementId?: string;
+  isJournal?: boolean;
 }
 
 export type TransactionCreateInput = Omit<Transaction, "_id">;
@@ -279,6 +284,7 @@ export interface Category {
   mainCategory?: string;
   transactionType?: TransactionType;
   displayOrder?: number;
+  movementKind?: MovementKind;
 }
 
 export interface CategoryGroup {
@@ -310,6 +316,7 @@ export interface MonthlyReportData {
     totalExpenditure: number;
     netBankable: number;
   };
+  transfers: TransferSummary;
 }
 
 export interface WeeklyBreakdownItem {
@@ -352,4 +359,5 @@ export interface AnnualReportData {
     totalExpenditure: number;
     netMovement: number;
   };
+  transfers: TransferSummary;
 }

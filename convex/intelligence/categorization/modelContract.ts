@@ -37,9 +37,12 @@ export const categorizationOutputSchema = (
           description: { type: "string" },
           category: {
             type: "string",
+            // Movement categories are valid for both types, so dedupe.
             enum: [
-              ...categoryNamesForPrompt(categories, "Income"),
-              ...categoryNamesForPrompt(categories, "Expenditure"),
+              ...new Set([
+                ...categoryNamesForPrompt(categories, "Income"),
+                ...categoryNamesForPrompt(categories, "Expenditure"),
+              ]),
             ],
           },
           fundName: {
