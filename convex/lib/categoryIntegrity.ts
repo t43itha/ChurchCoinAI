@@ -12,6 +12,9 @@ const ALIAS_TARGETS = new Map(
 );
 const SEED_NAMES = new Set(getRCICategorySeedData().map((seed) => normalizeName(seed.name)));
 
+export const findCategoryByName = <T extends { name: string }>(categories: T[], name: string) =>
+  categories.find((category) => normalizeName(category.name) === normalizeName(name));
+
 // Names resolve case-insensitively and through aliases, so a name that only
 // differs by case, or is an alias of another category, would hide one of them.
 // A movement category also can't take a seed name: the seed backfill would
@@ -93,9 +96,7 @@ export async function ensureTypedCategories(
   const now = Date.now();
   let changed = false;
   for (const seed of getRCICategorySeedData()) {
-    const match = existing.find(
-      (category) => category.name.trim().toLowerCase() === seed.name.toLowerCase()
-    );
+    const match = findCategoryByName(existing, seed.name);
     if (match) {
       if (match.transactionType) continue;
       changed = true;

@@ -1,6 +1,7 @@
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
 import type { CategoryLike } from "../convex/intelligence/categorization/types";
 import { roundMoney, sumMoney } from "../convex/lib/money";
+import type { LoanReportRow } from "../types";
 import type { MovementKind } from "./movementCategories";
 import { isUnlinkedMovementLeg, isVoidedTransaction, type LedgerRow } from "./reportableTransactions";
 
@@ -124,6 +125,21 @@ export function summarizeLoan(legs: MovementLeg[]): LoanSummary {
   const repaid = sumMoney(active.filter(isExpenditure), (leg) => leg.amount);
   const outstanding = roundMoney(borrowed - repaid);
   return { borrowed, repaid, outstanding, isRepaid: borrowed > 0 && outstanding <= 0 };
+}
+
+// Each loan as it stood on throughDate. Legs after it, and voided legs, don't count.
+export function loanReportRows(
+  loans: Array<{ lender?: string; dueDate?: string; legs: MovementLeg[] }>,
+  throughDate: string
+): LoanReportRow[] {
+  return loans
+    .flatMap((loan) => {
+      const legs = loan.legs.filter((leg) => !isVoidedTransaction(leg) && leg.date <= throughDate);
+      if (legs.length === 0) return [];
+      const { borrowed, repaid, outstanding } = summarizeLoan(legs);
+      return [{ lender: loan.lender ?? "", dueDate: loan.dueDate, borrowed, repaid, outstanding }];
+    })
+    .sort((a, b) => a.lender.localeCompare(b.lender));
 }
 
 export function isLoanOverdue(loan: { dueDate?: string; outstanding: number }, today: string) {

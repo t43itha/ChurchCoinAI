@@ -1,4 +1,4 @@
-import { query } from "../_generated/server";
+import { query, QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireCapability } from "../lib/auth";
@@ -10,6 +10,7 @@ import {
   sumFundBalance,
 } from "../../lib/reportableTransactions";
 import { resolveReportingMainCategory } from "../intelligence/categorization/categoryResolver";
+import { loanReportRows } from "../../lib/movementMatching";
 
 // Mission Tithe eligible categories (canonical names only)
 const MISSION_TITHE_CATEGORIES = new Set([
@@ -22,6 +23,28 @@ const MISSION_TITHE_CATEGORIES = new Set([
 const resolveCategory = (category: string): string => {
   return CATEGORY_ALIASES[category] ?? category;
 };
+
+// Loans as they stood at a period end. Lender names are not redacted: reports
+// need reports.read, which leadership holds with donors.read.
+async function loadLoanRows(ctx: QueryCtx, organizationId: Id<"organizations">, throughDate: string) {
+  const movements = await ctx.db
+    .query("movements")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .collect();
+  const loans = await Promise.all(
+    movements
+      .filter((movement) => movement.kind === "loan")
+      .map(async (movement) => ({
+        lender: movement.lender,
+        dueDate: movement.dueDate,
+        legs: await ctx.db
+          .query("transactions")
+          .withIndex("by_movement", (q) => q.eq("movementId", movement._id))
+          .collect(),
+      }))
+  );
+  return loanReportRows(loans, throughDate);
+}
 
 // Helper to get the Sunday (week ending) for a given date
 function getWeekEndingDate(date: Date): string {
@@ -671,6 +694,7 @@ export const monthlyReportData = query({
         netBankable: grossIncome - totalExpenditure,
       },
       transfers: buildTransferSummary(allTransactions, funds),
+      loans: await loadLoanRows(ctx, user.organizationId, endDateStr),
     };
   },
 });
@@ -890,6 +914,7 @@ export const annualReportData = query({
         netMovement: totalIncome - totalExpenditure,
       },
       transfers: buildTransferSummary(allTransactions, funds),
+      loans: await loadLoanRows(ctx, user.organizationId, endDate),
     };
   },
 });

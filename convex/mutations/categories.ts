@@ -9,7 +9,13 @@ import {
   CATEGORY_ALIASES,
 } from "../../constants/rciCategories";
 import { patchTransaction } from "../lib/transactionWrites";
-import { categoryNameConflict, loadOrganizationCategories } from "../lib/categoryIntegrity";
+import {
+  categoryNameConflict,
+  findCategoryByName,
+  loadOrganizationCategories,
+} from "../lib/categoryIntegrity";
+import { isMovementCategory } from "../../lib/movementCategories";
+import type { Doc } from "../_generated/dataModel";
 
 // Create a new category
 export const create = mutation({
@@ -788,6 +794,8 @@ export const seedRCICategoriesInternal = internalMutation({
 // One-time migration: rename orphaned transaction categories to canonical RCI names
 // and ensure all RCI categories exist with correct mainCategory mappings.
 // Idempotent — safe to run multiple times.
+// Names match case-insensitively. Movement categories are never renamed, merged
+// into, or given a transaction type.
 // NOTE: Temporarily set to internalMutation for dashboard execution. Revert to mutation + requireCapability after running.
 export const migrateTransactionCategories = internalMutation({
   args: {
@@ -805,33 +813,32 @@ export const migrateTransactionCategories = internalMutation({
       details: {} as Record<string, { from: string; count: number }>,
     };
 
+    type CategoryName = Pick<Doc<"categories">, "_id" | "name" | "mainCategory" | "movementKind">;
+    let categories: CategoryName[] = await loadOrganizationCategories(ctx, organizationId);
+
+    const insertCategory = async (category: Omit<Doc<"categories">, "_id" | "_creationTime">) => {
+      if (categoryNameConflict(categories, category.name)) return;
+      const _id = await ctx.db.insert("categories", category);
+      categories.push({ _id, name: category.name, mainCategory: category.mainCategory });
+      summary.categoriesCreated.push(category.name);
+    };
+
     // Step 1: Rename category records that use old names
     for (const [oldName, newName] of Object.entries(ALIASES)) {
-      const oldCategory = await ctx.db
-        .query("categories")
-        .withIndex("by_organization_name", (q) =>
-          q.eq("organizationId", organizationId).eq("name", oldName)
-        )
-        .first();
+      const oldCategory = findCategoryByName(categories, oldName);
+      const canonical = findCategoryByName(categories, newName);
+      if (!oldCategory || isMovementCategory(oldCategory)) continue;
+      if (canonical && isMovementCategory(canonical)) continue;
 
-      if (oldCategory) {
-        // Check if canonical name already exists
-        const existingCanonical = await ctx.db
-          .query("categories")
-          .withIndex("by_organization_name", (q) =>
-            q.eq("organizationId", organizationId).eq("name", newName)
-          )
-          .first();
-
-        if (existingCanonical) {
-          // Canonical exists — just delete the old one (transactions will be updated below)
-          await ctx.db.delete(oldCategory._id);
-        } else {
-          // Rename the old category to the canonical name
-          await ctx.db.patch(oldCategory._id, { name: newName });
-        }
-        summary.categoriesRenamed++;
+      if (canonical || categoryNameConflict(categories, newName, { categoryId: oldCategory._id })) {
+        // The canonical name is taken, so the old category merges into it
+        await ctx.db.delete(oldCategory._id);
+        categories = categories.filter((category) => category._id !== oldCategory._id);
+      } else {
+        await ctx.db.patch(oldCategory._id, { name: newName });
+        oldCategory.name = newName;
       }
+      summary.categoriesRenamed++;
     }
 
     // Step 2: Update all transactions with old category names
@@ -855,15 +862,9 @@ export const migrateTransactionCategories = internalMutation({
     }
 
     // Step 3: Ensure "Donation" category exists under "Donations" main category
-    const donationCategory = await ctx.db
-      .query("categories")
-      .withIndex("by_organization_name", (q) =>
-        q.eq("organizationId", organizationId).eq("name", "Donation")
-      )
-      .first();
-
+    const donationCategory = findCategoryByName(categories, "Donation");
     if (!donationCategory) {
-      await ctx.db.insert("categories", {
+      await insertCategory({
         organizationId,
         name: "Donation",
         mainCategory: "Donations",
@@ -871,8 +872,7 @@ export const migrateTransactionCategories = internalMutation({
         displayOrder: 3,
         createdAt: Date.now(),
       });
-      summary.categoriesCreated.push("Donation");
-    } else if (donationCategory.mainCategory !== "Donations") {
+    } else if (!isMovementCategory(donationCategory) && donationCategory.mainCategory !== "Donations") {
       await ctx.db.patch(donationCategory._id, {
         mainCategory: "Donations",
         transactionType: "Income",
@@ -881,64 +881,31 @@ export const migrateTransactionCategories = internalMutation({
 
     // Step 4: Re-run seedRCICategories logic to ensure all canonical categories exist
     let displayOrder = 0;
+    const seedCategory = async (name: string, mainCategory: string, transactionType: "Income" | "Expenditure") => {
+      const order = displayOrder++;
+      const existing = findCategoryByName(categories, name);
+      if (!existing) {
+        await insertCategory({
+          organizationId,
+          name,
+          mainCategory,
+          transactionType,
+          displayOrder: order,
+          createdAt: Date.now(),
+        });
+      } else if (!isMovementCategory(existing)) {
+        await ctx.db.patch(existing._id, { mainCategory, transactionType, displayOrder: order });
+      }
+    };
+
     for (const [mainCat, subcats] of Object.entries(RCI_INCOME_CATEGORIES)) {
       const names = subcats.length === 0 ? [mainCat] : subcats;
-      for (const name of names) {
-        const existing = await ctx.db
-          .query("categories")
-          .withIndex("by_organization_name", (q) =>
-            q.eq("organizationId", organizationId).eq("name", name)
-          )
-          .first();
-
-        if (!existing) {
-          await ctx.db.insert("categories", {
-            organizationId,
-            name,
-            mainCategory: mainCat,
-            transactionType: "Income",
-            displayOrder: displayOrder++,
-            createdAt: Date.now(),
-          });
-          summary.categoriesCreated.push(name);
-        } else {
-          await ctx.db.patch(existing._id, {
-            mainCategory: mainCat,
-            transactionType: "Income",
-            displayOrder: displayOrder++,
-          });
-        }
-      }
+      for (const name of names) await seedCategory(name, mainCat, "Income");
     }
 
     for (const [mainCat, subcats] of Object.entries(RCI_EXPENDITURE_CATEGORIES)) {
       const names = subcats.length === 0 ? [mainCat] : subcats;
-      for (const name of names) {
-        const existing = await ctx.db
-          .query("categories")
-          .withIndex("by_organization_name", (q) =>
-            q.eq("organizationId", organizationId).eq("name", name)
-          )
-          .first();
-
-        if (!existing) {
-          await ctx.db.insert("categories", {
-            organizationId,
-            name,
-            mainCategory: mainCat,
-            transactionType: "Expenditure",
-            displayOrder: displayOrder++,
-            createdAt: Date.now(),
-          });
-          summary.categoriesCreated.push(name);
-        } else {
-          await ctx.db.patch(existing._id, {
-            mainCategory: mainCat,
-            transactionType: "Expenditure",
-            displayOrder: displayOrder++,
-          });
-        }
-      }
+      for (const name of names) await seedCategory(name, mainCat, "Expenditure");
     }
 
     return summary;
