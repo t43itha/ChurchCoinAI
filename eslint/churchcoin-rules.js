@@ -30,7 +30,7 @@ const memberName = (node) =>
 const isCopiedIntoObject = (node) =>
   node.parent.type === "Property" && node.parent.value === node;
 
-const REPORTABLE_FIELDS = new Set(["isVoided", "cashBankingRole"]);
+const REPORTABLE_FIELDS = new Set(["isVoided", "cashBankingRole", "movementKind", "movementId", "isJournal"]);
 
 export const reportableTransactions = {
   meta: {
