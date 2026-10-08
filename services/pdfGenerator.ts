@@ -1,6 +1,8 @@
 
 import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup } from "../types";
 import { filterIncomeAndExpenditure, type TransferSummary } from "../lib/reportableTransactions";
+import type { ProgrammeIncome } from "../lib/programmeIncome";
+import { sumMoney } from "../convex/lib/money";
 
 // Escape HTML entities to prevent injection when rendering user-supplied data
 const escapeHtml = (value?: string) =>
@@ -439,6 +441,36 @@ export const transfersSectionHTML = (transfers: TransferSummary) => {
   `;
 };
 
+// Omitted when no giving in the period was tagged to a programme.
+export const programmeIncomeSectionHTML = (programmes: ProgrammeIncome[]) => {
+  if (programmes.length === 0) return "";
+  return `
+      <div class="section-title">Income by programme</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Programme</th>
+            <th class="right">Entries</th>
+            <th class="right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${programmes.map((programme) => `
+            <tr>
+              <td>${escapeHtml(programme.name)}</td>
+              <td class="amount">${programme.count}</td>
+              <td class="amount">${formatCurrency(programme.total)}</td>
+            </tr>
+          `).join("")}
+          <tr class="total-row">
+            <td colspan="2">Total</td>
+            <td class="amount">${formatCurrency(sumMoney(programmes, (programme) => programme.total))}</td>
+          </tr>
+        </tbody>
+      </table>
+  `;
+};
+
 // Common PDF styles for reports
 const getReportStyles = () => `
   @page {
@@ -586,7 +618,8 @@ const getReportStyles = () => `
 // Generate Monthly Report HTML for PDF export
 export const generateMonthlyReportHTML = (
   reportData: MonthlyReportData,
-  churchDetails: ChurchDetails
+  churchDetails: ChurchDetails,
+  programmeIncome: ProgrammeIncome[] = []
 ) => {
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -789,6 +822,7 @@ export const generateMonthlyReportHTML = (
       </table>
 
       ${transfersSectionHTML(reportData.transfers)}
+      ${programmeIncomeSectionHTML(programmeIncome)}
 
       <div class="footer">
         <div>
@@ -810,7 +844,8 @@ export const generateMonthlyReportHTML = (
 // Generate Annual Report HTML for PDF export
 export const generateAnnualReportHTML = (
   reportData: AnnualReportData,
-  churchDetails: ChurchDetails
+  churchDetails: ChurchDetails,
+  programmeIncome: ProgrammeIncome[] = []
 ) => {
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -1013,6 +1048,7 @@ export const generateAnnualReportHTML = (
       </table>
 
       ${transfersSectionHTML(reportData.transfers)}
+      ${programmeIncomeSectionHTML(programmeIncome)}
 
       <div class="footer">
         <div>
