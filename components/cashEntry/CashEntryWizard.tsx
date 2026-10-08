@@ -110,6 +110,12 @@ function WizardPanel({
 
   const go = (next: number) => {
     if (saving) return;
+    // Leaving Start begins a new count, which would overwrite an unfinished
+    // one, so every route out (button or rail) asks first.
+    if (step.kind === "start" && next > 0 && wizard.hasStoredDraft) {
+      if (!window.confirm("Start a new count? Your unfinished count will be deleted.")) return;
+      wizard.discardStored();
+    }
     setPosition(Math.max(0, Math.min(next, steps.length - 1)));
     setCounting(null);
     bodyRef.current?.scrollTo({ top: 0 });
@@ -254,14 +260,7 @@ function WizardPanel({
                 <button
                   type="button"
                   disabled={!firstService}
-                  onClick={() => {
-                    // A new count would overwrite the unfinished one, so ask first.
-                    if (wizard.hasStoredDraft) {
-                      if (!window.confirm("Start a new count? Your unfinished count will be deleted.")) return;
-                      wizard.discardStored();
-                    }
-                    go(1);
-                  }}
+                  onClick={() => go(1)}
                   className={`${btnPrimary} ${btnLg}`}
                 >
                   {firstService ? `Start with ${firstService.label} →` : "Tick a service"}
