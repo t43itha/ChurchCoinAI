@@ -5,6 +5,7 @@ import {
   buildExecutiveDashboardSummary,
   type DashboardPeriodKey,
 } from "../../lib/dashboardKpis";
+import { isGiftAidEnabled } from "../../lib/giftAid";
 
 export const executiveSummary = query({
   args: {
@@ -84,8 +85,10 @@ export const executiveSummary = query({
     ]);
 
     const [yearText, monthText, dayText] = args.today.split("-");
+    const organization = await ctx.db.get(user.organizationId);
     return buildExecutiveDashboardSummary({
       periodKey,
+      giftAidEnabled: isGiftAidEnabled(organization),
       now: new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText), 12)),
       funds: funds.map((fund) => ({
         _id: String(fund._id),

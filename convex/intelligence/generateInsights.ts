@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { DONOR_RULES, DonorRuleContext } from "./rules/donorRules";
 import { OPERATIONS_RULES, OperationsRuleContext } from "./rules/operationsRules";
 import { filterIncomeAndExpenditure, hasBankEffect } from "../../lib/reportableTransactions";
+import { isGiftAidEnabled } from "../../lib/giftAid";
 
 // Internal query to gather context for rules evaluation
 export const gatherInsightContext = internalQuery({
@@ -154,6 +155,12 @@ export const generateForOrganization = internalMutation({
     const currentYear = new Date().getFullYear().toString();
     const prevYear = (new Date().getFullYear() - 1).toString();
 
+    const organization = await ctx.db.get(args.organizationId);
+    const giftAidEnabled = isGiftAidEnabled(organization);
+    const donorRules = DONOR_RULES.filter(
+      (rule) => giftAidEnabled || !rule.requiresGiftAid
+    );
+
     // Evaluate donor rules
     for (const donor of context.donors) {
       const donorTransactions =
@@ -219,7 +226,7 @@ export const generateForOrganization = internalMutation({
         church90thPercentile: context.church90thPercentile,
       };
 
-      for (const rule of DONOR_RULES) {
+      for (const rule of donorRules) {
         const result = rule.evaluate(donorContext);
         if (result) {
           // Check if similar insight already exists (same rule + same donor)

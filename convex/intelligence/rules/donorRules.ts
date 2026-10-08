@@ -28,6 +28,7 @@ export interface DonorInsightRule {
   title: string;
   insightType: "donor";
   severity: "info" | "warning" | "critical";
+  requiresGiftAid?: true;
   evaluate: (context: DonorRuleContext) => InsightResult | null;
 }
 
@@ -103,6 +104,7 @@ export const DONOR_RULES: DonorInsightRule[] = [
     title: "Active donor without Gift Aid declaration",
     insightType: "donor",
     severity: "warning",
+    requiresGiftAid: true,
     evaluate: (ctx) => {
       if (
         !ctx.donor.isGiftAidActive &&

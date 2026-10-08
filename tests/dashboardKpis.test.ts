@@ -234,8 +234,7 @@ describe("dashboard KPI helpers", () => {
     expect(summary.health.givingTrendPercent).toBe(31);
     expect(summary.health.generalFundCoverageMonths).toBeCloseTo(19.7, 1);
     expect(summary.donorFollowUp).toEqual({
-      missedGiftAidCount: 0,
-      missedGiftAidValue: 0,
+      missedGiftAid: { count: 0, value: 0 },
       pledgesBehindCount: 1,
     });
 
@@ -883,8 +882,25 @@ describe("dashboard KPI helpers", () => {
         ],
       });
 
-      expect(summary.donorFollowUp.missedGiftAidCount).toBe(1);
-      expect(summary.donorFollowUp.missedGiftAidValue).toBe(25);
+      expect(summary.donorFollowUp.missedGiftAid).toEqual({ count: 1, value: 25 });
+    });
+
+    it("drops Gift Aid figures and follow-ups when the church has Gift Aid switched off", () => {
+      const input = {
+        donors: [{ _id: "declared", name: "Declared", type: "Individual", isGiftAidActive: true }],
+        transactions: [
+          income("missed", "2026-05-03", 100, { donorId: "declared", isGiftAidEligible: false }),
+          income("claimed", "2026-05-10", 100, { donorId: "declared", isGiftAidEligible: true }),
+        ],
+      };
+
+      const on = summarize(input);
+      const off = summarize({ ...input, giftAidEnabled: false });
+
+      expect(on.readiness.giftAidClaimable).toBe(25);
+      expect(on.donorFollowUp.missedGiftAid).toEqual({ count: 1, value: 25 });
+      expect(off.readiness.giftAidClaimable).toBeNull();
+      expect(off.donorFollowUp.missedGiftAid).toBeNull();
     });
 
     it("only flags pledges whose payment cadence has lapsed", () => {
@@ -980,7 +996,7 @@ describe("dashboard KPI helpers", () => {
         ],
       });
 
-      expect(summary.donorFollowUp).toMatchObject({ missedGiftAidCount: 1, missedGiftAidValue: 25 });
+      expect(summary.donorFollowUp).toMatchObject({ missedGiftAid: { count: 1, value: 25 } });
     });
 
     it("leaves future-dated entries out of figures for a period in progress", () => {

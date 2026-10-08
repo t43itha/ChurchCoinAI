@@ -3,6 +3,7 @@ import { MonthlyReportData, AnnualReportData, ChurchDetails, CategoryGroup, Loan
 import type { TransferSummary } from '../lib/reportableTransactions';
 import type { ProgrammeIncome } from '../lib/programmeIncome';
 import { sumMoney } from '../convex/lib/money';
+import { isGiftAidEnabled } from '../lib/giftAid';
 
 type SheetCell = string | number;
 type SheetRows = SheetCell[][];
@@ -66,6 +67,7 @@ export const generateMonthlyReportXLSX = async (
   churchDetails: ChurchDetails,
   programmeIncome: ProgrammeIncome[] = []
 ): Promise<Blob> => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const workbook = XLSX.utils.book_new();
 
   // Summary Sheet
@@ -78,8 +80,12 @@ export const generateMonthlyReportXLSX = async (
     ['Gross Income', reportData.totals.grossIncome],
     ['Total Expenditure', reportData.totals.totalExpenditure],
     ['Net Bankable', reportData.totals.netBankable],
-    ['Gift Aid Eligible', reportData.giftAidSummary.eligible],
-    ['Gift Aid Claimable', reportData.giftAidSummary.claimable],
+    ...(giftAidEnabled
+      ? [
+          ['Gift Aid Eligible', reportData.giftAidSummary.eligible],
+          ['Gift Aid Claimable', reportData.giftAidSummary.claimable],
+        ]
+      : []),
   ];
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
 
@@ -175,21 +181,18 @@ export const generateMonthlyReportXLSX = async (
     const tithesData: SheetRows = [
       ['Tithes Breakdown'],
       [''],
-      ['Donor Name', 'Gift Aid Eligible', 'Amount'],
+      giftAidEnabled ? ['Donor Name', 'Gift Aid Eligible', 'Amount'] : ['Donor Name', 'Amount'],
     ];
     reportData.tithes.forEach(tithe => {
-      tithesData.push([
-        tithe.donorName,
-        tithe.isGiftAidEligible ? 'Yes' : 'No',
-        tithe.amount,
-      ]);
+      tithesData.push(
+        giftAidEnabled
+          ? [tithe.donorName, tithe.isGiftAidEligible ? 'Yes' : 'No', tithe.amount]
+          : [tithe.donorName, tithe.amount]
+      );
     });
-    tithesData.push(['', '', '']);
-    tithesData.push([
-      'Total',
-      '',
-      reportData.tithes.reduce((sum, t) => sum + t.amount, 0),
-    ]);
+    const tithesTotal = reportData.tithes.reduce((sum, t) => sum + t.amount, 0);
+    tithesData.push(giftAidEnabled ? ['', '', ''] : ['', '']);
+    tithesData.push(giftAidEnabled ? ['Total', '', tithesTotal] : ['Total', tithesTotal]);
 
     const tithesSheet = XLSX.utils.aoa_to_sheet(tithesData);
     XLSX.utils.book_append_sheet(workbook, tithesSheet, 'Tithes');
@@ -209,6 +212,7 @@ export const generateAnnualReportXLSX = async (
   churchDetails: ChurchDetails,
   programmeIncome: ProgrammeIncome[] = []
 ): Promise<Blob> => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const workbook = XLSX.utils.book_new();
 
   // Summary Sheet
@@ -221,8 +225,12 @@ export const generateAnnualReportXLSX = async (
     ['Total Income', reportData.totals.totalIncome],
     ['Total Expenditure', reportData.totals.totalExpenditure],
     ['Net Movement', reportData.totals.netMovement],
-    ['Gift Aid Eligible', reportData.giftAidAnnual.totalEligible],
-    ['Gift Aid Claimable', reportData.giftAidAnnual.totalClaimable],
+    ...(giftAidEnabled
+      ? [
+          ['Gift Aid Eligible', reportData.giftAidAnnual.totalEligible],
+          ['Gift Aid Claimable', reportData.giftAidAnnual.totalClaimable],
+        ]
+      : []),
   ];
 
   if (reportData.yearOverYear) {

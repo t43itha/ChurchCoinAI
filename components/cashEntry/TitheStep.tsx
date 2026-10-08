@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { sumMoney } from "../../convex/lib/money";
 import DonorSearchInput from "../DonorSearchInput";
+import { useGiftAidEnabled } from "../app/useGiftAidEnabled";
 import {
   parseAmount,
   serviceTitheTotal,
@@ -46,6 +47,8 @@ interface PickedDonor {
 }
 
 function EnvelopeBadge({ envelope }: { envelope: TitheEnvelope }) {
+  const giftAidEnabled = useGiftAidEnabled();
+  if (!giftAidEnabled) return null;
   if (envelope.anonymous) return <span>no Gift Aid</span>;
   if (envelope.giftAid) return <span className={giftAidOn}>Gift Aid ✓</span>;
   return <span>{envelope.donorId ? "no declaration" : "new donor · no declaration"}</span>;
@@ -106,6 +109,7 @@ function EnvelopeEditor({
 }
 
 export default function TitheStep({ model, serviceIndex, onUnfinishedChange }: TitheStepProps) {
+  const giftAidEnabled = useGiftAidEnabled();
   const service = model.draft.services[serviceIndex];
   const [name, setName] = useState("");
   const [donor, setDonor] = useState<PickedDonor | null>(null);
@@ -235,8 +239,8 @@ export default function TitheStep({ model, serviceIndex, onUnfinishedChange }: T
         <>
           <div className="mb-2 mt-4 flex items-center justify-between gap-3 px-0.5 text-xs text-grey-mid">
             <span>
-              {named} named{anonymous ? ` · ${anonymous} anonymous` : ""} · {giftAidEnvelopes.length} Gift Aid{" "}
-              {gbp(giftAidTotal)}
+              {named} named{anonymous ? ` · ${anonymous} anonymous` : ""}
+              {giftAidEnabled && <> · {giftAidEnvelopes.length} Gift Aid {gbp(giftAidTotal)}</>}
             </span>
             <b className="font-mono text-sm text-ink">{gbp(serviceTitheTotal(service))}</b>
           </div>

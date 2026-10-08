@@ -5,8 +5,9 @@ import { useConvex } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { useLocation } from 'react-router-dom';
+import { isGiftAidEnabled } from '../lib/giftAid';
 import { AppUser, Category, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult, TransactionType } from '../types';
-import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
+import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Gift, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
 import DataPrivacySettings from './DataPrivacySettings';
@@ -526,6 +527,22 @@ ${currentUser.name}`;
                                     </div>
                                 </div>
 
+                                <div>
+                                    <label className={labelClass}>Gift Aid</label>
+                                    <div className="relative">
+                                        <Gift size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" />
+                                        <select
+                                            value={isGiftAidEnabled(localChurchDetails) ? 'enabled' : 'disabled'}
+                                            onChange={e => setLocalChurchDetails({...localChurchDetails, giftAidEnabled: e.target.value === 'enabled'})}
+                                            className={`${inputClass} pl-9 appearance-none cursor-pointer`}
+                                        >
+                                            <option value="enabled">Enabled</option>
+                                            <option value="disabled">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <p className="text-xs text-grey-mid mt-1.5">When disabled, Gift Aid is hidden across the app. Donor declarations are kept and return if you enable it again.</p>
+                                </div>
+
                                 <div className="col-span-2">
                                     <label className={labelClass}>Registered Address</label>
                                     <textarea
@@ -561,6 +578,7 @@ ${currentUser.name}`;
                                     label="Reporting period"
                                     value={churchDetails.reportingPeriod === 'calendar_year' ? 'Calendar Year (Jan-Dec)' : 'UK Tax Year (Apr-Apr)'}
                                 />
+                                <Field icon={Gift} label="Gift Aid" value={isGiftAidEnabled(churchDetails) ? 'Enabled' : 'Disabled'} />
                                 <Field icon={MapPin} label="Address" value={churchDetails.address || 'N/A'} />
                             </div>
                         </div>

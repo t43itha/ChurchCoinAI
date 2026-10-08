@@ -26,6 +26,7 @@ import CashChequeBanking from './CashChequeBanking';
 import ImportCategorizationProgress from './ImportCategorizationProgress';
 import LinkMovementModal from './transactions/LinkMovementModal';
 import JournalTransferModal from './transactions/JournalTransferModal';
+import { useGiftAidEnabled } from './app/useGiftAidEnabled';
 
 interface Category {
   _id: string;
@@ -116,6 +117,7 @@ const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
 const TransactionManager: React.FC<TransactionManagerProps> = ({
   funds, pledges, categories, currentUser, initialFundId, onPledgeCompleted
 }) => {
+  const giftAidEnabled = useGiftAidEnabled();
   // Fetch all transactions - virtualization handles rendering performance
   const allTransactions = useQuery(api.queries.transactions.list, {});
   const cashCollectionsResult = useQuery(api.queries.cashCollections.list, {});
@@ -1804,7 +1806,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                             <th className="border border-ledger px-3 py-2 text-left">Category</th>
                                             <th className="border border-ledger px-3 py-2 text-left">Fund</th>
                                             <th className="border border-ledger px-3 py-2 text-left">Method</th>
-                                            <th className="border border-ledger px-3 py-2 text-center">Gift Aid</th>
+                                            {giftAidEnabled && <th className="border border-ledger px-3 py-2 text-center">Gift Aid</th>}
                                             <th className="border border-ledger px-3 py-2 text-right">Amount</th>
                                           </tr>
                                         </thead>
@@ -1815,12 +1817,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                               <td className="border border-ledger px-3 py-2">{donation.category}</td>
                                               <td className="border border-ledger px-3 py-2">{donation.fundName}</td>
                                               <td className="border border-ledger px-3 py-2">{donation.paymentMethod ?? "-"}</td>
-                                              <td className="border border-ledger px-3 py-2 text-center">{donation.isGiftAidEligible ? "Yes" : "No"}</td>
+                                              {giftAidEnabled && <td className="border border-ledger px-3 py-2 text-center">{donation.isGiftAidEligible ? "Yes" : "No"}</td>}
                                               <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{donation.amount.toFixed(2)}</td>
                                             </tr>
                                           ))}
                                           <tr className="bg-grey-light font-bold">
-                                            <td colSpan={5} className="border border-ledger px-3 py-2">TOTAL</td>
+                                            <td colSpan={giftAidEnabled ? 5 : 4} className="border border-ledger px-3 py-2">TOTAL</td>
                                             <td className="border border-ledger px-3 py-2 text-right font-mono">£{namedDonationTotal.toFixed(2)}</td>
                                           </tr>
                                         </tbody>
@@ -2232,6 +2234,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </div>
                     )}
 
+                    {giftAidEnabled && (
                     <div className="flex gap-6 pt-2">
                          <label className="flex items-center gap-2 cursor-pointer group">
                              <input 
@@ -2243,6 +2246,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
                     </div>
+                    )}
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-[#efeee9] mt-4">
                         <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button>
@@ -2433,6 +2437,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     )}
 
                     <div className="flex flex-wrap gap-x-6 gap-y-3 pt-2">
+                        {giftAidEnabled && (
                          <label className="flex items-center gap-2 cursor-pointer group">
                              <input
                                 type="checkbox"
@@ -2442,6 +2447,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             />
                             <span className="text-sm text-grey-dark group-hover:text-ink">Gift Aid Eligible</span>
                         </label>
+                        )}
 
                         {isVoidedTransaction(editingTransaction) && (
                           <div className="flex items-center gap-2 text-sm text-error">

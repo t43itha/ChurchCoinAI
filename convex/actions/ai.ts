@@ -18,6 +18,7 @@ import {
   buildGeminiCategorizationPrompt,
   CATEGORIZATION_MODEL,
 } from "../intelligence/categorization/gemini";
+import { isGiftAidEnabled } from "../../lib/giftAid";
 import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
@@ -929,6 +930,11 @@ export const generateGiftAidSchedule = action({
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
+    const { api } = (await import("../_generated/api")) as any;
+    const organization = await ctx.runQuery(api.queries.organizations.current, {});
+    if (!isGiftAidEnabled(organization)) {
+      throw new Error("Gift Aid is switched off for this church");
+    }
     const ai = getAI();
 
     const parsedEligible = safeJsonParse<unknown>(

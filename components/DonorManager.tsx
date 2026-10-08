@@ -9,6 +9,7 @@ import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { filterIncomeAndExpenditure, sumReportableIncome } from '../lib/reportableTransactions';
 import { meetsMoneyTarget } from '../convex/lib/money';
+import { isGiftAidEnabled } from '../lib/giftAid';
 
 // WhatsApp message template types
 type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
@@ -80,6 +81,7 @@ interface DonorManagerProps {
 
 const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
   const convex = useConvex();
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'profile' | 'communicate'>('overview');
@@ -167,7 +169,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     for (const d of donors) {
       const { lastGift } = donorStats.get(d._id) ?? donorStats.get(d.name) ?? { lastGift: 0 };
       if (lastGift >= yearAgo) active++;
-      if (!d.isGiftAidActive || lastGift < sixtyDaysAgo) needsReview++;
+      if ((giftAidEnabled && !d.isGiftAidActive) || lastGift < sixtyDaysAgo) needsReview++;
     }
     const monthTotal = filterIncomeAndExpenditure(transactions)
       .filter(t => t.type === 'Income' && new Date(t.date).getMonth() === month && new Date(t.date).getFullYear() === year)
@@ -179,7 +181,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       needsReview,
       monthLabel: new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
     };
-  }, [donors, transactions, donorStats]);
+  }, [donors, transactions, donorStats, giftAidEnabled]);
 
   // After all hooks (Rules of Hooks) — Guests cannot view donor records.
   if (!canView) {
@@ -195,6 +197,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
   const giftAidStatus = (d: Donor): { tone: string; label: string } => {
     const { lastGift } = statFor(d);
     if (lastGift > 0 && lastGift < Date.now() - 60 * 86400000) return { tone: 'bg-amber', label: 'Lapsed' };
+    if (!giftAidEnabled) return { tone: 'bg-sage', label: 'Active' };
     if (d.isGiftAidActive) return { tone: 'bg-sage', label: 'Gift Aid' };
     return { tone: 'bg-error', label: 'No declaration' };
   };
@@ -758,7 +761,7 @@ ${churchDetails?.name || 'Church'} Finance Team
       <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Donors</h2>
-          <p className="text-grey-mid mt-2 text-[15px] font-medium">Giving history, Gift Aid status, and follow-up at a glance.</p>
+          <p className="text-grey-mid mt-2 text-[15px] font-medium">Giving history, {giftAidEnabled ? 'Gift Aid status, ' : ''}and follow-up at a glance.</p>
         </div>
         {canEdit && (
           <div className="flex gap-2 self-start shrink-0">
@@ -780,10 +783,10 @@ ${churchDetails?.name || 'Church'} Finance Team
       </header>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${giftAidEnabled ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
         {[
           { label: 'Active donors', value: String(summary.active), sub: 'Gave in last 12 months', edge: '' },
-          { label: 'Gift Aid eligible', value: String(summary.giftAid), sub: 'Declarations on file', edge: 'border-l-[3px] border-l-sage' },
+          ...(giftAidEnabled ? [{ label: 'Gift Aid eligible', value: String(summary.giftAid), sub: 'Declarations on file', edge: 'border-l-[3px] border-l-sage' }] : []),
           { label: 'Giving this month', value: `£${summary.monthTotal.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`, sub: summary.monthLabel, edge: '' },
           { label: 'Needs review', value: String(summary.needsReview), sub: 'Lapsed, expired, or missing', edge: 'border-l-[3px] border-l-amber' },
         ].map((s) => (
@@ -946,7 +949,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                       <h1 className="text-2xl font-bold text-ink leading-tight tracking-tight">{selectedDonor.name}</h1>
                       <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-grey-mid font-medium">{selectedDonor.type}</span>
-                          {selectedDonor.isGiftAidActive && <span className="font-mono inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] bg-sage-light text-sage-dark"><Gift size={10} /> Gift Aid</span>}
+                          {giftAidEnabled && selectedDonor.isGiftAidActive && <span className="font-mono inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] bg-sage-light text-sage-dark"><Gift size={10} /> Gift Aid</span>}
                       </div>
                   </div>
                </div>
@@ -1279,7 +1282,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={newDonorData.type || 'Individual'} onChange={e => setNewDonorData({...newDonorData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
-                          <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
+                          {giftAidEnabled && (<div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>)}
                       </div>
                       <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={newDonorData.notes || ''} onChange={e => setNewDonorData({...newDonorData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden h-16 resize-none"/></div>
                       <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setShowAddDonorModal(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Plus size={14} /> Create Profile</button></div>
@@ -1308,7 +1311,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={formData.type || 'Individual'} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
-                          <div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>
+                          {giftAidEnabled && (<div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>)}
                       </div>
                       <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden h-16 resize-none"/></div>
                       <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Save size={14} /> Save Changes</button></div>
@@ -1593,7 +1596,7 @@ ${churchDetails?.name || 'Church'} Finance Team
                                   </div>
                                 </div>
                                 <div className="text-right text-xs text-grey-mid">
-                                  {donor.isGiftAidActive && (
+                                  {giftAidEnabled && donor.isGiftAidActive && (
                                     <span className="text-sage">Gift Aid ✓</span>
                                   )}
                                 </div>

@@ -1,6 +1,7 @@
 import { draftTotals, serviceGivingTotal, type CollectionDraft } from "../../lib/cashCollectionDraft";
 import { roundMoney } from "../../convex/lib/money";
 import Receipt, { ReceiptRow } from "./Receipt";
+import { useGiftAidEnabled } from "../app/useGiftAidEnabled";
 import { gbp, shortDate } from "./format";
 import { eyebrow } from "./ui";
 import type { WizardStep } from "./steps";
@@ -109,15 +110,18 @@ export function WizardReceipt({
   autosaved: boolean;
   autosaveFailed: boolean;
 }) {
+  const giftAidEnabled = useGiftAidEnabled();
   const totals = draftTotals(model.draft, model.ctx);
   return (
     <aside className="hidden min-h-0 flex-col overflow-y-auto border-l border-ledger bg-white p-5 lg:flex">
       <div className={`${eyebrow} mb-2.5`}>Live receipt</div>
       <Receipt model={model} className="shadow-soft-md">
-        <div className="mt-1 border-t border-dashed border-ledger pt-1">
-          <ReceiptRow label="Gift Aid eligible" value={totals.giftAidEligible} muted />
-          <ReceiptRow label="≈ to claim (25%)" value={roundMoney(totals.giftAidEligible * GIFT_AID_RATE)} muted />
-        </div>
+        {giftAidEnabled && (
+          <div className="mt-1 border-t border-dashed border-ledger pt-1">
+            <ReceiptRow label="Gift Aid eligible" value={totals.giftAidEligible} muted />
+            <ReceiptRow label="≈ to claim (25%)" value={roundMoney(totals.giftAidEligible * GIFT_AID_RATE)} muted />
+          </div>
+        )}
         <div className="flex items-baseline justify-between gap-2 border-t border-dashed border-ledger pb-2 pt-3">
           <span className="text-xs text-grey-mid">Week so far</span>
           <b className="font-mono text-2xl tracking-tight">{gbp(totals.grand)}</b>

@@ -52,14 +52,18 @@ export function buildMonthEndChecks(
       "Weeks of collections not yet matched to a deposit",
       transactionsHref
     ),
-    {
-      id: "gift-aid",
-      label: "Gift Aid claimable",
-      value: currency.format(readiness.giftAidClaimable),
-      detail: "25% of eligible giving this period",
-      status: readiness.giftAidClaimable > 0 ? "info" : "clear",
-      href: reportsHref,
-    },
+    ...(readiness.giftAidClaimable === null
+      ? []
+      : [
+          {
+            id: "gift-aid",
+            label: "Gift Aid claimable",
+            value: currency.format(readiness.giftAidClaimable),
+            detail: "25% of eligible giving this period",
+            status: readiness.giftAidClaimable > 0 ? "info" : "clear",
+            href: reportsHref,
+          } satisfies MonthEndCheck,
+        ]),
     {
       id: "mission-tithe",
       label: "Mission tithe due",

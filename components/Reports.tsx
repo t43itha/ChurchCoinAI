@@ -35,6 +35,7 @@ import {
 import { filterIncomeAndExpenditure, type TransferSummary } from '../lib/reportableTransactions';
 import { incomeByProgramme, type ProgrammeIncome } from '../lib/programmeIncome';
 import { sumMoney } from '../convex/lib/money';
+import { isGiftAidEnabled } from '../lib/giftAid';
 
 // ============ TYPE DEFINITIONS ============
 
@@ -181,6 +182,7 @@ interface MonthlyReportContentProps {
 }
 
 const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transactions, programmes, churchDetails }) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -347,7 +349,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 ${giftAidEnabled ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
         <div className="swiss-card-static px-5 py-[18px]">
           <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <TrendingUp size={14} />
@@ -375,6 +377,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
             {formatCurrency(reportData.totals.netBankable)}
           </p>
         </div>
+        {giftAidEnabled && (
         <div className="swiss-card-static px-5 py-[18px]">
           <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <PoundSterling size={14} />
@@ -384,6 +387,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
             {formatCurrency(reportData.giftAidSummary.claimable)}
           </p>
         </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -636,7 +640,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
                   <thead>
                     <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
                       <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Donor</th>
-                      <th className="px-5 py-2.5 text-center font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Gift Aid</th>
+                      {giftAidEnabled && <th className="px-5 py-2.5 text-center font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Gift Aid</th>}
                       <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
                     </tr>
                   </thead>
@@ -644,6 +648,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
                     {reportData.tithes.map((tithe: TitheBreakdownItem, idx: number) => (
                       <tr key={`${tithe.donorName}-${idx}`} className="border-b border-[#efeee9]">
                         <td className="px-5 py-2.5 text-sm text-grey-dark">{tithe.donorName}</td>
+                        {giftAidEnabled && (
                         <td className="px-5 py-2.5 text-center">
                           {tithe.isGiftAidEligible ? (
                             <span className="inline-block px-2 py-0.5 bg-sage-light text-sage text-xs font-bold rounded-sm">
@@ -653,6 +658,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
                             <span className="text-grey-mid text-xs">-</span>
                           )}
                         </td>
+                        )}
                         <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
                           {formatCurrency(tithe.amount)}
                         </td>
@@ -660,7 +666,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
                     ))}
                     <tr className="bg-[#fbfaf8] font-bold border-t border-[#efeee9]">
                       <td className="px-5 py-2.5 text-sm text-ink">Total</td>
-                      <td className="px-4 py-2"></td>
+                      {giftAidEnabled && <td className="px-4 py-2"></td>}
                       <td className="px-5 py-2.5 text-right font-mono text-sm text-ink">
                         {formatCurrency(reportData.tithes.reduce((sum: number, t: TitheBreakdownItem) => sum + t.amount, 0))}
                       </td>
@@ -673,6 +679,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
         </div>
 
         {/* Gift Aid Summary */}
+        {giftAidEnabled && (
         <div className="swiss-card p-6">
           <h3 className="font-bold text-ink mb-4 flex items-center gap-2">
             <PoundSterling size={18} />
@@ -699,6 +706,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {programmeIncome.length > 0 && (
@@ -746,6 +754,7 @@ interface AnnualReportContentProps {
 }
 
 const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions, programmes, churchDetails }) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['income', 'expenditure', 'programmes', 'trend']));
@@ -881,7 +890,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 ${giftAidEnabled ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
         <div className="swiss-card-static px-5 py-[18px]">
           <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <TrendingUp size={14} />
@@ -919,6 +928,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
             {formatCurrency(reportData.totals.netMovement)}
           </p>
         </div>
+        {giftAidEnabled && (
         <div className="swiss-card-static px-5 py-[18px]">
           <div className="flex items-center gap-2 text-grey-mid mb-2.5">
             <PoundSterling size={14} />
@@ -928,6 +938,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
             {formatCurrency(reportData.giftAidAnnual.totalClaimable)}
           </p>
         </div>
+        )}
       </div>
 
       {/* Monthly Trend Chart */}
@@ -1143,6 +1154,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
         )}
 
         {/* Gift Aid Summary */}
+        {giftAidEnabled && (
         <div className="swiss-card p-6">
           <h3 className="font-bold text-ink mb-4 flex items-center gap-2">
             <PoundSterling size={18} />
@@ -1169,6 +1181,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Fund Balances */}
@@ -1265,6 +1278,7 @@ interface AIReportsContentProps {
 }
 
 const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds, pledges, churchDetails }) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const activeTransactions = useMemo(() => filterIncomeAndExpenditure(transactions), [transactions]);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
@@ -1559,6 +1573,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
           </div>
 
           {/* Gift Aid Card */}
+          {giftAidEnabled && (
           <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateGiftAid}>
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-sage-light rounded-lg flex items-center justify-center text-sage">
@@ -1573,6 +1588,7 @@ const AIReportsContent: React.FC<AIReportsContentProps> = ({ transactions, funds
               {isGenerating && reportTitle.includes("HMRC") ? 'Calculating...' : <span className="flex items-center gap-2">Generate Schedule <ArrowRight size={12}/></span>}
             </div>
           </div>
+          )}
 
           {/* Project Impact Card */}
           <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateProjectReport}>

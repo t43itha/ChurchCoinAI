@@ -119,7 +119,7 @@ export type ExecutiveDashboardSummary = {
     possibleDoubleCountMonths: string[];
     unreconciledExpenditureCount: number;
     unlinkedMovementLegs: number;
-    giftAidClaimable: number;
+    giftAidClaimable: number | null;
     missionTitheDue: number;
     statementsDueThrough: string;
     statementsBehind: Array<{
@@ -143,8 +143,7 @@ export type ExecutiveDashboardSummary = {
     lowBalanceFunds: FundBalance[];
   };
   donorFollowUp: {
-    missedGiftAidCount: number;
-    missedGiftAidValue: number;
+    missedGiftAid: { count: number; value: number } | null;
     pledgesBehindCount: number;
   };
   trends: {
@@ -168,6 +167,7 @@ export type BuildExecutiveDashboardSummaryInput = {
   cashReconciliations: DashboardCashReconciliation[];
   statementSessions: DashboardStatementSession[];
   bankAccountFundIds: string[];
+  giftAidEnabled?: boolean;
 };
 
 const GIVING_CATEGORIES = new Set(RCI_INCOME_CATEGORIES["Donations"] ?? []);
@@ -242,6 +242,7 @@ export function buildExecutiveDashboardSummary({
   cashReconciliations,
   statementSessions,
   bankAccountFundIds,
+  giftAidEnabled = true,
 }: BuildExecutiveDashboardSummaryInput): ExecutiveDashboardSummary {
   const period = getDashboardPeriod(periodKey, now);
   const elapsed = { startDate: period.startDate, endDate: period.throughDate };
@@ -271,13 +272,15 @@ export function buildExecutiveDashboardSummary({
     periodTransactions.filter((transaction) => isCategorized(transaction.category)).length,
     periodTransactions.length
   );
-  const giftAidClaimable = roundMoney(
-    sumAmounts(
-      reportablePeriodTransactions.filter(
-        (transaction) => transaction.type === "Income" && transaction.isGiftAidEligible === true
+  const giftAidClaimable = giftAidEnabled
+    ? roundMoney(
+        sumAmounts(
+          reportablePeriodTransactions.filter(
+            (transaction) => transaction.type === "Income" && transaction.isGiftAidEligible === true
+          )
+        ) * 0.25
       )
-    ) * 0.25
-  );
+    : null;
   const missionTitheDue = roundMoney(
     sumAmounts(
       unrestrictedPeriodTransactions.filter(
@@ -369,7 +372,8 @@ export function buildExecutiveDashboardSummary({
       reportableTransactions,
       reportablePeriodTransactions,
       donors,
-      pledges
+      pledges,
+      giftAidEnabled
     ),
     trends,
   };
@@ -641,7 +645,8 @@ function buildDonorFollowUp(
   transactions: DashboardTransaction[],
   periodTransactions: DashboardTransaction[],
   donors: DashboardDonor[],
-  pledges: DashboardPledge[]
+  pledges: DashboardPledge[],
+  giftAidEnabled: boolean
 ): ExecutiveDashboardSummary["donorFollowUp"] {
   const declaredDonorIds = new Set(
     donors
@@ -677,8 +682,9 @@ function buildDonorFollowUp(
   });
 
   return {
-    missedGiftAidCount: missedGiftAid.length,
-    missedGiftAidValue: roundMoney(sumAmounts(missedGiftAid) * 0.25),
+    missedGiftAid: giftAidEnabled
+      ? { count: missedGiftAid.length, value: roundMoney(sumAmounts(missedGiftAid) * 0.25) }
+      : null,
     pledgesBehindCount: pledgesBehind.length,
   };
 }
