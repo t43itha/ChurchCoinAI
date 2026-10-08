@@ -13,6 +13,7 @@ import {
   categoryNameConflict,
   findCategoryByName,
   loadOrganizationCategories,
+  sameCategoryName,
 } from "../lib/categoryIntegrity";
 import { isMovementCategory } from "../../lib/movementCategories";
 import type { Doc } from "../_generated/dataModel";
@@ -118,6 +119,19 @@ export const rename = mutation({
 
     for (const t of transactions) {
       await patchTransaction(ctx, t._id, { category: args.newName }, { lockOverride: "category-rename-cascade" });
+    }
+
+    const funds = await ctx.db
+      .query("funds")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .collect();
+
+    for (const fund of funds) {
+      if (fund.defaultIncomeCategory && sameCategoryName(fund.defaultIncomeCategory, oldName)) {
+        await ctx.db.patch(fund._id, { defaultIncomeCategory: args.newName });
+      }
     }
 
     return { categoryId: args.categoryId, updatedTransactions: transactions.length };

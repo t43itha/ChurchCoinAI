@@ -270,10 +270,11 @@ export function filterInPersonGivingLedgersByMonth(
   }
 
   return ledgers.filter((ledger) => {
-    const candidateDates =
-      ledger.rows.length > 0
-        ? ledger.rows.map((row) => row.serviceDate)
-        : [ledger.weekEndingDate];
+    const serviceDates = [
+      ...ledger.rows.map((row) => row.serviceDate),
+      ...ledger.namedDonations.map((donation) => donation.serviceDate),
+    ];
+    const candidateDates = serviceDates.length > 0 ? serviceDates : [ledger.weekEndingDate];
 
     return candidateDates.some((candidateDate) => {
       const date = new Date(`${candidateDate}T00:00:00`);

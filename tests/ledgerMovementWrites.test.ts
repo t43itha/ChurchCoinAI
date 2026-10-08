@@ -111,6 +111,22 @@ describe("category names that would hide a movement category", () => {
     await invoke(categories.rename, ctx, { categoryId: "loan", newName: "Member loan" });
     expect(get("loan")).toMatchObject({ name: "Member loan", movementKind: "loan" });
   });
+
+  it("moves a fund's default cash collection category to the new name", async () => {
+    const { ctx, get } = fixture({
+      categories: [{ _id: "harvest", organizationId: "org", name: "Harvest Giving", transactionType: "Income", createdAt: 1 }],
+      funds: [
+        { _id: "general", organizationId: "org", name: "General", defaultIncomeCategory: "harvest giving" },
+        { _id: "building", organizationId: "org", name: "Building", defaultIncomeCategory: "Offerings" },
+        { _id: "elsewhere", organizationId: "other", name: "Elsewhere", defaultIncomeCategory: "Harvest Giving" },
+      ],
+    });
+    await invoke(categories.rename, ctx, { categoryId: "harvest", newName: "Appeal Giving" });
+
+    expect(get("general")?.defaultIncomeCategory).toBe("Appeal Giving");
+    expect(get("building")?.defaultIncomeCategory).toBe("Offerings");
+    expect(get("elsewhere")?.defaultIncomeCategory).toBe("Harvest Giving");
+  });
 });
 
 describe("cash collection rows stay giving", () => {

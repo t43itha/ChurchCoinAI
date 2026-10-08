@@ -316,6 +316,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         ? await replaceCollectionEntries({
             cashCollectionId: initialCollection.collectionId as Id<"cashCollections">,
             ...payload,
+            entryFormat: 2,
           })
         : await submitCollection(payload);
 
