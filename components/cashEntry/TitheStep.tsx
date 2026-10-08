@@ -29,6 +29,8 @@ import type { WizardModel } from "./useCollectionDraft";
 interface TitheStepProps {
   model: WizardModel;
   serviceIndex: number;
+  // Reports whether the entry form holds a name or amount that hasn't been added yet.
+  onUnfinishedChange: (unfinished: boolean) => void;
 }
 
 type EntryMethod = Extract<TitheMethod, "Cash" | "Cheque">;
@@ -103,7 +105,7 @@ function EnvelopeEditor({
   );
 }
 
-export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
+export default function TitheStep({ model, serviceIndex, onUnfinishedChange }: TitheStepProps) {
   const service = model.draft.services[serviceIndex];
   const [name, setName] = useState("");
   const [donor, setDonor] = useState<PickedDonor | null>(null);
@@ -120,6 +122,12 @@ export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
     const timer = setTimeout(() => setFreshId(null), 600);
     return () => clearTimeout(timer);
   }, [freshId]);
+
+  const unfinished = name.trim() !== "" || amount.trim() !== "";
+  useEffect(() => {
+    onUnfinishedChange(unfinished);
+  }, [unfinished, onUnfinishedChange]);
+  useEffect(() => () => onUnfinishedChange(false), [onUnfinishedChange]);
 
   const amountValue = parseAmount(amount);
   const canAddNamed = amountValue > 0 && (donor !== null || name.trim().length >= 2);

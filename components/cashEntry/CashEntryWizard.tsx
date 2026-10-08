@@ -42,6 +42,7 @@ interface CountingState {
 }
 
 const DONE: WizardStep = { kind: "done" };
+const UNFINISHED_ENVELOPE_PROMPT = "You've typed an envelope but haven't added it. Leave without adding it?";
 
 function countOf(service: ServiceDraft, target: LineTarget): CashCount | null {
   switch (target.kind) {
@@ -98,6 +99,10 @@ function WizardPanel({
   const [position, setPosition] = useState(() => (isEdit ? lastMiddle : 0));
   const [counting, setCounting] = useState<CountingState | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const unfinishedEnvelopeRef = useRef(false);
+  const setUnfinishedEnvelope = useCallback((unfinished: boolean) => {
+    unfinishedEnvelopeRef.current = unfinished;
+  }, []);
 
   // Done is only reachable through a successful save, never through the step list.
   const stepPosition = saved ? steps.length - 1 : Math.min(position, lastMiddle);
@@ -116,6 +121,9 @@ function WizardPanel({
       if (!window.confirm("Start a new count? Your unfinished count will be deleted.")) return;
       wizard.discardStored();
     }
+    if (step.kind === "tithes" && next !== stepPosition && unfinishedEnvelopeRef.current) {
+      if (!window.confirm(UNFINISHED_ENVELOPE_PROMPT)) return;
+    }
     setPosition(Math.max(0, Math.min(next, steps.length - 1)));
     setCounting(null);
     bodyRef.current?.scrollTo({ top: 0 });
@@ -129,6 +137,8 @@ function WizardPanel({
     if (!saved && !isEdit && hasEntries(draft)) {
       if (!window.confirm("Discard this count?")) return;
       discardDraft();
+    } else if (!saved && unfinishedEnvelopeRef.current) {
+      if (!window.confirm(UNFINISHED_ENVELOPE_PROMPT)) return;
     }
     onClose();
   }, [saving, saved, isEdit, draft, discardDraft, onClose]);
@@ -237,6 +247,7 @@ function WizardPanel({
                     key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
                     model={model}
                     serviceIndex={step.serviceIndex}
+                    onUnfinishedChange={setUnfinishedEnvelope}
                   />
                 )}
                 {step.kind === "review" &&
