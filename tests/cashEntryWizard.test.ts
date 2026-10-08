@@ -115,5 +115,8 @@ describe("cash entry wizard", () => {
     expect(markup).not.toContain("Save for later");
     expect(markup).not.toContain(">Edit<");
     expect(markup).not.toContain('aria-label="Back"');
+    // Totals come from the saved entries, bank row included, not the draft.
+    expect(markup).toContain("£165.00");
+    expect(markup).toContain("Other (bank or online)");
   });
 });

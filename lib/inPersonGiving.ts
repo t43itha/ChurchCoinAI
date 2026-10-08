@@ -68,6 +68,7 @@ export interface InPersonGivingNamedDonation {
   amount: number;
   serviceDate: string;
   serviceNote?: string;
+  programmeId?: string;
 }
 
 export interface InPersonGivingLedger {
@@ -184,6 +185,7 @@ export function groupInPersonGivingCollections({
             amount: transaction.amount,
             serviceDate: transaction.date,
             serviceNote: serviceNoteOf(transaction.notes),
+            programmeId: transaction.programmeId,
           });
           continue;
         }

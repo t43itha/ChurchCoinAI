@@ -21,6 +21,7 @@ import TitheStep from "./TitheStep";
 import { gbp, shortDate } from "./format";
 import { buildSteps, stepIndexOfGiving, type WizardStep } from "./steps";
 import { WizardRail, WizardReceipt } from "./WizardSidebars";
+import SavedCollectionSummary from "./SavedCollectionSummary";
 import { btnLg, btnPrimary } from "./ui";
 import { useCollectionDraft, type CategoryOption } from "./useCollectionDraft";
 
@@ -162,11 +163,10 @@ function WizardPanel({
           role="dialog"
           aria-modal="true"
           aria-label="Record giving"
-          className="flex h-full w-full flex-col bg-paper lg:grid lg:h-[min(820px,100%)] lg:max-w-6xl lg:grid-cols-[230px_minmax(0,1fr)_310px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg"
+          className={`flex h-full w-full flex-col bg-paper lg:grid lg:h-[min(820px,100%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg ${readOnly ? "lg:max-w-2xl lg:grid-cols-[minmax(0,1fr)]" : "lg:max-w-6xl lg:grid-cols-[230px_minmax(0,1fr)_310px]"}`}
         >
-          <fieldset disabled={readOnly} className="contents">
-            <WizardRail draft={draft} steps={steps} current={stepPosition} onGo={go} />
-          </fieldset>
+          {/* A read-only collection is shown from the saved entries, not the draft, so the draft's rail and receipt are hidden. */}
+          {!readOnly && <WizardRail draft={draft} steps={steps} current={stepPosition} onGo={go} />}
 
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
@@ -225,17 +225,12 @@ function WizardPanel({
                   />
                 )}
                 {step.kind === "tithes" && <TitheStep model={model} serviceIndex={step.serviceIndex} />}
-                {step.kind === "review" && (
-                  <ReviewStep
-                    model={model}
-                    readOnlyReason={readOnlyReason}
-                    onEdit={
-                      readOnly
-                        ? undefined
-                        : (serviceIndex) => go(stepIndexOfGiving(steps, serviceIndex))
-                    }
-                  />
-                )}
+                {step.kind === "review" &&
+                  (readOnlyReason && initialCollection ? (
+                    <SavedCollectionSummary ledger={initialCollection} reason={readOnlyReason} />
+                  ) : (
+                    <ReviewStep model={model} onEdit={(serviceIndex) => go(stepIndexOfGiving(steps, serviceIndex))} />
+                  ))}
                 {step.kind === "done" && saved && (
                   <DoneStep
                     model={model}
@@ -260,7 +255,11 @@ function WizardPanel({
                   type="button"
                   disabled={!firstService}
                   onClick={() => {
-                    wizard.dismissResumable();
+                    // A new count would overwrite the unfinished one, so ask first.
+                    if (wizard.hasStoredDraft) {
+                      if (!window.confirm("Start a new count? Your unfinished count will be deleted.")) return;
+                      wizard.discardStored();
+                    }
                     go(1);
                   }}
                   className={`${btnPrimary} ${btnLg}`}
@@ -319,7 +318,7 @@ function WizardPanel({
             )}
           </div>
 
-          <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} />
+          {!readOnly && <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} />}
         </div>
       </fieldset>
     </div>

@@ -658,6 +658,11 @@ export function editBlocker(ledger: InPersonGivingLedger, ctx: LedgerContext): s
   if (unsupported) {
     return `The gift from ${unsupported.donorName} isn't recorded as cash, a cheque or a card, so this collection can't be edited here.`;
   }
+  // Named gifts are saved without a programme, so editing would drop the tag.
+  const tagged = ledger.namedDonations.find((donation) => donation.programmeId);
+  if (tagged) {
+    return `The gift from ${tagged.donorName} is tagged to a programme, so this collection can't be edited here.`;
+  }
 
   const ledgerTotal = sumMoney(
     [...ledger.rows.map((row) => row.total), ...ledger.namedDonations.map((donation) => donation.amount)],

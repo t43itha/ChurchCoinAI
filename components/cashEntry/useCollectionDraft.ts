@@ -361,9 +361,6 @@ export function useCollectionDraft({
     setOffer(null);
   };
 
-  // Starting without answering keeps the stored copy. Autosave stays off, so it can't be overwritten.
-  const dismissResumable = () => setOffer(null);
-
   const startFresh = () => {
     touched.current = false;
     setSaved(null);
@@ -392,9 +389,10 @@ export function useCollectionDraft({
     model,
     existingCount: isEdit ? 0 : existing?.length ?? 0,
     resumable,
+    // True while an unanswered stored count exists, even before it can be offered.
+    hasStoredDraft: offer !== null,
     resume,
     discardStored,
-    dismissResumable,
     discardDraft,
     startFresh,
     submit,

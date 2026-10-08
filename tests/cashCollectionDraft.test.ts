@@ -1003,6 +1003,9 @@ describe("cash collection draft", () => {
       serviceNote: "Friday",
     };
     expect(editBlocker({ ...base, namedDonations: [onlineGift] }, ctx)).toMatch(/Amy Ross/);
+
+    const taggedGift = { ...onlineGift, id: "tagged", paymentMethod: "Cash" as const, programmeId: "harvest" };
+    expect(editBlocker({ ...base, namedDonations: [taggedGift] }, ctx)).toMatch(/tagged to a programme/);
   });
 
   it("returns null for a stored draft that is malformed, and keeps a valid one", () => {
