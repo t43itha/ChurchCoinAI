@@ -178,19 +178,22 @@ export async function runCategorisation(input: {
   categories: ReviewCategory[];
   suggest: (transactions: PipelineSuggestInput[]) => Promise<PipelineSuggestion[]>;
   setRows: Setter<PendingReviewTransaction[]>;
-  setPredictions: Setter<Map<string, OriginalPrediction>>;
   setCount: (count: number) => void;
   setStatus: (message: string) => void;
   setIsCategorising: (busy: boolean) => void;
 }): Promise<void> {
   const run = ++input.runCounter.current;
   const isCurrent = () => input.runCounter.current === run;
-  const snapshot = input.rows.map((row) => ({ ...row, reviewRowId: row.reviewRowId ?? crypto.randomUUID() }));
+  // A new run starts from rows with no earlier predictions.
+  const snapshot = input.rows.map((row) => ({
+    ...row,
+    reviewRowId: row.reviewRowId ?? crypto.randomUUID(),
+    originalPrediction: undefined,
+  }));
   input.setRows(snapshot);
   input.setCount(snapshot.length);
   input.setStatus("");
   input.setIsCategorising(true);
-  input.setPredictions(new Map());
   let next = 0;
   let completed = 0;
   let failed = 0;
@@ -213,18 +216,14 @@ export async function runCategorisation(input: {
         input.setRows((current) => current.map((row) => {
           const original = originals.get(row.reviewRowId ?? "");
           const suggestion = byId.get(row.reviewRowId ?? "");
-          // A user edit or removal while inference was running wins.
+          // A user edit or removal while inference was running wins, so nothing is applied
+          // or recorded for that row.
           if (!suggestion || row !== original) return row;
-          return applySuggestionToRow(row, suggestion, input.categories, input.funds);
+          return {
+            ...applySuggestionToRow(row, suggestion, input.categories, input.funds),
+            originalPrediction: predictionFromSuggestion(suggestion),
+          };
         }));
-        input.setPredictions((current) => {
-          const updated = new Map(current);
-          suggestions.forEach((suggestion) => {
-            if (!suggestion.rowId) return;
-            updated.set(suggestion.rowId, predictionFromSuggestion(suggestion));
-          });
-          return updated;
-        });
       } catch {
         failed += batch.length;
       }

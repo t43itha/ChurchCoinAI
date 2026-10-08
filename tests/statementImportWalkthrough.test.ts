@@ -3,6 +3,7 @@ import { buildImportSteps } from "../components/statementImport/steps";
 import {
   bucketOf,
   categoryChoicesFor,
+  applicableGroupIds,
   describeGroupKey,
   focusedRowId,
   groupBuckets,
@@ -71,6 +72,13 @@ describe("bucketOf", () => {
   it("moves an answered row to Sure", () => {
     expect(bucketOf(row("a"), prediction({ confidence: "Low" }), true, namesFor)).toBe("sure");
   });
+
+  it("does not trust a prediction whose category is not the row's current category", () => {
+    // A suggestion for "Tithes & First Fruits" arrived after the row was kept as "Offerings".
+    const kept = row("a", { category: "Offerings" });
+    expect(bucketOf(kept, prediction({ category: "Tithes & First Fruits", predictionSource: "rule" }), false, namesFor)).toBe("needs");
+    expect(bucketOf(kept, prediction({ category: "Tithes & First Fruits", confidence: "High" }), false, namesFor)).toBe("needs");
+  });
 });
 
 describe("groupBuckets", () => {
@@ -118,6 +126,32 @@ describe("sameDescriptionRowIds", () => {
     const rows = [row("a", { description: "" }), row("b", { description: "" })];
     expect(sameDescriptionRowIds(rows, "a")).toEqual([]);
   });
+
+  it("never groups a row with one of the opposite transaction type", () => {
+    const rows = [
+      row("a", { description: "TESCO 123", type: "Income" }),
+      row("b", { description: "TESCO 456", type: "Expenditure" }),
+    ];
+    expect(sameDescriptionRowIds(rows, "a")).toEqual([]);
+  });
+});
+
+describe("applicableGroupIds", () => {
+  const rows = [
+    row("a", { description: "TESCO 123", type: "Income", category: "Offerings" }),
+    row("b", { description: "TESCO 456", type: "Expenditure", category: "" }),
+    row("c", { description: "TESCO 789", type: "Income", category: "" }),
+    row("d", { description: "TESCO 999", type: "Expenditure", category: "" }),
+  ];
+
+  it("applies to the same-type rows only, and only where the category is valid for that type", () => {
+    // Offerings is income-only, so the expenditure rows are never offered it.
+    expect(applicableGroupIds(rows, "a", "Offerings", new Set(["b", "c", "d"]), namesFor)).toEqual(["c"]);
+  });
+
+  it("offers nothing when the category is not valid for the row's own type", () => {
+    expect(applicableGroupIds(rows, "b", "Offerings", new Set(["a", "c"]), namesFor)).toEqual([]);
+  });
 });
 
 describe("nextNeedsId", () => {
@@ -149,6 +183,11 @@ describe("nextNeedsId", () => {
 
 describe("focusedRowId", () => {
   const rows = [row("a"), row("b")];
+
+  it("keeps the row just answered on the card, although it no longer needs an answer", () => {
+    // After answering "a", only "b" needs one; the card must still show "a" until Next.
+    expect(focusedRowId(rows, ["b"], "a")).toBe("a");
+  });
 
   it("keeps the focused row while it is in the batch", () => {
     expect(focusedRowId(rows, ["a"], "b")).toBe("b");

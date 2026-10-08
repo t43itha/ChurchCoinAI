@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import type { ColumnMapping } from "../../lib/statementImport";
 import { mapStatementRows } from "../../lib/statementImport";
-import { ROLE_LABEL, ignoredColumns, isMappingComplete, rolesFor, type ColumnRole, type ParsedStatement } from "./statementFile";
+import { ROLE_LABEL, ignoredColumns, isMappingComplete, isOptionalRole, rolesFor, type ColumnRole, type ParsedStatement } from "./statementFile";
 import { signedGbp, fullDate } from "./format";
 import { Segmented, linkBtnSm, screenHelp, screenTitle, tagAmber, txtInput } from "../wizard/ui";
 
@@ -21,20 +21,27 @@ function RoleRow({
   headers,
   value,
   onPick,
+  optional,
+  flagged,
 }: {
   role: ColumnRole;
   headers: string[];
   value: string;
   onPick: (header: string) => void;
+  // An optional money side may be absent; it is shown as "Not in this file" until chosen.
+  optional: boolean;
+  // Set when the row must be fixed: a required role, or no money column at all.
+  flagged: boolean;
 }) {
   const [changing, setChanging] = useState(false);
   const missing = !headers.includes(value);
-  const picking = missing || changing;
+  const picking = changing || (missing && !optional);
+  const amber = missing && flagged;
 
   return (
     <div
       className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-3.5 py-3 ${
-        missing ? "border-amber bg-amber-light" : "border-ledger bg-white"
+        amber ? "border-amber bg-amber-light" : "border-ledger bg-white"
       }`}
     >
       <span className="w-24 shrink-0 text-sm font-bold text-ink">{ROLE_LABEL[role]}</span>
@@ -57,9 +64,11 @@ function RoleRow({
           ))}
         </select>
       ) : (
-        <span className="min-w-0 flex-1 truncate font-mono text-sm text-grey-dark">{value}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-sm text-grey-dark">
+          {missing ? "Not in this file" : value}
+        </span>
       )}
-      {missing && <span className={tagAmber}>Choose</span>}
+      {amber && <span className={tagAmber}>Choose</span>}
       {!picking && (
         <button type="button" onClick={() => setChanging(true)} className={linkBtnSm}>
           Change
@@ -143,6 +152,9 @@ export default function ColumnsStep({ statement, onChange }: ColumnsStepProps) {
             headers={headers}
             value={mapping[role]}
             onPick={(header) => onChange({ ...mapping, [role]: header }, split)}
+            optional={isOptionalRole(role, split)}
+            // With neither money column there is nothing to import, so both are flagged.
+            flagged={!isOptionalRole(role, split) || (!headers.includes(mapping.amountIn) && !headers.includes(mapping.amountOut))}
           />
         ))}
       </div>

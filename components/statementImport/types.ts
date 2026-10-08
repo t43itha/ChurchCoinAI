@@ -28,6 +28,9 @@ export type PendingReviewTransaction = Partial<Transaction> & {
   importKey?: string;
   pairWith?: PairSuggestion;
   pairBasis?: string;
+  // Set only when the pipeline's suggestion was applied to this row. Corrections are
+  // recorded from it, and it is trusted for buckets only while the category still matches.
+  originalPrediction?: OriginalPrediction;
 };
 
 export type PipelinePredictionSource = "memory" | "rule" | "gemini" | "openrouter" | "openai" | "rag" | "none";

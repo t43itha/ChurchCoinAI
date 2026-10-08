@@ -14,10 +14,12 @@ import {
   tagBase,
   txtInput,
 } from "../wizard/ui";
-import { FIX_ACTION, describeFixProblem, fixKindFor, type FixKind, type FixableError } from "./fixRows";
+import { FIX_ACTION, describeFixProblem, fixKindFor, type Corrections, type FixKind, type FixableError } from "./fixRows";
 
 export type FixStatus = "fixed" | "left-out";
-export type FixOutcome = { ok: true } | { ok: false; message: string };
+// "fixed" joins the row to the review, "next" means the line still has a problem
+// and its card now shows that, and "rejected" keeps the card as it was.
+export type FixOutcome = { status: "fixed" } | { status: "next" } | { status: "rejected"; message: string };
 
 export interface FixSummary {
   added: number;
@@ -27,7 +29,9 @@ export interface FixSummary {
 }
 
 interface FixRowsStepProps {
+  // The problem each line has now: its original error, or the next one after corrections.
   errors: FixableError[];
+  corrections: ReadonlyMap<number, Corrections>;
   statuses: ReadonlyMap<number, FixStatus>;
   summary: FixSummary;
   onFix: (error: FixableError, value: string) => FixOutcome;
@@ -98,11 +102,14 @@ function FixInput({
 // choices. "Leave out" is always available and is the safe default.
 function FixCard({
   error,
+  kept,
   status,
   onFix,
   onLeaveOut,
 }: {
   error: FixableError;
+  // Corrections already made on this line, shown so earlier work is visible.
+  kept: Corrections | undefined;
   status: FixStatus | undefined;
   onFix: (value: string) => FixOutcome;
   onLeaveOut: () => void;
@@ -130,6 +137,11 @@ function FixCard({
       </div>
       <p className="text-[15px] font-semibold text-ink">{describeFixProblem(error)}</p>
       <p className="mt-1 break-words font-mono text-[12.5px] text-grey-mid">Read as “{error.raw}”</p>
+      {kept && Object.keys(kept).length > 0 && (
+        <p className="mt-2 text-[12.5px] text-sage">
+          Kept from earlier: {Object.entries(kept).map(([heading, text]) => `${heading} ${text}`).join(" · ")}
+        </p>
+      )}
 
       {kind && (
         <div className="mt-3 flex items-center gap-2">
@@ -148,7 +160,13 @@ function FixCard({
             disabled={!value.trim()}
             onClick={() => {
               const outcome = onFix(value);
-              if (!outcome.ok) setMessage(outcome.message);
+              if (outcome.status === "rejected") {
+                setMessage(outcome.message);
+              } else {
+                // Fixed or moved on to the next problem: this card's input is for something else now.
+                setValue("");
+                setMessage(null);
+              }
             }}
             className={`${btnPrimary} ${btnMd}`}
           >
@@ -163,7 +181,7 @@ function FixCard({
 }
 
 // Rows the mapping could not read. Each is fixed or left out, and nothing is lost silently.
-export default function FixRowsStep({ errors, statuses, summary, onFix, onLeaveOut }: FixRowsStepProps) {
+export default function FixRowsStep({ errors, corrections, statuses, summary, onFix, onLeaveOut }: FixRowsStepProps) {
   const open = errors.filter((error) => !statuses.has(error.line)).length;
 
   return (
@@ -183,8 +201,10 @@ export default function FixRowsStep({ errors, statuses, summary, onFix, onLeaveO
       <div className="flex flex-col gap-3">
         {errors.map((error) => (
           <FixCard
-            key={error.line}
+            // A new problem on the same line gets a fresh card, so its input starts empty.
+            key={`${error.line}:${error.reason}`}
             error={error}
+            kept={corrections.get(error.line)}
             status={statuses.get(error.line)}
             onFix={(value) => onFix(error, value)}
             onLeaveOut={() => onLeaveOut(error)}

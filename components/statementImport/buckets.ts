@@ -23,12 +23,14 @@ const isConfident = (prediction: OriginalPrediction): boolean =>
 // Needs you: everything else, including rows with no valid category.
 export function bucketOf(
   row: PendingReviewTransaction,
-  prediction: OriginalPrediction | undefined,
+  rawPrediction: OriginalPrediction | undefined,
   approved: boolean,
   namesFor: CategoryNamesFor
 ): ReviewBucket {
   if (!isValidCategory(row, namesFor)) return "needs";
   if (approved) return "sure";
+  // A prediction only speaks for the row while the category is still the one it suggested.
+  const prediction = rawPrediction && rawPrediction.category === row.category ? rawPrediction : undefined;
   if (prediction && SURE_SOURCES.has(prediction.predictionSource)) return "sure";
   if (prediction && isConfident(prediction)) return "likely";
   return "needs";
@@ -55,7 +57,8 @@ export function describeGroupKey(description: string | undefined): string {
   return (description ?? "").toLowerCase().replace(/\d/g, "").replace(/\s+/g, " ").trim();
 }
 
-// The other rows (not rowId) with the same description key, optionally limited to `among`.
+// The other rows (not rowId) with the same description key and the same transaction
+// type, optionally limited to `among`. An income and an expenditure row never group.
 export function sameDescriptionRowIds(
   rows: PendingReviewTransaction[],
   rowId: string,
@@ -65,9 +68,30 @@ export function sameDescriptionRowIds(
   const key = describeGroupKey(target?.description);
   if (!key) return [];
   return rows
-    .filter((row) => row.reviewRowId !== rowId && describeGroupKey(row.description) === key)
+    .filter((row) =>
+      row.reviewRowId !== rowId &&
+      row.type === target?.type &&
+      describeGroupKey(row.description) === key
+    )
     .map((row) => row.reviewRowId ?? "")
     .filter((id) => id !== "" && (!among || among.has(id)));
+}
+
+// The rows "Apply to all" would set to `category`: the similar rows whose own type
+// has that category as a valid choice. Empty when the source row can't take it either.
+export function applicableGroupIds(
+  rows: PendingReviewTransaction[],
+  rowId: string,
+  category: string,
+  among: ReadonlySet<string> | undefined,
+  namesFor: CategoryNamesFor
+): string[] {
+  const target = rows.find((row) => row.reviewRowId === rowId);
+  if (!target || !category || !namesFor(target.type).includes(category)) return [];
+  return sameDescriptionRowIds(rows, rowId, among).filter((id) => {
+    const destination = rows.find((row) => row.reviewRowId === id);
+    return destination !== undefined && namesFor(destination.type).includes(category);
+  });
 }
 
 // The row shown on the "needs you" card: the focused row while it is still in the

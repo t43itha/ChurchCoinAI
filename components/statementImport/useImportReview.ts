@@ -103,7 +103,11 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
   const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
   const [alreadyImportedRows, setAlreadyImportedRows] = useState<PendingReviewTransaction[]>([]);
   const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(() => new Set());
-  const [predictions, setPredictions] = useState<Map<string, OriginalPrediction>>(new Map());
+  // Derived from the rows: a prediction exists only for a suggestion that was applied to its row.
+  const predictions = useMemo(
+    () => new Map(rows.flatMap((row) => (row.reviewRowId && row.originalPrediction ? [[row.reviewRowId, row.originalPrediction] as const] : []))),
+    [rows]
+  );
   const [isCategorising, setIsCategorising] = useState(false);
   const [categorisingCount, setCategorisingCount] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
@@ -145,7 +149,6 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
     setNextBankSyncCursor(null);
     setNextBankSyncConnectionId(null);
     setBankSyncReviewConnectionId(null);
-    setPredictions(new Map());
     setDismissedPairs(new Set());
   };
 
@@ -258,7 +261,6 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
       setAlreadyImportedRows([]);
       setNextBankSyncCursor(null);
       setNextBankSyncConnectionId(null);
-      setPredictions(new Map());
     }
 
     try {
@@ -306,7 +308,6 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
     categories,
     suggest: (transactions) => categorizeWithPipeline({ transactions }),
     setRows,
-    setPredictions,
     setCount: setCategorisingCount,
     setStatus: setStatusMessage,
     setIsCategorising,

@@ -11,8 +11,8 @@ import WizardFrame from "../wizard/WizardFrame";
 import { btnLg, btnMd, btnOutline, btnPrimary, eyebrow, linkBtn } from "../wizard/ui";
 import { buildImportSteps, type ImportStepKind } from "./steps";
 import { isMappingComplete, parseStatementText, type ParsedStatement, type StatementSummary } from "./statementFile";
-import { buildFixedRow, type FixableError } from "./fixRows";
-import { focusedRowId, groupBuckets, nextNeedsId, type CategoryNamesFor } from "./buckets";
+import { attemptFix, type Corrections, type FixableError } from "./fixRows";
+import { applicableGroupIds, focusedRowId, groupBuckets, nextNeedsId, type CategoryNamesFor } from "./buckets";
 import type { ImportReview } from "./useImportReview";
 import type { PendingReviewTransaction } from "./types";
 import UploadStep from "./UploadStep";
@@ -63,6 +63,8 @@ export default function StatementImportWizard({
   const [mapped, setMapped] = useState<MappingResult | null>(null);
   // Keyed by the error's source line, which is stable for the whole import.
   const [fixStatuses, setFixStatuses] = useState<Map<number, FixStatus>>(() => new Map());
+  // Partial fixes per source line: the problem it has now and the corrections kept so far.
+  const [fixDrafts, setFixDrafts] = useState<Map<number, { error: FixableError; corrections: Corrections }>>(() => new Map());
   const [removedCount, setRemovedCount] = useState(0);
   // reviewRowIds the user has answered. These count as "Sure" in the buckets.
   const [approved, setApproved] = useState<Set<string>>(() => new Set());
@@ -76,7 +78,9 @@ export default function StatementImportWizard({
 
   const steps = buildImportSteps({ errorCount: mapped?.errors.length ?? 0 });
   const stepIndex = Math.max(0, steps.indexOf(step));
-  const errors: FixableError[] = mapped?.errors ?? [];
+  // What each unresolved line says now: its original problem, or the next one after corrections.
+  const errors: FixableError[] = (mapped?.errors ?? []).map((error) => fixDrafts.get(error.line)?.error ?? error);
+  const draftCorrections = new Map([...fixDrafts].map(([line, draft]) => [line, draft.corrections] as const));
   const unresolved = errors.filter((error) => !fixStatuses.has(error.line));
   const leftOutErrors = [...fixStatuses.values()].filter((status) => status === "left-out").length;
   const buckets = groupBuckets(review.rows, review.predictions, approved, categoryNamesFor);
@@ -104,6 +108,7 @@ export default function StatementImportWizard({
     review.clear();
     setMapped(null);
     setFixStatuses(new Map());
+    setFixDrafts(new Map());
     setRemovedCount(0);
     setApproved(new Set());
     setView("needs");
@@ -187,6 +192,7 @@ export default function StatementImportWizard({
     if (!review.startStatementReview(result)) return;
     setMapped(result);
     setFixStatuses(new Map());
+    setFixDrafts(new Map());
     setRemovedCount(0);
     setApproved(new Set());
     setView("needs");
@@ -196,18 +202,36 @@ export default function StatementImportWizard({
     bodyRef.current?.scrollTo({ top: 0 });
   };
 
+  // Corrections for a line are kept until it is fixed or left out, so each problem
+  // on the line is fixed in turn. The row joins the review only when every one passes.
   const fixRow = (error: FixableError, value: string): FixOutcome => {
-    if (!statement) return { ok: false, message: "Read the file again to fix this row." };
-    const outcome = buildFixedRow(statement, error, value);
-    if (!outcome.ok) return outcome;
-    if (!review.addStatementRows([outcome.row])) {
-      return { ok: false, message: "Adding this would go over 500 transactions. Leave some out first." };
+    if (!statement) return { status: "rejected", message: "Read the file again to fix this row." };
+    const attempt = attemptFix(statement, error, fixDrafts.get(error.line)?.corrections ?? {}, value);
+    if (attempt.status === "rejected") return attempt;
+    if (attempt.status === "next") {
+      setFixDrafts((current) =>
+        new Map(current).set(error.line, { error: attempt.error, corrections: attempt.corrections })
+      );
+      return { status: "next" };
     }
+    if (!review.addStatementRows([attempt.row])) {
+      return { status: "rejected", message: "Adding this would go over 500 transactions. Leave some out first." };
+    }
+    setFixDrafts((current) => {
+      const next = new Map(current);
+      next.delete(error.line);
+      return next;
+    });
     setFixStatuses((current) => new Map(current).set(error.line, "fixed"));
-    return { ok: true };
+    return { status: "fixed" };
   };
 
   const leaveOut = (line: number) => {
+    setFixDrafts((current) => {
+      const next = new Map(current);
+      next.delete(line);
+      return next;
+    });
     setFixStatuses((current) => new Map(current).set(line, "left-out"));
   };
 
@@ -234,12 +258,17 @@ export default function StatementImportWizard({
     if (index >= 0) review.updateRow(index, updates);
   };
 
+  // The answered row stays on the card, with its group and fund/Gift Aid controls, until Next.
   const answerRow = (rowId: string, category: string) => {
+    setFocusId(rowId);
     updateRowById(rowId, { category });
     markApproved([rowId]);
   };
 
-  const applyToGroup = (rowId: string, category: string, groupIds: string[]) => {
+  // Applies the answer to the similar rows that still need one, checking the category
+  // against each row's own type at the moment of applying.
+  const applyToGroup = (rowId: string, category: string) => {
+    const groupIds = applicableGroupIds(review.rows, rowId, category, new Set(buckets.needs), categoryNamesFor);
     [rowId, ...groupIds].forEach((id) => updateRowById(id, { category }));
     markApproved([rowId, ...groupIds]);
   };
@@ -340,6 +369,7 @@ export default function StatementImportWizard({
     body = (
       <FixRowsStep
         errors={errors}
+        corrections={draftCorrections}
         statuses={fixStatuses}
         summary={{
           added: review.rows.length,

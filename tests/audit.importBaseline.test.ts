@@ -61,7 +61,6 @@ describe("import category and date acceptance", () => {
       categories: getRCICategorySeedData(),
       suggest: vi.fn(() => response) as any,
       setRows: (update) => { rows = typeof update === "function" ? update(rows) : update; },
-      setPredictions: vi.fn(),
       setCount: vi.fn(),
       setStatus: vi.fn(),
       setIsCategorising: vi.fn(),
@@ -79,7 +78,6 @@ describe("import category and date acceptance", () => {
     const response = new Promise((resolve) => { finish = resolve; });
     const runCounter = { current: 0 };
     const setRows = vi.fn();
-    const setPredictions = vi.fn();
     const running = runCategorisation({
       rows: [{ reviewRowId: "a", description: "Credit", amount: 90, type: "Income" }] as any,
       runCounter,
@@ -87,7 +85,6 @@ describe("import category and date acceptance", () => {
       categories: getRCICategorySeedData(),
       suggest: () => response as any,
       setRows,
-      setPredictions,
       setCount: vi.fn(),
       setStatus: vi.fn(),
       setIsCategorising: vi.fn(),
@@ -96,7 +93,6 @@ describe("import category and date acceptance", () => {
     finish([{ rowId: "a", category: "Offerings" }]);
     await running;
     expect(setRows).toHaveBeenCalledTimes(1);
-    expect(setPredictions).toHaveBeenCalledTimes(1);
   });
 
   it("seeds typed income and expenditure categories for a new organization", async () => {

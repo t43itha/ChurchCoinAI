@@ -1,4 +1,4 @@
-// Turning a row the mapping could not read into a MappedRow, from the value the user typed.
+// Turning a row the mapping could not read into a MappedRow, from the values the user typed.
 import { parseImportedAmount, parseImportedDate } from "../../lib/csvImport";
 import {
   mapStatementRows,
@@ -15,7 +15,10 @@ export interface FixableError {
 
 export type FixKind = "date" | "amount" | "description";
 
-// Which input a reason needs. Reasons with no input (both columns filled) are left out only.
+// Corrections already typed for one source line, keyed by column heading.
+export type Corrections = Record<string, string>;
+
+// Which input a reason needs. Reasons with none (both columns filled) get no input.
 export function fixKindFor(reason: string): FixKind | null {
   if (reason === "Date not real" || reason === "Date unreadable") return "date";
   if (reason === "Amount unreadable" || reason === "Amount is zero") return "amount";
@@ -57,7 +60,14 @@ export interface FixLayout {
   split: boolean;
 }
 
-export type FixResult = { ok: true; row: MappedRow } | { ok: false; message: string };
+// Where a line stands after one correction is checked against the mapping.
+//  - fixed: every problem on the line now passes; the row can join the review.
+//  - next: the corrected line still has a problem; the corrections so far are kept.
+//  - rejected: the typed value itself is unusable; nothing changed.
+export type FixAttempt =
+  | { status: "fixed"; row: MappedRow }
+  | { status: "next"; error: FixableError; corrections: Corrections }
+  | { status: "rejected"; message: string };
 
 const EMPTY_MESSAGE: Record<FixKind, string> = {
   date: "Enter the date.",
@@ -65,47 +75,65 @@ const EMPTY_MESSAGE: Record<FixKind, string> = {
   description: "Enter a description.",
 };
 
-// The column the fix replaces. For split columns, the one whose cell holds the bad value.
-function columnFor(kind: FixKind, error: FixableError, record: CsvRecord, layout: FixLayout): string {
+// The source cells with every correction so far written in.
+function patchedCells(layout: FixLayout, record: CsvRecord, corrections: Corrections): string[] {
+  const cells = [...record.cells];
+  for (const [header, text] of Object.entries(corrections)) {
+    const index = layout.headers.indexOf(header);
+    if (index === -1) continue;
+    while (cells.length <= index) cells.push("");
+    cells[index] = text;
+  }
+  return cells;
+}
+
+// The heading the current problem sits under. For split columns, the money column
+// whose cell holds the bad value.
+function columnFor(kind: FixKind, error: FixableError, cells: string[], layout: FixLayout): string {
   const { mapping, split, headers } = layout;
   if (kind === "date") return mapping.date;
   if (kind === "description") return mapping.description;
   if (!split) return mapping.amount;
   const inIndex = headers.indexOf(mapping.amountIn);
-  const inCell = inIndex === -1 ? "" : (record.cells[inIndex] ?? "").trim();
+  const inCell = inIndex === -1 ? "" : (cells[inIndex] ?? "").trim();
   return inCell === error.raw.trim() ? mapping.amountIn : mapping.amountOut;
 }
 
-// Replaces the one cell the user corrected and runs the statement mapping on that
-// record alone, so a fixed row is validated exactly like one read from the file.
-// Rejected values come back with a message for the card; nothing is added.
-export function buildFixedRow(layout: FixLayout, error: FixableError, value: string): FixResult {
+// Writes one typed value into the line and runs the statement mapping on that line
+// alone, so a fixed row is validated exactly like one read from the file. Earlier
+// corrections on the same line are kept, and a further problem is handed back as
+// the next error rather than discarding the work.
+export function attemptFix(layout: FixLayout, error: FixableError, corrections: Corrections, value: string): FixAttempt {
   const kind = fixKindFor(error.reason);
-  if (!kind) return { ok: false, message: "This row can't be fixed here. Leave it out." };
+  if (!kind) return { status: "rejected", message: "This row can't be fixed here. Leave it out." };
 
   const text = value.trim();
-  if (!text) return { ok: false, message: EMPTY_MESSAGE[kind] };
+  if (!text) return { status: "rejected", message: EMPTY_MESSAGE[kind] };
   if (kind === "date" && parseImportedDate(text) === null) {
-    return { ok: false, message: "That isn't a date we can read. Use day, month and year." };
+    return { status: "rejected", message: "That isn't a date we can read. Use day, month and year." };
   }
   if (kind === "amount" && parseImportedAmount(text) === null) {
-    return { ok: false, message: "That isn't an amount we can read. Use numbers, like 1200.00." };
+    return { status: "rejected", message: "That isn't an amount we can read. Use numbers, like 1200.00." };
   }
 
   const record = layout.records.find((candidate) => candidate.line === error.line);
-  if (!record) return { ok: false, message: "This row is no longer in the file." };
+  if (!record) return { status: "rejected", message: "This row is no longer in the file." };
 
-  const column = columnFor(kind, error, record, layout);
-  const index = layout.headers.indexOf(column);
-  if (index === -1) return { ok: false, message: "This row's column can't be found in the file." };
+  const column = columnFor(kind, error, patchedCells(layout, record, corrections), layout);
+  if (!layout.headers.includes(column)) {
+    return { status: "rejected", message: "This row's column can't be found in the file." };
+  }
 
-  const cells = [...record.cells];
-  while (cells.length <= index) cells.push("");
-  cells[index] = text;
-
-  const result = mapStatementRows([{ cells, line: record.line }], layout.headers, layout.mapping, layout.split);
+  const nextCorrections = { ...corrections, [column]: text };
+  const result = mapStatementRows(
+    [{ cells: patchedCells(layout, record, nextCorrections), line: record.line }],
+    layout.headers,
+    layout.mapping,
+    layout.split
+  );
   const [row] = result.rows;
-  if (row) return { ok: true, row };
-  const reason = result.errors[0]?.reason ?? "it is still blank";
-  return { ok: false, message: `Still not right: ${reason.toLowerCase()}.` };
+  if (row) return { status: "fixed", row };
+  const problem = result.errors[0];
+  if (problem) return { status: "next", error: problem, corrections: nextCorrections };
+  return { status: "rejected", message: "This row still has no amount." };
 }

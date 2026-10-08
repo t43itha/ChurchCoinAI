@@ -6,7 +6,7 @@ import {
   categoryChoicesFor,
   focusedRowId,
   isValidCategory,
-  sameDescriptionRowIds,
+  applicableGroupIds,
   type CategoryNamesFor,
   type ReviewBucket,
 } from "./buckets";
@@ -43,7 +43,7 @@ export interface CategoriseStepProps {
   onNext: () => void;
   onAnswer: (rowId: string, category: string) => void;
   onUpdateRow: (rowId: string, updates: Partial<PendingReviewTransaction>) => void;
-  onApplyToGroup: (rowId: string, category: string, groupIds: string[]) => void;
+  onApplyToGroup: (rowId: string, category: string) => void;
   onApprove: (rowIds: string[]) => void;
   onUpdateIndex: (index: number, updates: Partial<PendingReviewTransaction>) => void;
   onRemoveIndex: (index: number) => void;
@@ -202,7 +202,8 @@ function NeedsView(props: CategoriseStepProps & { byId: Map<string, PendingRevie
   }
 
   const prediction: OriginalPrediction | undefined = review.predictions.get(focusedId);
-  const groupIds = sameDescriptionRowIds(review.rows, focusedId, needsSet);
+  // Only rows the current category would be valid for, of the same type.
+  const groupIds = applicableGroupIds(review.rows, focusedId, row.category ?? "", needsSet, namesFor);
   const canApply = isValidCategory(row, namesFor);
 
   return (
@@ -217,7 +218,7 @@ function NeedsView(props: CategoriseStepProps & { byId: Map<string, PendingRevie
       canApply={canApply}
       onAnswer={(category) => props.onAnswer(focusedId, category)}
       onUpdate={(updates) => props.onUpdateRow(focusedId, updates)}
-      onApplyToGroup={() => props.onApplyToGroup(focusedId, row.category ?? "", groupIds)}
+      onApplyToGroup={() => props.onApplyToGroup(focusedId, row.category ?? "")}
       onNext={props.onNext}
     />
   );

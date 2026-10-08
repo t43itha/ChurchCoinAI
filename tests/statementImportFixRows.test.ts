@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildFixedRow, describeFixProblem, fixKindFor, type FixLayout } from "../components/statementImport/fixRows";
+import {
+  attemptFix,
+  describeFixProblem,
+  fixKindFor,
+  type FixLayout,
+  type FixableError,
+} from "../components/statementImport/fixRows";
+import { mapStatementRows } from "../lib/statementImport";
 import {
   accountedFor,
   ignoredColumns,
@@ -39,6 +46,61 @@ describe("fixKindFor", () => {
 
   it("has no input for a row with both columns filled", () => {
     expect(fixKindFor("Both money in and money out filled")).toBeNull();
+  });
+});
+
+// One correction with no earlier ones, reported as a single outcome.
+const buildFixedRow = (layout: FixLayout, error: FixableError, value: string) => {
+  const attempt = attemptFix(layout, error, {}, value);
+  if (attempt.status === "fixed") return { ok: true as const, row: attempt.row };
+  if (attempt.status === "rejected") return { ok: false as const, message: attempt.message };
+  return { ok: false as const, message: `Still not right: ${attempt.error.reason.toLowerCase()}.` };
+};
+
+describe("attemptFix, one problem at a time", () => {
+  // The amount is unreadable and the date is impossible; both must be fixed before the row is added.
+  const twoProblems: FixLayout = {
+    headers: ["Date", "Description", "Amount"],
+    split: false,
+    mapping: { date: "Date", description: "Description", amount: "Amount", amountIn: "", amountOut: "" },
+    records: [{ cells: ["31/02/2026", "Gift", "bad"], line: 4 }],
+  };
+
+  it("keeps the amount correction and reports the next problem on the same line", () => {
+    const attempt = attemptFix(twoProblems, { line: 4, reason: "Amount unreadable", raw: "bad" }, {}, "20");
+    expect(attempt).toEqual({
+      status: "next",
+      error: { line: 4, reason: "Date not real", raw: "31/02/2026" },
+      corrections: { Amount: "20" },
+    });
+  });
+
+  it("adds the row only once the earlier corrections and the last one all pass", () => {
+    const attempt = attemptFix(
+      twoProblems,
+      { line: 4, reason: "Date not real", raw: "31/02/2026" },
+      { Amount: "20" },
+      "2026-02-28"
+    );
+    expect(attempt).toMatchObject({
+      status: "fixed",
+      // A positive amount in a single column reads as income.
+      row: { line: 4, date: "2026-02-28", description: "Gift", amount: 20, type: "Income" },
+    });
+  });
+
+  it("reports the amount as the next problem when the date is fixed first", () => {
+    const attempt = attemptFix(twoProblems, { line: 4, reason: "Date not real", raw: "31/02/2026" }, {}, "2026-02-28");
+    expect(attempt).toEqual({
+      status: "next",
+      error: { line: 4, reason: "Amount unreadable", raw: "bad" },
+      corrections: { Date: "2026-02-28" },
+    });
+  });
+
+  it("rejects a typed value without touching the earlier corrections", () => {
+    const attempt = attemptFix(twoProblems, { line: 4, reason: "Amount unreadable", raw: "bad" }, { Date: "2026-02-28" }, "twelve");
+    expect(attempt.status).toBe("rejected");
   });
 });
 
@@ -122,6 +184,17 @@ describe("parseStatementText", () => {
     expect(outcome.statement.mapping).toMatchObject({ date: "Date", amountIn: "Money in", amountOut: "Money out" });
   });
 
+  it("maps a debit-only statement to Money out and reads its rows as spending", () => {
+    const outcome = parseStatementText("Date,Description,Money out\n01/03/2026,Printing,12.50\n");
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.statement).toMatchObject({ split: true });
+    expect(outcome.statement.mapping).toMatchObject({ amountIn: "", amountOut: "Money out" });
+    const { statement } = outcome;
+    const result = mapStatementRows(statement.records, statement.headers, statement.mapping, statement.split);
+    expect(result.rows).toEqual([{ line: 2, date: "2026-03-01", description: "Printing", amount: 12.5, type: "Expenditure" }]);
+  });
+
   it("maps a single amount column", () => {
     const outcome = parseStatementText("Date,Description,Amount\n01/03/2026,Shop,-12.50\n");
     expect(outcome.ok).toBe(true);
@@ -148,10 +221,18 @@ describe("isMappingComplete and ignoredColumns", () => {
 
   it("needs every role for the chosen layout", () => {
     expect(isMappingComplete(mapping, true, headers)).toBe(true);
-    expect(isMappingComplete({ ...mapping, amountOut: "" }, true, headers)).toBe(false);
     // The single-amount layout needs its amount role and ignores the in/out roles.
     expect(isMappingComplete({ ...mapping, amount: "" }, false, headers)).toBe(false);
     expect(isMappingComplete({ ...mapping, amount: "Money in" }, false, headers)).toBe(true);
+  });
+
+  it("accepts a debit-only or credit-only statement in split mode, since one side may be absent", () => {
+    expect(isMappingComplete({ ...mapping, amountIn: "" }, true, headers)).toBe(true);
+    expect(isMappingComplete({ ...mapping, amountOut: "" }, true, headers)).toBe(true);
+  });
+
+  it("still needs at least one money column in split mode", () => {
+    expect(isMappingComplete({ ...mapping, amountIn: "", amountOut: "" }, true, headers)).toBe(false);
   });
 
   it("lists the columns the import does not read", () => {
