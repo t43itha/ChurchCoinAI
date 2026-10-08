@@ -13,6 +13,7 @@ import {
 } from "../lib/categoryIntegrity";
 import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
 import { isMovementCategory } from "../../lib/movementCategories";
+import { isNamedDonationTransaction } from "../../lib/inPersonGiving";
 import { assertNotLockedByReconciliation, deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to normalize donor names for matching
@@ -229,7 +230,7 @@ function retainedCategoryKeys(transactions: Doc<"transactions">[]) {
       .filter((transaction) => transaction.fundId)
       .map((transaction) =>
         retainedCategoryKey(
-          transaction.donorId ? "donation" : "service",
+          isNamedDonationTransaction(transaction) ? "donation" : "service",
           transaction.fundId!,
           transaction.category
         )
@@ -244,7 +245,7 @@ function legacyEditWouldDropDetail(
   weekEndingDate: string
 ) {
   return transactions.some((transaction) =>
-    transaction.donorId
+    isNamedDonationTransaction(transaction)
       ? transaction.notes?.startsWith("service:") || transaction.date !== weekEndingDate
       : transaction.programmeId !== undefined || transaction.category !== "Offerings"
   );
@@ -469,6 +470,12 @@ export const replaceCollectionEntries = mutation({
       throw new Error("This collection has details this page can't edit. Refresh the page and try again.");
     }
     const { validRows, validNamedDonations } = filterValidEntries(args);
+    // An outdated page can only be editing Offerings rows (checked above), so
+    // its rows stay Offerings rather than taking the fund's current default.
+    const serviceRows =
+      args.entryFormat === 2
+        ? validRows
+        : validRows.map((row) => ({ ...row, category: row.category ?? "Offerings" }));
 
     const retainedCategories = retainedCategoryKeys(existingTransactions);
     for (const transaction of existingTransactions) {
@@ -486,7 +493,7 @@ export const replaceCollectionEntries = mutation({
       organizationId: user.organizationId,
       cashCollectionId: args.cashCollectionId,
       weekEndingDate: args.weekEndingDate,
-      serviceRows: validRows,
+      serviceRows,
       namedDonations: validNamedDonations,
       retainedCategories,
     });

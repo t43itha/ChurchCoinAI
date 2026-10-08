@@ -256,6 +256,29 @@ describe("editing a cash collection keeps what it already recorded", () => {
     expect(collectionTransactions(records, cashCollectionId)).toMatchObject([{ amount: 75, category: "Offerings" }]);
   });
 
+  it("treats a donation whose donor was deleted as a donation, not a service row", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, {
+      serviceRows: [],
+      namedDonations: [donation({ category: "Offerings", serviceNote: "Friday", isGiftAidEligible: true })],
+    });
+    delete records.transactions[0].donorId;
+
+    await expect(
+      replace(ctx, cashCollectionId, { serviceRows: [serviceRow({ serviceNote: "Friday", cash: 40 })] })
+    ).rejects.toThrow("Refresh the page");
+  });
+
+  it("keeps an outdated page's edited rows in Offerings when the fund has since gained a default", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow()] });
+    records.funds[0].defaultIncomeCategory = "Tithes & First Fruits";
+
+    await replace(ctx, cashCollectionId, { serviceRows: [serviceRow({ cash: 80 })] });
+
+    expect(collectionTransactions(records, cashCollectionId)).toMatchObject([{ amount: 80, category: "Offerings" }]);
+  });
+
   it("lets a service row keep a category retired since it was saved", async () => {
     const { ctx, records } = fixture({ funds: [generalFund()], categories: [harvestGiving()] });
     const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow({ category: "Harvest Giving" })] });
