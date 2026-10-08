@@ -1,6 +1,5 @@
 import { Check, Landmark, PenLine, Plus } from "lucide-react";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
-import { draftTotals } from "../../lib/cashCollectionDraft";
 import { gbp, shortDate } from "./format";
 import { fieldLabel, screenTitle } from "./ui";
 import type { SavedResult, WizardModel } from "./useCollectionDraft";
@@ -21,10 +20,10 @@ const NEXT_ITEM =
 const NEXT_ICON = "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl";
 
 export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: DoneStepProps) {
-  const totals = draftTotals(model.draft, model.ctx);
+  const { totals, draft } = saved;
   const isDraft = saved.status === "draft";
   const tithes = totals.namedCount + totals.anonymousCount;
-  const services = model.draft.services.length;
+  const services = draft.services.length;
   const bankable = roundMoney(totals.byMethod.cash + totals.byMethod.cheque);
   const missing = sumMoney(totals.noDeclaration, (entry) => entry.total);
 
@@ -40,7 +39,7 @@ export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: Do
         across {totals.byFund.length} fund{totals.byFund.length === 1 ? "" : "s"} ·{" "}
         {totals.byFund.map(({ fundId, total }) => `${model.fundName(fundId)} ${gbp(total)}`).join(" · ")}
         <br />
-        Week ending {shortDate(model.draft.weekEndingDate)} · {services} service{services === 1 ? "" : "s"} · {tithes}{" "}
+        Week ending {shortDate(draft.weekEndingDate)} · {services} service{services === 1 ? "" : "s"} · {tithes}{" "}
         tithe envelope{tithes === 1 ? "" : "s"}
       </p>
 

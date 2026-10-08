@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { SERVICE_PRESETS, presetDate } from "../../lib/cashCollectionDraft";
+import {
+  SERVICE_PRESETS,
+  customServiceDateRange,
+  isPresetServiceId,
+  presetDate,
+  type StoredDraft,
+} from "../../lib/cashCollectionDraft";
 import { getWeekEndingSunday } from "../../lib/dateUtils";
 import { longDate, shortDate, weekRange } from "./format";
 import {
@@ -13,8 +19,9 @@ import {
   btnMd,
   btnOutline,
   darkCard,
+  txtInput,
 } from "./ui";
-import type { StoredDraft, WizardModel } from "./useCollectionDraft";
+import type { WizardModel } from "./useCollectionDraft";
 
 interface StartStepProps {
   model: WizardModel;
@@ -31,10 +38,34 @@ export default function StartStep({ model, existingCount, resumable, onResume, o
   const { draft, dispatch, toggleService } = model;
   const [changingWeek, setChangingWeek] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customDate, setCustomDate] = useState(draft.weekEndingDate);
 
   const selectedIds = new Set(draft.services.map((service) => service.id));
   const usualPresets = SERVICE_PRESETS.filter((preset) => preset.usual || selectedIds.has(preset.id));
   const extraPresets = SERVICE_PRESETS.filter((preset) => !preset.usual && !selectedIds.has(preset.id));
+  // Custom services are ticked too: unticking one removes it.
+  const rows = [
+    ...usualPresets.map((preset) => ({
+      id: preset.id,
+      label: preset.label,
+      date: presetDate(draft.weekEndingDate, preset),
+    })),
+    ...draft.services
+      .filter((service) => !isPresetServiceId(service.id))
+      .map((service) => ({ id: service.id, label: service.label, date: service.date })),
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const { min, max } = customServiceDateRange(draft.weekEndingDate);
+  const customDateValid = customDate >= min && customDate <= max;
+
+  const addCustom = () => {
+    dispatch({ type: "addCustomService", id: crypto.randomUUID(), label: customLabel, date: customDate });
+    setCustomLabel("");
+    setCustomDate(draft.weekEndingDate);
+    setCustomOpen(false);
+  };
 
   return (
     <div className="space-y-2.5">
@@ -91,14 +122,14 @@ export default function StartStep({ model, existingCount, resumable, onResume, o
       <h2 className={`${screenTitle} mt-4`}>Which services had a collection?</h2>
       <p className={screenHelp}>Your usual services are ticked. Busy week? Add the extra days.</p>
 
-      {usualPresets.map((preset) => {
-        const on = selectedIds.has(preset.id);
+      {rows.map((row) => {
+        const on = selectedIds.has(row.id);
         return (
           <button
-            key={preset.id}
+            key={row.id}
             type="button"
             aria-pressed={on}
-            onClick={() => toggleService(preset.id)}
+            onClick={() => toggleService(row.id)}
             className={`flex h-[52px] w-full items-center gap-3 rounded-2xl border-[1.5px] bg-white px-3.5 text-left text-ink ${
               on ? "border-ink" : "border-ledger"
             }`}
@@ -110,37 +141,83 @@ export default function StartStep({ model, existingCount, resumable, onResume, o
             >
               {on && <Check size={14} aria-hidden="true" />}
             </span>
-            <b className="min-w-0 flex-1 truncate text-[14.5px]">{preset.label}</b>
-            <span className="whitespace-nowrap text-[12.5px] text-grey-mid">
-              {shortDate(presetDate(draft.weekEndingDate, preset))}
-            </span>
+            <b className="min-w-0 flex-1 truncate text-[14.5px]">{row.label}</b>
+            <span className="whitespace-nowrap text-[12.5px] text-grey-mid">{shortDate(row.date)}</span>
           </button>
         );
       })}
 
-      {extraPresets.length > 0 &&
-        (moreOpen ? (
-          <div className="rounded-2xl border-[1.5px] border-dashed border-[#d6d3cd] bg-white p-3">
-            <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-[0.06em] text-grey-mid">
-              <span>Add a service</span>
-              <button type="button" onClick={() => setMoreOpen(false)} className={linkBtn}>
-                Done
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {extraPresets.map((preset) => (
-                <button key={preset.id} type="button" onClick={() => toggleService(preset.id)} className={chip}>
-                  + {preset.label}
-                </button>
-              ))}
-            </div>
+      {moreOpen ? (
+        <div className="rounded-2xl border-[1.5px] border-dashed border-[#d6d3cd] bg-white p-3">
+          <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-[0.06em] text-grey-mid">
+            <span>Add a service</span>
+            <button
+              type="button"
+              onClick={() => {
+                setMoreOpen(false);
+                setCustomOpen(false);
+              }}
+              className={linkBtn}
+            >
+              Done
+            </button>
           </div>
-        ) : (
-          <button type="button" onClick={() => setMoreOpen(true)} className={btnDashed}>
-            + Another service this week
-          </button>
-        ))}
+          <div className="flex flex-wrap gap-2">
+            {extraPresets.map((preset) => (
+              <button key={preset.id} type="button" onClick={() => toggleService(preset.id)} className={chip}>
+                + {preset.label}
+              </button>
+            ))}
+          </div>
 
+          {customOpen ? (
+            <div className="mt-3 space-y-2.5 border-t border-dashed border-ledger pt-3">
+              <input
+                aria-label="Service name"
+                className={txtInput}
+                placeholder="Wedding, special service…"
+                autoComplete="off"
+                value={customLabel}
+                onChange={(event) => setCustomLabel(event.target.value)}
+              />
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
+                <input
+                  type="date"
+                  aria-label="Service date"
+                  min={min}
+                  max={max}
+                  value={customDate}
+                  onChange={(event) => setCustomDate(event.target.value)}
+                  className={`${txtInput} min-w-0`}
+                />
+                <button
+                  type="button"
+                  disabled={customLabel.trim() === "" || !customDateValid}
+                  onClick={addCustom}
+                  className={`${btnSage} ${btnMd} px-4`}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setCustomDate(draft.weekEndingDate);
+                setCustomOpen(true);
+              }}
+              className={`${btnDashed} mt-3`}
+            >
+              + Something else (wedding, special service…)
+            </button>
+          )}
+        </div>
+      ) : (
+        <button type="button" onClick={() => setMoreOpen(true)} className={btnDashed}>
+          + Another service this week
+        </button>
+      )}
     </div>
   );
 }

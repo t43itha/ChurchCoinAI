@@ -2890,6 +2890,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         <CashEntryWizard
           funds={funds}
           categories={categories}
+          storageScope={currentUser._id}
           onClose={() => setShowCashTakingsModal(false)}
           onBankIt={bankItHandler}
         />
@@ -2900,6 +2901,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           funds={funds}
           categories={categories}
           initialCollection={editingGivingLedger}
+          storageScope={currentUser._id}
           onClose={() => setEditingGivingLedger(null)}
           onBankIt={bankItHandler}
         />

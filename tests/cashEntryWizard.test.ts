@@ -21,6 +21,7 @@ const funds: Fund[] = [
 const ledger: InPersonGivingLedger = {
   collectionId: "collection-1",
   weekEndingDate: "2026-10-04",
+  collectionDate: "2026-10-02",
   status: "submitted",
   fundNames: ["General Fund"],
   fundTotals: [{ fundId: "general", fundName: "General Fund", total: 140 }],
@@ -58,7 +59,13 @@ const ledger: InPersonGivingLedger = {
 
 const render = (props: Partial<Parameters<typeof CashEntryWizard>[0]> = {}) =>
   renderToStaticMarkup(
-    createElement(CashEntryWizard, { funds, categories: [], onClose: () => {}, ...props })
+    createElement(CashEntryWizard, {
+      funds,
+      categories: [],
+      storageScope: "user-1",
+      onClose: () => {},
+      ...props,
+    })
   );
 
 describe("cash entry wizard", () => {
@@ -77,5 +84,36 @@ describe("cash entry wizard", () => {
     expect(markup).toContain("Week total");
     expect(markup).toContain("£140.00");
     expect(markup).not.toContain("Start with Friday");
+  });
+
+  it("shows a collection the walkthrough can't represent read-only, with only Close", () => {
+    const bankOnly: InPersonGivingLedger = {
+      ...ledger,
+      rows: [
+        ...ledger.rows,
+        {
+          id: "bank-row",
+          day: "Friday",
+          serviceDate: "2026-10-02",
+          serviceNote: "Friday",
+          fundId: "general",
+          fundName: "General Fund",
+          category: "Offerings",
+          cash: 0,
+          pdq: 0,
+          cheque: 0,
+          total: 25,
+        },
+      ],
+      total: 165,
+    };
+
+    const markup = render({ initialCollection: bankOnly });
+    expect(markup).toContain("Part of this collection");
+    expect(markup).toContain('aria-label="Close"');
+    expect(markup).not.toContain("Confirm");
+    expect(markup).not.toContain("Save for later");
+    expect(markup).not.toContain(">Edit<");
+    expect(markup).not.toContain('aria-label="Back"');
   });
 });

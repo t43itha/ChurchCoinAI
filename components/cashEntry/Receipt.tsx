@@ -48,10 +48,10 @@ function ServiceSection({
       {service.funds
         .filter((line) => lineTotal(line) > 0)
         .map((line) => (
-          <ReceiptRow key={line.fundId} label={model.fundName(line.fundId)} value={lineTotal(line)} />
+          <ReceiptRow key={line.id} label={model.fundLineLabel(line)} value={lineTotal(line)} />
         ))}
       {service.programmes.map((line) => (
-        <ReceiptRow key={line.programmeId} label={model.programmeName(line.programmeId)} value={lineTotal(line)} />
+        <ReceiptRow key={line.id} label={model.programmeLineLabel(line)} value={lineTotal(line)} />
       ))}
       <ReceiptRow label={tithesLabel} value={serviceTitheTotal(service)} />
       <div className="my-2 border-t border-dashed border-ledger" />

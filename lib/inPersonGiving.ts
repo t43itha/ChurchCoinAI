@@ -73,6 +73,8 @@ export interface InPersonGivingNamedDonation {
 export interface InPersonGivingLedger {
   collectionId: string;
   weekEndingDate: string;
+  collectionDate: string;
+  notes?: string;
   status: GivingCollection["status"];
   bankedDate?: string;
   fundNames: string[];
@@ -240,6 +242,8 @@ export function groupInPersonGivingCollections({
       return {
         collectionId: collection._id,
         weekEndingDate: collection.weekEndingDate,
+        collectionDate: collection.collectionDate,
+        notes: collection.notes,
         status: collection.status,
         bankedDate: collection.bankedDate,
         fundNames: Array.from(fundNames).sort((a, b) => a.localeCompare(b)),

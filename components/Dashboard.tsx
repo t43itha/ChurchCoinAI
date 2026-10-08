@@ -136,6 +136,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
         <CashEntryWizard
           funds={funds}
           categories={categories}
+          storageScope={currentUser._id}
           onClose={() => setShowCashTakingsModal(false)}
           onBankIt={
             can(currentUser.role, "reconciliation.manage")

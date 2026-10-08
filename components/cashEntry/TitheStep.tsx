@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { sumMoney } from "../../convex/lib/money";
 import DonorSearchInput from "../DonorSearchInput";
@@ -53,6 +53,7 @@ export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
   // Remounting the name field after each add clears its dropdown and refocuses it.
   const [nameKey, setNameKey] = useState(0);
   const [freshId, setFreshId] = useState<string | null>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!freshId) return;
@@ -83,6 +84,7 @@ export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
     setDonor(null);
     setAmount("");
     setNameKey((key) => key + 1);
+    setMethod("Cash");
     setFreshId(id);
   };
 
@@ -112,6 +114,7 @@ export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
             onDonorSelect={(picked) => {
               setDonor({ donorId: picked.donorId ?? undefined, name: picked.donorName, giftAid: picked.isGiftAidActive });
               setName(picked.donorName);
+              amountRef.current?.focus();
             }}
           />
         </div>
@@ -120,6 +123,7 @@ export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
           <label className={amtBox}>
             <span className={amtSymbol}>£</span>
             <input
+              ref={amountRef}
               aria-label="Envelope amount"
               inputMode="decimal"
               placeholder="0.00"
@@ -185,7 +189,7 @@ export default function TitheStep({ model, serviceIndex }: TitheStepProps) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <b className="block truncate text-sm">{tithe.anonymous ? "Anonymous envelope" : tithe.donorName}</b>
-                  <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-grey-mid">
+                  <span className="block min-w-0 text-xs text-grey-mid">
                     {tithe.method} · <EnvelopeBadge envelope={tithe} />
                   </span>
                 </div>

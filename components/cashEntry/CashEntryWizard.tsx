@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronLeft, X } from "lucide-react";
 import {
   draftTotals,
+  editBlocker,
   hasEntries,
   serviceGivingTotal,
   type CashCount,
@@ -27,6 +28,8 @@ export interface CashEntryWizardProps {
   funds: Fund[];
   categories: CategoryOption[];
   initialCollection?: InPersonGivingLedger;
+  // Scopes the local draft to one user. Pass the signed-in user's id.
+  storageScope: string;
   onClose: () => void;
   onBankIt?: () => void;
 }
@@ -44,9 +47,9 @@ function countOf(service: ServiceDraft, target: LineTarget): CashCount | null {
     case "offering":
       return service.offering.count;
     case "fund":
-      return service.funds.find((line) => line.fundId === target.fundId)?.count ?? null;
+      return service.funds.find((line) => line.id === target.lineId)?.count ?? null;
     case "programme":
-      return service.programmes.find((line) => line.programmeId === target.programmeId)?.count ?? null;
+      return service.programmes.find((line) => line.id === target.lineId)?.count ?? null;
   }
 }
 
@@ -73,10 +76,20 @@ export default function CashEntryWizard(props: CashEntryWizardProps) {
   return createPortal(panel, document.body);
 }
 
-function WizardPanel({ funds, categories, initialCollection, onClose, onBankIt }: CashEntryWizardProps) {
-  const wizard = useCollectionDraft({ funds, categories, initialCollection });
+function WizardPanel({
+  funds,
+  categories,
+  initialCollection,
+  storageScope,
+  onClose,
+  onBankIt,
+}: CashEntryWizardProps) {
+  const wizard = useCollectionDraft({ funds, categories, initialCollection, storageScope });
   const { model, isEdit, saved, saving, error, existingCount, resumable } = wizard;
   const { draft, ctx } = model;
+  // A saved collection the walkthrough can't reproduce exactly is shown read-only.
+  const readOnlyReason = initialCollection ? editBlocker(initialCollection, ctx) : null;
+  const readOnly = readOnlyReason !== null;
   const steps = buildSteps(draft);
   const lastMiddle = steps.length - 2;
 
@@ -91,34 +104,38 @@ function WizardPanel({ funds, categories, initialCollection, onClose, onBankIt }
   const service = step.kind === "giving" || step.kind === "tithes" ? draft.services[step.serviceIndex] : undefined;
   const countingService = counting ? draft.services.find((candidate) => candidate.id === counting.serviceId) : undefined;
   const hasProgress = step.kind === "giving" || step.kind === "tithes" || step.kind === "review";
+  // Done renders from what was submitted, not from the draft that may still be edited.
+  const viewModel = saved ? { ...model, draft: saved.draft } : model;
 
   const go = (next: number) => {
+    if (saving) return;
     setPosition(Math.max(0, Math.min(next, steps.length - 1)));
     setCounting(null);
     bodyRef.current?.scrollTo({ top: 0 });
   };
 
   const { discardDraft } = wizard;
-  // Closing an unsaved count asks first; a resumable draft the user never
-  // touched is left in storage, so closing the start screen cannot delete it.
+  // Closing an unsaved new count asks first. Edit mode has nothing to discard,
+  // and a stored draft the user never answered stays in storage.
   const requestClose = useCallback(() => {
-    if (!saved && hasEntries(draft)) {
+    if (saving) return;
+    if (!saved && !isEdit && hasEntries(draft)) {
       if (!window.confirm("Discard this count?")) return;
       discardDraft();
     }
     onClose();
-  }, [saved, draft, discardDraft, onClose]);
+  }, [saving, saved, isEdit, draft, discardDraft, onClose]);
 
   // Escape closes the count sheet first, then the walkthrough.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || saving) return;
       if (counting) setCounting(null);
       else requestClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [counting, requestClose]);
+  }, [counting, requestClose, saving]);
 
   const recordAnotherWeek = () => {
     wizard.startFresh();
@@ -139,157 +156,172 @@ function WizardPanel({ funds, categories, initialCollection, onClose, onBankIt }
 
   return (
     <div className="fixed inset-0 z-50 bg-paper lg:flex lg:items-center lg:justify-center lg:bg-ink/45 lg:p-6">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Record giving"
-        className="flex h-full w-full flex-col bg-paper lg:grid lg:h-[min(820px,100%)] lg:max-w-6xl lg:grid-cols-[230px_minmax(0,1fr)_310px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg"
-      >
-        <WizardRail draft={draft} steps={steps} current={stepPosition} onGo={go} />
+      {/* Locks every control while a save is in flight, so the request can't be changed or repeated. */}
+      <fieldset disabled={saving} className="contents">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Record giving"
+          className="flex h-full w-full flex-col bg-paper lg:grid lg:h-[min(820px,100%)] lg:max-w-6xl lg:grid-cols-[230px_minmax(0,1fr)_310px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg"
+        >
+          <fieldset disabled={readOnly} className="contents">
+            <WizardRail draft={draft} steps={steps} current={stepPosition} onGo={go} />
+          </fieldset>
 
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
-            {step.kind !== "start" && step.kind !== "done" ? (
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            <header className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
+              {step.kind !== "start" && step.kind !== "done" && !readOnly ? (
+                <button
+                  type="button"
+                  onClick={() => go(stepPosition - 1)}
+                  aria-label="Back"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] text-grey-dark hover:bg-white"
+                >
+                  <ChevronLeft size={22} aria-hidden="true" />
+                </button>
+              ) : (
+                <span className="h-11 w-11 shrink-0" aria-hidden="true" />
+              )}
+              <div className="min-w-0 flex-1 truncate text-center text-[15px] font-bold text-ink">{title}</div>
               <button
                 type="button"
-                onClick={() => go(stepPosition - 1)}
-                aria-label="Back"
+                onClick={requestClose}
+                aria-label="Close"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] text-grey-dark hover:bg-white"
               >
-                <ChevronLeft size={22} aria-hidden="true" />
+                <X size={18} aria-hidden="true" />
               </button>
-            ) : (
-              <span className="h-11 w-11 shrink-0" aria-hidden="true" />
-            )}
-            <div className="min-w-0 flex-1 truncate text-center text-[15px] font-bold text-ink">{title}</div>
-            <button
-              type="button"
-              onClick={requestClose}
-              aria-label="Close"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] text-grey-dark hover:bg-white"
-            >
-              <X size={18} aria-hidden="true" />
-            </button>
-          </header>
+            </header>
 
-          {hasProgress && (
-            <div className="flex shrink-0 gap-1 px-4 pb-1 pt-2.5 lg:px-6" aria-hidden="true">
-              {steps.slice(1, -1).map((_, index) => {
-                const segment = index + 1;
-                const tone =
-                  segment < stepPosition ? "bg-sage" : segment === stepPosition ? "bg-ink" : "bg-ledger";
-                return <span key={segment} className={`h-1 flex-1 rounded-full ${tone}`} />;
-              })}
+            {hasProgress && (
+              <div className="flex shrink-0 gap-1 px-4 pb-1 pt-2.5 lg:px-6" aria-hidden="true">
+                {steps.slice(1, -1).map((_, index) => {
+                  const segment = index + 1;
+                  const tone =
+                    segment < stepPosition ? "bg-sage" : segment === stepPosition ? "bg-ink" : "bg-ledger";
+                  return <span key={segment} className={`h-1 flex-1 rounded-full ${tone}`} />;
+                })}
+              </div>
+            )}
+
+            <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 lg:px-8">
+              <fieldset disabled={readOnly} className="contents">
+                {step.kind === "start" && (
+                  <StartStep
+                    model={model}
+                    existingCount={existingCount}
+                    resumable={resumable}
+                    onResume={wizard.resume}
+                    onDiscardStored={wizard.discardStored}
+                  />
+                )}
+                {step.kind === "giving" && (
+                  <GivingStep
+                    model={model}
+                    serviceIndex={step.serviceIndex}
+                    onCount={(target, label) =>
+                      setCounting({ serviceId: draft.services[step.serviceIndex].id, target, label })
+                    }
+                  />
+                )}
+                {step.kind === "tithes" && <TitheStep model={model} serviceIndex={step.serviceIndex} />}
+                {step.kind === "review" && (
+                  <ReviewStep
+                    model={model}
+                    readOnlyReason={readOnlyReason}
+                    onEdit={
+                      readOnly
+                        ? undefined
+                        : (serviceIndex) => go(stepIndexOfGiving(steps, serviceIndex))
+                    }
+                  />
+                )}
+                {step.kind === "done" && saved && (
+                  <DoneStep
+                    model={model}
+                    saved={saved}
+                    onBankIt={
+                      onBankIt
+                        ? () => {
+                            onBankIt();
+                            onClose();
+                          }
+                        : undefined
+                    }
+                    onRecordAnother={isEdit ? undefined : recordAnotherWeek}
+                  />
+                )}
+              </fieldset>
             </div>
-          )}
 
-          <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 lg:px-8">
             {step.kind === "start" && (
-              <StartStep
-                model={model}
-                existingCount={existingCount}
-                resumable={resumable}
-                onResume={wizard.resume}
-                onDiscardStored={wizard.discardStored}
-              />
+              <StepFooter>
+                <button
+                  type="button"
+                  disabled={!firstService}
+                  onClick={() => {
+                    wizard.dismissResumable();
+                    go(1);
+                  }}
+                  className={`${btnPrimary} ${btnLg}`}
+                >
+                  {firstService ? `Start with ${firstService.label} →` : "Tick a service"}
+                </button>
+              </StepFooter>
             )}
-            {step.kind === "giving" && (
-              <GivingStep
-                model={model}
-                serviceIndex={step.serviceIndex}
-                onCount={(target, label) =>
-                  setCounting({ serviceId: draft.services[step.serviceIndex].id, target, label })
-                }
-              />
+
+            {step.kind === "giving" && service && (
+              <StepFooter label={`${service.label} giving`} value={serviceGivingTotal(service)}>
+                <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
+                  Next: tithe envelopes →
+                </button>
+              </StepFooter>
             )}
-            {step.kind === "tithes" && <TitheStep model={model} serviceIndex={step.serviceIndex} />}
-            {step.kind === "review" && (
-              <ReviewStep model={model} onEdit={(serviceIndex) => go(stepIndexOfGiving(steps, serviceIndex))} />
+
+            {step.kind === "tithes" && (
+              <StepFooter label="Week so far" value={draftTotals(draft, ctx).grand}>
+                <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
+                  {nextService ? `Next: ${nextService.label} →` : "Check the week →"}
+                </button>
+              </StepFooter>
             )}
-            {step.kind === "done" && saved && (
-              <DoneStep
-                model={model}
-                saved={saved}
-                onBankIt={
-                  onBankIt
-                    ? () => {
-                        onBankIt();
-                        onClose();
-                      }
-                    : undefined
-                }
-                onRecordAnother={isEdit ? undefined : recordAnotherWeek}
+
+            {step.kind === "review" && !readOnly && (
+              <StepFooter>
+                <ReviewFooter
+                  model={model}
+                  saving={saving}
+                  error={error}
+                  onSave={(status) => {
+                    void wizard.submit(status);
+                  }}
+                />
+              </StepFooter>
+            )}
+
+            {/* Covers the whole column, header and footer included, so the count is the only thing in reach. */}
+            {counting && countingService && (
+              <CountSheet
+                label={counting.label}
+                where={`${countingService.label} · ${shortDate(countingService.date)}`}
+                initial={countOf(countingService, counting.target)}
+                onCancel={() => setCounting(null)}
+                onUse={(count) => {
+                  model.dispatch({
+                    type: "applyCount",
+                    serviceId: countingService.id,
+                    target: counting.target,
+                    count,
+                  });
+                  setCounting(null);
+                }}
               />
             )}
           </div>
 
-          {step.kind === "start" && (
-            <StepFooter>
-              <button
-                type="button"
-                disabled={!firstService}
-                onClick={() => {
-                  wizard.dismissResumable();
-                  go(1);
-                }}
-                className={`${btnPrimary} ${btnLg}`}
-              >
-                {firstService ? `Start with ${firstService.label} →` : "Tick a service"}
-              </button>
-            </StepFooter>
-          )}
-
-          {step.kind === "giving" && service && (
-            <StepFooter label={`${service.label} giving`} value={serviceGivingTotal(service)}>
-              <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
-                Next: tithe envelopes →
-              </button>
-            </StepFooter>
-          )}
-
-          {step.kind === "tithes" && (
-            <StepFooter label="Week so far" value={draftTotals(draft, ctx).grand}>
-              <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
-                {nextService ? `Next: ${nextService.label} →` : "Check the week →"}
-              </button>
-            </StepFooter>
-          )}
-
-          {step.kind === "review" && (
-            <StepFooter>
-              <ReviewFooter
-                model={model}
-                saving={saving}
-                error={error}
-                onSave={(status) => {
-                  void wizard.submit(status);
-                }}
-              />
-            </StepFooter>
-          )}
-
-          {/* Covers the whole column, header and footer included, so the count is the only thing in reach. */}
-          {counting && countingService && (
-            <CountSheet
-              label={counting.label}
-              where={`${countingService.label} · ${shortDate(countingService.date)}`}
-              initial={countOf(countingService, counting.target)}
-              onCancel={() => setCounting(null)}
-              onUse={(count) => {
-                model.dispatch({
-                  type: "applyCount",
-                  serviceId: countingService.id,
-                  target: counting.target,
-                  count,
-                });
-                setCounting(null);
-              }}
-            />
-          )}
+          <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} />
         </div>
-
-        <WizardReceipt model={model} autosaved={!isEdit && !saved} />
-      </div>
+      </fieldset>
     </div>
   );
 }

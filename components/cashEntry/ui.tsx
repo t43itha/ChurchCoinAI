@@ -24,8 +24,10 @@ export const txtInput =
   "h-12 w-full min-w-0 rounded-[13px] border-[1.5px] border-ledger bg-white px-3.5 text-base text-ink outline-none focus:border-ink";
 export const amtBox =
   "flex h-12 min-w-0 items-center rounded-xl border-[1.5px] border-ledger bg-paper px-3 focus-within:border-ink focus-within:bg-white";
+// styles.css sets a global `input:focus` box-shadow and border colour, unlayered,
+// so it beats normal utilities; the important modifiers keep the wrapper as the only box.
 export const amtInput =
-  "min-w-0 w-full bg-transparent font-mono text-[18px] font-bold text-ink outline-none placeholder:text-[#d0ccc5]";
+  "min-w-0 w-full appearance-none border-0 bg-transparent p-0 font-mono text-[18px] font-bold text-ink !shadow-none outline-none focus:ring-0 focus:outline-none placeholder:text-[#d0ccc5]";
 export const amtSymbol = "mr-1 font-mono text-base text-grey-mid";
 
 export const card = "rounded-2xl border border-ledger bg-white p-3.5";

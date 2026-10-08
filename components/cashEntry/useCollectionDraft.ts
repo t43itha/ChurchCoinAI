@@ -14,10 +14,16 @@ import {
   fromLedger,
   hasEntries,
   newDraft,
+  parseStoredDraft,
+  pruneStoredDraft,
   toPayload,
   type CollectionDraft,
   type DraftAction,
+  type DraftTotals,
+  type FundLine,
   type LedgerContext,
+  type ProgrammeLine,
+  type StoredDraft,
 } from "../../lib/cashCollectionDraft";
 import { gbp } from "./format";
 
@@ -31,14 +37,12 @@ export interface CategoryOption {
 export type FundTypeChoice = "Designated" | "Restricted";
 export type SaveStatus = "draft" | "submitted";
 
-export interface StoredDraft {
-  savedAt: string;
-  draft: CollectionDraft;
-}
-
 export interface SavedResult {
   cashCollectionId: string;
   status: SaveStatus;
+  // The submitted draft and its totals, so the Done screen can't drift from what was saved.
+  draft: CollectionDraft;
+  totals: DraftTotals;
 }
 
 export interface WizardModel {
@@ -51,6 +55,8 @@ export interface WizardModel {
   fundById: (fundId: string) => Fund | undefined;
   fundName: (fundId: string) => string;
   programmeName: (programmeId: string) => string;
+  fundLineLabel: (line: FundLine) => string;
+  programmeLineLabel: (line: ProgrammeLine) => string;
   createFund: (name: string, type: FundTypeChoice) => Promise<string>;
   createProgramme: (name: string) => Promise<string>;
 }
@@ -60,9 +66,6 @@ export interface ProgrammeOption {
   name: string;
   isArchived?: boolean;
 }
-
-const DRAFT_KEY = "churchcoin:cash-draft:v1";
-const RECENT_FUNDS_KEY = "churchcoin:cash-recent-funds:v1";
 
 // Only the draft-level actions reach the reducer; `load` swaps in a whole draft
 // (resume, or a fresh week) without a per-field action.
@@ -82,6 +85,10 @@ function buildContext(funds: Fund[], categories: CategoryOption[]): LedgerContex
   const titheCategory = incomeNames.find((name) => /tithe/i.test(name)) ?? offeringCategory;
   return { generalFundId: general?._id ?? "", offeringCategory, titheCategory };
 }
+
+// Keyed by user, so a shared device never offers one person's count to another.
+const draftKeyFor = (scope: string) => `churchcoin:cash-draft:v2:${scope}`;
+const recentFundsKeyFor = (scope: string) => `churchcoin:cash-recent-funds:v2:${scope}`;
 
 function readJson<T>(key: string): T | null {
   if (typeof localStorage === "undefined") return null;
@@ -111,14 +118,32 @@ function removeKey(key: string) {
   }
 }
 
-function readStoredDraft(): StoredDraft | null {
-  const stored = readJson<StoredDraft>(DRAFT_KEY);
-  return stored?.draft?.services && hasEntries(stored.draft) ? stored : null;
+function parseStoredJson(raw: string): StoredDraft | null {
+  try {
+    return parseStoredDraft(JSON.parse(raw));
+  } catch {
+    return null;
+  }
 }
 
-function readRecentFundIds(): string[] {
-  const ids = readJson<string[]>(RECENT_FUNDS_KEY);
-  return Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
+// A stored draft that fails validation is removed so it can't block the wizard again.
+function readStoredDraft(key: string): StoredDraft | null {
+  if (typeof localStorage === "undefined") return null;
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  const stored = parseStoredJson(raw);
+  if (!stored) removeKey(key);
+  return stored;
+}
+
+function readRecentFundIds(key: string): string[] {
+  const ids = readJson<unknown>(key);
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
 }
 
 function recentFundIdsOf(draft: CollectionDraft, generalFundId: string): string[] {
@@ -135,18 +160,29 @@ export interface UseCollectionDraftOptions {
   funds: Fund[];
   categories: CategoryOption[];
   initialCollection?: InPersonGivingLedger;
+  storageScope: string;
 }
 
 // One hook owns the draft, its autosave (new collections only), the reference
 // data the screens need, and the two mutations. Edit mode never touches
 // localStorage: it loads the saved collection and replaces its entries.
-export function useCollectionDraft({ funds, categories, initialCollection }: UseCollectionDraftOptions) {
+export function useCollectionDraft({
+  funds,
+  categories,
+  initialCollection,
+  storageScope,
+}: UseCollectionDraftOptions) {
   const isEdit = initialCollection !== undefined;
+  const draftKey = draftKeyFor(storageScope);
+  const recentKey = recentFundsKeyFor(storageScope);
   const ctx = useMemo(() => buildContext(funds, categories), [funds, categories]);
 
   const currentUsualFundIds = useCallback(
-    () => readRecentFundIds().filter((id) => id !== ctx.generalFundId && funds.some((fund) => fund._id === id)),
-    [ctx.generalFundId, funds]
+    () =>
+      readRecentFundIds(recentKey).filter(
+        (id) => id !== ctx.generalFundId && funds.some((fund) => fund._id === id)
+      ),
+    [recentKey, ctx.generalFundId, funds]
   );
 
   const [draft, dispatchRaw] = useReducer(reduceWizard, undefined, () =>
@@ -155,17 +191,23 @@ export function useCollectionDraft({ funds, categories, initialCollection }: Use
       : newDraft(getWeekEndingSunday(new Date()), currentUsualFundIds())
   );
 
-  // Autosave only after the user has changed something, so a fresh screen
-  // never overwrites a stored draft before the banner is answered.
-  const touched = useRef(false);
-  const [resumable, setResumable] = useState<StoredDraft | null>(() =>
-    isEdit ? null : readStoredDraft()
+  // The stored draft offered on the Start screen. Edit mode never has one.
+  const [offer, setOffer] = useState<StoredDraft | null>(() =>
+    isEdit ? null : readStoredDraft(draftKey)
   );
+  // A stored copy the user hasn't resumed or discarded. Autosave must not overwrite it.
+  const storedUnresolved = useRef(offer !== null);
+  // Set once this wizard has written or resumed the stored copy. Only then may a save remove it.
+  const ownsStored = useRef(false);
+  const touched = useRef(false);
+  const submitting = useRef(false);
   const [saved, setSaved] = useState<SavedResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const programmeRows = useQuery(api.queries.programmes.list, { includeArchived: true });
+  // Only needed to check a stored draft's donors before it is resumed.
+  const donorRows = useQuery(api.queries.donors.list, offer && !isEdit ? {} : "skip");
   const existing = useQuery(
     api.queries.cashCollections.getByWeekEnding,
     isEdit ? "skip" : { weekEndingDate: draft.weekEndingDate }
@@ -185,14 +227,14 @@ export function useCollectionDraft({ funds, categories, initialCollection }: Use
     [dispatch, currentUsualFundIds]
   );
 
+  // Writes only when there is something to keep, and never removes the stored
+  // copy: starting over or emptying the draft leaves it for the user to decide.
   useEffect(() => {
-    if (isEdit || !touched.current || saved || resumable) return;
-    if (hasEntries(draft)) {
-      writeJson(DRAFT_KEY, { savedAt: new Date().toISOString(), draft } satisfies StoredDraft);
-    } else {
-      removeKey(DRAFT_KEY);
-    }
-  }, [draft, isEdit, resumable, saved]);
+    if (isEdit || !touched.current || saved || storedUnresolved.current) return;
+    if (!hasEntries(draft)) return;
+    writeJson(draftKey, { savedAt: new Date().toISOString(), draft } satisfies StoredDraft);
+    ownsStored.current = true;
+  }, [draft, draftKey, isEdit, saved]);
 
   const programmes = useMemo<ProgrammeOption[]>(() => programmeRows ?? [], [programmeRows]);
   const fundById = useCallback((fundId: string) => funds.find((fund) => fund._id === fundId), [funds]);
@@ -200,6 +242,22 @@ export function useCollectionDraft({ funds, categories, initialCollection }: Use
   const programmeName = useCallback(
     (programmeId: string) => programmes.find((programme) => programme._id === programmeId)?.name ?? "Programme",
     [programmes]
+  );
+  const fundLineLabel = useCallback(
+    (line: FundLine) =>
+      line.category ? `${fundName(line.fundId)} · ${line.category}` : fundName(line.fundId),
+    [fundName]
+  );
+  const programmeLineLabel = useCallback(
+    (line: ProgrammeLine) =>
+      [
+        programmeName(line.programmeId),
+        line.fundId && line.fundId !== ctx.generalFundId ? fundName(line.fundId) : null,
+        line.category && line.category !== ctx.offeringCategory ? line.category : null,
+      ]
+        .filter((part): part is string => part !== null)
+        .join(" · "),
+    [programmeName, fundName, ctx.generalFundId, ctx.offeringCategory]
   );
 
   const createFund = useCallback(
@@ -211,11 +269,17 @@ export function useCollectionDraft({ funds, categories, initialCollection }: Use
     [createProgrammeMutation]
   );
 
+  // Called when the user closes a count with entries and confirms the discard.
   const discardDraft = useCallback(() => {
-    if (!isEdit) removeKey(DRAFT_KEY);
-  }, [isEdit]);
+    if (!isEdit && ownsStored.current) {
+      removeKey(draftKey);
+      ownsStored.current = false;
+    }
+  }, [draftKey, isEdit]);
 
   const submit = async (status: SaveStatus): Promise<boolean> => {
+    if (submitting.current) return false;
+    submitting.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -249,44 +313,58 @@ export function useCollectionDraft({ funds, categories, initialCollection }: Use
         : await submitCollection(args);
 
       if (!isEdit) {
-        removeKey(DRAFT_KEY);
-        writeJson(RECENT_FUNDS_KEY, recentFundIdsOf(draft, ctx.generalFundId));
+        if (ownsStored.current) removeKey(draftKey);
+        ownsStored.current = false;
+        writeJson(recentKey, recentFundIdsOf(draft, ctx.generalFundId));
       }
-      const total = draftTotals(draft, ctx).grand;
+      const totals = draftTotals(draft, ctx);
       notify(
         "Giving recorded",
         status === "submitted"
-          ? `${gbp(total)} recorded for w/e ${payload.weekEndingDate}.`
-          : `${gbp(total)} saved for later.`
+          ? `${gbp(totals.grand)} recorded for w/e ${payload.weekEndingDate}.`
+          : `${gbp(totals.grand)} saved for later.`
       );
-      setSaved({ cashCollectionId: result.cashCollectionId, status });
+      setSaved({ cashCollectionId: result.cashCollectionId, status, draft, totals });
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save collection");
       return false;
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   };
 
+  // Stored drafts are offered only once the donors, funds and programmes they
+  // refer to have loaded, so resuming can drop the ones that have gone.
+  const referenceReady = programmeRows !== undefined && donorRows !== undefined;
+  const resumable = referenceReady ? offer : null;
+
   const resume = () => {
-    if (!resumable) return;
+    if (!offer || !referenceReady) return;
+    const pruned = pruneStoredDraft(offer.draft, {
+      fundIds: new Set(funds.map((fund) => fund._id)),
+      programmeIds: new Set(programmes.map((programme) => programme._id)),
+      donorIds: new Set((donorRows ?? []).map((donor) => donor._id)),
+    });
     touched.current = true;
-    dispatchRaw({ type: "load", draft: resumable.draft });
-    setResumable(null);
+    storedUnresolved.current = false;
+    ownsStored.current = true;
+    dispatchRaw({ type: "load", draft: pruned });
+    setOffer(null);
   };
 
   const discardStored = () => {
-    removeKey(DRAFT_KEY);
-    setResumable(null);
+    removeKey(draftKey);
+    storedUnresolved.current = false;
+    ownsStored.current = false;
+    setOffer(null);
   };
 
-  // Moving past the start screen without resuming keeps the stored copy until
-  // the user edits something, so an accidental tap never deletes it.
-  const dismissResumable = () => setResumable(null);
+  // Starting without answering keeps the stored copy. Autosave stays off, so it can't be overwritten.
+  const dismissResumable = () => setOffer(null);
 
   const startFresh = () => {
-    removeKey(DRAFT_KEY);
     touched.current = false;
     setSaved(null);
     setError(null);
@@ -303,6 +381,8 @@ export function useCollectionDraft({ funds, categories, initialCollection }: Use
     fundById,
     fundName,
     programmeName,
+    fundLineLabel,
+    programmeLineLabel,
     createFund,
     createProgramme,
   };

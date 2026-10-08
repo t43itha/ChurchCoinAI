@@ -23,10 +23,12 @@ const PENNY = 0.005;
 
 interface ReviewStepProps {
   model: WizardModel;
-  onEdit: (serviceIndex: number) => void;
+  // Omitted when the collection is read-only, so no Edit links are shown.
+  onEdit?: (serviceIndex: number) => void;
+  readOnlyReason?: string | null;
 }
 
-export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
+export default function ReviewStep({ model, onEdit, readOnlyReason }: ReviewStepProps) {
   const { draft, ctx, dispatch } = model;
   const totals = draftTotals(draft, ctx);
   const envelopesCash = roundMoney(totals.byMethod.cash - totals.slip.counted);
@@ -36,7 +38,14 @@ export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
   return (
     <div>
       <h2 className={screenTitle}>Does this match your count?</h2>
-      <p className={screenHelp}>Tap Edit to change anything. Nothing reaches the ledger until you confirm.</p>
+      {readOnlyReason ? (
+        <>
+          <p className={screenHelp}>This saved collection is shown for reference and can't be changed here.</p>
+          <div className="mb-3.5 rounded-2xl bg-amber-light p-3 text-sm text-amber">{readOnlyReason}</div>
+        </>
+      ) : (
+        <p className={screenHelp}>Tap Edit to change anything. Nothing reaches the ledger until you confirm.</p>
+      )}
 
       <div className={`${darkCard} mb-3.5`}>
         <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/55">

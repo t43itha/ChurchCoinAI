@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import { sumMoney } from "../convex/lib/money";
 import {
   countTotal,
+  customServiceDateRange,
   draftReducer,
   draftTotals,
+  editBlocker,
   emptyLine,
   fromLedger,
   hasEntries,
   newDraft,
   parseAmount,
+  parseStoredDraft,
   presetDate,
+  pruneStoredDraft,
   SERVICE_PRESETS,
   toPayload,
   type CashCount,
@@ -19,7 +23,7 @@ import {
   type ServiceDraft,
   type TitheEnvelope,
 } from "../lib/cashCollectionDraft";
-import type { InPersonGivingLedger } from "../lib/inPersonGiving";
+import type { InPersonGivingLedger, InPersonGivingLedgerRow } from "../lib/inPersonGiving";
 
 const ctx: LedgerContext = {
   generalFundId: "general",
@@ -59,7 +63,8 @@ const anonymous = (id: string, amount: string, method: TitheEnvelope["method"]):
   giftAid: false,
 });
 
-const fundLine = (fundId: string, cash: string, category?: string) => ({
+const fundLine = (id: string, fundId: string, cash: string, category?: string) => ({
+  id,
   fundId,
   ...(category ? { category } : {}),
   cash,
@@ -84,7 +89,7 @@ function sampleDraft(): CollectionDraft {
     label: "Friday",
     date: "2026-10-02",
     offering: { cash: "186.40", cheque: "", card: "", count: fridayCount },
-    funds: [fundLine("building", "60", "Building Fund")],
+    funds: [fundLine("fri-building", "building", "60", "Building Fund")],
     programmes: [],
     tithes: [
       named("t-ruth-fri", "Ruth Adams", "40", "Cash", true, "donor-ruth"),
@@ -97,12 +102,19 @@ function sampleDraft(): CollectionDraft {
     date: "2026-10-04",
     offering: { cash: "412.70", cheque: "", card: "85", count: null },
     funds: [
-      fundLine("building", ""),
-      fundLine("keyboard", "45", "Donations"),
-      fundLine("missions", ""),
+      fundLine("sun-building", "building", ""),
+      fundLine("sun-keyboard", "keyboard", "45", "Donations"),
+      fundLine("sun-missions", "missions", ""),
     ],
     programmes: [
-      { programmeId: "harvest", cash: "75.00", cheque: "", card: "", count: harvestCount },
+      {
+        id: "sun-harvest",
+        programmeId: "harvest",
+        cash: "75.00",
+        cheque: "",
+        card: "",
+        count: harvestCount,
+      },
     ],
     tithes: [
       named("t-ruth-sun", "Ruth Adams", "50", "Card", true, "donor-ruth"),
@@ -227,10 +239,13 @@ const samplePayload: CollectionPayload = {
   ],
 };
 
+// Builds the ledger a saved collection would read back as.
 function ledgerFromPayload(payload: CollectionPayload): InPersonGivingLedger {
   return {
     collectionId: "collection-1",
     weekEndingDate: payload.weekEndingDate,
+    collectionDate: payload.collectionDate,
+    notes: payload.notes,
     status: "submitted",
     fundNames: [],
     fundTotals: [],
@@ -265,6 +280,13 @@ function ledgerFromPayload(payload: CollectionPayload): InPersonGivingLedger {
   };
 }
 
+// Saving a loaded collection without changing anything must reproduce it.
+const roundTrip = (payload: CollectionPayload) =>
+  toPayload(fromLedger(ledgerFromPayload(payload), ctx), ctx);
+
+const WEEK = "2026-10-04";
+const SUNDAY = "2026-10-04";
+
 describe("cash collection draft", () => {
   it("parses typed amounts to pence and treats anything else as zero", () => {
     expect(parseAmount("12.")).toBe(12);
@@ -296,7 +318,7 @@ describe("cash collection draft", () => {
       ["sun-am", "Sunday morning", "2026-10-04"],
     ]);
     expect(draft.services[0].funds).toEqual([
-      { fundId: "building", cash: "", cheque: "", card: "", count: null },
+      { id: "fri:fund:building", fundId: "building", cash: "", cheque: "", card: "", count: null },
     ]);
     expect(draft.services[0].tithes).toEqual([]);
     expect(draft.services[0].programmes).toEqual([]);
@@ -309,6 +331,13 @@ describe("cash collection draft", () => {
     expect(presetDate(weekEnding, presetFor("fri"))).toBe("2026-03-27");
     expect(presetDate(weekEnding, presetFor("mon"))).toBe("2026-03-23");
     expect(presetDate(weekEnding, presetFor("sun-pm"))).toBe("2026-03-29");
+  });
+
+  it("offers Saturday between Friday and Sunday", () => {
+    expect(presetDate(WEEK, presetFor("sat"))).toBe("2026-10-03");
+    expect(SERVICE_PRESETS.map((preset) => preset.id)).toEqual([
+      "mon", "tue", "wed", "thu", "fri", "sat", "sun-am", "sun-pm",
+    ]);
   });
 
   it("totals a sample week by fund, programme, method, Gift Aid and slip", () => {
@@ -361,11 +390,19 @@ describe("cash collection draft", () => {
     const [friday, sunday] = restored.services;
     expect(friday.offering).toEqual({ cash: "186.40", cheque: "", card: "", count: null });
     expect(friday.funds).toEqual([
-      { fundId: "building", category: "Building Fund", cash: "60.00", cheque: "", card: "", count: null },
+      {
+        id: "fri:loaded-fund:0",
+        fundId: "building",
+        category: "Building Fund",
+        cash: "60.00",
+        cheque: "",
+        card: "",
+        count: null,
+      },
     ]);
     expect(sunday.offering).toEqual({ cash: "412.70", cheque: "", card: "85.00", count: null });
-    expect(sunday.programmes).toEqual([
-      { programmeId: "harvest", cash: "75.00", cheque: "", card: "", count: null },
+    expect(sunday.programmes).toMatchObject([
+      { programmeId: "harvest", fundId: "general", category: "Offerings", cash: "75.00", count: null },
     ]);
     expect(sunday.tithes.filter((envelope) => envelope.anonymous)).toEqual([
       { id: "sun-am-anon-0", donorName: "", anonymous: true, amount: "120.00", method: "Cash", giftAid: false },
@@ -419,7 +456,7 @@ describe("cash collection draft", () => {
   it("reports whether a draft holds any non-zero amount", () => {
     const empty = newDraft("2026-10-04", ["building"]);
     expect(hasEntries(empty)).toBe(false);
-    expect(hasEntries(draftReducer(empty, { type: "setAmount", serviceId: "fri", target: { kind: "fund", fundId: "building" }, field: "cash", value: "0" }))).toBe(false);
+    expect(hasEntries(draftReducer(empty, { type: "setAmount", serviceId: "fri", target: { kind: "offering" }, field: "cash", value: "0" }))).toBe(false);
     expect(hasEntries(draftReducer(empty, { type: "setAmount", serviceId: "fri", target: { kind: "offering" }, field: "cash", value: "1" }))).toBe(true);
     expect(
       hasEntries(
@@ -472,7 +509,7 @@ describe("cash collection draft", () => {
     const counted = draftReducer(base, {
       type: "applyCount",
       serviceId: "sun-am",
-      target: { kind: "programme", programmeId: "harvest" },
+      target: { kind: "programme", lineId: "p-harvest" },
       count: { notes: { 50: 1 }, coins: { "2p & 1p": "0.50" } },
     });
     expect(counted.services[1].programmes).toEqual([]);
@@ -481,11 +518,12 @@ describe("cash collection draft", () => {
       type: "addProgramme",
       serviceId: "sun-am",
       programmeId: "harvest",
+      lineId: "p-harvest",
     });
     const cashed = draftReducer(withProgramme, {
       type: "applyCount",
       serviceId: "sun-am",
-      target: { kind: "programme", programmeId: "harvest" },
+      target: { kind: "programme", lineId: "p-harvest" },
       count: { notes: { 50: 1 }, coins: { "2p & 1p": "0.50" } },
     });
     expect(cashed.services[1].programmes[0].cash).toBe("50.50");
@@ -493,7 +531,7 @@ describe("cash collection draft", () => {
     const emptied = draftReducer(cashed, {
       type: "applyCount",
       serviceId: "sun-am",
-      target: { kind: "programme", programmeId: "harvest" },
+      target: { kind: "programme", lineId: "p-harvest" },
       count: { notes: {}, coins: {} },
     });
     expect(emptied.services[1].programmes[0]).toMatchObject({ cash: "", count: null });
@@ -501,17 +539,38 @@ describe("cash collection draft", () => {
 
   it("adds and removes fund, programme and tithe lines without duplicating them", () => {
     const base = newDraft("2026-10-04", ["building"]);
-    const withFund = draftReducer(base, { type: "addFund", serviceId: "fri", fundId: "building" });
+    const withFund = draftReducer(base, { type: "addFund", serviceId: "fri", fundId: "building", lineId: "f-dup" });
     expect(withFund.services[0].funds).toHaveLength(1);
 
-    const withKeyboard = draftReducer(withFund, { type: "addFund", serviceId: "fri", fundId: "keyboard" });
+    const withKeyboard = draftReducer(withFund, {
+      type: "addFund",
+      serviceId: "fri",
+      fundId: "keyboard",
+      lineId: "f-keyboard",
+    });
     expect(withKeyboard.services[0].funds.map((line) => line.fundId)).toEqual(["building", "keyboard"]);
-    expect(draftReducer(withKeyboard, { type: "removeFund", serviceId: "fri", fundId: "building" }).services[0].funds.map((line) => line.fundId)).toEqual(["keyboard"]);
+    expect(
+      draftReducer(withKeyboard, { type: "removeFund", serviceId: "fri", lineId: "fri:fund:building" }).services[0].funds.map(
+        (line) => line.fundId
+      )
+    ).toEqual(["keyboard"]);
 
-    const withProgramme = draftReducer(base, { type: "addProgramme", serviceId: "sun-am", programmeId: "harvest" });
-    const twice = draftReducer(withProgramme, { type: "addProgramme", serviceId: "sun-am", programmeId: "harvest" });
+    const withProgramme = draftReducer(base, {
+      type: "addProgramme",
+      serviceId: "sun-am",
+      programmeId: "harvest",
+      lineId: "p-harvest",
+    });
+    const twice = draftReducer(withProgramme, {
+      type: "addProgramme",
+      serviceId: "sun-am",
+      programmeId: "harvest",
+      lineId: "p-again",
+    });
     expect(twice.services[1].programmes).toHaveLength(1);
-    expect(draftReducer(twice, { type: "removeProgramme", serviceId: "sun-am", programmeId: "harvest" }).services[1].programmes).toEqual([]);
+    expect(
+      draftReducer(twice, { type: "removeProgramme", serviceId: "sun-am", lineId: "p-harvest" }).services[1].programmes
+    ).toEqual([]);
   });
 
   it("keeps services in date order when one is added", () => {
@@ -545,32 +604,46 @@ describe("cash collection draft", () => {
     expect(withoutFriday.services.map((service) => service.id)).toEqual(["thu", "sun-am", "sun-pm"]);
   });
 
-  it("moves preset service dates when the week changes and leaves custom services alone", () => {
+  it("moves every service when the week changes, custom ones included", () => {
     const base = newDraft("2026-10-04", ["building"]);
-    const withCustom: CollectionDraft = {
-      ...base,
-      services: [
-        ...base.services,
-        {
-          id: "custom-2026-10-07-Wedding",
-          label: "Wedding",
-          date: "2026-10-07",
-          offering: emptyLine(),
-          funds: [],
-          programmes: [],
-          tithes: [],
-        },
-      ],
-    };
+    const withWedding = draftReducer(base, {
+      type: "addCustomService",
+      id: "wedding",
+      label: "Wedding",
+      date: "2026-10-03",
+    });
 
-    const moved = draftReducer(withCustom, { type: "setWeek", weekEndingDate: "2026-10-11" });
+    const moved = draftReducer(withWedding, { type: "setWeek", weekEndingDate: "2026-10-11" });
 
     expect(moved.weekEndingDate).toBe("2026-10-11");
     expect(moved.services.map((service) => [service.id, service.date])).toEqual([
       ["fri", "2026-10-09"],
+      ["wedding", "2026-10-10"],
       ["sun-am", "2026-10-11"],
-      ["custom-2026-10-07-Wedding", "2026-10-07"],
     ]);
+  });
+
+  it("adds a custom service within the week, sorted by date and then label", () => {
+    const base = newDraft("2026-10-04", []);
+    expect(customServiceDateRange(WEEK)).toEqual({ min: "2026-09-28", max: "2026-10-04" });
+
+    const outside = draftReducer(base, {
+      type: "addCustomService",
+      id: "old",
+      label: "Funeral",
+      date: "2026-09-27",
+    });
+    expect(outside).toBe(base);
+
+    const blank = draftReducer(base, { type: "addCustomService", id: "blank", label: "  ", date: WEEK });
+    expect(blank).toBe(base);
+
+    const added = draftReducer(
+      draftReducer(base, { type: "addCustomService", id: "w", label: "Wedding", date: SUNDAY }),
+      { type: "addCustomService", id: "a", label: "Anniversary", date: SUNDAY }
+    );
+    expect(added.services.map((service) => service.id)).toEqual(["fri", "sun-am", "a", "w"]);
+    expect(added.services[2]).toMatchObject({ label: "Anniversary", date: SUNDAY, tithes: [] });
   });
 
   it("prepends new envelopes so the newest is first", () => {
@@ -614,5 +687,356 @@ describe("cash collection draft", () => {
     draftReducer(draft, { type: "setCounter", index: 1, value: "Sam" });
 
     expect(draft).toEqual(snapshot);
+  });
+
+  describe("round trips a loaded collection exactly", () => {
+    it("keeps a named donation in its restricted fund", () => {
+      const payload: CollectionPayload = {
+        weekEndingDate: WEEK,
+        collectionDate: SUNDAY,
+        notes: undefined,
+        serviceRows: [
+          {
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+            fundId: "general",
+            category: "Offerings",
+            cash: 50,
+            pdq: 0,
+            cheque: 0,
+          },
+        ],
+        namedDonations: [
+          {
+            donorName: "Grace Hall",
+            category: "Tithes & First Fruits",
+            fundId: "building",
+            paymentMethod: "Cash",
+            amount: 100,
+            isGiftAidEligible: false,
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+          },
+        ],
+      };
+
+      expect(roundTrip(payload)).toEqual(payload);
+    });
+
+    it("keeps two rows of one programme on different funds and categories", () => {
+      const payload: CollectionPayload = {
+        weekEndingDate: WEEK,
+        collectionDate: SUNDAY,
+        notes: undefined,
+        serviceRows: [
+          {
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+            fundId: "general",
+            category: "Offerings",
+            programmeId: "harvest",
+            cash: 10,
+            pdq: 0,
+            cheque: 0,
+          },
+          {
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+            fundId: "building",
+            category: "Building Fund",
+            programmeId: "harvest",
+            cash: 0,
+            pdq: 0,
+            cheque: 20,
+          },
+        ],
+        namedDonations: [],
+      };
+
+      expect(roundTrip(payload)).toEqual(payload);
+
+      const totals = draftTotals(fromLedger(ledgerFromPayload(payload), ctx), ctx);
+      expect(totals.byFund).toEqual([
+        { fundId: "general", total: 10 },
+        { fundId: "building", total: 20 },
+      ]);
+      expect(totals.byProgramme).toEqual([{ programmeId: "harvest", total: 30 }]);
+    });
+
+    it("keeps a donation on a date with no service row, under its own service", () => {
+      const payload: CollectionPayload = {
+        weekEndingDate: WEEK,
+        collectionDate: "2026-10-02",
+        notes: undefined,
+        serviceRows: [
+          {
+            serviceDate: "2026-10-02",
+            serviceNote: "Friday",
+            fundId: "general",
+            category: "Offerings",
+            cash: 100,
+            pdq: 0,
+            cheque: 0,
+          },
+        ],
+        namedDonations: [
+          {
+            donorName: "Grace Hall",
+            category: "Tithes & First Fruits",
+            fundId: "general",
+            paymentMethod: "Cash",
+            amount: 25,
+            isGiftAidEligible: false,
+            serviceDate: "2026-10-03",
+            serviceNote: "Wedding",
+          },
+        ],
+      };
+
+      expect(roundTrip(payload)).toEqual(payload);
+    });
+
+    it("keeps a donation-only collection over two dates", () => {
+      const payload: CollectionPayload = {
+        weekEndingDate: WEEK,
+        collectionDate: "2026-10-02",
+        notes: undefined,
+        serviceRows: [],
+        namedDonations: [
+          {
+            donorName: "Grace Hall",
+            category: "Tithes & First Fruits",
+            fundId: "general",
+            paymentMethod: "Cash",
+            amount: 40,
+            isGiftAidEligible: true,
+            serviceDate: "2026-10-02",
+            serviceNote: "Friday",
+          },
+          {
+            donorName: "Sam Lee",
+            category: "Tithes & First Fruits",
+            fundId: "general",
+            paymentMethod: "Cheque",
+            amount: 30,
+            isGiftAidEligible: false,
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+          },
+        ],
+      };
+
+      expect(roundTrip(payload)).toEqual(payload);
+    });
+
+    it("keeps a donation with no service note without giving it one", () => {
+      const payload: CollectionPayload = {
+        weekEndingDate: WEEK,
+        collectionDate: "2026-10-02",
+        notes: undefined,
+        serviceRows: [
+          {
+            serviceDate: "2026-10-02",
+            serviceNote: "Friday",
+            fundId: "general",
+            category: "Offerings",
+            cash: 100,
+            pdq: 0,
+            cheque: 0,
+          },
+        ],
+        namedDonations: [
+          {
+            donorName: "Grace Hall",
+            category: "Tithes & First Fruits",
+            fundId: "general",
+            paymentMethod: "Cash",
+            amount: 25,
+            isGiftAidEligible: false,
+            serviceDate: "2026-10-02",
+          },
+        ],
+      };
+
+      expect(roundTrip(payload)).toEqual(payload);
+      const draft = fromLedger(ledgerFromPayload(payload), ctx);
+      expect(draft.services.map((service) => service.label)).toEqual(["Friday", "Service"]);
+    });
+
+    it("edits one of two fund lines on the same fund and leaves its sibling alone", () => {
+      const payload: CollectionPayload = {
+        weekEndingDate: WEEK,
+        collectionDate: SUNDAY,
+        notes: undefined,
+        serviceRows: [
+          {
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+            fundId: "general",
+            category: "Offerings",
+            cash: 30,
+            pdq: 0,
+            cheque: 0,
+          },
+          {
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+            fundId: "building",
+            category: "Donations",
+            cash: 10,
+            pdq: 0,
+            cheque: 0,
+          },
+          {
+            serviceDate: SUNDAY,
+            serviceNote: "Sunday morning",
+            fundId: "building",
+            category: "Building Fund",
+            cash: 20,
+            pdq: 0,
+            cheque: 0,
+          },
+        ],
+        namedDonations: [],
+      };
+      expect(roundTrip(payload)).toEqual(payload);
+
+      const draft = fromLedger(ledgerFromPayload(payload), ctx);
+      const [donations, buildingFund] = draft.services[0].funds;
+      expect(donations.category).toBe("Donations");
+      expect(buildingFund.category).toBe("Building Fund");
+
+      const edited = draftReducer(draft, {
+        type: "setAmount",
+        serviceId: "sun-am",
+        target: { kind: "fund", lineId: donations.id },
+        field: "cash",
+        value: "15",
+      });
+
+      expect(toPayload(edited, ctx).serviceRows.filter((row) => row.fundId === "building")).toEqual([
+        { serviceDate: SUNDAY, serviceNote: "Sunday morning", fundId: "building", category: "Donations", cash: 15, pdq: 0, cheque: 0 },
+        { serviceDate: SUNDAY, serviceNote: "Sunday morning", fundId: "building", category: "Building Fund", cash: 20, pdq: 0, cheque: 0 },
+      ]);
+    });
+  });
+
+  it("keeps the notes and counters a collection was saved with, without duplicating them", () => {
+    const ledger: InPersonGivingLedger = {
+      ...ledgerFromPayload(samplePayload),
+      notes: "Safe counted twice\nCounted by Ruth and Sam",
+    };
+
+    const draft = fromLedger(ledger, ctx);
+    expect(draft.notes).toBe("Safe counted twice");
+    expect(draft.counters).toEqual(["Ruth", "Sam"]);
+
+    const payload = toPayload(draft, ctx);
+    expect(payload.notes).toBe("Safe counted twice\nCounted by Ruth and Sam");
+
+    const again = toPayload(fromLedger({ ...ledger, notes: payload.notes }, ctx), ctx);
+    expect(again.notes).toBe("Safe counted twice\nCounted by Ruth and Sam");
+  });
+
+  it("keeps a counter whose name contains ' and ' intact", () => {
+    const ledger: InPersonGivingLedger = {
+      ...ledgerFromPayload(samplePayload),
+      notes: "Counted by Ruth and Ann and Sam",
+    };
+    const draft = fromLedger(ledger, ctx);
+    expect(draft.counters).toEqual(["Ruth and Ann", "Sam"]);
+    expect(toPayload(draft, ctx).notes).toBe("Counted by Ruth and Ann and Sam");
+  });
+
+  it("keeps the collection date a saved collection was recorded with", () => {
+    const ledger: InPersonGivingLedger = { ...ledgerFromPayload(samplePayload), collectionDate: "2026-10-03" };
+
+    expect(toPayload(fromLedger(ledger, ctx), ctx).collectionDate).toBe("2026-10-03");
+    expect(toPayload(newDraft(WEEK, []), ctx).collectionDate).toBe("2026-10-02");
+  });
+
+  it("flags a bank row and an online donation as not editable, and passes a clean collection", () => {
+    const base = ledgerFromPayload({
+      weekEndingDate: WEEK,
+      collectionDate: "2026-10-02",
+      notes: undefined,
+      serviceRows: [
+        {
+          serviceDate: "2026-10-02",
+          serviceNote: "Friday",
+          fundId: "general",
+          category: "Offerings",
+          cash: 100,
+          pdq: 0,
+          cheque: 0,
+        },
+      ],
+      namedDonations: [],
+    });
+    expect(editBlocker(base, ctx)).toBeNull();
+
+    const bankRow: InPersonGivingLedgerRow = {
+      id: "bank",
+      day: "Fri",
+      serviceDate: "2026-10-02",
+      serviceNote: "Friday",
+      fundId: "general",
+      fundName: "General Fund",
+      category: "Offerings",
+      cash: 0,
+      pdq: 0,
+      cheque: 0,
+      total: 20,
+    };
+    expect(editBlocker({ ...base, rows: [...base.rows, bankRow] }, ctx)).toMatch(/bank transfer/);
+
+    const onlineGift = {
+      id: "online",
+      donorName: "Amy Ross",
+      category: "Tithes & First Fruits",
+      fundId: "general",
+      fundName: "General Fund",
+      paymentMethod: "Online" as const,
+      isGiftAidEligible: false,
+      amount: 15,
+      serviceDate: "2026-10-02",
+      serviceNote: "Friday",
+    };
+    expect(editBlocker({ ...base, namedDonations: [onlineGift] }, ctx)).toMatch(/Amy Ross/);
+  });
+
+  it("returns null for a stored draft that is malformed, and keeps a valid one", () => {
+    expect(parseStoredDraft(undefined)).toBeNull();
+    expect(parseStoredDraft("not a draft")).toBeNull();
+    expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draft: { services: [{}] } })).toBeNull();
+
+    const sample = JSON.parse(JSON.stringify(sampleDraft())) as Record<string, unknown>;
+    const services = sample.services as Array<Record<string, unknown>>;
+    const broken = { ...sample, services: [{ ...services[0], offering: { cash: 5, cheque: "", card: "", count: null } }] };
+    expect(parseStoredDraft({ savedAt: "x", draft: broken })).toBeNull();
+
+    const badCount = {
+      ...sample,
+      services: [{ ...services[0], offering: { cash: "1", cheque: "", card: "", count: { notes: { 7: 1 }, coins: {} } } }],
+    };
+    expect(parseStoredDraft({ savedAt: "x", draft: badCount })).toBeNull();
+
+    const valid = { savedAt: "2026-10-01T10:00:00Z", draft: sampleDraft() };
+    expect(parseStoredDraft(JSON.parse(JSON.stringify(valid)))).toEqual(valid);
+  });
+
+  it("drops fund, programme and donor references that no longer exist, keeping donor names", () => {
+    const pruned = pruneStoredDraft(sampleDraft(), {
+      fundIds: new Set(["general", "building"]),
+      programmeIds: new Set(),
+      donorIds: new Set(),
+    });
+
+    expect(pruned.services[1].funds.map((line) => line.fundId)).toEqual(["building"]);
+    expect(pruned.services[1].programmes).toEqual([]);
+    expect(pruned.services[1].tithes.filter((envelope) => !envelope.anonymous)[0]).toMatchObject({
+      donorName: "Ruth Adams",
+    });
+    expect(pruned.services[1].tithes.filter((envelope) => !envelope.anonymous)[0].donorId).toBeUndefined();
   });
 });

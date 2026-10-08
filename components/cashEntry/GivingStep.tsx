@@ -64,7 +64,7 @@ function FundPicker({
   };
 
   const add = (fundId: string) => {
-    model.dispatch({ type: "addFund", serviceId: service.id, fundId });
+    model.dispatch({ type: "addFund", serviceId: service.id, fundId, lineId: crypto.randomUUID() });
     close();
   };
 
@@ -166,7 +166,7 @@ function ProgrammePicker({
   };
 
   const add = (programmeId: string) => {
-    model.dispatch({ type: "addProgramme", serviceId: service.id, programmeId });
+    model.dispatch({ type: "addProgramme", serviceId: service.id, programmeId, lineId: crypto.randomUUID() });
     close();
   };
 
@@ -240,9 +240,9 @@ function ProgrammePicker({
 
 export default function GivingStep({ model, serviceIndex, onCount }: GivingStepProps) {
   const { service, setAmount } = givingActions(model, serviceIndex);
-  const removeFund = (fundId: string) => model.dispatch({ type: "removeFund", serviceId: service.id, fundId });
-  const removeProgramme = (programmeId: string) =>
-    model.dispatch({ type: "removeProgramme", serviceId: service.id, programmeId });
+  const removeFund = (lineId: string) => model.dispatch({ type: "removeFund", serviceId: service.id, lineId });
+  const removeProgramme = (lineId: string) =>
+    model.dispatch({ type: "removeProgramme", serviceId: service.id, lineId });
 
   return (
     <div>
@@ -260,17 +260,17 @@ export default function GivingStep({ model, serviceIndex, onCount }: GivingStepP
 
         {service.funds.map((line) => {
           const fund = model.fundById(line.fundId);
-          const target: LineTarget = { kind: "fund", fundId: line.fundId };
+          const target: LineTarget = { kind: "fund", lineId: line.id };
           return (
             <PaymentCard
-              key={line.fundId}
-              title={model.fundName(line.fundId)}
+              key={line.id}
+              title={model.fundLineLabel(line)}
               tag={<span className={fund?.type === FundType.RESTRICTED ? tagAmber : tagGrey}>{fund?.type ?? "Fund"}</span>}
               line={line}
               removable
-              onRemove={() => removeFund(line.fundId)}
+              onRemove={() => removeFund(line.id)}
               onAmount={(field, value) => setAmount(target, field, value)}
-              onCount={() => onCount(target, model.fundName(line.fundId))}
+              onCount={() => onCount(target, model.fundLineLabel(line))}
             />
           );
         })}
@@ -278,17 +278,17 @@ export default function GivingStep({ model, serviceIndex, onCount }: GivingStepP
         <FundPicker model={model} serviceIndex={serviceIndex} />
 
         {service.programmes.map((line) => {
-          const target: LineTarget = { kind: "programme", programmeId: line.programmeId };
+          const target: LineTarget = { kind: "programme", lineId: line.id };
           return (
             <PaymentCard
-              key={line.programmeId}
-              title={model.programmeName(line.programmeId)}
+              key={line.id}
+              title={model.programmeLineLabel(line)}
               tag={<span className={tagSage}>Programme</span>}
               line={line}
               removable
-              onRemove={() => removeProgramme(line.programmeId)}
+              onRemove={() => removeProgramme(line.id)}
               onAmount={(field, value) => setAmount(target, field, value)}
-              onCount={() => onCount(target, model.programmeName(line.programmeId))}
+              onCount={() => onCount(target, model.programmeLineLabel(line))}
             />
           );
         })}
