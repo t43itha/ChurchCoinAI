@@ -143,7 +143,9 @@ export type ExecutiveDashboardSummary = {
     lowBalanceFunds: FundBalance[];
   };
   donorFollowUp: {
-    missedGiftAid: { count: number; value: number } | null;
+    // Both null when the church has Gift Aid switched off.
+    missedGiftAidCount: number | null;
+    missedGiftAidValue: number | null;
     pledgesBehindCount: number;
   };
   trends: {
@@ -682,9 +684,8 @@ function buildDonorFollowUp(
   });
 
   return {
-    missedGiftAid: giftAidEnabled
-      ? { count: missedGiftAid.length, value: roundMoney(sumAmounts(missedGiftAid) * 0.25) }
-      : null,
+    missedGiftAidCount: giftAidEnabled ? missedGiftAid.length : null,
+    missedGiftAidValue: giftAidEnabled ? roundMoney(sumAmounts(missedGiftAid) * 0.25) : null,
     pledgesBehindCount: pledgesBehind.length,
   };
 }
