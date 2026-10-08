@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { MonthlyReportData, AnnualReportData, ChurchDetails, CategoryGroup, LoanReportRow } from '../types';
 import type { TransferSummary } from '../lib/reportableTransactions';
+import type { ProgrammeIncome } from '../lib/programmeIncome';
 import { sumMoney } from '../convex/lib/money';
 
 type SheetCell = string | number;
@@ -33,6 +34,13 @@ export const loansSheetRows = (loans: LoanReportRow[]): SheetRows => {
   return rows;
 };
 
+export const programmeIncomeSheetRows = (programmes: ProgrammeIncome[]): SheetRows => {
+  const rows: SheetRows = [["Programme", "Entries", "Amount"]];
+  programmes.forEach((programme) => rows.push([programme.name, programme.count, programme.total]));
+  rows.push(["Total", "", sumMoney(programmes, (programme) => programme.total)]);
+  return rows;
+};
+
 const appendTransfersAndLoans = (
   workbook: XLSX.WorkBook,
   transfers: TransferSummary,
@@ -46,10 +54,17 @@ const appendTransfersAndLoans = (
   }
 };
 
+const appendProgrammeIncome = (workbook: XLSX.WorkBook, programmes: ProgrammeIncome[]) => {
+  if (programmes.length > 0) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(programmeIncomeSheetRows(programmes)), 'Programmes');
+  }
+};
+
 // Generate Monthly Report Excel workbook
 export const generateMonthlyReportXLSX = async (
   reportData: MonthlyReportData,
-  churchDetails: ChurchDetails
+  churchDetails: ChurchDetails,
+  programmeIncome: ProgrammeIncome[] = []
 ): Promise<Blob> => {
   const workbook = XLSX.utils.book_new();
 
@@ -181,6 +196,7 @@ export const generateMonthlyReportXLSX = async (
   }
 
   appendTransfersAndLoans(workbook, reportData.transfers, reportData.loans);
+  appendProgrammeIncome(workbook, programmeIncome);
 
   // Write workbook to blob
   const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
@@ -190,7 +206,8 @@ export const generateMonthlyReportXLSX = async (
 // Generate Annual Report Excel workbook
 export const generateAnnualReportXLSX = async (
   reportData: AnnualReportData,
-  churchDetails: ChurchDetails
+  churchDetails: ChurchDetails,
+  programmeIncome: ProgrammeIncome[] = []
 ): Promise<Blob> => {
   const workbook = XLSX.utils.book_new();
 
@@ -310,6 +327,7 @@ export const generateAnnualReportXLSX = async (
   XLSX.utils.book_append_sheet(workbook, fundsSheet, 'Fund Balances');
 
   appendTransfersAndLoans(workbook, reportData.transfers, reportData.loans);
+  appendProgrammeIncome(workbook, programmeIncome);
 
   // Write workbook to blob
   const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });

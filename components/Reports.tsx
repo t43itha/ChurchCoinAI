@@ -33,6 +33,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { filterIncomeAndExpenditure, type TransferSummary } from '../lib/reportableTransactions';
+import { incomeByProgramme, type ProgrammeIncome } from '../lib/programmeIncome';
+import { sumMoney } from '../convex/lib/money';
 
 // ============ TYPE DEFINITIONS ============
 
@@ -40,6 +42,7 @@ interface ReportsProps {
   transactions: Transaction[];
   funds: Fund[];
   pledges: Pledge[];
+  programmes: Array<{ _id: string; name: string }>;
   churchDetails: ChurchDetails;
 }
 
@@ -118,21 +121,82 @@ const TransfersBetweenFunds: React.FC<{ transfers: TransferSummary }> = ({ trans
   );
 };
 
+// ============ PROGRAMME INCOME CARD ============
+
+interface ProgrammeIncomeCardProps {
+  rows: ProgrammeIncome[];
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+const ProgrammeIncomeCard: React.FC<ProgrammeIncomeCardProps> = ({ rows, expanded, onToggle }) => (
+  <div className="swiss-card">
+    <button
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        {expanded ? <ChevronDown size={16} strokeWidth={2} className="text-grey-mid" /> : <ChevronRight size={16} strokeWidth={2} className="text-grey-mid" />}
+        <h3 className="text-[14.5px] font-bold text-ink">Income by programme</h3>
+      </div>
+      <span className="font-mono text-[15px] font-bold text-sage">
+        {formatCurrency(sumMoney(rows, (row) => row.total))}
+      </span>
+    </button>
+
+    {expanded && (
+      <div className="border-t border-[#efeee9]">
+        <table className="w-full">
+          <thead>
+            <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
+              <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Programme</th>
+              <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Entries</th>
+              <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.programmeId} className="border-b border-[#efeee9]">
+                <td className="px-5 py-2.5 text-sm text-grey-dark">{row.name}</td>
+                <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">{row.count}</td>
+                <td className="px-5 py-2.5 text-right font-mono text-sm text-grey-dark">
+                  {formatCurrency(row.total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+);
+
 // ============ MONTHLY REPORT CONTENT ============
 
 interface MonthlyReportContentProps {
+  transactions: Transaction[];
+  programmes: Array<{ _id: string; name: string }>;
   churchDetails: ChurchDetails;
 }
 
-const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetails }) => {
+const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transactions, programmes, churchDetails }) => {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['receipts', 'payments']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['receipts', 'payments', 'programmes']));
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   const reportData = useQuery(api.queries.reports.monthlyReportData, { year, month });
+
+  const programmeIncome = useMemo(() => {
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+    return incomeByProgramme(
+      transactions.filter((transaction) => transaction.date.startsWith(monthPrefix)),
+      programmes
+    );
+  }, [transactions, programmes, year, month]);
 
   const toggleSection = (section: string) => {
     const newExpanded = new Set(expandedSections);
@@ -167,7 +231,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
     setIsExportingPdf(true);
     try {
       const { generateMonthlyReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
-      const html = generateMonthlyReportHTML(reportData, churchDetails);
+      const html = generateMonthlyReportHTML(reportData, churchDetails, programmeIncome);
 
       const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
       const filename = `${churchPart}_Monthly_Report_${sanitizePdfFilenamePart(reportData.monthName)}`;
@@ -185,7 +249,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
     setIsExportingExcel(true);
     try {
       const { generateMonthlyReportXLSX } = await import('../services/excelGenerator');
-      const blob = await generateMonthlyReportXLSX(reportData, churchDetails);
+      const blob = await generateMonthlyReportXLSX(reportData, churchDetails, programmeIncome);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -637,6 +701,16 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
         </div>
       </div>
 
+      {programmeIncome.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ProgrammeIncomeCard
+            rows={programmeIncome}
+            expanded={expandedSections.has('programmes')}
+            onToggle={() => toggleSection('programmes')}
+          />
+        </div>
+      )}
+
       <TransfersBetweenFunds transfers={reportData.transfers} />
 
       {/* Footer */}
@@ -666,17 +740,28 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ churchDetai
 // ============ ANNUAL REPORT CONTENT ============
 
 interface AnnualReportContentProps {
+  transactions: Transaction[];
+  programmes: Array<{ _id: string; name: string }>;
   churchDetails: ChurchDetails;
 }
 
-const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails }) => {
+const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions, programmes, churchDetails }) => {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['income', 'expenditure', 'trend']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['income', 'expenditure', 'programmes', 'trend']));
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   const reportData = useQuery(api.queries.reports.annualReportData, { year });
+
+  const programmeIncome = useMemo(
+    () =>
+      incomeByProgramme(
+        transactions.filter((transaction) => transaction.date.startsWith(`${year}-`)),
+        programmes
+      ),
+    [transactions, programmes, year]
+  );
 
   const toggleSection = (section: string) => {
     const newExpanded = new Set(expandedSections);
@@ -693,7 +778,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
     setIsExportingPdf(true);
     try {
       const { generateAnnualReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
-      const html = generateAnnualReportHTML(reportData, churchDetails);
+      const html = generateAnnualReportHTML(reportData, churchDetails, programmeIncome);
 
       const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
       const filename = `${churchPart}_Annual_Report_${sanitizePdfFilenamePart(String(year))}`;
@@ -711,7 +796,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
     setIsExportingExcel(true);
     try {
       const { generateAnnualReportXLSX } = await import('../services/excelGenerator');
-      const blob = await generateAnnualReportXLSX(reportData, churchDetails);
+      const blob = await generateAnnualReportXLSX(reportData, churchDetails, programmeIncome);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -999,6 +1084,16 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ churchDetails
           )}
         </div>
       </div>
+
+      {programmeIncome.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ProgrammeIncomeCard
+            rows={programmeIncome}
+            expanded={expandedSections.has('programmes')}
+            onToggle={() => toggleSection('programmes')}
+          />
+        </div>
+      )}
 
       {/* Year-over-Year & Gift Aid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1622,7 +1717,7 @@ class ReportsErrorBoundary extends React.Component<
 
 // ============ MAIN UNIFIED REPORTS COMPONENT ============
 
-const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchDetails }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, programmes, churchDetails }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('monthly');
 
   return (
@@ -1661,10 +1756,10 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, churchD
       <div className="mt-6">
         <ReportsErrorBoundary>
           {activeTab === 'monthly' && (
-            <MonthlyReportContent churchDetails={churchDetails} />
+            <MonthlyReportContent transactions={transactions} programmes={programmes} churchDetails={churchDetails} />
           )}
           {activeTab === 'annual' && (
-            <AnnualReportContent churchDetails={churchDetails} />
+            <AnnualReportContent transactions={transactions} programmes={programmes} churchDetails={churchDetails} />
           )}
           {activeTab === 'ai' && (
             <AIReportsContent

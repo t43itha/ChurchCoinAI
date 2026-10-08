@@ -179,6 +179,7 @@ export interface Transaction {
   movementKind?: MovementKind;
   movementId?: string;
   isJournal?: boolean;
+  programmeId?: string;
 }
 
 export type TransactionCreateInput = Omit<Transaction, "_id">;
