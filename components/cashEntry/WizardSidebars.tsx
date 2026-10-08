@@ -96,8 +96,19 @@ export function WizardRail({ draft, steps, current, onGo }: RailProps) {
   );
 }
 
+export const AUTOSAVE_FAILED_MESSAGE =
+  "Couldn't save to this device. Finish and save this count before closing.";
+
 // Right column (lg and up): the live receipt, with Gift Aid and the week total.
-export function WizardReceipt({ model, autosaved }: { model: WizardModel; autosaved: boolean }) {
+export function WizardReceipt({
+  model,
+  autosaved,
+  autosaveFailed,
+}: {
+  model: WizardModel;
+  autosaved: boolean;
+  autosaveFailed: boolean;
+}) {
   const totals = draftTotals(model.draft, model.ctx);
   return (
     <aside className="hidden min-h-0 flex-col overflow-y-auto border-l border-ledger bg-white p-5 lg:flex">
@@ -112,7 +123,12 @@ export function WizardReceipt({ model, autosaved }: { model: WizardModel; autosa
           <b className="font-mono text-2xl tracking-tight">{gbp(totals.grand)}</b>
         </div>
       </Receipt>
-      {autosaved && <p className="mt-5 text-xs text-grey-mid">Saves to this device as you type.</p>}
+      {autosaved &&
+        (autosaveFailed ? (
+          <p className="mt-5 text-xs font-semibold text-amber">{AUTOSAVE_FAILED_MESSAGE}</p>
+        ) : (
+          <p className="mt-5 text-xs text-grey-mid">Saves to this device as you type.</p>
+        ))}
     </aside>
   );
 }

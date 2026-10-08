@@ -119,4 +119,39 @@ describe("cash entry wizard", () => {
     expect(markup).toContain("£165.00");
     expect(markup).toContain("Other (bank or online)");
   });
+
+  it("offers a notes field on the check screen of an existing collection", () => {
+    const markup = render({ initialCollection: ledger });
+    expect(markup).toContain("Notes (optional)");
+    expect(markup).toContain('aria-label="Collection notes"');
+  });
+
+  it("names the service and blocks saving while a fund line's fund is gone", () => {
+    const withLostFund: InPersonGivingLedger = {
+      ...ledger,
+      rows: [
+        ...ledger.rows,
+        {
+          id: "row-lost",
+          day: "Friday",
+          serviceDate: "2026-10-02",
+          serviceNote: "Friday",
+          fundId: "lost-fund",
+          fundName: "Lost Fund",
+          category: "Donations",
+          cash: 25,
+          pdq: 0,
+          cheque: 0,
+          total: 25,
+        },
+      ],
+      total: 165,
+    };
+
+    const markup = render({ initialCollection: withLostFund });
+    expect(markup).toContain("A fund no longer exists on Friday.");
+    // Both save buttons are disabled while a line has no fund.
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>(?:(?!<\/button>)[\s\S])*Confirm/);
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>Save for later/);
+  });
 });

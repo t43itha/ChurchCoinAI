@@ -9,6 +9,7 @@ import {
   emptyLine,
   fromLedger,
   hasEntries,
+  missingFundLines,
   newDraft,
   parseAmount,
   parseStoredDraft,
@@ -1011,35 +1012,97 @@ describe("cash collection draft", () => {
   it("returns null for a stored draft that is malformed, and keeps a valid one", () => {
     expect(parseStoredDraft(undefined)).toBeNull();
     expect(parseStoredDraft("not a draft")).toBeNull();
-    expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draft: { services: [{}] } })).toBeNull();
+    expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draftId: "draft-1", draft: { services: [{}] } })).toBeNull();
 
     const sample = JSON.parse(JSON.stringify(sampleDraft())) as Record<string, unknown>;
     const services = sample.services as Array<Record<string, unknown>>;
     const broken = { ...sample, services: [{ ...services[0], offering: { cash: 5, cheque: "", card: "", count: null } }] };
-    expect(parseStoredDraft({ savedAt: "x", draft: broken })).toBeNull();
+    expect(parseStoredDraft({ savedAt: "x", draftId: "draft-1", draft: broken })).toBeNull();
 
     const badCount = {
       ...sample,
       services: [{ ...services[0], offering: { cash: "1", cheque: "", card: "", count: { notes: { 7: 1 }, coins: {} } } }],
     };
-    expect(parseStoredDraft({ savedAt: "x", draft: badCount })).toBeNull();
+    expect(parseStoredDraft({ savedAt: "x", draftId: "draft-1", draft: badCount })).toBeNull();
 
-    const valid = { savedAt: "2026-10-01T10:00:00Z", draft: sampleDraft() };
+    const valid = { savedAt: "2026-10-01T10:00:00Z", draftId: "draft-1", draft: sampleDraft() };
     expect(parseStoredDraft(JSON.parse(JSON.stringify(valid)))).toEqual(valid);
   });
 
-  it("drops fund, programme and donor references that no longer exist, keeping donor names", () => {
+  it("rejects a stored draft without a draftId, or with an empty one", () => {
+    const draft = sampleDraft();
+    expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draft })).toBeNull();
+    expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draftId: "", draft })).toBeNull();
+    expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draftId: 7, draft })).toBeNull();
+  });
+
+  it("keeps a fund line whose fund is gone, with its amount, and drops missing programmes and donor links", () => {
     const pruned = pruneStoredDraft(sampleDraft(), {
       fundIds: new Set(["general", "building"]),
       programmeIds: new Set(),
       donorIds: new Set(),
     });
 
-    expect(pruned.services[1].funds.map((line) => line.fundId)).toEqual(["building"]);
+    expect(pruned.services[1].funds.map((line) => line.fundId)).toEqual(["building", "keyboard", "missions"]);
+    expect(pruned.services[1].funds[1]).toMatchObject({ fundId: "keyboard", cash: "45" });
     expect(pruned.services[1].programmes).toEqual([]);
     expect(pruned.services[1].tithes.filter((envelope) => !envelope.anonymous)[0]).toMatchObject({
       donorName: "Ruth Adams",
     });
     expect(pruned.services[1].tithes.filter((envelope) => !envelope.anonymous)[0].donorId).toBeUndefined();
+  });
+
+  it("lists fund lines whose fund is gone with their service, and none once every fund exists", () => {
+    const missing = missingFundLines(sampleDraft(), new Set(["general", "building"]));
+    expect(missing.map((entry) => [entry.serviceId, entry.serviceLabel, entry.line.id])).toEqual([
+      ["sun-am", "Sunday morning", "sun-keyboard"],
+      ["sun-am", "Sunday morning", "sun-missions"],
+    ]);
+    expect(missing[0].line.cash).toBe("45");
+    expect(missingFundLines(sampleDraft(), new Set(["general", "building", "keyboard", "missions"]))).toEqual([]);
+  });
+
+  it("moves a fund line to another fund and keeps its id, amount and category", () => {
+    const moved = draftReducer(sampleDraft(), {
+      type: "reassignFundLine",
+      serviceId: "sun-am",
+      lineId: "sun-keyboard",
+      fundId: "missions",
+    });
+    expect(moved.services[1].funds.find((line) => line.id === "sun-keyboard")).toEqual(
+      fundLine("sun-keyboard", "missions", "45", "Donations")
+    );
+  });
+
+  it("updates only the patched fields of an envelope, keeping its fund, category, donor and service note", () => {
+    const envelope: TitheEnvelope = {
+      id: "t-loaded",
+      donorId: "donor-ruth",
+      donorName: "Ruth Adams",
+      anonymous: false,
+      amount: "40",
+      method: "Cash",
+      giftAid: true,
+      category: "Donations",
+      fundId: "building",
+      noServiceNote: true,
+    };
+    const added = draftReducer(sampleDraft(), { type: "addTithe", serviceId: "fri", envelope });
+
+    const edited = draftReducer(added, {
+      type: "updateEnvelope",
+      serviceId: "fri",
+      envelopeId: "t-loaded",
+      patch: { amount: "55", method: "Cheque" },
+    });
+    expect(edited.services[0].tithes[0]).toEqual({ ...envelope, amount: "55", method: "Cheque" });
+
+    const unGiftAided = draftReducer(edited, {
+      type: "updateEnvelope",
+      serviceId: "fri",
+      envelopeId: "t-loaded",
+      patch: { giftAid: false },
+    });
+    expect(unGiftAided.services[0].tithes[0]).toEqual({ ...envelope, amount: "55", method: "Cheque", giftAid: false });
   });
 });

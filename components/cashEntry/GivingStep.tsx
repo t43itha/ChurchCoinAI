@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import {
   type AmountField,
   type LineTarget,
+  type ServiceDraft,
 } from "../../lib/cashCollectionDraft";
 import { FundType } from "../../types";
 import PaymentCard from "./PaymentCard";
@@ -38,6 +39,12 @@ export function givingActions(model: WizardModel, serviceIndex: number) {
   return { service, setAmount };
 }
 
+// Funds that can still be added to a service: not the general fund, not already on it.
+function spareFundsFor(model: WizardModel, service: ServiceDraft) {
+  const onCard = service.funds.map((line) => line.fundId);
+  return model.funds.filter((fund) => fund._id !== model.ctx.generalFundId && !onCard.includes(fund._id));
+}
+
 function FundPicker({
   model,
   serviceIndex,
@@ -53,8 +60,7 @@ function FundPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onCard = service.funds.map((line) => line.fundId);
-  const spare = model.funds.filter((fund) => fund._id !== model.ctx.generalFundId && !onCard.includes(fund._id));
+  const spare = spareFundsFor(model, service);
 
   const close = () => {
     setOpen(false);
@@ -261,13 +267,46 @@ export default function GivingStep({ model, serviceIndex, onCount }: GivingStepP
         {service.funds.map((line) => {
           const fund = model.fundById(line.fundId);
           const target: LineTarget = { kind: "fund", lineId: line.id };
+          // A missing fund stays on the card so its amount isn't lost; saving waits until another fund is chosen.
           return (
             <PaymentCard
               key={line.id}
               title={model.fundLineLabel(line)}
-              tag={<span className={fund?.type === FundType.RESTRICTED ? tagAmber : tagGrey}>{fund?.type ?? "Fund"}</span>}
+              tag={
+                fund ? (
+                  <span className={fund.type === FundType.RESTRICTED ? tagAmber : tagGrey}>{fund.type}</span>
+                ) : (
+                  <span className={tagAmber}>Fund no longer exists</span>
+                )
+              }
               line={line}
               removable
+              notice={
+                fund ? undefined : (
+                  <select
+                    aria-label="Choose fund"
+                    value=""
+                    onChange={(event) =>
+                      model.dispatch({
+                        type: "reassignFundLine",
+                        serviceId: service.id,
+                        lineId: line.id,
+                        fundId: event.target.value,
+                      })
+                    }
+                    className={`${txtInput} mb-2`}
+                  >
+                    <option value="" disabled>
+                      Choose fund
+                    </option>
+                    {spareFundsFor(model, service).map((choice) => (
+                      <option key={choice._id} value={choice._id}>
+                        {choice.name}
+                      </option>
+                    ))}
+                  </select>
+                )
+              }
               onRemove={() => removeFund(line.id)}
               onAmount={(field, value) => setAmount(target, field, value)}
               onCount={() => onCount(target, model.fundLineLabel(line))}

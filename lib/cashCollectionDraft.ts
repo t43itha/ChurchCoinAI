@@ -79,8 +79,10 @@ export interface CollectionDraft {
   counters: [string, string];
 }
 
+// One id per count, so two tabs never write over each other's copy.
 export interface StoredDraft {
   savedAt: string;
+  draftId: string;
   draft: CollectionDraft;
 }
 
@@ -115,6 +117,12 @@ export type LineTarget =
 
 export type AmountField = "cash" | "cheque" | "card";
 
+export interface EnvelopePatch {
+  amount?: string;
+  method?: TitheMethod;
+  giftAid?: boolean;
+}
+
 // Anything that creates a line takes its id from the caller, so the reducer stays pure.
 export type DraftAction =
   | { type: "setWeek"; weekEndingDate: string }
@@ -124,9 +132,11 @@ export type DraftAction =
   | { type: "applyCount"; serviceId: string; target: LineTarget; count: CashCount }
   | { type: "addFund"; serviceId: string; fundId: string; lineId: string }
   | { type: "removeFund"; serviceId: string; lineId: string }
+  | { type: "reassignFundLine"; serviceId: string; lineId: string; fundId: string }
   | { type: "addProgramme"; serviceId: string; programmeId: string; lineId: string }
   | { type: "removeProgramme"; serviceId: string; lineId: string }
   | { type: "addTithe"; serviceId: string; envelope: TitheEnvelope }
+  | { type: "updateEnvelope"; serviceId: string; envelopeId: string; patch: EnvelopePatch }
   | { type: "removeTithe"; serviceId: string; envelopeId: string }
   | { type: "setNotes"; notes: string }
   | { type: "setCounter"; index: 0 | 1; value: string };
@@ -677,14 +687,27 @@ export function editBlocker(ledger: InPersonGivingLedger, ctx: LedgerContext): s
 // Reads a stored draft back from storage. Anything malformed returns null.
 export function parseStoredDraft(raw: unknown): StoredDraft | null {
   if (!isRecord(raw)) return null;
-  const { savedAt, draft: rawDraft } = raw;
-  if (typeof savedAt !== "string") return null;
+  const { savedAt, draftId, draft: rawDraft } = raw;
+  if (typeof savedAt !== "string" || typeof draftId !== "string" || draftId === "") return null;
   const draft = parseDraft(rawDraft);
-  return draft && hasEntries(draft) ? { savedAt, draft } : null;
+  return draft && hasEntries(draft) ? { savedAt, draftId, draft } : null;
 }
 
-// Drops fund and programme lines, and donor links, that no longer exist. The
-// donor's name stays on the envelope.
+// Fund lines whose fund is gone. They keep their amount, so the user can choose
+// another fund rather than lose the money.
+export function missingFundLines(
+  draft: CollectionDraft,
+  fundIds: ReadonlySet<string>
+): { serviceId: string; serviceLabel: string; line: FundLine }[] {
+  return draft.services.flatMap((service) =>
+    service.funds
+      .filter((line) => !fundIds.has(line.fundId))
+      .map((line) => ({ serviceId: service.id, serviceLabel: service.label, line }))
+  );
+}
+
+// Drops programme lines and donor links that no longer exist. The donor's name
+// stays on the envelope. Fund lines are kept (see missingFundLines).
 export function pruneStoredDraft(
   draft: CollectionDraft,
   known: {
@@ -697,7 +720,6 @@ export function pruneStoredDraft(
     ...draft,
     services: draft.services.map((service) => ({
       ...service,
-      funds: service.funds.filter((line) => known.fundIds.has(line.fundId)),
       programmes: service.programmes.filter(
         (line) =>
           known.programmeIds.has(line.programmeId) &&
@@ -943,6 +965,13 @@ export function draftReducer(draft: CollectionDraft, action: DraftAction): Colle
         ...service,
         funds: service.funds.filter((line) => line.id !== action.lineId),
       }));
+    case "reassignFundLine":
+      return mapService(draft, action.serviceId, (service) => ({
+        ...service,
+        funds: service.funds.map((line) =>
+          line.id === action.lineId ? { ...line, fundId: action.fundId } : line
+        ),
+      }));
     case "addProgramme":
       return mapService(draft, action.serviceId, (service) =>
         service.programmes.some((line) => line.programmeId === action.programmeId)
@@ -964,6 +993,21 @@ export function draftReducer(draft: CollectionDraft, action: DraftAction): Colle
       return mapService(draft, action.serviceId, (service) => ({
         ...service,
         tithes: [action.envelope, ...service.tithes],
+      }));
+    case "updateEnvelope":
+      // Only the patched fields change; fund, category, donor and service note stay.
+      return mapService(draft, action.serviceId, (service) => ({
+        ...service,
+        tithes: service.tithes.map((envelope) =>
+          envelope.id === action.envelopeId
+            ? {
+                ...envelope,
+                amount: action.patch.amount ?? envelope.amount,
+                method: action.patch.method ?? envelope.method,
+                giftAid: action.patch.giftAid ?? envelope.giftAid,
+              }
+            : envelope
+        ),
       }));
     case "removeTithe":
       return mapService(draft, action.serviceId, (service) => ({

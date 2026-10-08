@@ -13,6 +13,7 @@ import {
   draftTotals,
   fromLedger,
   hasEntries,
+  missingFundLines,
   newDraft,
   parseStoredDraft,
   pruneStoredDraft,
@@ -52,6 +53,8 @@ export interface WizardModel {
   ctx: LedgerContext;
   funds: Fund[];
   programmes: ProgrammeOption[];
+  // Fund lines whose fund is gone; saving is blocked while there are any.
+  missingFunds: ReturnType<typeof missingFundLines>;
   fundById: (fundId: string) => Fund | undefined;
   fundName: (fundId: string) => string;
   programmeName: (programmeId: string) => string;
@@ -100,12 +103,15 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-function writeJson(key: string, value: unknown) {
-  if (typeof localStorage === "undefined") return;
+// Returns whether the value was written, so autosave can say when it could not.
+function writeJson(key: string, value: unknown): boolean {
+  if (typeof localStorage === "undefined") return false;
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
     // Storage can be full or disabled; the draft still lives in memory.
+    return false;
   }
 }
 
@@ -115,6 +121,15 @@ function removeKey(key: string) {
     localStorage.removeItem(key);
   } catch {
     // Nothing else to do: the stale copy is harmless.
+  }
+}
+
+function readRaw(key: string): string | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
   }
 }
 
@@ -128,17 +143,24 @@ function parseStoredJson(raw: string): StoredDraft | null {
 
 // A stored draft that fails validation is removed so it can't block the wizard again.
 function readStoredDraft(key: string): StoredDraft | null {
-  if (typeof localStorage === "undefined") return null;
-  let raw: string | null;
-  try {
-    raw = localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  const raw = readRaw(key);
   if (raw === null) return null;
   const stored = parseStoredJson(raw);
   if (!stored) removeKey(key);
   return stored;
+}
+
+// A count may write when the key is empty or already holds this count. Anything
+// else is another tab's draft, which must not be overwritten.
+const canWriteDraft = (key: string, draftId: string) => {
+  const raw = readRaw(key);
+  return raw === null || parseStoredJson(raw)?.draftId === draftId;
+};
+
+// Removes the stored copy only when it is the count given, so another tab's draft survives.
+function removeOwnedDraft(key: string, draftId: string) {
+  const raw = readRaw(key);
+  if (raw !== null && parseStoredJson(raw)?.draftId === draftId) removeKey(key);
 }
 
 function readRecentFundIds(key: string): string[] {
@@ -197,8 +219,9 @@ export function useCollectionDraft({
   );
   // A stored copy the user hasn't resumed or discarded. Autosave must not overwrite it.
   const storedUnresolved = useRef(offer !== null);
-  // Set once this wizard has written or resumed the stored copy. Only then may a save remove it.
-  const ownsStored = useRef(false);
+  // Names this count in storage. Resuming adopts the stored copy's id.
+  const [draftId, setDraftId] = useState<string>(() => crypto.randomUUID());
+  const [autosaveFailed, setAutosaveFailed] = useState(false);
   const touched = useRef(false);
   const submitting = useRef(false);
   const [saved, setSaved] = useState<SavedResult | null>(null);
@@ -227,16 +250,25 @@ export function useCollectionDraft({
     [dispatch, currentUsualFundIds]
   );
 
-  // Writes only when there is something to keep, and never removes the stored
-  // copy: starting over or emptying the draft leaves it for the user to decide.
+  const programmes = useMemo<ProgrammeOption[]>(() => programmeRows ?? [], [programmeRows]);
+  const fundIds = useMemo(() => new Set(funds.map((fund) => fund._id)), [funds]);
+  const missingFunds = useMemo(() => missingFundLines(draft, fundIds), [draft, fundIds]);
+
+  // Writes only into an empty key or this count's own copy. Emptying the count
+  // removes its own copy, but a stored draft this count doesn't own is left alone.
   useEffect(() => {
     if (isEdit || !touched.current || saved || storedUnresolved.current) return;
-    if (!hasEntries(draft)) return;
-    writeJson(draftKey, { savedAt: new Date().toISOString(), draft } satisfies StoredDraft);
-    ownsStored.current = true;
-  }, [draft, draftKey, isEdit, saved]);
-
-  const programmes = useMemo<ProgrammeOption[]>(() => programmeRows ?? [], [programmeRows]);
+    if (!hasEntries(draft)) {
+      removeOwnedDraft(draftKey, draftId);
+      setAutosaveFailed(false);
+      return;
+    }
+    if (!canWriteDraft(draftKey, draftId)) {
+      setAutosaveFailed(true);
+      return;
+    }
+    setAutosaveFailed(!writeJson(draftKey, { savedAt: new Date().toISOString(), draftId, draft } satisfies StoredDraft));
+  }, [draft, draftId, draftKey, isEdit, saved]);
   const fundById = useCallback((fundId: string) => funds.find((fund) => fund._id === fundId), [funds]);
   const fundName = useCallback((fundId: string) => fundById(fundId)?.name ?? "Fund", [fundById]);
   const programmeName = useCallback(
@@ -271,11 +303,8 @@ export function useCollectionDraft({
 
   // Called when the user closes a count with entries and confirms the discard.
   const discardDraft = useCallback(() => {
-    if (!isEdit && ownsStored.current) {
-      removeKey(draftKey);
-      ownsStored.current = false;
-    }
-  }, [draftKey, isEdit]);
+    if (!isEdit) removeOwnedDraft(draftKey, draftId);
+  }, [draftId, draftKey, isEdit]);
 
   const submit = async (status: SaveStatus): Promise<boolean> => {
     if (submitting.current) return false;
@@ -313,8 +342,7 @@ export function useCollectionDraft({
         : await submitCollection(args);
 
       if (!isEdit) {
-        if (ownsStored.current) removeKey(draftKey);
-        ownsStored.current = false;
+        removeOwnedDraft(draftKey, draftId);
         writeJson(recentKey, recentFundIdsOf(draft, ctx.generalFundId));
       }
       const totals = draftTotals(draft, ctx);
@@ -349,20 +377,21 @@ export function useCollectionDraft({
     });
     touched.current = true;
     storedUnresolved.current = false;
-    ownsStored.current = true;
+    setDraftId(offer.draftId);
     dispatchRaw({ type: "load", draft: pruned });
     setOffer(null);
   };
 
+  // Removes the copy that was offered, not one another tab may have stored since.
   const discardStored = () => {
-    removeKey(draftKey);
+    if (offer) removeOwnedDraft(draftKey, offer.draftId);
     storedUnresolved.current = false;
-    ownsStored.current = false;
     setOffer(null);
   };
 
   const startFresh = () => {
     touched.current = false;
+    setDraftId(crypto.randomUUID());
     setSaved(null);
     setError(null);
     dispatchRaw({ type: "load", draft: newDraft(getWeekEndingSunday(new Date()), currentUsualFundIds()) });
@@ -375,6 +404,7 @@ export function useCollectionDraft({
     ctx,
     funds,
     programmes,
+    missingFunds,
     fundById,
     fundName,
     programmeName,
@@ -399,6 +429,7 @@ export function useCollectionDraft({
     saving,
     error,
     saved,
+    autosaveFailed,
   };
 }
 

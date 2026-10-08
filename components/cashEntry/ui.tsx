@@ -22,6 +22,8 @@ export const chipDashed = `${chip} border-dashed text-grey-mid`;
 
 export const txtInput =
   "h-12 w-full min-w-0 rounded-[13px] border-[1.5px] border-ledger bg-white px-3.5 text-base text-ink outline-none focus:border-ink";
+export const txtArea =
+  "min-h-[84px] w-full min-w-0 rounded-[13px] border-[1.5px] border-ledger bg-white px-3.5 py-3 text-base text-ink outline-none focus:border-ink";
 export const amtBox =
   "flex h-12 min-w-0 items-center rounded-xl border-[1.5px] border-ledger bg-paper px-3 focus-within:border-ink focus-within:bg-white";
 // styles.css sets a global `input:focus` box-shadow and border colour, unlayered,
@@ -60,7 +62,12 @@ interface SegmentedProps<T extends string> {
 
 export function Segmented<T extends string>({ options, value, onChange, label }: SegmentedProps<T>) {
   return (
-    <div role="group" aria-label={label} className="grid grid-cols-2 rounded-xl bg-[#efeee9] p-[3px]">
+    <div
+      role="group"
+      aria-label={label}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      className="grid rounded-xl bg-[#efeee9] p-[3px]"
+    >
       {options.map((option) => {
         const on = option === value;
         return (

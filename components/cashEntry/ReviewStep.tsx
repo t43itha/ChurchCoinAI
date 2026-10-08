@@ -13,6 +13,7 @@ import {
   fieldLabel,
   screenHelp,
   screenTitle,
+  txtArea,
   txtInput,
 } from "./ui";
 import type { WizardModel, SaveStatus } from "./useCollectionDraft";
@@ -27,16 +28,23 @@ interface ReviewStepProps {
 }
 
 export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
-  const { draft, ctx, dispatch } = model;
+  const { draft, ctx, dispatch, missingFunds } = model;
   const totals = draftTotals(draft, ctx);
   const envelopesCash = roundMoney(totals.byMethod.cash - totals.slip.counted);
   const claimable = roundMoney(totals.giftAidEligible * GIFT_AID_RATE);
   const weekEnding = shortDate(draft.weekEndingDate);
+  const missingOn = [...new Set(missingFunds.map((entry) => entry.serviceLabel))];
 
   return (
     <div>
       <h2 className={screenTitle}>Does this match your count?</h2>
       <p className={screenHelp}>Tap Edit to change anything. Nothing reaches the ledger until you confirm.</p>
+
+      {missingOn.length > 0 && (
+        <div className="mb-3.5 rounded-2xl bg-amber-light p-3 text-sm text-amber">
+          A fund no longer exists on {missingOn.join(", ")}. Choose a fund for it there before saving.
+        </div>
+      )}
 
       <div className={`${darkCard} mb-3.5`}>
         <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/55">
@@ -118,6 +126,15 @@ export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
           onChange={(event) => dispatch({ type: "setCounter", index: 1, value: event.target.value })}
         />
       </div>
+
+      <span className={fieldLabel}>Notes (optional)</span>
+      <textarea
+        aria-label="Collection notes"
+        className={txtArea}
+        rows={3}
+        value={draft.notes}
+        onChange={(event) => dispatch({ type: "setNotes", notes: event.target.value })}
+      />
     </div>
   );
 }
@@ -134,7 +151,8 @@ export function ReviewFooter({
   onSave: (status: SaveStatus) => void;
 }) {
   const grand = draftTotals(model.draft, model.ctx).grand;
-  const blocked = saving || grand < PENNY;
+  // A line whose fund is gone has no place to go in the ledger, so it must be reassigned first.
+  const blocked = saving || grand < PENNY || model.missingFunds.length > 0;
   return (
     <div className="space-y-2">
       {error && <p className="rounded-xl bg-error-light px-3 py-2.5 text-sm text-error">{error}</p>}

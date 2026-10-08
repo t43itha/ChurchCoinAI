@@ -20,7 +20,7 @@ import StartStep from "./StartStep";
 import TitheStep from "./TitheStep";
 import { gbp, shortDate } from "./format";
 import { buildSteps, stepIndexOfGiving, type WizardStep } from "./steps";
-import { WizardRail, WizardReceipt } from "./WizardSidebars";
+import { AUTOSAVE_FAILED_MESSAGE, WizardRail, WizardReceipt } from "./WizardSidebars";
 import SavedCollectionSummary from "./SavedCollectionSummary";
 import { btnLg, btnPrimary } from "./ui";
 import { useCollectionDraft, type CategoryOption } from "./useCollectionDraft";
@@ -86,7 +86,7 @@ function WizardPanel({
   onBankIt,
 }: CashEntryWizardProps) {
   const wizard = useCollectionDraft({ funds, categories, initialCollection, storageScope });
-  const { model, isEdit, saved, saving, error, existingCount, resumable } = wizard;
+  const { model, isEdit, saved, saving, error, existingCount, resumable, autosaveFailed } = wizard;
   const { draft, ctx } = model;
   // A saved collection the walkthrough can't reproduce exactly is shown read-only.
   const readOnlyReason = initialCollection ? editBlocker(initialCollection, ctx) : null;
@@ -221,8 +221,10 @@ function WizardPanel({
                     onDiscardStored={wizard.discardStored}
                   />
                 )}
+                {/* Keyed by service so switching services never carries local state (an open picker, an unfinished envelope) across. */}
                 {step.kind === "giving" && (
                   <GivingStep
+                    key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
                     model={model}
                     serviceIndex={step.serviceIndex}
                     onCount={(target, label) =>
@@ -230,7 +232,13 @@ function WizardPanel({
                     }
                   />
                 )}
-                {step.kind === "tithes" && <TitheStep model={model} serviceIndex={step.serviceIndex} />}
+                {step.kind === "tithes" && (
+                  <TitheStep
+                    key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
+                    model={model}
+                    serviceIndex={step.serviceIndex}
+                  />
+                )}
                 {step.kind === "review" &&
                   (readOnlyReason && initialCollection ? (
                     <SavedCollectionSummary ledger={initialCollection} reason={readOnlyReason} />
@@ -254,6 +262,13 @@ function WizardPanel({
                 )}
               </fieldset>
             </div>
+
+            {/* The receipt that carries this warning is hidden below lg, so the footer repeats it there. */}
+            {autosaveFailed && !isEdit && !saved && (
+              <p className="mx-4 mb-2 rounded-xl bg-amber-light px-3 py-2.5 text-xs font-semibold text-amber lg:hidden">
+                {AUTOSAVE_FAILED_MESSAGE}
+              </p>
+            )}
 
             {step.kind === "start" && (
               <StepFooter>
@@ -317,7 +332,9 @@ function WizardPanel({
             )}
           </div>
 
-          {!readOnly && <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} />}
+          {!readOnly && (
+            <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} autosaveFailed={autosaveFailed} />
+          )}
         </div>
       </fieldset>
     </div>

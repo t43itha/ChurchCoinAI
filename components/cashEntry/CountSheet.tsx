@@ -124,9 +124,10 @@ export default function CountSheet({ label, where, initial, onUse, onCancel }: C
             </span>
             <b className="font-mono text-sm text-ink">{gbp(total)}</b>
           </div>
+          {/* An existing count may be cleared to zero; a new one with nothing counted has nothing to use. */}
           <button
             type="button"
-            disabled={total === 0}
+            disabled={total === 0 && initial === null}
             onClick={() => onUse(count)}
             className={`${btnPrimary} ${btnLg}`}
           >

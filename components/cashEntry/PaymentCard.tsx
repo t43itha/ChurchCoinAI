@@ -9,6 +9,8 @@ interface PaymentCardProps {
   tag: ReactNode;
   line: PaymentLine;
   removable?: boolean;
+  // Rendered under the heading, e.g. the picker for a fund that no longer exists.
+  notice?: ReactNode;
   onAmount: (field: AmountField, value: string) => void;
   onCount: () => void;
   onRemove?: () => void;
@@ -45,9 +47,21 @@ function AmountRow({
 }
 
 // One giving card: a cash amount, with cheque and card revealed on demand.
-export default function PaymentCard({ title, tag, line, removable, onAmount, onCount, onRemove }: PaymentCardProps) {
-  const [showCheque, setShowCheque] = useState(line.cheque !== "");
-  const [showCard, setShowCard] = useState(line.card !== "");
+export default function PaymentCard({
+  title,
+  tag,
+  line,
+  removable,
+  notice,
+  onAmount,
+  onCount,
+  onRemove,
+}: PaymentCardProps) {
+  const [chequeChosen, setChequeChosen] = useState(false);
+  const [cardChosen, setCardChosen] = useState(false);
+  // An amount already on the line always shows its input, whatever the local state.
+  const showCheque = chequeChosen || line.cheque !== "";
+  const showCard = cardChosen || line.card !== "";
   const counted = line.count !== null && countTotal(line.count) > 0;
 
   return (
@@ -66,6 +80,7 @@ export default function PaymentCard({ title, tag, line, removable, onAmount, onC
           </button>
         )}
       </div>
+      {notice}
 
       <AmountRow label="Cash" ariaLabel={`${title} cash`} value={line.cash} onChange={(value) => onAmount("cash", value)} />
 
@@ -94,12 +109,12 @@ export default function PaymentCard({ title, tag, line, removable, onAmount, onC
           </button>
         )}
         {!showCheque && (
-          <button type="button" onClick={() => setShowCheque(true)} className={linkBtn}>
+          <button type="button" onClick={() => setChequeChosen(true)} className={linkBtn}>
             + Cheque
           </button>
         )}
         {!showCard && (
-          <button type="button" onClick={() => setShowCard(true)} className={linkBtn}>
+          <button type="button" onClick={() => setCardChosen(true)} className={linkBtn}>
             + Card
           </button>
         )}
