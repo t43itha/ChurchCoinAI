@@ -12,6 +12,7 @@ import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
 import { effectiveCategories } from "../lib/transactionCategories";
 import { resolveAssignableCategory } from "../convex/intelligence/categorization/categoryResolver";
 import { screenImportRows, withImportKeys } from "../lib/importKeys";
+import { describeLeftOutRows, detectColumns, findHeaderRow, MAX_IMPORT_ROWS, mapStatementRows, tokenizeCsv } from "../lib/statementImport";
 import { uiFunction } from "./helpers/transactionManagerHandlers";
 import { MOVEMENT_CATEGORIES } from "../lib/movementCategories";
 
@@ -45,10 +46,10 @@ describe("import category and date acceptance", () => {
     records.funds.push({ _id: "restricted", organizationId: "org", name: "Building Fund" }, { _id: "general", organizationId: "org", name: "General Fund" });
     const scope: any = {
       useSplitAmount: false, funds: records.funds, categories: getRCICategorySeedData(),
-      csvRows: [["21/09/2026", "Unidentified credit", "30"]], csvHeaders: ["Date", "Description", "Amount"],
-      columnMapping: { date: "Date", description: "Description", amount: "Amount" },
+      csvRows: [{ cells: ["21/09/2026", "Unidentified credit", "30"], line: 2 }], csvHeaders: ["Date", "Description", "Amount"],
+      columnMapping: { date: "Date", description: "Description", amount: "Amount", amountIn: "", amountOut: "" },
       parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory,
-      parseAmountString: parseImportedAmount, screenImportRows, withImportKeys, transactions: records.transactions,
+      parseAmountString: parseImportedAmount, mapStatementRows, describeLeftOutRows, MAX_IMPORT_ROWS, screenImportRows, withImportKeys, transactions: records.transactions,
       notify: vi.fn(), setDuplicateWarnings: vi.fn(), setAlreadyImportedRows: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
       setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
       setPendingTransactions: (rows: any[]) => { scope.pendingTransactions = rows; },
@@ -109,14 +110,15 @@ describe("import category and date acceptance", () => {
     expect(validateGeminiSuggestion({ category: "Utilities", fundName: "General Fund", confidence: "High" }, input[0], records.categories, records.funds)).not.toBeNull();
   });
 
-  it("keeps invalid dates in review and blocks confirmation", async () => {
+  it("keeps unreadable dates out of review and blocks confirmation of rows without a category", async () => {
     const { ctx, records } = database();
     records.organizations.push({ _id: "org", accessMode: "legacy" });
     records.users.push({ _id: "user", organizationId: "org", role: "Admin", clerkId: "synthetic-owner" });
     records.funds.push({ _id: "fund", organizationId: "org", name: "General Fund" });
     const scope: any = {
       useSplitAmount: false, funds: records.funds, categoryNames: ["Tithes & First Fruits", "Utilities"],
-      parseImportedAmount, parseImportedDate, isRealIsoDate,
+      parseImportedAmount, parseImportedDate, isRealIsoDate, tokenizeCsv, findHeaderRow, detectColumns, mapStatementRows,
+      describeLeftOutRows, MAX_IMPORT_ROWS,
       applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory, categories: getRCICategorySeedData(),
       parseAmountString: parseImportedAmount, screenImportRows, withImportKeys, transactions: records.transactions,
       notify: vi.fn(), setDuplicateWarnings: vi.fn(), setAlreadyImportedRows: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
@@ -139,9 +141,10 @@ describe("import category and date acceptance", () => {
     ] } });
     expect(scope.csvRows).toHaveLength(2);
     uiFunction("handleProcessMapping", scope)();
-    expect(scope.pendingTransactions).toHaveLength(2);
-    expect(scope.pendingTransactions[0]).toMatchObject({ date: "31/02/2026", type: "Expenditure", amount: 100, category: "" });
-    expect(scope.pendingTransactions[1]).toMatchObject({ type: "Expenditure", amount: 250 });
+    // The impossible 31/02 row is reported with its line and kept out of review, not stored as typed.
+    expect(scope.notify).toHaveBeenLastCalledWith("Rows left out", "1 row couldn't be read (line 2) and was left out.");
+    expect(scope.pendingTransactions).toHaveLength(1);
+    expect(scope.pendingTransactions[0]).toMatchObject({ date: "2026-03-01", type: "Expenditure", amount: 250, category: "" });
     Object.assign(scope, { isProcessingAI: false, bankSyncReviewConnectionId: null, originalPredictions: new Map(), onPledgeCompleted: undefined,
       clearBankSyncReviewState: vi.fn(), bulkCreateTransactions: (args: any) => (bulkCreate as any)._handler(ctx, args) });
     await uiFunction("handleConfirmImport", scope)();

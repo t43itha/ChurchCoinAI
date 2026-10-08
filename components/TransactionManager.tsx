@@ -12,10 +12,11 @@ import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
-import { isRealIsoDate, parseImportedAmount, parseImportedDate } from '../lib/csvImport';
+import { isRealIsoDate } from '../lib/csvImport';
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
+import { CsvRecord, describeLeftOutRows, detectColumns, findHeaderRow, mapStatementRows, MAX_IMPORT_ROWS, tokenizeCsv } from '../lib/statementImport';
 import { resolveAssignableCategory } from '../convex/intelligence/categorization/categoryResolver';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
 import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
@@ -176,7 +177,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // CSV Import State
   const [showColumnMapper, setShowColumnMapper] = useState(false);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvRows, setCsvRows] = useState<string[][]>([]);
+  const [csvRows, setCsvRows] = useState<CsvRecord[]>([]);
   const [columnMapping, setColumnMapping] = useState({ date: '', description: '', amount: '', amountIn: '', amountOut: '' });
   const [useSplitAmount, setUseSplitAmount] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -613,62 +614,24 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       const reader = new FileReader();
       reader.onload = (evt) => {
           const text = evt.target?.result as string;
-          // Simple CSV Parser handling quotes
-          const lines = text.split(/\r?\n/).filter(l => l.trim());
-          if (lines.length < 2) {
-              notify("Error", "Invalid CSV: Not enough lines.");
+          const records = tokenizeCsv(text);
+          const { headerIndex, headers } = findHeaderRow(records);
+          const dataRecords = records.slice(headerIndex === null ? 0 : headerIndex + 1);
+          if (headers.length === 0 || dataRecords.length === 0) {
+              notify("Error", "We couldn't find any transactions in this file. Check it's a CSV export of your bank statement.");
               return;
           }
-
-          // Regex to split by comma but ignore commas inside quotes
-          const parseLine = (line: string) => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(s => s.trim().replace(/^"|"$/g, ''));
-          
-          const headers = parseLine(lines[0]);
           // Check for empty headers
           if (headers.some(h => !h)) {
              notify("Error", "CSV contains empty headers. Please check the file.");
              return;
           }
-          
-          const rows = lines.slice(1).map(parseLine);
 
+          const { mapping, split } = detectColumns(headers, dataRecords.map(record => record.cells));
           setCsvHeaders(headers);
-          setCsvRows(rows);
-          
-          // Auto-guess columns
-          const newMapping = { date: '', description: '', amount: '', amountIn: '', amountOut: '' };
-          let splitDetected = false;
-
-          headers.forEach(h => {
-              const lower = h.toLowerCase();
-              if (lower.includes('date') && !newMapping.date) newMapping.date = h;
-              else if ((lower.includes('desc') || lower.includes('payee') || lower.includes('details') || lower.includes('memo')) && !newMapping.description) newMapping.description = h;
-          });
-
-          // Split Detection logic
-          const creditCol = headers.find(h => {
-             const l = h.toLowerCase();
-             return l.includes('credit') || l.includes('paid in') || l.includes('money in') || l === 'in' || l.includes('deposit');
-          });
-          const debitCol = headers.find(h => {
-             const l = h.toLowerCase();
-             return l.includes('debit') || l.includes('paid out') || l.includes('money out') || l === 'out' || l.includes('withdrawal');
-          });
-
-          if (creditCol && debitCol) {
-              splitDetected = true;
-              newMapping.amountIn = creditCol;
-              newMapping.amountOut = debitCol;
-          } else {
-               const amt = headers.find(h => {
-                   const l = h.toLowerCase();
-                   return (l.includes('amount') || l.includes('value')) && !l.includes('balance');
-               });
-               if(amt) newMapping.amount = amt;
-          }
-
-          setUseSplitAmount(splitDetected);
-          setColumnMapping(newMapping);
+          setCsvRows(dataRecords);
+          setUseSplitAmount(split);
+          setColumnMapping(mapping);
           setShowColumnMapper(true);
       };
       reader.readAsText(file);
@@ -676,29 +639,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const parseAmountString = (str: string) => parseImportedAmount(str);
-
   const handleProcessMapping = () => {
-      const dateIdx = csvHeaders.indexOf(columnMapping.date);
-      const descIdx = csvHeaders.indexOf(columnMapping.description);
-      
-      let amountIdx = -1;
-      let amountInIdx = -1;
-      let amountOutIdx = -1;
-
-      if (useSplitAmount) {
-         amountInIdx = csvHeaders.indexOf(columnMapping.amountIn);
-         amountOutIdx = csvHeaders.indexOf(columnMapping.amountOut);
-         if (dateIdx === -1 || descIdx === -1 || (amountInIdx === -1 && amountOutIdx === -1)) {
-            notify("Error", "Please map Date, Description, and the In/Out columns.");
-            return;
-         }
-      } else {
-         amountIdx = csvHeaders.indexOf(columnMapping.amount);
-         if (dateIdx === -1 || descIdx === -1 || amountIdx === -1) {
-            notify("Error", "Please map Date, Description, and Amount columns.");
-            return;
-         }
+      const hasColumn = (name: string) => csvHeaders.includes(name);
+      const amountMapped = useSplitAmount
+         ? hasColumn(columnMapping.amountIn) || hasColumn(columnMapping.amountOut)
+         : hasColumn(columnMapping.amount);
+      if (!hasColumn(columnMapping.date) || !hasColumn(columnMapping.description) || !amountMapped) {
+         notify("Error", useSplitAmount ? "Please map Date, Description, and the In/Out columns." : "Please map Date, Description, and Amount columns.");
+         return;
       }
 
       if (!funds[0]) {
@@ -706,64 +654,23 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           return;
       }
 
-      const parsed: Array<PendingReviewTransaction & StatementRow> = [];
-      let skippedInvalidAmounts = 0;
-      csvRows.forEach((row) => {
-          const description = row[descIdx];
-          if (!description) return;
-          const dateStr = parseImportedDate(row[dateIdx] || "") ?? (row[dateIdx] || "");
-
-          let amount = 0;
-          let type = "Income" as TransactionType;
-          let sawAmount = false;
-
-          if (useSplitAmount) {
-              const inStr = amountInIdx !== -1 ? (row[amountInIdx] || "") : "";
-              const outStr = amountOutIdx !== -1 ? (row[amountOutIdx] || "") : "";
-              const inVal = inStr.trim() ? parseAmountString(inStr) : null;
-              const outVal = outStr.trim() ? parseAmountString(outStr) : null;
-              if ((inStr.trim() && inVal === null) || (outStr.trim() && outVal === null)) {
-                  skippedInvalidAmounts += 1;
-                  return;
-              }
-              if (inVal !== null && inVal > 0) {
-                  amount = inVal;
-                  type = "Income";
-                  sawAmount = true;
-              } else if (outVal !== null && outVal !== 0) {
-                  amount = Math.abs(outVal);
-                  type = "Expenditure";
-                  sawAmount = true;
-              }
-          } else {
-              const amountStr = row[amountIdx] || "";
-              if (!amountStr.trim()) return;
-              const parsedAmount = parseAmountString(amountStr);
-              if (parsedAmount === null || parsedAmount === 0) {
-                  skippedInvalidAmounts += 1;
-                  return;
-              }
-              type = parsedAmount >= 0 ? "Income" : "Expenditure";
-              amount = Math.abs(parsedAmount);
-              sawAmount = true;
-          }
-
-          if (!sawAmount || amount === 0) return;
-          parsed.push(applySmallIncomeDefaults({
-              reviewRowId: crypto.randomUUID(),
-              date: dateStr,
-              description,
-              amount,
-              type,
-              category: "",
-          }, categories, funds));
-      });
-
-      if (skippedInvalidAmounts > 0) {
-          notify("Invalid amounts", `${skippedInvalidAmounts} row${skippedInvalidAmounts === 1 ? "" : "s"} had an amount that could not be read and ${skippedInvalidAmounts === 1 ? "was" : "were"} left out.`);
-      }
+      const { rows, skipped, errors } = mapStatementRows(csvRows, csvHeaders, columnMapping, useSplitAmount);
+      const parsed: Array<PendingReviewTransaction & StatementRow> = rows.map((row) => applySmallIncomeDefaults({
+          reviewRowId: crypto.randomUUID(),
+          date: row.date,
+          description: row.description,
+          amount: row.amount,
+          type: row.type,
+          category: "",
+      }, categories, funds));
 
       const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(withImportKeys(parsed), transactions);
+      if (fresh.length > MAX_IMPORT_ROWS) {
+          notify("Too many transactions", `This file has ${fresh.length} transactions. Import up to ${MAX_IMPORT_ROWS} at a time — split the file by date range.`);
+          return;
+      }
+      const leftOut = describeLeftOutRows({ skipped, errors });
+      if (leftOut) notify("Rows left out", leftOut);
 
       setDuplicateWarnings(possibleDuplicates);
       setAlreadyImportedRows(alreadyImported);
@@ -774,7 +681,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       setShowColumnMapper(false);
       setShowReviewModal(true);
   };
-  // --------------------
 
   const clearBankSyncReviewState = () => {
     categorizationRun.current += 1;
@@ -1107,8 +1013,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
     const importRows = pendingTransactions.map((transaction) => applySmallIncomeDefaults(transaction, categories, funds));
     setPendingTransactions(importRows);
-    if (importRows.some((transaction) => !resolveAssignableCategory(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) || !funds.some((fund) => fund._id === transaction.fundId) || !isRealIsoDate(transaction.date || ""))) {
-      notify("Error", "Every row needs a real date, a valid category and a valid fund before import.");
+    const problems = importRows.flatMap((transaction) => {
+      const reason = !resolveAssignableCategory(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) ? 'Choose a category for'
+        : !funds.some((fund) => fund._id === transaction.fundId) ? 'Choose a fund for'
+        : !isRealIsoDate(transaction.date || "") ? 'Check the date for'
+        : null;
+      return reason ? [{ reason, label: `"${transaction.description || 'Untitled'}" (${transaction.date || 'no date'})` }] : [];
+    });
+    if (problems.length > 0) {
+      const detail = [...new Set(problems.map((problem) => problem.reason))].map((reason) => {
+        const labels = problems.filter((problem) => problem.reason === reason).map((problem) => problem.label);
+        return `${reason}: ${labels.slice(0, 5).join(", ")}${labels.length > 5 ? ` and ${labels.length - 5} more` : ""}`;
+      });
+      notify("Error", `Every row needs a real date, a valid category and a valid fund before import. ${detail.join(". ")}.`);
       return;
     }
 
@@ -2154,9 +2071,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {csvRows.slice(0, 3).map((row, i) => (
-                                        <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-paper/50 transition-colors">
-                                            {row.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-grey-dark whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
+                                    {csvRows.slice(0, 3).map((record) => (
+                                        <tr key={record.line} className="border-b border-slate-50 last:border-0 hover:bg-paper/50 transition-colors">
+                                            {record.cells.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-grey-dark whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -2632,7 +2549,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 if (e.target.value) {
                                     setPendingTransactions(prev => prev.map(t => ({
                                         ...t,
-                                        category: 'Donation',
                                         fundId: e.target.value
                                     })));
                                 }

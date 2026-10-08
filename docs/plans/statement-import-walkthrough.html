@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Statement import walkthrough — plan & mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #1c1917; --paper: #faf9f7; --charcoal: #2a2522; --ledger: #e7e5e1;
+    --grey-dark: #44403c; --grey-mid: #78716c; --grey-light: #f7f6f4; --line: #efeee9;
+    --sage: #557555; --sage-light: #eef3ee; --sage-mid: #cfddcf;
+    --amber: #a9743f; --amber-light: #faf2e9; --amber-mid: #ecd9c2;
+    --error: #b53d3d; --error-light: #fbeded;
+    --shadow-soft: 0 1px 2px rgba(28,25,23,.04), 0 8px 24px -12px rgba(28,25,23,.14);
+    --shadow-lg: 0 2px 4px rgba(28,25,23,.04), 0 24px 48px -20px rgba(28,25,23,.28);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 "DM Sans", system-ui, sans-serif; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 8px 0 12px; }
+  h2 { font-size: 26px; letter-spacing: -0.015em; margin: 0 0 6px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); }
+  .lede { font-size: 18px; color: var(--grey-dark); max-width: 760px; }
+  .muted { color: var(--grey-mid); }
+  section { margin-top: 72px; }
+  .sec-head { display: flex; gap: 14px; align-items: baseline; margin-bottom: 18px; }
+  .sec-num { font: 700 13px "JetBrains Mono", monospace; color: var(--sage); }
+  .card { background: #fff; border: 1px solid var(--ledger); border-radius: 16px; box-shadow: var(--shadow-soft); padding: 22px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  nav.toc a { text-decoration: none; color: var(--grey-dark); font-size: 13px; font-weight: 600; border: 1px solid var(--ledger); background: #fff; padding: 7px 12px; border-radius: 999px; }
+  nav.toc a:hover { border-color: #c9c5be; }
+
+  /* tags */
+  .tag { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+  .t-sage { background: var(--sage-light); color: var(--sage); }
+  .t-amber { background: var(--amber-light); color: var(--amber); }
+  .t-red { background: var(--error-light); color: var(--error); }
+  .t-grey { background: var(--grey-light); color: var(--grey-dark); border: 1px solid var(--ledger); }
+
+  /* today: journey strip */
+  .journey { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .journey { grid-template-columns: 1fr 1fr; } }
+  .jstep { position: relative; background: #fff; border: 1px solid var(--ledger); border-radius: 14px; padding: 14px; }
+  .jstep .mini { height: 120px; border-radius: 10px; background: var(--grey-light); border: 1px solid var(--line); margin: 10px 0; position: relative; overflow: hidden; padding: 10px; }
+  .pin { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--error); color: #fff; font: 700 11px "JetBrains Mono", monospace; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px #fff; }
+  .pin.amber { background: var(--amber); }
+  .bar { height: 7px; border-radius: 4px; background: #e2dfd9; margin-bottom: 6px; }
+  .bar.dk { background: #c9c5be; }
+  .sel { height: 16px; border-radius: 5px; border: 1px solid #d6d3cd; background: #fff; margin-bottom: 6px; }
+  table.friction { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.friction th { text-align: left; font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--grey-mid); padding: 10px 10px; border-bottom: 1px solid var(--ledger); }
+  table.friction td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.friction td:first-child { width: 36px; }
+  table.friction code { font: 500 12px "JetBrains Mono", monospace; background: var(--grey-light); border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; white-space: nowrap; }
+
+  /* new flow overview */
+  .flow { display: flex; gap: 0; align-items: stretch; overflow-x: auto; padding-bottom: 6px; }
+  .fnode { flex: 1 0 150px; background: #fff; border: 1px solid var(--ledger); border-radius: 14px; padding: 14px; position: relative; margin-right: 26px; }
+  .fnode:not(:last-child)::after { content: "→"; position: absolute; right: -21px; top: 50%; transform: translateY(-50%); color: var(--grey-mid); font-weight: 700; }
+  .fnode .n { font: 700 12px "JetBrains Mono", monospace; color: var(--sage); }
+  .fnode h4 { margin: 4px 0 4px; font-size: 15px; }
+  .fnode p { font-size: 12.5px; color: var(--grey-mid); margin: 0; }
+  .fnode.skip { border-style: dashed; background: transparent; }
+  .fnode .skipnote { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--amber); }
+
+  /* mockup frame */
+  .step-block { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 24px; align-items: start; margin-top: 18px; }
+  @media (max-width: 1080px) { .step-block { grid-template-columns: 1fr; } }
+  .notes { position: sticky; top: 18px; }
+  .notes ol { margin: 0; padding-left: 0; list-style: none; counter-reset: n; }
+  .notes li { counter-increment: n; position: relative; padding-left: 32px; margin-bottom: 14px; font-size: 14px; color: var(--grey-dark); }
+  .notes li::before { content: counter(n); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; font: 700 11px "JetBrains Mono", monospace; display: flex; align-items: center; justify-content: center; }
+  .notes li b { color: var(--ink); }
+  .reuse { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--sage-light); border: 1px solid var(--sage-mid); font-size: 13px; color: var(--grey-dark); }
+  .reuse code { font: 500 11.5px "JetBrains Mono", monospace; }
+
+  .window { background: var(--paper); border: 1px solid var(--ledger); border-radius: 22px; box-shadow: var(--shadow-lg); overflow: hidden; display: grid; grid-template-columns: 176px minmax(0, 1fr) 212px; min-height: 560px; }
+  @media (max-width: 820px) { .window { grid-template-columns: 1fr; } .rail, .receipt-col { display: none; } }
+  .rail { border-right: 1px solid var(--ledger); padding: 22px 12px; background: #f4f3f0; }
+  .rail .ttl { font-weight: 700; font-size: 14px; margin-bottom: 18px; }
+  .rail .r { white-space: nowrap; display: flex; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 10px; font-size: 13px; color: var(--grey-mid); font-weight: 600; }
+  .rail .r .dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #d6d3cd; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; background: #fff; }
+  .rail .r.done { color: var(--grey-dark); }
+  .rail .r.done .dot { background: var(--sage); border-color: var(--sage); color: #fff; }
+  .rail .r.now { background: #fff; color: var(--ink); box-shadow: var(--shadow-soft); }
+  .rail .r.now .dot { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .rail .r.skipped { opacity: .55; text-decoration: line-through; }
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .mhead { display: flex; align-items: center; padding: 16px 20px 0; gap: 8px; }
+  .mhead .back, .mhead .x { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--grey-dark); font-size: 18px; }
+  .mhead .t { flex: 1; text-align: center; font-weight: 700; font-size: 14px; }
+  .progress { display: flex; gap: 4px; padding: 10px 20px 0; }
+  .progress span { height: 4px; flex: 1; border-radius: 4px; background: var(--ledger); }
+  .progress .d { background: var(--sage); } .progress .c { background: var(--ink); }
+  .mbody { flex: 1; padding: 18px 26px 18px; overflow: hidden; }
+  .screen-title { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+  .screen-help { font-size: 13.5px; color: var(--grey-mid); margin: 6px 0 16px; }
+  .mfoot { border-top: 1px solid var(--ledger); padding: 14px 20px; display: flex; align-items: center; gap: 14px; background: #fff; }
+  .mfoot .sum { flex: 1; font-size: 12px; color: var(--grey-mid); }
+  .mfoot .sum b { white-space: nowrap; display: block; color: var(--ink); font: 700 16px "JetBrains Mono", monospace; }
+  .btn { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 20px; border-radius: 16px; font-weight: 700; font-size: 14px; border: 0; cursor: default; }
+  .btn-primary { background: var(--ink); color: #fff; box-shadow: 0 8px 18px -10px rgba(28,25,23,.6); }
+  .btn-outline { background: #fff; border: 1px solid var(--ledger); color: var(--ink); }
+  .btn-sage { background: var(--sage); color: #fff; }
+  .btn-sm { height: 34px; padding: 0 12px; font-size: 12.5px; border-radius: 11px; }
+  .link { color: var(--sage); font-weight: 700; font-size: 13px; }
+
+  .receipt-col { border-left: 1px solid var(--ledger); padding: 22px 16px; background: #f4f3f0; }
+  .rcpt { position: relative; background: #fff; border: 1px solid var(--ledger); border-radius: 18px; padding: 14px 14px 8px; box-shadow: var(--shadow-soft); }
+  .rcpt::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -7px; height: 7px; background: radial-gradient(circle at 6px 0, transparent 5px, #fff 5.5px); background-size: 12px 7px; background-repeat: repeat-x; }
+  .rcpt .h { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); margin-bottom: 8px; }
+  .rcpt .file { font-size: 12.5px; font-weight: 700; margin-bottom: 2px; word-break: break-all; }
+  .rcpt .sub { font-size: 11.5px; color: var(--grey-mid); margin-bottom: 10px; }
+  .rline { gap: 8px; display: flex; justify-content: space-between; font-size: 12.5px; padding: 6px 0; border-top: 1px dashed var(--ledger); color: var(--grey-dark); }
+  .rline b { white-space: nowrap; font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--ink); }
+  .rline.pos b { color: var(--sage); } .rline.warn b { color: var(--amber); } .rline.dim { color: var(--grey-mid); }
+  .rline.total { border-top: 1.5px solid var(--ink); margin-top: 4px; font-weight: 700; color: var(--ink); }
+
+  /* step-specific */
+  .drop { border: 2px dashed #cfcac2; border-radius: 18px; background: #fff; padding: 28px 20px; text-align: center; }
+  .drop .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--sage-light); color: var(--sage); margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+  .drop h4 { margin: 0 0 4px; font-size: 16px; }
+  .drop p { font-size: 13px; color: var(--grey-mid); margin: 0; }
+  .field-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); margin: 18px 0 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--ledger); background: #fff; font-size: 13px; font-weight: 600; color: var(--grey-dark); }
+  .chip.on { border-color: var(--ink); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .chip.dash { border-style: dashed; color: var(--grey-mid); }
+  .help-acc { margin-top: 16px; border: 1px solid var(--ledger); border-radius: 14px; background: #fff; }
+  .help-acc .hd { display: flex; justify-content: space-between; padding: 12px 14px; font-size: 13.5px; font-weight: 700; }
+  .help-acc .bd { padding: 0 14px 14px; font-size: 12.5px; color: var(--grey-dark); }
+  .bankrow { display: grid; grid-template-columns: 100px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .bankrow b { font-size: 12.5px; }
+
+  .banner { display: flex; gap: 10px; align-items: flex-start; border-radius: 14px; padding: 12px 14px; font-size: 13px; margin-bottom: 14px; }
+  .banner.sage { background: var(--sage-light); border: 1px solid var(--sage-mid); color: var(--grey-dark); }
+  .banner.amber { background: var(--amber-light); border: 1px solid var(--amber-mid); color: var(--grey-dark); }
+  .banner .i { font-size: 16px; line-height: 1.2; }
+  .banner b { color: var(--ink); }
+
+  .colmap { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .cm { display: grid; grid-template-columns: 120px 18px 1fr auto; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--ledger); border-radius: 12px; padding: 9px 12px; font-size: 13px; }
+  .cm .k { font-weight: 700; }
+  .cm .arrow { color: var(--grey-mid); }
+  .cm .v { white-space: nowrap; font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--grey-dark); background: var(--grey-light); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  .cm.ask { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-light); }
+  .translate { margin-top: 14px; display: grid; grid-template-columns: 1fr 26px 1fr; align-items: center; gap: 8px; }
+  .tbox { background: #fff; border: 1px solid var(--ledger); border-radius: 12px; padding: 10px 12px; font-size: 12px; }
+  .tbox .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--grey-mid); margin-bottom: 6px; }
+  .tbox .raw { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--grey-dark); line-height: 1.6; }
+  .tx { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .tx .d { font-weight: 600; font-size: 13px; }
+  .tx .a { font: 700 13px "JetBrains Mono", monospace; }
+  .tx .a.in { color: var(--sage); }
+  .tx .a.out { color: var(--ink); }
+
+  .acct { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  .acct div { background: #fff; border: 1px solid var(--ledger); border-radius: 12px; padding: 10px; }
+  .acct b { white-space: nowrap; display: block; font: 700 18px "JetBrains Mono", monospace; }
+  .acct span { font-size: 11.5px; color: var(--grey-mid); }
+  .acct .warn b { color: var(--amber); }
+  .fix { background: #fff; border: 1px solid var(--ledger); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+  .fix .top { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--grey-mid); }
+  .fix .why { font-size: 13.5px; font-weight: 600; margin: 6px 0 8px; }
+  .fix .raw { font: 500 11.5px "JetBrains Mono", monospace; background: var(--error-light); color: var(--error); border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; }
+  .fix .row { display: flex; gap: 8px; align-items: center; }
+  .inp { height: 36px; border: 1.5px solid var(--ledger); border-radius: 10px; padding: 0 10px; font-size: 13px; display: flex; align-items: center; background: #fff; min-width: 0; }
+  .inp.focus { border-color: var(--ink); }
+  .inp.grow { flex: 1; }
+
+  .buckets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .bucket { border-radius: 14px; padding: 10px 12px; border: 1px solid var(--ledger); background: #fff; }
+  .bucket b { font: 700 20px "JetBrains Mono", monospace; display: block; }
+  .bucket span { font-size: 12px; color: var(--grey-mid); }
+  .bucket.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .bucket.s b { color: var(--sage); } .bucket.l b { color: var(--grey-dark); } .bucket.n b { color: var(--amber); }
+  .focuscard { background: #fff; border: 1px solid var(--ledger); border-radius: 18px; padding: 16px; box-shadow: var(--shadow-soft); }
+  .focuscard .meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--grey-mid); }
+  .focuscard .desc { font-size: 17px; font-weight: 700; margin: 6px 0 2px; }
+  .focuscard .amt { font: 700 22px "JetBrains Mono", monospace; color: var(--sage); }
+  .sugg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .sugg .chip { height: 36px; }
+  .group { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--grey-light); border: 1px solid var(--line); font-size: 12.5px; color: var(--grey-dark); display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .kbd { font: 700 10.5px "JetBrains Mono", monospace; border: 1px solid #d6d3cd; border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; background: #fff; color: var(--grey-dark); }
+
+  .rows { margin-top: 12px; border: 1px solid var(--ledger); border-radius: 14px; background: #fff; overflow: hidden; }
+  .rowi { display: grid; grid-template-columns: 52px minmax(0, 1fr) 82px 130px; gap: 10px; align-items: center; padding: 9px 12px; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .rowi:first-child { border-top: 0; }
+  .rowi .dt { font: 500 11.5px "JetBrains Mono", monospace; color: var(--grey-mid); }
+  .rowi .ds { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  .rowi .am { font: 700 12px "JetBrains Mono", monospace; text-align: right; }
+  .pill { display: inline-flex; justify-content: space-between; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--ledger); background: var(--paper); font-size: 12px; font-weight: 700; color: var(--grey-dark); white-space: nowrap; overflow: hidden; }
+  .pill.sure { background: var(--sage-light); border-color: var(--sage-mid); color: var(--sage); }
+
+  .check-big { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .check-big div { background: #fff; border: 1px solid var(--ledger); border-radius: 14px; padding: 12px; }
+  .check-big b { white-space: nowrap; display: block; font: 700 19px "JetBrains Mono", monospace; }
+  .check-big span { font-size: 12px; color: var(--grey-mid); }
+  .balance { background: var(--ink); color: #fff; border-radius: 18px; padding: 16px; margin-bottom: 14px; }
+  .balance .h { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #b9b3ab; font-weight: 700; }
+  .balance .eq { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font: 700 15px "JetBrains Mono", monospace; margin: 8px 0 6px; }
+  .balance .eq span.op { color: #8f877e; }
+  .balance .ok { color: #a9cfa9; font-size: 13px; font-weight: 700; }
+  .fundsplit .fl { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .fundsplit .fl:first-child { border-top: 0; }
+  .fundsplit .fl b { font-family: "JetBrains Mono", monospace; }
+
+  .done { text-align: center; padding-top: 20px; }
+  .done .tick { width: 64px; height: 64px; border-radius: 50%; background: var(--sage); color: #fff; font-size: 30px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+  .next { text-align: left; display: grid; gap: 8px; margin-top: 18px; }
+  .next a { display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: var(--ink); background: #fff; border: 1px solid var(--ledger); border-radius: 14px; padding: 12px 14px; font-weight: 600; font-size: 14px; }
+  .next a span { font-size: 12px; color: var(--grey-mid); font-weight: 500; display: block; }
+
+  /* phone */
+  .phone { width: 300px; border: 10px solid var(--ink); border-radius: 40px; background: var(--paper); overflow: hidden; box-shadow: var(--shadow-lg); margin: 0 auto; }
+  .phone .in { padding: 16px 14px 18px; min-height: 560px; display: flex; flex-direction: column; }
+  .phone .notch { width: 90px; height: 20px; background: var(--ink); border-radius: 0 0 14px 14px; margin: -16px auto 12px; }
+
+  /* comparison & plan */
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.cmp th, table.cmp td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  table.cmp th { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--grey-mid); }
+  table.cmp td.b { color: var(--grey-mid); }
+  table.cmp td.a { font-weight: 600; }
+  .phase { position: relative; padding-left: 28px; border-left: 2px solid var(--ledger); margin-left: 10px; padding-bottom: 26px; }
+  .phase:last-child { padding-bottom: 0; }
+  .phase::before { content: ""; position: absolute; left: -9px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid var(--ink); }
+  .phase h3 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .phase ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; color: var(--grey-dark); }
+  .phase li { margin-bottom: 5px; }
+  .phase code, .q code { font: 500 12px "JetBrains Mono", monospace; background: var(--grey-light); border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; }
+  .q { border-left: 3px solid var(--amber); padding: 4px 0 4px 14px; margin-bottom: 16px; }
+  .q h4 { margin: 0 0 4px; font-size: 15px; }
+  .q p { font-size: 14px; color: var(--grey-dark); margin: 0; }
+  .q .rec { margin-top: 6px; font-size: 13px; color: var(--sage); font-weight: 700; }
+  footer { margin-top: 80px; font-size: 12px; color: var(--grey-mid); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">ChurchCoin · Plan · 8 October 2026</div>
+  <h1>Importing a bank statement, as a guided walkthrough</h1>
+  <p class="lede">Today a CSV upload is two dense modals: a column-mapping grid, then a 100-row review table where every row needs a dropdown. This plan turns it into a short walkthrough in the same style as the cash-recording wizard (#55). The app does the reading, matching and categorising. The treasurer is asked only about what it couldn't settle, and the last screen proves nothing was dropped.</p>
+  <nav class="toc">
+    <a href="#today">1 · What happens today</a>
+    <a href="#principles">2 · Design principles</a>
+    <a href="#flow">3 · The new flow</a>
+    <a href="#s-upload">4 · Screens</a>
+    <a href="#mobile">5 · On a phone</a>
+    <a href="#compare">6 · Before / after</a>
+    <a href="#build">7 · Build plan</a>
+    <a href="#decide">8 · Decisions for you</a>
+  </nav>
+
+  <!-- ───────────── 1. TODAY ───────────── -->
+  <section id="today">
+    <div class="sec-head"><span class="sec-num">01</span><h2>What happens today</h2></div>
+    <p class="muted" style="max-width:780px">Reviewed against <span class="mono">origin/main</span> (<span class="mono">4c776d9</span>). The import lives inside <span class="mono">components/TransactionManager.tsx</span> (≈2,800 lines): <span class="mono">handleFileUpload</span> → <span class="mono">handleProcessMapping</span> → Review modal → <span class="mono">handleConfirmImport</span>. Newer pieces (import keys, duplicate screening, transfer pairing, small-income defaults) are solid and get reused in the new flow.</p>
+
+    <div class="journey" style="margin-top:18px">
+      <div class="jstep">
+        <div class="eyebrow">Screen 1</div><b>“Import CSV” button</b>
+        <div class="mini">
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span class="sel" style="width:46px"></span><span class="sel" style="width:46px"></span><span class="sel" style="width:52px;border-color:#1c1917"></span><span class="sel" style="width:46px"></span><span class="sel" style="width:52px;background:#1c1917"></span>
+          </div>
+          <div class="bar" style="width:70%;margin-top:10px"></div><div class="bar" style="width:50%"></div>
+          <span class="pin" style="left:62px;top:4px">1</span>
+          <span class="pin" style="right:12px;bottom:12px">2</span>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:0">One of six header buttons. Opens the OS file picker straight away.</p>
+      </div>
+      <div class="jstep">
+        <div class="eyebrow">Screen 2</div><b>Map CSV Columns modal</b>
+        <div class="mini">
+          <div style="display:flex;gap:6px"><div class="sel" style="flex:1"></div><div class="sel" style="flex:1"></div><div class="sel" style="flex:1"></div></div>
+          <div class="bar dk" style="margin-top:8px"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+          <span class="pin" style="left:8px;top:28px">3</span>
+          <span class="pin amber" style="right:10px;top:4px">4</span>
+          <span class="pin" style="right:30px;bottom:10px">5</span>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:0">10px uppercase labels, three raw preview rows, “Process Import”.</p>
+      </div>
+      <div class="jstep">
+        <div class="eyebrow">Screen 3</div><b>Review Import modal</b>
+        <div class="mini">
+          <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:6px"><span class="sel" style="width:60px;border-color:#a9743f"></span><span class="sel" style="width:50px;background:#eef3ee"></span></div>
+          <div style="display:grid;grid-template-columns:1fr 40px 40px;gap:4px"><div class="bar"></div><div class="sel"></div><div class="sel"></div><div class="bar"></div><div class="sel"></div><div class="sel"></div><div class="bar"></div><div class="sel"></div><div class="sel"></div><div class="bar"></div><div class="sel"></div><div class="sel"></div></div>
+          <span class="pin" style="right:70px;top:2px">6</span>
+          <span class="pin" style="right:8px;top:2px">7</span>
+          <span class="pin" style="left:8px;bottom:8px">8</span>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:0">Every row is a pair of dropdowns. AI only runs if you press it.</p>
+      </div>
+      <div class="jstep">
+        <div class="eyebrow">Screen 4</div><b>Confirm → modal closes</b>
+        <div class="mini" style="display:flex;align-items:center;justify-content:center">
+          <div style="background:#fff;border:1px solid #e7e5e1;border-radius:8px;padding:8px 10px;font-size:11px;color:#78716c">Toast: “Duplicates skipped”</div>
+          <span class="pin" style="left:10px;top:10px">9</span>
+          <span class="pin amber" style="right:10px;bottom:10px">10</span>
+        </div>
+        <p class="muted" style="font-size:12.5px;margin:0">No summary, no next step, no proof the file was read in full.</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px;padding:8px 14px">
+      <table class="friction">
+        <thead><tr><th></th><th>Friction</th><th>Where</th><th>Effect on a volunteer treasurer</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pin" style="position:static">1</span></td><td><b>No guidance before the file picker.</b> Nothing says which file to download from the bank or what format works.</td><td><code>TransactionManager.tsx:1338</code></td><td>Trial and error. Some first try a PDF statement.</td></tr>
+          <tr><td><span class="pin" style="position:static">2</span></td><td><b>Only <span class="mono">.csv</span>, no drag-and-drop.</b> SheetJS is already a dependency, so <span class="mono">.xlsx</span> would be cheap to accept.</td><td><code>accept=".csv"</code></td><td>Excel exports have to be re-saved first.</td></tr>
+          <tr><td><span class="pin" style="position:static">3</span></td><td><b>A regex line splitter stands in for a CSV parser.</b> It splits on newlines first, so quoted fields with line breaks break. It treats the first line as the header, so statements with account-info lines above the header (Nationwide-style) and files with no header row (HSBC-style) come out as nonsense columns.</td><td><code>handleFileUpload</code></td><td>“CSV contains empty headers”, or a mapping screen full of transaction values.</td></tr>
+          <tr><td><span class="pin amber" style="position:static">4</span></td><td><b>The mapping is asked for every time.</b> Auto-guess helps, but every field is still shown as a decision, and nothing is remembered for next month's file from the same bank.</td><td>Mapping modal</td><td>The same five checks every month.</td></tr>
+          <tr><td><span class="pin" style="position:static">5</span></td><td><b>No live “this is what we'll create” preview.</b> The preview shows raw cells, not the interpreted date, sign and type, so a flipped in/out mapping shows up only in the review.</td><td>Mapping modal</td><td>Wrong-way money discovered late, or never.</td></tr>
+          <tr><td><span class="pin" style="position:static">6</span></td><td><b>“Assign to Campaign…” overwrites every row</b> with category <span class="mono">Donation</span> and that fund, expenditure included. <span class="mono">Donation</span> may not exist in the church's catalogue.</td><td>Review header</td><td>One click silently mislabels a whole statement. (This is a bug and should be fixed separately.)</td></tr>
+          <tr><td><span class="pin" style="position:static">7</span></td><td><b>Categorisation is opt-in and confidence is hidden.</b> The AI result (source + confidence) goes into <span class="mono">notes</span> but isn't shown, so a sure rule match and a guess look the same.</td><td><code>handleApplyAI</code></td><td>The treasurer re-checks all 130 rows, or none.</td></tr>
+          <tr><td><span class="pin" style="position:static">8</span></td><td><b>Rows disappear silently and errors are generic.</b> Blank-description and blank-amount rows are dropped without a count. Bad dates pass through as raw text, then Confirm says “Every row needs a real date and a category” without naming the rows.</td><td><code>handleProcessMapping</code>, <code>handleConfirmImport</code></td><td>The treasurer can't tell if the import is complete or what to fix.</td></tr>
+          <tr><td><span class="pin" style="position:static">9</span></td><td><b>The 500-row limit is enforced only by the server</b>, after the wait for categorisation, and Discard has no confirmation.</td><td><code>bulkCreate</code> (server)</td><td>A year's statement fails at the last step. Work is easy to lose.</td></tr>
+          <tr><td><span class="pin amber" style="position:static">10</span></td><td><b>No ending.</b> The modal closes. There's no summary, no link to reconcile this statement, no “what's next”.</td><td>After confirm</td><td>“Did it work?”</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ───────────── 2. PRINCIPLES ───────────── -->
+  <section id="principles">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Design principles</h2></div>
+    <div class="grid-3">
+      <div class="card"><h3>Ask only what the app can't work out</h3><p class="muted" style="margin:0">Detected columns are shown as settled facts with an “edit” link, not as blank dropdowns. Steps with nothing to ask are skipped and shown struck through on the rail.</p></div>
+      <div class="card"><h3>Every row is accounted for</h3><p class="muted" style="margin:0">Rows read = new + already imported + skipped (with reason) + needs fixing. If there is a balance column, the last screen checks the parsed rows against it.</p></div>
+      <div class="card"><h3>Confidence decides attention</h3><p class="muted" style="margin:0">Sure matches (rules, memory) are collapsed. Likely matches get a glance. Only “needs you” rows get a card each, one at a time, with keyboard shortcuts.</p></div>
+      <div class="card"><h3>Plain words, big targets</h3><p class="muted" style="margin:0">Same type scale and 46–54px buttons as the cash walkthrough. “Money in / Money out”, not “Credit / Debit”. No 10px all-caps labels.</p></div>
+      <div class="card"><h3>Learn once, reuse monthly</h3><p class="muted" style="margin:0">The column layout is remembered per header signature, so next month's file from the same bank skips the columns step.</p></div>
+      <div class="card"><h3>One review for bank sync and files</h3><p class="muted" style="margin:0">Yapily sync lands in the same Categorise → Check → Done steps. One code path, one mental model.</p></div>
+    </div>
+  </section>
+
+  <!-- ───────────── 3. FLOW ───────────── -->
+  <section id="flow">
+    <div class="sec-head"><span class="sec-num">03</span><h2>The new flow</h2></div>
+    <p class="muted">Five steps and a finish. Dashed steps only appear when there's something to ask.</p>
+    <div class="flow" style="margin-top:14px">
+      <div class="fnode"><div class="n">1</div><h4>Add statement</h4><p>Drop the file and pick the account. Bank-by-bank export tips are here.</p></div>
+      <div class="fnode skip"><div class="n">2</div><h4>Check columns</h4><p>Confirm what was detected and see a live preview of the result.</p><div class="skipnote">Skipped when the layout is remembered</div></div>
+      <div class="fnode skip"><div class="n">3</div><h4>Fix rows</h4><p>Fix or leave out the rows that couldn't be read, with the reason shown.</p><div class="skipnote">Skipped when every row reads cleanly</div></div>
+      <div class="fnode"><div class="n">4</div><h4>Categorise</h4><p>Runs automatically. Answer only the “needs you” rows.</p></div>
+      <div class="fnode"><div class="n">5</div><h4>Check & import</h4><p>Totals, fund split, balance proof, duplicates. One button.</p></div>
+      <div class="fnode" style="background:var(--sage-light);border-color:var(--sage-mid)"><div class="n">✓</div><h4>Done</h4><p>What was added, then reconcile it or import another file.</p></div>
+    </div>
+  </section>
+
+  <!-- ───────────── 4. SCREENS ───────────── -->
+  <section id="s-upload">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Screens</h2></div>
+    <p class="muted">Sample church, sample March statement: 142 rows. Desktop layout uses the cash wizard's three columns (step rail · step · running receipt).</p>
+
+    <!-- STEP 1 -->
+    <h3 style="margin-top:34px">Step 1 · Add statement</h3>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Import statement</div>
+          <div class="r now"><span class="dot">1</span>Add statement</div>
+          <div class="r"><span class="dot">2</span>Check columns</div>
+          <div class="r"><span class="dot">3</span>Fix rows</div>
+          <div class="r"><span class="dot">4</span>Categorise</div>
+          <div class="r"><span class="dot">5</span>Check & import</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back"></span><div class="t">Import statement</div><span class="x">×</span></div>
+          <div class="progress"><span class="c"></span><span></span><span></span><span></span><span></span></div>
+          <div class="mbody">
+            <div class="screen-title">Add your bank statement</div>
+            <div class="screen-help">Download a CSV or Excel file from online banking. We'll read it, sort it and show you everything before anything is saved.</div>
+            <div class="drop">
+              <div class="ic">⇪</div>
+              <h4>Drop the file here, or <span style="color:var(--sage)">choose a file</span></h4>
+              <p>.csv, .xlsx · up to 2,000 rows · nothing is saved yet</p>
+            </div>
+            <div class="field-label">Which account is it from?</div>
+            <div class="chips">
+              <span class="chip on">● Main account · Lloyds ••4471</span>
+              <span class="chip">Building fund · CAF Bank ••0912</span>
+              <span class="chip dash">+ Another account</span>
+            </div>
+            <div class="help-acc">
+              <div class="hd"><span>How do I download this from my bank?</span><span>⌄</span></div>
+              <div class="bd">
+                <div class="bankrow"><b>Lloyds</b><span>Statements → Export → choose dates → <i>Comma separated (CSV)</i></span></div>
+                <div class="bankrow"><b>Barclays</b><span>Statements → Export → <i>CSV</i></span></div>
+                <div class="bankrow"><b>CAF Bank</b><span>Account → Statements → <i>Download as CSV</i></span></div>
+                <div class="bankrow"><b>Other bank</b><span>Look for “Export”, “Download transactions” or “CSV”. PDF statements won't work.</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mfoot"><div class="sum">Waiting for a file</div><span class="btn btn-primary" style="opacity:.35">Read statement →</span></div>
+        </div>
+        <aside class="receipt-col">
+          <div class="rcpt"><div class="h">This statement</div><div class="sub">Nothing added yet</div>
+            <div class="rline dim"><span>Rows read</span><b>—</b></div>
+            <div class="rline dim"><span>Money in</span><b>—</b></div>
+            <div class="rline dim"><span>Money out</span><b>—</b></div>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>File import only.</b> “Sync Bank” stays its own button: it pulls from the bank feed rather than a file. Both share the Categorise → Check → Done steps.</li>
+          <li><b>Account picker</b> keeps a remembered layout per account and gives transfer pairing a known “from” side. The chips are the church's funds/bank connections. No new concept for v1.</li>
+          <li><b>Bank tips</b> are static copy, collapsed by default. Instruction wording should be checked against each bank before shipping.</li>
+          <li>Dropping a file reads it at once. The button is a fallback.</li>
+        </ol>
+        <div class="reuse">Reuses <code>WizardRail</code>, progress bar, <code>StepFooter</code> and <code>ui.tsx</code> classes from <code>components/cashEntry/</code>, moved to a shared <code>components/wizard/</code> so they aren't copied.</div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <h3 id="s-columns" style="margin-top:56px">Step 2 · Check columns <span class="tag t-amber" style="vertical-align:middle">only when needed</span></h3>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Import statement</div>
+          <div class="r done"><span class="dot">✓</span>Add statement</div>
+          <div class="r now"><span class="dot">2</span>Check columns</div>
+          <div class="r"><span class="dot">3</span>Fix rows</div>
+          <div class="r"><span class="dot">4</span>Categorise</div>
+          <div class="r"><span class="dot">5</span>Check & import</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back">‹</span><div class="t">Import statement</div><span class="x">×</span></div>
+          <div class="progress"><span class="d"></span><span class="c"></span><span></span><span></span><span></span></div>
+          <div class="mbody">
+            <div class="screen-title">We've matched your columns</div>
+            <div class="screen-help">Check one thing below. The preview shows exactly what row 1 will become.</div>
+            <div class="colmap">
+              <div class="cm"><span class="k">Date</span><span class="arrow">←</span><span><span class="v">Transaction Date</span></span><span class="link">Change</span></div>
+              <div class="cm"><span class="k">Description</span><span class="arrow">←</span><span><span class="v">Transaction Description</span></span><span class="link">Change</span></div>
+              <div class="cm"><span class="k">Money in</span><span class="arrow">←</span><span><span class="v">Credit Amount</span></span><span class="link">Change</span></div>
+              <div class="cm"><span class="k">Money out</span><span class="arrow">←</span><span><span class="v">Debit Amount</span></span><span class="link">Change</span></div>
+              <div class="cm ask"><span class="k">Reference</span><span class="arrow">?</span><span style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip on" style="height:30px;font-size:12px">Add to description</span><span class="chip" style="height:30px;font-size:12px">Ignore it</span></span><span class="tag t-amber">Check</span></div>
+            </div>
+            <div class="translate">
+              <div class="tbox"><div class="lbl">Row 1 in your file</div><div class="raw">01/03/2026 · FPS · J ADEYEMI · Ref: TITHE<br/>Debit: — · Credit: 250.00 · Bal: 13,190.11</div></div>
+              <div style="text-align:center;color:var(--grey-mid);font-weight:700">→</div>
+              <div class="tbox"><div class="lbl">Becomes</div><div class="tx"><span class="d">J ADEYEMI · TITHE</span><span class="a in">+£250.00</span></div><div style="font-size:11.5px;color:var(--grey-mid);margin-top:2px">Sun 1 March 2026 · Money in</div></div>
+            </div>
+            <p style="font-size:12px;color:var(--grey-mid);margin-top:12px">Ignored: Transaction Type, Sort Code, Account Number. <b style="color:var(--grey-dark)">Balance</b> is used to check the import at the end.</p>
+          </div>
+          <div class="mfoot"><div class="sum"><b>142 rows</b>found under the header on line 1</div><span class="btn btn-primary">Looks right →</span></div>
+        </div>
+        <aside class="receipt-col">
+          <div class="rcpt"><div class="h">This statement</div><div class="file">lloyds-march-2026.csv</div><div class="sub">Main account · Lloyds ••4471</div>
+            <div class="rline"><span>Rows read</span><b>142</b></div>
+            <div class="rline dim"><span>1 Mar – 31 Mar 2026</span><b></b></div>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Detected = settled.</b> Columns show as facts with a “Change” link. Only uncertain things (amber) need a decision. Here a Reference column might belong in the description. Keeping it gives categorisation more to go on (“TITHE”). Date order is asked the same way, but only when no day in the file is above 12.</li>
+          <li><b>Live translation</b> of row 1 shows the interpreted date (with weekday), the sign and the type, so a reversed in/out mapping is visible here and not in the review.</li>
+          <li><b>Header row is found, not assumed.</b> The parser skips account-info lines above the header and handles files with no header row by inferring date, text and amount columns from the values.</li>
+          <li><b>Remembered.</b> When “Looks right” is pressed, the mapping is saved against the header signature. Next month this step is skipped and the rail shows it struck through.</li>
+        </ol>
+        <div class="reuse">Reuses <code>parseImportedDate</code> / <code>parseImportedAmount</code> from <code>lib/csvImport.ts</code>. A new <code>parseDayMonthOrder</code> option adds the US-order case.</div>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <h3 id="s-fix" style="margin-top:56px">Step 3 · Fix rows <span class="tag t-amber" style="vertical-align:middle">only when needed</span></h3>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Import statement</div>
+          <div class="r done"><span class="dot">✓</span>Add statement</div>
+          <div class="r done"><span class="dot">✓</span>Check columns</div>
+          <div class="r now"><span class="dot">3</span>Fix rows</div>
+          <div class="r"><span class="dot">4</span>Categorise</div>
+          <div class="r"><span class="dot">5</span>Check & import</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back">‹</span><div class="t">Import statement</div><span class="x">×</span></div>
+          <div class="progress"><span class="d"></span><span class="d"></span><span class="c"></span><span></span><span></span></div>
+          <div class="mbody">
+            <div class="screen-title">3 rows need a quick look</div>
+            <div class="screen-help">Everything else was read cleanly. Fix these or leave them out. Nothing is lost silently.</div>
+            <div class="acct">
+              <div><b>128</b><span>new</span></div>
+              <div><b>9</b><span>already imported</span></div>
+              <div><b>2</b><span>no amount (skipped)</span></div>
+              <div class="warn"><b>3</b><span>need a fix</span></div>
+            </div>
+            <div class="fix">
+              <div class="top"><span>Line 47 in your file</span><span class="tag t-red">Date not real</span></div>
+              <div class="why">“31/02/2026” isn't a real date</div>
+              <div class="row"><span class="inp focus grow">28/02/2026</span><span class="btn btn-sm btn-outline">Leave out</span><span class="btn btn-sm btn-primary">Use date</span></div>
+            </div>
+            <div class="fix">
+              <div class="top"><span>Line 88 in your file</span><span class="tag t-red">Amount unreadable</span></div>
+              <div class="raw">Credit Amount: "1,2O0.00"   ← letter O, not zero</div>
+              <div class="row"><span class="inp grow">£ 1,200.00</span><span class="btn btn-sm btn-outline">Leave out</span><span class="btn btn-sm btn-primary">Use amount</span></div>
+            </div>
+            <div class="fix" style="opacity:.6">
+              <div class="top"><span>Line 103 in your file</span><span class="tag t-amber">Both in and out filled</span></div>
+              <div class="why">Money in £40.00 and money out £40.00 on one row</div>
+            </div>
+          </div>
+          <div class="mfoot"><div class="sum"><b>1 of 3</b>sorted</div><span class="btn btn-outline btn-sm">Leave the rest out</span><span class="btn btn-primary">Next →</span></div>
+        </div>
+        <aside class="receipt-col">
+          <div class="rcpt"><div class="h">This statement</div><div class="file">lloyds-march-2026.csv</div><div class="sub">Main account · Lloyds ••4471</div>
+            <div class="rline"><span>Rows read</span><b>142</b></div>
+            <div class="rline pos"><span>New</span><b>128</b></div>
+            <div class="rline dim"><span>Already imported</span><b>9</b></div>
+            <div class="rline dim"><span>Skipped, no amount</span><b>2</b></div>
+            <div class="rline warn"><span>Need a fix</span><b>3</b></div>
+            <div class="rline total"><span>Accounted for</span><b>142 / 142</b></div>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Row accounting replaces silent drops.</b> The four counts always add up to rows read, and the receipt shows “142 / 142”.</li>
+          <li><b>Source line numbers</b> let the treasurer find the row in their own spreadsheet.</li>
+          <li><b>Each problem says what's wrong in words</b> and offers the fix inline, with “Leave out” as the safe alternative. Covers impossible dates, unreadable or partial amounts, and in/out both filled. These are the audit's open validation items.</li>
+          <li>Rows already in the ledger stay out by default. “Import anyway” moves here from the review header.</li>
+        </ol>
+        <div class="reuse">Reuses <code>withImportKeys</code> + <code>screenImportRows</code> (<code>lib/importKeys.ts</code>) for the “already imported” count.</div>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <h3 id="s-cat" style="margin-top:56px">Step 4 · Categorise</h3>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Import statement</div>
+          <div class="r done"><span class="dot">✓</span>Add statement</div>
+          <div class="r done"><span class="dot">✓</span>Check columns</div>
+          <div class="r done"><span class="dot">✓</span>Fix rows</div>
+          <div class="r now"><span class="dot">4</span>Categorise</div>
+          <div class="r"><span class="dot">5</span>Check & import</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back">‹</span><div class="t">Import statement</div><span class="x">×</span></div>
+          <div class="progress"><span class="d"></span><span class="d"></span><span class="d"></span><span class="c"></span><span></span></div>
+          <div class="mbody">
+            <div class="screen-title">12 transactions need you</div>
+            <div class="screen-help">We've sorted the other 118. Answer these and you're nearly done.</div>
+            <div class="buckets">
+              <div class="bucket s"><b>97</b><span>Sure · rules & memory</span></div>
+              <div class="bucket l"><b>21</b><span>Likely · quick glance</span></div>
+              <div class="bucket n on"><b>12</b><span>Needs you</span></div>
+            </div>
+            <div class="focuscard">
+              <div class="meta"><span>3 of 12 · Sat 14 March</span><span>Main account</span></div>
+              <div class="desc">SUMUP *GRACE CAFE</div>
+              <div class="amt">+£86.40</div>
+              <div class="field-label" style="margin-top:12px">What was this?</div>
+              <div class="sugg">
+                <span class="chip on"><span class="kbd">1</span> Café income</span>
+                <span class="chip"><span class="kbd">2</span> Fundraising events</span>
+                <span class="chip"><span class="kbd">3</span> Offerings</span>
+                <span class="chip dash">Other…</span>
+              </div>
+              <div class="sugg" style="margin-top:8px">
+                <span class="chip" style="height:32px;font-size:12px">Fund: General ▾</span>
+                <span class="chip" style="height:32px;font-size:12px">Gift Aid: no</span>
+              </div>
+              <div class="group"><span><b>4 more</b> “SUMUP *GRACE CAFE” rows this month</span><span class="btn btn-sm btn-sage">Apply to all 5</span></div>
+            </div>
+          </div>
+          <div class="mfoot"><div class="sum"><span class="kbd">1</span>–<span class="kbd">3</span> pick · <span class="kbd">↵</span> next · <span class="kbd">S</span> skip</div><span class="btn btn-outline btn-sm">See all 130</span><span class="btn btn-primary">Next →</span></div>
+        </div>
+        <aside class="receipt-col">
+          <div class="rcpt"><div class="h">This statement</div><div class="file">lloyds-march-2026.csv</div><div class="sub">130 to import</div>
+            <div class="rline pos"><span>Money in</span><b>£8,412.50</b></div>
+            <div class="rline"><span>Money out</span><b>£3,104.22</b></div>
+            <div class="rline pos"><span>Categorised</span><b>120 / 130</b></div>
+            <div class="rline warn"><span>Needs you</span><b>10</b></div>
+            <div class="rline dim"><span>Transfers paired</span><b>2</b></div>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Categorisation starts on its own</b> when this step opens. The existing progress panel shows while it runs. No “Auto-Categorise” button to discover.</li>
+          <li><b>Confidence is visible.</b> Rule and memory matches are “Sure” (collapsed). Pipeline matches above a threshold are “Likely” (shown as a compact list). The rest are “Needs you”, presented one card at a time.</li>
+          <li><b>Similar rows travel together.</b> Rows with the same normalised description get “Apply to all 5”.</li>
+          <li><b>Suggestions are already type-filtered</b>, so an income row never offers an expense category. Gift Aid and fund sit on the card.</li>
+          <li><b>“See all 130”</b> opens today's full table (with transfer pairing and duplicate flags) for people who prefer it.</li>
+        </ol>
+        <div class="reuse">Reuses the <code>categorizeWithPipeline</code> action, <code>ImportCategorizationProgress</code>, <code>applySmallIncomeDefaults</code>, <code>categoryNamesForTransactionTypes</code>, <code>suggestImportPairs</code> / <code>renderPairing</code>, and <code>recordCorrections</code>. No new backend calls.</div>
+      </div>
+    </div>
+
+    <!-- STEP 4b likely list -->
+    <div class="step-block" style="margin-top:22px">
+      <div class="card" style="padding:16px">
+        <div class="eyebrow" style="margin-bottom:8px">Step 4 · “Likely” tab (a quick glance, not a decision per row)</div>
+        <div class="rows">
+          <div class="rowi"><span class="dt">02 Mar</span><span class="ds">SO M OKAFOR OFFERING</span><span class="am" style="color:var(--sage)">+£40.00</span><span class="pill">Offerings ▾</span></div>
+          <div class="rowi"><span class="dt">05 Mar</span><span class="ds">DD ECCLESIASTICAL INS</span><span class="am">−£212.18</span><span class="pill">Insurance ▾</span></div>
+          <div class="rowi"><span class="dt">07 Mar</span><span class="ds">CARD COSTCO WHOLESALE</span><span class="am">−£64.90</span><span class="pill">Hospitality ▾</span></div>
+          <div class="rowi"><span class="dt">09 Mar</span><span class="ds">BACS HMRC CHARITIES</span><span class="am" style="color:var(--sage)">+£1,118.75</span><span class="pill">Gift Aid claim ▾</span></div>
+          <div class="rowi"><span class="dt">12 Mar</span><span class="ds">TFR TO 20-11-44 ••0912</span><span class="am">−£500.00</span><span class="pill sure">↔ Transfer · paired</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px"><span class="muted" style="font-size:13px">21 likely matches. Change any that look wrong.</span><span class="btn btn-sm btn-sage">These look right ✓</span></div>
+      </div>
+      <div class="notes">
+        <ol>
+          <li>A compact list rather than dropdown walls. The category reads as text until clicked.</li>
+          <li>Transfer pairing (#52) shows inline. Accepted pairs read as “paired”.</li>
+          <li>One button approves the group. Corrections still feed <code>recordCorrections</code> for learning.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <h3 id="s-check" style="margin-top:56px">Step 5 · Check & import</h3>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Import statement</div>
+          <div class="r done"><span class="dot">✓</span>Add statement</div>
+          <div class="r done"><span class="dot">✓</span>Check columns</div>
+          <div class="r done"><span class="dot">✓</span>Fix rows</div>
+          <div class="r done"><span class="dot">✓</span>Categorise</div>
+          <div class="r now"><span class="dot">5</span>Check & import</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back">‹</span><div class="t">Import statement</div><span class="x">×</span></div>
+          <div class="progress"><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="c"></span></div>
+          <div class="mbody">
+            <div class="screen-title">Ready to add 130 transactions</div>
+            <div class="screen-help">March 2026 · Main account · Lloyds ••4471</div>
+            <div class="balance">
+              <div class="h">Balance check</div>
+              <div class="eq"><span>£12,940.11</span><span class="op">+</span><span>£5,718.28</span><span class="op">=</span><span>£18,658.39</span></div>
+              <div class="ok">✓ All 142 rows (including the 9 already imported) add up to the statement's closing balance. Nothing was dropped or misread.</div>
+            </div>
+            <div class="check-big">
+              <div><b style="color:var(--sage)">+£8,412.50</b><span>Money in</span></div>
+              <div><b>−£3,104.22</b><span>Money out</span></div>
+              <div><b>2</b><span>Transfers paired</span></div>
+            </div>
+            <div class="card fundsplit" style="padding:6px 14px;box-shadow:none">
+              <div class="fl"><span>General Fund</span><b>+£4,661.06</b></div>
+              <div class="fl"><span>Building Fund</span><b>+£1,150.00</b></div>
+              <div class="fl"><span>Missions</span><b>−£502.78</b></div>
+            </div>
+            <div class="banner amber" style="margin-top:12px;margin-bottom:0"><span class="i">⚠</span><span><b>1 possible duplicate:</b> £250.00 on 3 Mar matches a cash entry already in the ledger. <span class="link">Look at it</span></span></div>
+          </div>
+          <div class="mfoot"><div class="sum"><b>130</b>transactions · 9 already imported left out</div><span class="btn btn-primary" style="height:54px;padding:0 26px">Add 130 transactions</span></div>
+        </div>
+        <aside class="receipt-col">
+          <div class="rcpt"><div class="h">This statement</div><div class="file">lloyds-march-2026.csv</div><div class="sub">Main account · Lloyds ••4471</div>
+            <div class="rline"><span>Rows read</span><b>142</b></div>
+            <div class="rline pos"><span>To add</span><b>130</b></div>
+            <div class="rline dim"><span>Already imported</span><b>9</b></div>
+            <div class="rline dim"><span>Skipped, no amount</span><b>2</b></div>
+            <div class="rline dim"><span>Left out by you</span><b>1</b></div>
+            <div class="rline total"><span>Accounted for</span><b>142 / 142</b></div>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Balance check.</b> When the file has a balance column, opening balance + every parsed row should equal the closing balance. This catches dropped rows and reversed signs without the treasurer doing anything.</li>
+          <li><b>Fund split</b> answers “where is this money going?” before saving.</li>
+          <li><b>Duplicates appear once</b>, as a link to the row, rather than as amber noise across the table.</li>
+          <li><b>Big files are chunked</b> into batches of 500 behind this one button, with progress and per-batch results, so the server limit never shows up as an error.</li>
+          <li>Closing mid-flow asks “Keep this import for later?” The draft is held in session storage like the cash wizard's autosave.</li>
+        </ol>
+        <div class="reuse">Reuses the <code>bulkCreate</code> mutation unchanged (called per chunk) and the cash wizard's receipt + autosave pattern (<code>useCollectionDraft</code>).</div>
+      </div>
+    </div>
+
+    <!-- DONE -->
+    <h3 id="s-done" style="margin-top:56px">Done</h3>
+    <div class="step-block">
+      <div class="window" style="grid-template-columns:176px minmax(0,1fr)">
+        <aside class="rail">
+          <div class="ttl">Import statement</div>
+          <div class="r done"><span class="dot">✓</span>Add statement</div>
+          <div class="r done"><span class="dot">✓</span>Check columns</div>
+          <div class="r done"><span class="dot">✓</span>Fix rows</div>
+          <div class="r done"><span class="dot">✓</span>Categorise</div>
+          <div class="r done"><span class="dot">✓</span>Check & import</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back"></span><div class="t">Import statement</div><span class="x">×</span></div>
+          <div class="mbody" style="max-width:520px;margin:0 auto;width:100%">
+            <div class="done">
+              <div class="tick">✓</div>
+              <div class="screen-title">March is in the books</div>
+              <div class="screen-help">130 transactions added to Main account. ChurchCoin learned 14 of your corrections for next time.</div>
+            </div>
+            <div class="next">
+              <a href="#s-done"><div>Reconcile March<span>Tick the statement off against the ledger. The closing balance is already filled in.</span></div><b>→</b></a>
+              <a href="#s-done"><div>Match 6 gifts to donors<span>Needed before they can go on a Gift Aid claim</span></div><b>→</b></a>
+              <a href="#s-done"><div>Import another statement<span>Building fund · CAF Bank ••0912 was last imported in January</span></div><b>→</b></a>
+            </div>
+          </div>
+          <div class="mfoot"><div class="sum"></div><span class="btn btn-outline">View transactions</span></div>
+        </div>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>A clear ending</b> with the count and what was learned.</li>
+          <li><b>Next steps</b> lead into existing features: Reconcile (pre-filled from the statement's balance column), donor matching, the next account.</li>
+          <li>“Undo this import” could live here later. It needs a batch id on transactions (see decisions).</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 5. MOBILE ───────────── -->
+  <section id="mobile">
+    <div class="sec-head"><span class="sec-num">05</span><h2>On a phone</h2></div>
+    <div class="grid-2" style="align-items:center">
+      <div class="phone"><div class="in">
+        <div class="notch"></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span>‹</span><span>Categorise</span><span>×</span></div>
+        <div class="progress" style="padding:10px 0 0"><span class="d"></span><span class="d"></span><span class="d"></span><span class="c"></span><span></span></div>
+        <div style="margin-top:14px" class="screen-title">12 need you</div>
+        <div class="screen-help" style="font-size:12.5px">118 sorted automatically</div>
+        <div class="focuscard" style="padding:14px">
+          <div class="meta"><span>3 of 12</span><span>Sat 14 Mar</span></div>
+          <div class="desc" style="font-size:15px">SUMUP *GRACE CAFE</div>
+          <div class="amt" style="font-size:19px">+£86.40</div>
+          <div class="sugg" style="display:grid;gap:6px">
+            <span class="chip on" style="height:44px">Café income</span>
+            <span class="chip" style="height:44px">Fundraising events</span>
+            <span class="chip" style="height:44px">Offerings</span>
+          </div>
+          <div class="group" style="font-size:12px"><span>+4 similar</span><span class="btn btn-sm btn-sage">Apply to all</span></div>
+        </div>
+        <div style="flex:1"></div>
+        <span class="btn btn-primary" style="width:100%;height:52px;margin-top:14px">Next →</span>
+      </div></div>
+      <div>
+        <h3>The same steps, one column</h3>
+        <p class="muted">Below <span class="mono">lg</span> the rail becomes the progress bar and the receipt collapses into the footer, exactly as the cash wizard does. The card-per-decision layout suits thumbs better than the current table of dropdowns, and the existing mobile card list (<span class="mono">md:hidden</span>) is replaced rather than kept as a second layout.</p>
+        <p class="muted">File upload from a phone works from Files / Drive. The step 1 copy should say so, because many treasurers receive the statement by email.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 6. COMPARE ───────────── -->
+  <section id="compare">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Before / after</h2></div>
+    <p class="muted">Illustrative, for the sample 142-row statement above.</p>
+    <div class="card" style="padding:6px 16px">
+      <table class="cmp">
+        <thead><tr><th style="width:26%">Moment</th><th>Today</th><th>Walkthrough</th></tr></thead>
+        <tbody>
+          <tr><td>Starting</td><td class="b">File picker opens with no guidance. CSV only.</td><td class="a">Drop zone, account choice, bank tips. CSV or Excel.</td></tr>
+          <tr><td>Columns</td><td class="b">4–5 dropdowns to check, every month</td><td class="a">0 decisions on a remembered layout. Otherwise only the uncertain ones, with a live preview.</td></tr>
+          <tr><td>Bad rows</td><td class="b">Dropped silently or blocked by a generic error at the end</td><td class="a">Listed by line number with the reason and an inline fix. 142 / 142 accounted for.</td></tr>
+          <tr><td>Categories</td><td class="b">Press Auto-Categorise, then scan ~130 rows of dropdowns</td><td class="a">Runs by itself. ~12 card decisions, similar rows applied together.</td></tr>
+          <tr><td>Confidence that it's right</td><td class="b">None shown</td><td class="a">Balance check, fund split, duplicate callout</td></tr>
+          <tr><td>Large files</td><td class="b">Server error after categorising (&gt;500 rows)</td><td class="a">Chunked behind one button</td></tr>
+          <tr><td>Ending</td><td class="b">Modal closes</td><td class="a">Summary and next steps (reconcile, Gift Aid, next account)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ───────────── 7. BUILD ───────────── -->
+  <section id="build">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Build plan</h2></div>
+    <p class="muted" style="max-width:780px">Four PRs, each shippable on its own. The first changes almost nothing visible but fixes correctness. Everything reuses the existing Convex functions. The only backend addition is the remembered-layout table in phase 3.</p>
+    <div class="card" style="padding:26px 26px 26px 20px">
+      <div class="phase">
+        <h3>Phase 1 · A parser you can trust <span class="tag t-grey">no visual change</span></h3>
+        <ul>
+          <li>New pure module <code>lib/statementImport.ts</code>: a real CSV tokenizer (quoted commas and newlines, <code>""</code> escapes, BOM, delimiter sniffing), header-row detection (skips preamble lines, handles headerless files), scored column detection, date-order detection, and <code>mapStatementRows()</code> returning <code>{ rows, skipped, errors }</code> with source line numbers and reasons.</li>
+          <li>Built on the existing <code>parseImportedDate</code>, <code>parseImportedAmount</code>, <code>withImportKeys</code> and <code>screenImportRows</code>, which are not rewritten.</li>
+          <li>Swap the bodies of <code>handleFileUpload</code> / <code>handleProcessMapping</code> to call it. Name failing rows in the confirm error.</li>
+          <li>Fix “Assign to Campaign” so it only sets the fund (and skips expenditure), or remove it.</li>
+          <li>Tests: synthetic fixtures shaped like Lloyds, Barclays, Nationwide (preamble), HSBC (headerless), CAF and an Excel export, plus every row-accounting outcome. Retire the characterisation assertions in <code>tests/audit.importBaseline.test.ts</code> that describe now-fixed defects.</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <h3>Phase 2 · The walkthrough <span class="tag t-sage">the main change</span></h3>
+        <ul>
+          <li>Move the shared shell from <code>components/cashEntry/</code> (<code>ui.tsx</code> classes, rail, progress, <code>StepFooter</code>, receipt frame) into <code>components/wizard/</code>, and switch the cash wizard to import from there, so both wizards share one shell.</li>
+          <li>New <code>components/statementImport/</code>: <code>StatementImportWizard</code>, <code>steps.ts</code> (skips steps with nothing to ask), <code>UploadStep</code>, <code>ColumnsStep</code>, <code>FixRowsStep</code>, <code>CategoriseStep</code>, <code>CheckStep</code>, <code>DoneStep</code>, and a <code>useStatementImport</code> reducer holding the pending batch.</li>
+          <li>Pull the review state (pending rows, duplicates, pairing, predictions, AI run) out of <code>TransactionManager.tsx</code> into that hook. Bank sync enters the same wizard at Categorise. This removes roughly 800 lines from TransactionManager.</li>
+          <li>Categorise: auto-run <code>categorizeWithPipeline</code> on entry, confidence buckets from <code>predictionSource</code> + <code>confidence</code>, focus cards, group-apply, keyboard shortcuts, and “See all” for the full table.</li>
+          <li>Check: totals, fund split, duplicate callout, chunked <code>bulkCreate</code> (≤500 per call) with progress, then Done with next steps.</li>
+          <li>Session-storage draft so closing the tab doesn't lose a categorised batch.</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <h3>Phase 3 · Less work every month <span class="tag t-amber">schema addition</span></h3>
+        <ul>
+          <li>Remembered layouts: a new <code>importProfiles</code> table (<code>organizationId</code>, <code>headerSignature</code>, <code>mapping</code>, <code>dateOrder</code>, <code>accountLabel</code>, <code>lastUsedAt</code>), with a <code>list</code> query and an idempotent <code>save</code> mutation gated by <code>requireRole</code>. Columns step skipped on a match.</li>
+          <li>Balance-column check on the Check step. Pre-fill Reconcile's closing balance from the file.</li>
+          <li>Accept <code>.xlsx</code> via SheetJS (already a dependency, loaded lazily).</li>
+                  </ul>
+      </div>
+      <div class="phase">
+        <h3>Phase 4 · Optional <span class="tag t-grey">needs your call</span></h3>
+        <ul>
+          <li>“Undo this import”: add an optional <code>importBatchId</code> to transactions, and a mutation that voids (not deletes) a batch within N days.</li>
+          <li>Per-account statements (ties into “per-account rows not yet modelled” from the ledger-movements work).</li>
+        </ul>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:18px">
+      <div class="card"><h3>Verification</h3><p class="muted" style="margin:0">Vitest for the parser, row accounting and step skipping. Drive the real app with each fixture file (the run skill on a local Convex backend, not the live dev deployment): upload → Done, check the ledger rows and balance check, then re-upload the same file and confirm “already imported” = all.</p></div>
+      <div class="card"><h3>Out of scope</h3><p class="muted" style="margin:0">Changing the categorisation pipeline itself, PDF statement parsing, and new bank providers. The wizard uses the pipeline and the Yapily sync as they are today.</p></div>
+    </div>
+  </section>
+
+  <!-- ───────────── 8. DECISIONS ───────────── -->
+  <section id="decide">
+    <div class="sec-head"><span class="sec-num">08</span><h2>Decisions for you</h2></div>
+    <div class="card">
+      <div class="q"><h4>1. Should categorisation start automatically?</h4><p>It makes an AI call per import, even for people who would categorise by hand. Rule and memory matches are free, so only unresolved rows reach the model.</p><div class="rec">Recommend: yes, auto-run. A “Skip AI” link is enough of an escape.</div></div>
+      <div class="q"><h4>2. Is a new <code>importProfiles</code> table OK?</h4><p>It's the only schema change needed for “skip the columns step next month”. Without it, the mapping could be remembered per browser in localStorage instead, which is weaker for teams.</p><div class="rec">Recommend: the table, in phase 3.</div></div>
+      <div class="q"><h4>3. One Import button? (decided)</h4><p>No. A file import and a bank-feed sync are different sources, so they keep separate buttons. They share only the review steps from Categorise onwards.</p></div>
+      <div class="q"><h4>4. Undo import?</h4><p>Reassuring for nervous first imports, but it needs a batch id on transactions and clear rules around reconciled rows.</p><div class="rec">Recommend: defer until people ask for it. The Check step already makes mistakes rare.</div></div>
+    </div>
+  </section>
+
+  <footer>Generated from a review of <span class="mono">origin/main @ 4c776d9</span>. Mockups use Refined Ledger tokens (ink, paper, sage, amber, ledger borders, soft shadows). Bank export instructions are indicative and need checking against each bank's current online banking.</footer>
+</div>
+</body>
+</html>
