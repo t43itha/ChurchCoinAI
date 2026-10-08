@@ -1,7 +1,7 @@
 import { Check, Landmark, PenLine, Plus } from "lucide-react";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
 import { gbp, shortDate } from "./format";
-import { fieldLabel, screenTitle } from "./ui";
+import { fieldLabel, screenTitle } from "../wizard/ui";
 import type { SavedResult, WizardModel } from "./useCollectionDraft";
 
 const GIFT_AID_RATE = 0.25;

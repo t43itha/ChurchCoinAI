@@ -21,7 +21,7 @@ import {
   tagSage,
   txtInput,
   Segmented,
-} from "./ui";
+} from "../wizard/ui";
 import type { FundTypeChoice, WizardModel } from "./useCollectionDraft";
 
 interface GivingStepProps {

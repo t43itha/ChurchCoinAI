@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { ChevronLeft, X } from "lucide-react";
 import {
   draftTotals,
   editBlocker,
@@ -22,7 +20,9 @@ import { gbp, shortDate } from "./format";
 import { buildSteps, stepIndexOfGiving, type WizardStep } from "./steps";
 import { AUTOSAVE_FAILED_MESSAGE, WizardRail, WizardReceipt } from "./WizardSidebars";
 import SavedCollectionSummary from "./SavedCollectionSummary";
-import { btnLg, btnPrimary } from "./ui";
+import StepFooter from "../wizard/StepFooter";
+import WizardFrame from "../wizard/WizardFrame";
+import { btnLg, btnPrimary } from "../wizard/ui";
 import { useCollectionDraft, type CategoryOption } from "./useCollectionDraft";
 
 export interface CashEntryWizardProps {
@@ -55,30 +55,7 @@ function countOf(service: ServiceDraft, target: LineTarget): CashCount | null {
   }
 }
 
-function StepFooter({ label, value, children }: { label?: string; value?: number; children: ReactNode }) {
-  return (
-    <div className="shrink-0 border-t border-ledger bg-paper px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 lg:px-8 lg:pb-6">
-      {label !== undefined && value !== undefined && (
-        <div className="mb-2.5 flex items-baseline justify-between px-0.5 text-xs text-grey-mid">
-          <span>{label}</span>
-          <b className="font-mono text-sm text-ink">{gbp(value)}</b>
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-// The walkthrough is a full-screen sheet below lg and a centred three-column
-// panel from lg up. The portal is skipped when there is no document (static
-// markup in tests), so the same tree renders in both places.
-export default function CashEntryWizard(props: CashEntryWizardProps) {
-  const panel = <WizardPanel {...props} />;
-  if (typeof document === "undefined") return panel;
-  return createPortal(panel, document.body);
-}
-
-function WizardPanel({
+export default function CashEntryWizard({
   funds,
   categories,
   initialCollection,
@@ -171,183 +148,145 @@ function WizardPanel({
   const firstService = draft.services[0];
   const nextService = step.kind === "tithes" ? draft.services[step.serviceIndex + 1] : undefined;
 
+  let footer: ReactNode = null;
+  if (step.kind === "start") {
+    footer = (
+      <StepFooter>
+        <button type="button" disabled={!firstService} onClick={() => go(1)} className={`${btnPrimary} ${btnLg}`}>
+          {firstService ? `Start with ${firstService.label} →` : "Tick a service"}
+        </button>
+      </StepFooter>
+    );
+  } else if (step.kind === "giving" && service) {
+    footer = (
+      <StepFooter label={`${service.label} giving`} value={gbp(serviceGivingTotal(service))}>
+        <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
+          Next: tithe envelopes →
+        </button>
+      </StepFooter>
+    );
+  } else if (step.kind === "tithes") {
+    footer = (
+      <StepFooter label="Week so far" value={gbp(draftTotals(draft, ctx).grand)}>
+        <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
+          {nextService ? `Next: ${nextService.label} →` : "Check the week →"}
+        </button>
+      </StepFooter>
+    );
+  } else if (step.kind === "review" && !readOnly) {
+    footer = (
+      <StepFooter>
+        <ReviewFooter
+          model={model}
+          saving={saving}
+          error={error}
+          onSave={(status) => {
+            void wizard.submit(status);
+          }}
+        />
+      </StepFooter>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-50 bg-paper lg:flex lg:items-center lg:justify-center lg:bg-ink/45 lg:p-6">
-      {/* Locks every control while a save is in flight, so the request can't be changed or repeated. */}
-      <fieldset disabled={saving} className="contents">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Record giving"
-          className={`flex h-full w-full flex-col bg-paper lg:grid lg:h-[min(820px,100%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg ${readOnly ? "lg:max-w-2xl lg:grid-cols-[minmax(0,1fr)]" : "lg:max-w-6xl lg:grid-cols-[230px_minmax(0,1fr)_310px]"}`}
-        >
-          {/* A read-only collection is shown from the saved entries, not the draft, so the draft's rail and receipt are hidden. */}
-          {!readOnly && <WizardRail draft={draft} steps={steps} current={stepPosition} onGo={go} />}
-
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <header className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
-              {step.kind !== "start" && step.kind !== "done" && !readOnly ? (
-                <button
-                  type="button"
-                  onClick={() => go(stepPosition - 1)}
-                  aria-label="Back"
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] text-grey-dark hover:bg-white"
-                >
-                  <ChevronLeft size={22} aria-hidden="true" />
-                </button>
-              ) : (
-                <span className="h-11 w-11 shrink-0" aria-hidden="true" />
-              )}
-              <div className="min-w-0 flex-1 truncate text-center text-[15px] font-bold text-ink">{title}</div>
-              <button
-                type="button"
-                onClick={requestClose}
-                aria-label="Close"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] text-grey-dark hover:bg-white"
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </header>
-
-            {hasProgress && (
-              <div className="flex shrink-0 gap-1 px-4 pb-1 pt-2.5 lg:px-6" aria-hidden="true">
-                {steps.slice(1, -1).map((_, index) => {
-                  const segment = index + 1;
-                  const tone =
-                    segment < stepPosition ? "bg-sage" : segment === stepPosition ? "bg-ink" : "bg-ledger";
-                  return <span key={segment} className={`h-1 flex-1 rounded-full ${tone}`} />;
-                })}
-              </div>
-            )}
-
-            <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 lg:px-8">
-              <fieldset disabled={readOnly} className="contents">
-                {step.kind === "start" && (
-                  <StartStep
-                    model={model}
-                    existingCount={existingCount}
-                    resumable={resumable}
-                    onResume={wizard.resume}
-                    onDiscardStored={wizard.discardStored}
-                  />
-                )}
-                {/* Keyed by service so switching services never carries local state (an open picker, an unfinished envelope) across. */}
-                {step.kind === "giving" && (
-                  <GivingStep
-                    key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
-                    model={model}
-                    serviceIndex={step.serviceIndex}
-                    onCount={(target, label) =>
-                      setCounting({ serviceId: draft.services[step.serviceIndex].id, target, label })
-                    }
-                  />
-                )}
-                {step.kind === "tithes" && (
-                  <TitheStep
-                    key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
-                    model={model}
-                    serviceIndex={step.serviceIndex}
-                    onUnfinishedChange={setUnfinishedEnvelope}
-                  />
-                )}
-                {step.kind === "review" &&
-                  (readOnlyReason && initialCollection ? (
-                    <SavedCollectionSummary ledger={initialCollection} reason={readOnlyReason} />
-                  ) : (
-                    <ReviewStep model={model} onEdit={(serviceIndex) => go(stepIndexOfGiving(steps, serviceIndex))} />
-                  ))}
-                {step.kind === "done" && saved && (
-                  <DoneStep
-                    model={model}
-                    saved={saved}
-                    onBankIt={
-                      onBankIt
-                        ? () => {
-                            onBankIt();
-                            onClose();
-                          }
-                        : undefined
-                    }
-                    onRecordAnother={isEdit ? undefined : recordAnotherWeek}
-                  />
-                )}
-              </fieldset>
-            </div>
-
-            {/* The receipt that carries this warning is hidden below lg, so the footer repeats it there. */}
-            {autosaveFailed && !isEdit && !saved && (
-              <p className="mx-4 mb-2 rounded-xl bg-amber-light px-3 py-2.5 text-xs font-semibold text-amber lg:hidden">
-                {AUTOSAVE_FAILED_MESSAGE}
-              </p>
-            )}
-
-            {step.kind === "start" && (
-              <StepFooter>
-                <button
-                  type="button"
-                  disabled={!firstService}
-                  onClick={() => go(1)}
-                  className={`${btnPrimary} ${btnLg}`}
-                >
-                  {firstService ? `Start with ${firstService.label} →` : "Tick a service"}
-                </button>
-              </StepFooter>
-            )}
-
-            {step.kind === "giving" && service && (
-              <StepFooter label={`${service.label} giving`} value={serviceGivingTotal(service)}>
-                <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
-                  Next: tithe envelopes →
-                </button>
-              </StepFooter>
-            )}
-
-            {step.kind === "tithes" && (
-              <StepFooter label="Week so far" value={draftTotals(draft, ctx).grand}>
-                <button type="button" onClick={() => go(stepPosition + 1)} className={`${btnPrimary} ${btnLg}`}>
-                  {nextService ? `Next: ${nextService.label} →` : "Check the week →"}
-                </button>
-              </StepFooter>
-            )}
-
-            {step.kind === "review" && !readOnly && (
-              <StepFooter>
-                <ReviewFooter
-                  model={model}
-                  saving={saving}
-                  error={error}
-                  onSave={(status) => {
-                    void wizard.submit(status);
-                  }}
-                />
-              </StepFooter>
-            )}
-
-            {/* Covers the whole column, header and footer included, so the count is the only thing in reach. */}
-            {counting && countingService && (
-              <CountSheet
-                label={counting.label}
-                where={`${countingService.label} · ${shortDate(countingService.date)}`}
-                initial={countOf(countingService, counting.target)}
-                onCancel={() => setCounting(null)}
-                onUse={(count) => {
-                  model.dispatch({
-                    type: "applyCount",
-                    serviceId: countingService.id,
-                    target: counting.target,
-                    count,
-                  });
-                  setCounting(null);
-                }}
-              />
-            )}
-          </div>
-
-          {!readOnly && (
-            <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} autosaveFailed={autosaveFailed} />
-          )}
-        </div>
+    <WizardFrame
+      ariaLabel="Record giving"
+      title={title}
+      // Locks every control while a save is in flight, so the request can't be changed or repeated.
+      locked={saving}
+      onClose={requestClose}
+      onBack={step.kind !== "start" && step.kind !== "done" && !readOnly ? () => go(stepPosition - 1) : undefined}
+      // Segment index is 0-based: the first step after Start is segment 0.
+      progress={hasProgress ? { total: steps.length - 2, current: stepPosition - 1 } : undefined}
+      // A read-only collection is shown from the saved entries, not the draft, so the draft's rail and receipt are hidden.
+      rail={readOnly ? undefined : <WizardRail draft={draft} steps={steps} current={stepPosition} onGo={go} />}
+      receipt={
+        readOnly ? undefined : (
+          <WizardReceipt model={viewModel} autosaved={!isEdit && !saved} autosaveFailed={autosaveFailed} />
+        )
+      }
+      bodyRef={bodyRef}
+      // The receipt that carries this warning is hidden below lg, so the footer repeats it there.
+      notice={
+        autosaveFailed && !isEdit && !saved ? (
+          <p className="mx-4 mb-2 rounded-xl bg-amber-light px-3 py-2.5 text-xs font-semibold text-amber lg:hidden">
+            {AUTOSAVE_FAILED_MESSAGE}
+          </p>
+        ) : undefined
+      }
+      footer={footer}
+      // Covers the whole column, header and footer included, so the count is the only thing in reach.
+      overlay={
+        counting && countingService ? (
+          <CountSheet
+            label={counting.label}
+            where={`${countingService.label} · ${shortDate(countingService.date)}`}
+            initial={countOf(countingService, counting.target)}
+            onCancel={() => setCounting(null)}
+            onUse={(count) => {
+              model.dispatch({
+                type: "applyCount",
+                serviceId: countingService.id,
+                target: counting.target,
+                count,
+              });
+              setCounting(null);
+            }}
+          />
+        ) : undefined
+      }
+    >
+      <fieldset disabled={readOnly} className="contents">
+        {step.kind === "start" && (
+          <StartStep
+            model={model}
+            existingCount={existingCount}
+            resumable={resumable}
+            onResume={wizard.resume}
+            onDiscardStored={wizard.discardStored}
+          />
+        )}
+        {/* Keyed by service so switching services never carries local state (an open picker, an unfinished envelope) across. */}
+        {step.kind === "giving" && (
+          <GivingStep
+            key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
+            model={model}
+            serviceIndex={step.serviceIndex}
+            onCount={(target, label) =>
+              setCounting({ serviceId: draft.services[step.serviceIndex].id, target, label })
+            }
+          />
+        )}
+        {step.kind === "tithes" && (
+          <TitheStep
+            key={`${step.kind}:${draft.services[step.serviceIndex].id}`}
+            model={model}
+            serviceIndex={step.serviceIndex}
+            onUnfinishedChange={setUnfinishedEnvelope}
+          />
+        )}
+        {step.kind === "review" &&
+          (readOnlyReason && initialCollection ? (
+            <SavedCollectionSummary ledger={initialCollection} reason={readOnlyReason} />
+          ) : (
+            <ReviewStep model={model} onEdit={(serviceIndex) => go(stepIndexOfGiving(steps, serviceIndex))} />
+          ))}
+        {step.kind === "done" && saved && (
+          <DoneStep
+            model={model}
+            saved={saved}
+            onBankIt={
+              onBankIt
+                ? () => {
+                    onBankIt();
+                    onClose();
+                  }
+                : undefined
+            }
+            onRecordAnother={isEdit ? undefined : recordAnotherWeek}
+          />
+        )}
       </fieldset>
-    </div>
+    </WizardFrame>
   );
 }

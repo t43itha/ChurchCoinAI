@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { getRCICategorySeedData } from "../constants/rciCategories";
-import { resolveAssignableCategory } from "../convex/intelligence/categorization/categoryResolver";
-import { isRealIsoDate } from "../lib/csvImport";
 import {
   acceptedPairsToLink,
   importMovementLegs,
@@ -13,9 +11,9 @@ import {
   type PairingRow,
   type PairSuggestion,
 } from "../lib/movementMatching";
-import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
 import { effectiveCategories } from "../lib/transactionCategories";
-import { uiFunction } from "./helpers/transactionManagerHandlers";
+import { runConfirmImport } from "../components/statementImport/reviewLogic";
+import { confirmInput } from "./helpers/importReview";
 
 const categories = effectiveCategories(getRCICategorySeedData());
 
@@ -143,19 +141,23 @@ describe("confirm import with accepted pairs", () => {
     const funds = [{ _id: "general", name: "General Fund" }, { _id: "building", name: "Building Fund" }];
     const linkTransactions = vi.fn(async () => null);
     const notify = vi.fn();
-    const scope: any = {
-      isProcessingAI: false, bankSyncReviewConnectionId: null, nextBankSyncCursor: null,
-      funds, categories, importCategories: categories, pendingTransactions, allTransactions: transactions,
-      alreadyImportedRows: [], originalPredictions: new Map(), onPledgeCompleted: undefined,
-      applySmallIncomeDefaults, resolveAssignableCategory, effectiveCategories, isRealIsoDate,
-      acceptedPairsToLink, notify, linkTransactions,
-      setPendingTransactions: vi.fn(), setShowReviewModal: vi.fn(), clearBankSyncReviewState: vi.fn(),
-      bulkCreateTransactions: vi.fn(async () => ({
-        count: 5, skippedDuplicates: 1, completedPledges: [],
-        ids: ["tA", "tB", "tC", "tD", null, "tG"],
-      })),
-    };
-    await uiFunction("handleConfirmImport", scope)();
+    const bulkCreate = vi.fn(async () => ({
+      count: 5, skippedDuplicates: 1, completedPledges: [],
+      ids: ["tA", "tB", "tC", "tD", null, "tG"],
+    }));
+    await runConfirmImport(confirmInput({
+      pendingRows: pendingTransactions as any,
+      funds: funds as any,
+      categories: getRCICategorySeedData(),
+      ledger: transactions as any,
+    }), {
+      notify,
+      setRows: vi.fn(),
+      bulkCreate: bulkCreate as any,
+      acknowledgeBankSync: vi.fn(async () => null),
+      recordCorrections: vi.fn(async () => null),
+      linkTransactions,
+    });
 
     expect(linkTransactions.mock.calls).toEqual([
       [{ transactionIds: ["tA", "tB"] }],

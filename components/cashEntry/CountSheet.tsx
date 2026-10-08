@@ -9,7 +9,7 @@ import {
   type NoteValue,
 } from "../../lib/cashCollectionDraft";
 import { coinsValueOf, gbp, noteCountOf } from "./format";
-import { amtBox, amtInput, amtSymbol, btnLg, btnPrimary, eyebrow } from "./ui";
+import { amtBox, amtInput, amtSymbol, btnLg, btnPrimary, eyebrow } from "../wizard/ui";
 
 interface CountSheetProps {
   label: string;

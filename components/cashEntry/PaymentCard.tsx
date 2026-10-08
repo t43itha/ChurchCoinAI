@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { countTotal, type AmountField, type PaymentLine } from "../../lib/cashCollectionDraft";
 import { coinsValueOf, gbp, noteCountOf } from "./format";
-import { amtBox, amtInput, amtSymbol, card, linkBtn, linkBtnSm } from "./ui";
+import { amtBox, amtInput, amtSymbol, card, linkBtn, linkBtnSm } from "../wizard/ui";
 
 interface PaymentCardProps {
   title: string;
