@@ -273,6 +273,7 @@ describe("in-person giving grouping", () => {
       {
         collectionId: "may",
         weekEndingDate: "2026-06-14",
+        collectionDate: "2026-05-10",
         status: "submitted" as const,
         fundNames: [],
         fundTotals: [],
@@ -297,6 +298,7 @@ describe("in-person giving grouping", () => {
       {
         collectionId: "june",
         weekEndingDate: "2026-06-07",
+        collectionDate: "2026-06-07",
         status: "submitted" as const,
         fundNames: [],
         fundTotals: [],
@@ -333,6 +335,7 @@ describe("in-person giving month filter with named donations", () => {
   const ledgerWith = (overrides: Partial<InPersonGivingLedger>): InPersonGivingLedger => ({
     collectionId: "c",
     weekEndingDate: "2026-11-01",
+    collectionDate: "2026-11-01",
     status: "submitted",
     fundNames: [],
     fundTotals: [],

@@ -7,7 +7,7 @@ import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
 import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
-import CashTakingsEntry from './CashTakingsEntry';
+import CashEntryWizard from './cashEntry/CashEntryWizard';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
@@ -213,6 +213,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Manual Entry State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
+  // Only reconciliation users can reach the cash banking tab.
+  const bankItHandler = can(currentUser.role, 'reconciliation.manage')
+    ? () => setActiveTransactionTab('cashChequeBanking')
+    : undefined;
   const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [isVoiding, setIsVoiding] = useState(false);
@@ -2881,28 +2885,25 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         document.body
       )}
 
-      {/* Cash Takings Entry Modal */}
+      {/* Cash giving walkthrough: new collections and edits of an existing one */}
       {showCashTakingsModal && canEdit && (
-        <CashTakingsEntry
+        <CashEntryWizard
           funds={funds}
           categories={categories}
+          storageScope={currentUser._id}
           onClose={() => setShowCashTakingsModal(false)}
-          onSuccess={(result) => {
-            console.log(`Cash collection created: ${result.transactionCount} transactions`);
-          }}
+          onBankIt={bankItHandler}
         />
       )}
 
       {editingGivingLedger && canEdit && (
-        <CashTakingsEntry
+        <CashEntryWizard
           funds={funds}
           categories={categories}
           initialCollection={editingGivingLedger}
+          storageScope={currentUser._id}
           onClose={() => setEditingGivingLedger(null)}
-          onSuccess={(result) => {
-            console.log(`Cash collection updated: ${result.transactionCount} transactions`);
-            setEditingGivingLedger(null);
-          }}
+          onBankIt={bankItHandler}
         />
       )}
 

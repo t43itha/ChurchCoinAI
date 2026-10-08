@@ -68,11 +68,14 @@ export interface InPersonGivingNamedDonation {
   amount: number;
   serviceDate: string;
   serviceNote?: string;
+  programmeId?: string;
 }
 
 export interface InPersonGivingLedger {
   collectionId: string;
   weekEndingDate: string;
+  collectionDate: string;
+  notes?: string;
   status: GivingCollection["status"];
   bankedDate?: string;
   fundNames: string[];
@@ -182,6 +185,7 @@ export function groupInPersonGivingCollections({
             amount: transaction.amount,
             serviceDate: transaction.date,
             serviceNote: serviceNoteOf(transaction.notes),
+            programmeId: transaction.programmeId,
           });
           continue;
         }
@@ -240,6 +244,8 @@ export function groupInPersonGivingCollections({
       return {
         collectionId: collection._id,
         weekEndingDate: collection.weekEndingDate,
+        collectionDate: collection.collectionDate,
+        notes: collection.notes,
         status: collection.status,
         bankedDate: collection.bankedDate,
         fundNames: Array.from(fundNames).sort((a, b) => a.localeCompare(b)),
