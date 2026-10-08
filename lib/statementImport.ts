@@ -23,7 +23,6 @@ const DATE_SHAPE = /^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}$/;
 const ZERO_TEXT = /^\(?[-+]?0+(\.0+)?\)?$/;
 // Headers that name something other than money, so their numbers are never amounts.
 const NOT_AN_AMOUNT_HEADER = /\b(ref|reference|account|acc|number|no|sort ?code|cheque|id|balance)\b/i;
-const MONEY_SHAPE = /[.\-+()£$]/;
 
 // Splits text into logical lines, keeping quote state across physical line
 // breaks, and counts each delimiter outside quotes on every line.
@@ -246,13 +245,9 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
     const candidates = indexes.filter((index) => !NOT_AN_AMOUNT_HEADER.test(headers[index]) && index !== headerIndexOf(mapping.date));
     const amountShare = (index: number) => share(index, (cell) => (readAmount(cell) === "bad" ? null : true));
     const qualifying = candidates.filter((index) => amountShare(index) > 0.5);
-    // Columns with a decimal point, a sign or brackets look like money; whole numbers may be references.
-    const moneyShaped = qualifying.filter((index) => cellsOf(index).some((cell) => MONEY_SHAPE.test(cell)));
-    const ranked = moneyShaped.length > 0 ? moneyShaped : qualifying;
-    const topShare = ranked.reduce((top, index) => Math.max(top, amountShare(index)), 0);
-    const tied = ranked.filter((index) => amountShare(index) === topShare);
-    // Two equally good candidates are ambiguous; the user picks the amount column.
-    if (tied.length === 1) mapping.amount = headers[tied[0]];
+    // Values alone can't tell an amount from a balance, so two numeric columns are
+    // ambiguous and the user picks the amount column.
+    if (qualifying.length === 1) mapping.amount = headers[qualifying[0]];
   }
   if (!mapping.description) {
     const taken = new Set([mapping.date, mapping.amount, mapping.amountIn, mapping.amountOut]);

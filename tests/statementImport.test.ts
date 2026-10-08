@@ -186,6 +186,7 @@ describe("detectColumns", () => {
     for (const lines of [
       ["01/03/2026,Opening balance,0.00,100.00", "02/03/2026,Coffee,-3.50,96.50", "03/03/2026,Offering,20.00,116.50"],
       ["02/03/2026,Electricity bill,-10.00,-5.00", "01/03/2026,Church hall rent,-5.00,5.00"],
+      ["01/03/2026,Offering,10,100.50", "02/03/2026,Donation,20,120.50"],
       ["01/03/2026,Coffee,100.00,-3.50", "02/03/2026,Donation,96.50,-3.50"],
     ]) {
       const { headers, mapping } = importFile(lines.join("\n"));
