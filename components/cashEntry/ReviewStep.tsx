@@ -2,7 +2,7 @@ import { Loader2 } from "lucide-react";
 import { roundMoney } from "../../convex/lib/money";
 import { NOTE_VALUES, draftTotals } from "../../lib/cashCollectionDraft";
 import { FundType } from "../../types";
-import Receipt, { ReceiptRow } from "./Receipt";
+import Receipt, { MoneyRow } from "./Receipt";
 import { gbp, shortDate } from "./format";
 import {
   btnGhost,
@@ -15,7 +15,7 @@ import {
   screenTitle,
   txtArea,
   txtInput,
-} from "./ui";
+} from "../wizard/ui";
 import type { WizardModel, SaveStatus } from "./useCollectionDraft";
 
 const GIFT_AID_RATE = 0.25;
@@ -78,33 +78,33 @@ export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
           <>
             <div className={`${eyebrow} mb-1 mt-1.5`}>Programmes · within Offering</div>
             {totals.byProgramme.map(({ programmeId, total }) => (
-              <ReceiptRow key={programmeId} label={model.programmeName(programmeId)} value={total} />
+              <MoneyRow key={programmeId} label={model.programmeName(programmeId)} value={total} />
             ))}
             <div className="my-2 border-t border-dashed border-ledger" />
           </>
         )}
 
         <div className={`${eyebrow} mb-1 mt-1.5`}>To bank</div>
-        <ReceiptRow label="Cash" value={totals.byMethod.cash} />
+        <MoneyRow label="Cash" value={totals.byMethod.cash} />
         {totals.slip.counted > 0 && (
           <>
             {NOTE_VALUES.filter((value) => (totals.slip.notes[value] ?? 0) > 0).map((value) => {
               const quantity = totals.slip.notes[value] ?? 0;
-              return <ReceiptRow key={value} label={`£${value} notes × ${quantity}`} value={quantity * value} sub />;
+              return <MoneyRow key={value} label={`£${value} notes × ${quantity}`} value={quantity * value} sub />;
             })}
-            <ReceiptRow label="Coins (bagged)" value={totals.slip.coins} sub />
+            <MoneyRow label="Coins (bagged)" value={totals.slip.coins} sub />
             {envelopesCash > PENNY && (
-              <ReceiptRow label="Envelopes & typed totals" value={envelopesCash} sub muted />
+              <MoneyRow label="Envelopes & typed totals" value={envelopesCash} sub muted />
             )}
           </>
         )}
-        <ReceiptRow label="Cheques" value={totals.byMethod.cheque} />
-        <ReceiptRow label="Card machine (settles itself)" value={totals.byMethod.card} />
+        <MoneyRow label="Cheques" value={totals.byMethod.cheque} />
+        <MoneyRow label="Card machine (settles itself)" value={totals.byMethod.card} />
 
         <div className="my-2 border-t border-dashed border-ledger" />
         <div className={`${eyebrow} mb-1 mt-1.5`}>Gift Aid</div>
-        <ReceiptRow label="Eligible tithes" value={totals.giftAidEligible} />
-        <ReceiptRow label="≈ to claim (25%)" value={claimable} />
+        <MoneyRow label="Eligible tithes" value={totals.giftAidEligible} />
+        <MoneyRow label="≈ to claim (25%)" value={claimable} />
       </div>
 
       <span className={fieldLabel}>Counted by (optional)</span>

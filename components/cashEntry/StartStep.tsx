@@ -21,7 +21,7 @@ import {
   btnOutline,
   darkCard,
   txtInput,
-} from "./ui";
+} from "../wizard/ui";
 import type { WizardModel } from "./useCollectionDraft";
 
 interface StartStepProps {

@@ -1,8 +1,8 @@
 import { sumMoney } from "../../convex/lib/money";
 import type { InPersonGivingLedger } from "../../lib/inPersonGiving";
-import { ReceiptRow } from "./Receipt";
+import { MoneyRow } from "./Receipt";
 import { gbp, shortDate } from "./format";
-import { card, darkCard, eyebrow, screenHelp, screenTitle } from "./ui";
+import { card, darkCard, eyebrow, screenHelp, screenTitle } from "../wizard/ui";
 
 // Read-only view of a collection the walkthrough can't edit. It renders the
 // saved entries as they are, so nothing the draft can't represent is hidden.
@@ -50,11 +50,11 @@ export default function SavedCollectionSummary({
               <div className="text-xs text-grey-mid">
                 {row.serviceNote} · {shortDate(row.serviceDate)} · {row.fundName} · {row.category}
               </div>
-              {row.cash > 0 && <ReceiptRow label="Cash" value={row.cash} sub />}
-              {row.cheque > 0 && <ReceiptRow label="Cheque" value={row.cheque} sub />}
-              {row.pdq > 0 && <ReceiptRow label="Card" value={row.pdq} sub />}
+              {row.cash > 0 && <MoneyRow label="Cash" value={row.cash} sub />}
+              {row.cheque > 0 && <MoneyRow label="Cheque" value={row.cheque} sub />}
+              {row.pdq > 0 && <MoneyRow label="Card" value={row.pdq} sub />}
               {row.total - row.cash - row.cheque - row.pdq > 0.005 && (
-                <ReceiptRow label="Other (bank or online)" value={row.total - row.cash - row.cheque - row.pdq} sub />
+                <MoneyRow label="Other (bank or online)" value={row.total - row.cash - row.cheque - row.pdq} sub />
               )}
             </div>
           ))}
@@ -65,7 +65,7 @@ export default function SavedCollectionSummary({
         <div className={card}>
           <div className={`${eyebrow} mb-1`}>Named gifts</div>
           {ledger.namedDonations.map((donation) => (
-            <ReceiptRow
+            <MoneyRow
               key={donation.id}
               label={`${donation.donorName} · ${donation.paymentMethod ?? "Unknown method"} · ${shortDate(donation.serviceDate)}`}
               value={donation.amount}
