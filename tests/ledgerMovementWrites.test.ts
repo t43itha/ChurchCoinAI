@@ -127,6 +127,23 @@ describe("category names that would hide a movement category", () => {
     expect(get("building")?.defaultIncomeCategory).toBe("Offerings");
     expect(get("elsewhere")?.defaultIncomeCategory).toBe("Harvest Giving");
   });
+
+  it.each([
+    ["retired", (ctx: Parameters<typeof invoke>[1]) => invoke(categories.setRetired, ctx, { categoryId: "harvest", retired: true })],
+    ["deleted", (ctx: Parameters<typeof invoke>[1]) => invoke(categories.remove, ctx, { categoryId: "harvest" })],
+  ])("clears a fund's default cash collection category when it is %s", async (_, change) => {
+    const { ctx, get } = fixture({
+      categories: [{ _id: "harvest", organizationId: "org", name: "Harvest Giving", transactionType: "Income", createdAt: 1 }],
+      funds: [
+        { _id: "general", organizationId: "org", name: "General", defaultIncomeCategory: "Harvest Giving" },
+        { _id: "building", organizationId: "org", name: "Building", defaultIncomeCategory: "Offerings" },
+      ],
+    });
+    await change(ctx);
+
+    expect(get("general")?.defaultIncomeCategory).toBeUndefined();
+    expect(get("building")?.defaultIncomeCategory).toBe("Offerings");
+  });
 });
 
 describe("cash collection rows stay giving", () => {

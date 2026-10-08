@@ -100,7 +100,9 @@ export function parseServiceNote(notes: string | undefined): string {
   return serviceNoteOf(notes) ?? "Service";
 }
 
-function isNamedDonationTransaction(transaction: GivingTransaction): boolean {
+export function isNamedDonationTransaction(
+  transaction: Pick<GivingTransaction, "donorId" | "donorName">
+): boolean {
   return Boolean(transaction.donorId || transaction.donorName?.trim());
 }
 
