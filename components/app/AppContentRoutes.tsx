@@ -173,8 +173,9 @@ const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
 const ReportsRoute: React.FC<RouteContext> = ({ funds, churchDetails }) => {
   const transactions = useQuery(api.queries.transactions.list, {});
   const pledges = useQuery(api.queries.pledges.list, {});
+  const programmes = useQuery(api.queries.programmes.list, { includeArchived: true });
 
-  if (transactions === undefined || pledges === undefined) {
+  if (transactions === undefined || pledges === undefined || programmes === undefined) {
     return financialDataLoader;
   }
 
@@ -183,6 +184,7 @@ const ReportsRoute: React.FC<RouteContext> = ({ funds, churchDetails }) => {
       transactions={transactions}
       funds={funds}
       pledges={pledges}
+      programmes={programmes}
       churchDetails={churchDetails}
     />
   );
