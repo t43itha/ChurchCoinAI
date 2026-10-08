@@ -133,6 +133,7 @@ const ProgrammeIncomeCard: React.FC<ProgrammeIncomeCardProps> = ({ rows, expande
   <div className="swiss-card">
     <button
       onClick={onToggle}
+      aria-expanded={expanded}
       className="w-full px-5 py-4 flex items-center justify-between rounded-t-xl hover:bg-[#fcfbf9] transition-colors"
     >
       <div className="flex items-center gap-2">
@@ -150,7 +151,7 @@ const ProgrammeIncomeCard: React.FC<ProgrammeIncomeCardProps> = ({ rows, expande
           <thead>
             <tr className="bg-[#fcfbf9] border-b border-[#efeee9]">
               <th className="px-5 py-2.5 text-left font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Programme</th>
-              <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Gifts</th>
+              <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Entries</th>
               <th className="px-5 py-2.5 text-right font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">Amount</th>
             </tr>
           </thead>
@@ -230,7 +231,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
     setIsExportingPdf(true);
     try {
       const { generateMonthlyReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
-      const html = generateMonthlyReportHTML(reportData, churchDetails);
+      const html = generateMonthlyReportHTML(reportData, churchDetails, programmeIncome);
 
       const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
       const filename = `${churchPart}_Monthly_Report_${sanitizePdfFilenamePart(reportData.monthName)}`;
@@ -248,7 +249,7 @@ const MonthlyReportContent: React.FC<MonthlyReportContentProps> = ({ transaction
     setIsExportingExcel(true);
     try {
       const { generateMonthlyReportXLSX } = await import('../services/excelGenerator');
-      const blob = await generateMonthlyReportXLSX(reportData, churchDetails);
+      const blob = await generateMonthlyReportXLSX(reportData, churchDetails, programmeIncome);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -777,7 +778,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
     setIsExportingPdf(true);
     try {
       const { generateAnnualReportHTML, sanitizePdfFilenamePart } = await import('../services/pdfGenerator');
-      const html = generateAnnualReportHTML(reportData, churchDetails);
+      const html = generateAnnualReportHTML(reportData, churchDetails, programmeIncome);
 
       const churchPart = sanitizePdfFilenamePart(churchDetails.name || 'Church');
       const filename = `${churchPart}_Annual_Report_${sanitizePdfFilenamePart(String(year))}`;
@@ -795,7 +796,7 @@ const AnnualReportContent: React.FC<AnnualReportContentProps> = ({ transactions,
     setIsExportingExcel(true);
     try {
       const { generateAnnualReportXLSX } = await import('../services/excelGenerator');
-      const blob = await generateAnnualReportXLSX(reportData, churchDetails);
+      const blob = await generateAnnualReportXLSX(reportData, churchDetails, programmeIncome);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

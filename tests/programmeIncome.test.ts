@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { incomeByProgramme } from "../lib/programmeIncome";
+import { programmeIncomeSectionHTML } from "../services/pdfGenerator";
+import { programmeIncomeSheetRows } from "../services/excelGenerator";
 
 const programmes = [
   { _id: "harvest", name: "Harvest Thanksgiving" },
@@ -97,5 +99,29 @@ describe("incomeByProgramme", () => {
         programmes
       )
     ).toEqual([]);
+  });
+});
+
+describe("programme income in downloads", () => {
+  const rows = [
+    { programmeId: "harvest", name: "Harvest <Appeal>", total: 120.5, count: 3 },
+    { programmeId: "camp", name: "Youth Camp", total: 80, count: 1 },
+  ];
+
+  it("adds an escaped PDF section with a total, and nothing when there is no programme income", () => {
+    const html = programmeIncomeSectionHTML(rows);
+    expect(html).toContain("Income by programme");
+    expect(html).toContain("Harvest &lt;Appeal&gt;");
+    expect(html).toContain("£200.50");
+    expect(programmeIncomeSectionHTML([])).toBe("");
+  });
+
+  it("builds spreadsheet rows with a total", () => {
+    expect(programmeIncomeSheetRows(rows)).toEqual([
+      ["Programme", "Entries", "Amount"],
+      ["Harvest <Appeal>", 3, 120.5],
+      ["Youth Camp", 1, 80],
+      ["Total", "", 200.5],
+    ]);
   });
 });
