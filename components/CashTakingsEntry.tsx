@@ -285,8 +285,9 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             paymentMethod: row.paymentMethod,
             amount: parseMoney(row.amount),
             isGiftAidEligible: row.isGiftAidEligible,
-            // A donation dated on the old week ending follows a corrected one.
-            ...(row.serviceDate && row.serviceDate !== initialCollection?.weekEndingDate
+            // A donation with no service of its own was dated on the week
+            // ending, so it follows a corrected one.
+            ...(row.serviceDate && (row.serviceNote || row.serviceDate !== initialCollection?.weekEndingDate)
               ? { serviceDate: row.serviceDate }
               : {}),
             ...(row.serviceNote ? { serviceNote: row.serviceNote } : {}),
