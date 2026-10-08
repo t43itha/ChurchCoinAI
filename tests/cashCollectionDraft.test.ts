@@ -1029,6 +1029,11 @@ describe("cash collection draft", () => {
     expect(parseStoredDraft(JSON.parse(JSON.stringify(valid)))).toEqual(valid);
   });
 
+  it("keeps the write id that tells tabs whose copy is stored", () => {
+    const stored = { savedAt: "2026-10-01T10:00:00Z", draftId: "draft-1", writeId: "write-7", draft: sampleDraft() };
+    expect(parseStoredDraft(stored)?.writeId).toBe("write-7");
+  });
+
   it("rejects a stored draft without a draftId, or with an empty one", () => {
     const draft = sampleDraft();
     expect(parseStoredDraft({ savedAt: "2026-10-01T10:00:00Z", draft })).toBeNull();

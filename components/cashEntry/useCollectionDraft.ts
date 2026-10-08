@@ -150,17 +150,25 @@ function readStoredDraft(key: string): StoredDraft | null {
   return stored;
 }
 
-// A count may write when the key is empty or already holds this count. Anything
-// else is another tab's draft, which must not be overwritten.
-const canWriteDraft = (key: string, draftId: string) => {
+// The stored copy belongs to a tab only if it is the exact write that tab last
+// made or resumed. Another tab, even one editing the same count, changes the
+// writeId, so a stale tab can neither overwrite nor delete newer work.
+interface StoredWrite {
+  draftId: string;
+  writeId: string | undefined;
+}
+
+const isStoredWrite = (stored: StoredDraft | null, owned: StoredWrite) =>
+  stored !== null && stored.draftId === owned.draftId && stored.writeId === owned.writeId;
+
+const canWriteDraft = (key: string, owned: StoredWrite) => {
   const raw = readRaw(key);
-  return raw === null || parseStoredJson(raw)?.draftId === draftId;
+  return raw === null || isStoredWrite(parseStoredJson(raw), owned);
 };
 
-// Removes the stored copy only when it is the count given, so another tab's draft survives.
-function removeOwnedDraft(key: string, draftId: string) {
+function removeOwnedDraft(key: string, owned: StoredWrite) {
   const raw = readRaw(key);
-  if (raw !== null && parseStoredJson(raw)?.draftId === draftId) removeKey(key);
+  if (raw !== null && isStoredWrite(parseStoredJson(raw), owned)) removeKey(key);
 }
 
 function readRecentFundIds(key: string): string[] {
@@ -221,6 +229,7 @@ export function useCollectionDraft({
   const storedUnresolved = useRef(offer !== null);
   // Names this count in storage. Resuming adopts the stored copy's id.
   const [draftId, setDraftId] = useState<string>(() => crypto.randomUUID());
+  const lastWriteId = useRef<string | undefined>(undefined);
   const [autosaveFailed, setAutosaveFailed] = useState(false);
   const touched = useRef(false);
   const submitting = useRef(false);
@@ -258,16 +267,20 @@ export function useCollectionDraft({
   // removes its own copy, but a stored draft this count doesn't own is left alone.
   useEffect(() => {
     if (isEdit || !touched.current || saved || storedUnresolved.current) return;
+    const mine = { draftId, writeId: lastWriteId.current };
     if (!hasEntries(draft)) {
-      removeOwnedDraft(draftKey, draftId);
+      removeOwnedDraft(draftKey, mine);
       setAutosaveFailed(false);
       return;
     }
-    if (!canWriteDraft(draftKey, draftId)) {
+    if (!canWriteDraft(draftKey, mine)) {
       setAutosaveFailed(true);
       return;
     }
-    setAutosaveFailed(!writeJson(draftKey, { savedAt: new Date().toISOString(), draftId, draft } satisfies StoredDraft));
+    const writeId = crypto.randomUUID();
+    const written = writeJson(draftKey, { savedAt: new Date().toISOString(), draftId, writeId, draft } satisfies StoredDraft);
+    if (written) lastWriteId.current = writeId;
+    setAutosaveFailed(!written);
   }, [draft, draftId, draftKey, isEdit, saved]);
   const fundById = useCallback((fundId: string) => funds.find((fund) => fund._id === fundId), [funds]);
   const fundName = useCallback((fundId: string) => fundById(fundId)?.name ?? "Fund", [fundById]);
@@ -303,7 +316,7 @@ export function useCollectionDraft({
 
   // Called when the user closes a count with entries and confirms the discard.
   const discardDraft = useCallback(() => {
-    if (!isEdit) removeOwnedDraft(draftKey, draftId);
+    if (!isEdit) removeOwnedDraft(draftKey, { draftId, writeId: lastWriteId.current });
   }, [draftId, draftKey, isEdit]);
 
   const submit = async (status: SaveStatus): Promise<boolean> => {
@@ -342,7 +355,7 @@ export function useCollectionDraft({
         : await submitCollection(args);
 
       if (!isEdit) {
-        removeOwnedDraft(draftKey, draftId);
+        removeOwnedDraft(draftKey, { draftId, writeId: lastWriteId.current });
         writeJson(recentKey, recentFundIdsOf(draft, ctx.generalFundId));
       }
       const totals = draftTotals(draft, ctx);
@@ -370,21 +383,29 @@ export function useCollectionDraft({
 
   const resume = () => {
     if (!offer || !referenceReady) return;
-    const pruned = pruneStoredDraft(offer.draft, {
+    // Another tab may have saved this count since it was offered, so load the latest copy.
+    const latest = readStoredDraft(draftKey);
+    if (!latest) {
+      storedUnresolved.current = false;
+      setOffer(null);
+      return;
+    }
+    const pruned = pruneStoredDraft(latest.draft, {
       fundIds: new Set(funds.map((fund) => fund._id)),
       programmeIds: new Set(programmes.map((programme) => programme._id)),
       donorIds: new Set((donorRows ?? []).map((donor) => donor._id)),
     });
     touched.current = true;
     storedUnresolved.current = false;
-    setDraftId(offer.draftId);
+    setDraftId(latest.draftId);
+    lastWriteId.current = latest.writeId;
     dispatchRaw({ type: "load", draft: pruned });
     setOffer(null);
   };
 
   // Removes the copy that was offered, not one another tab may have stored since.
   const discardStored = () => {
-    if (offer) removeOwnedDraft(draftKey, offer.draftId);
+    if (offer) removeOwnedDraft(draftKey, { draftId: offer.draftId, writeId: offer.writeId });
     storedUnresolved.current = false;
     setOffer(null);
   };
@@ -392,6 +413,7 @@ export function useCollectionDraft({
   const startFresh = () => {
     touched.current = false;
     setDraftId(crypto.randomUUID());
+    lastWriteId.current = undefined;
     setSaved(null);
     setError(null);
     dispatchRaw({ type: "load", draft: newDraft(getWeekEndingSunday(new Date()), currentUsualFundIds()) });

@@ -83,6 +83,9 @@ export interface CollectionDraft {
 export interface StoredDraft {
   savedAt: string;
   draftId: string;
+  // Changes on every write, so a tab can tell whether the stored copy is still
+  // the one it last wrote or resumed.
+  writeId?: string;
   draft: CollectionDraft;
 }
 
@@ -687,10 +690,11 @@ export function editBlocker(ledger: InPersonGivingLedger, ctx: LedgerContext): s
 // Reads a stored draft back from storage. Anything malformed returns null.
 export function parseStoredDraft(raw: unknown): StoredDraft | null {
   if (!isRecord(raw)) return null;
-  const { savedAt, draftId, draft: rawDraft } = raw;
+  const { savedAt, draftId, writeId, draft: rawDraft } = raw;
   if (typeof savedAt !== "string" || typeof draftId !== "string" || draftId === "") return null;
   const draft = parseDraft(rawDraft);
-  return draft && hasEntries(draft) ? { savedAt, draftId, draft } : null;
+  if (draft === null || !hasEntries(draft)) return null;
+  return typeof writeId === "string" ? { savedAt, draftId, writeId, draft } : { savedAt, draftId, draft };
 }
 
 // Fund lines whose fund is gone. They keep their amount, so the user can choose
