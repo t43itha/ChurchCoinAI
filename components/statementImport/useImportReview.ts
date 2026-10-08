@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { exceedsImportLimit, MAX_IMPORT_ROWS, type MappingResult } from "../../lib/statementImport";
+import { exceedsImportLimit, MAX_IMPORT_ROWS, type MappedRow, type MappingResult } from "../../lib/statementImport";
 import { effectiveCategories } from "../../lib/transactionCategories";
 import { notify } from "../../lib/notifications";
 import {
@@ -44,6 +44,8 @@ export type ImportReviewDeps = {
 export interface ImportReview {
   // Review batch visibility and contents
   isReviewOpen: boolean;
+  // True when the open batch came from bank sync. Statement batches are shown by the walkthrough.
+  isBankReview: boolean;
   openReview: () => void;
   rows: PendingReviewTransaction[];
   duplicateWarnings: Set<number>;
@@ -59,6 +61,8 @@ export interface ImportReview {
   hasMoreBankRows: boolean;
   // Starting batches
   startStatementReview: (mapped: MappingResult) => boolean;
+  // Adds rows to the open statement batch, screened like the rows it started with.
+  addStatementRows: (rows: MappedRow[]) => boolean;
   syncFromBank: (connectionId: Id<"bankConnections">, cursor?: BankSyncCursor, options?: { append?: boolean }) => Promise<void>;
   fetchNextBankBatch: () => Promise<void>;
   // Editing rows
@@ -145,6 +149,8 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
     setDismissedPairs(new Set());
   };
 
+  const isBankReview = bankSyncReviewConnectionId !== null;
+
   const startStatementReview = (mapped: MappingResult): boolean => {
     const screen = screenStatementRows(mapped, ledgerRows, categories, funds);
     if (screen.tooMany) {
@@ -160,6 +166,26 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
     setBankSyncReviewConnectionId(null);
     setRows(screen.fresh);
     setIsReviewOpen(true);
+    return true;
+  };
+
+  // Rows added after the batch started (fixed rows) go through the same screening.
+  const addStatementRows = (mapped: MappedRow[]): boolean => {
+    const prior = [...rows, ...alreadyImportedRows].map((row) => ({
+      date: row.date ?? "",
+      description: row.description ?? "",
+      amount: row.amount ?? 0,
+      type: row.type ?? "Income",
+    }));
+    const screen = screenStatementRows({ rows: mapped, skipped: [], errors: [] }, ledgerRows, categories, funds, prior);
+    if (screen.tooMany || exceedsImportLimit(rows.length + screen.fresh.length)) {
+      notify("Too many transactions", `Import up to ${MAX_IMPORT_ROWS} transactions at a time. Split the file by date range.`);
+      return false;
+    }
+    const startIndex = rows.length;
+    setRows((current) => [...current, ...screen.fresh]);
+    setDuplicateWarnings((current) => new Set([...current, ...[...screen.possibleDuplicates].map((index) => startIndex + index)]));
+    setAlreadyImportedRows((current) => [...current, ...screen.alreadyImported]);
     return true;
   };
 
@@ -312,6 +338,7 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
 
   return {
     isReviewOpen,
+    isBankReview,
     openReview,
     rows,
     duplicateWarnings,
@@ -324,6 +351,7 @@ export function useImportReview({ funds, categories, ledger, onPledgeCompleted }
     isFetchingMoreBank,
     hasMoreBankRows,
     startStatementReview,
+    addStatementRows,
     syncFromBank,
     fetchNextBankBatch,
     updateRow,

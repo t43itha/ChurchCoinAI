@@ -1,23 +1,23 @@
 import { can } from "../lib/permissions";
-import React, { useState, useMemo, useRef, useEffect, startTransition } from 'react';
+import React, { useState, useMemo, useEffect, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
 import CashEntryWizard from './cashEntry/CashEntryWizard';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
-import { CsvRecord, detectColumns, findHeaderRow, mapStatementRows, tokenizeCsv } from '../lib/statementImport';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
 import { linkState } from '../lib/movementMatching';
 import { useImportReview } from './statementImport/useImportReview';
-import type { PendingReviewTransaction } from './statementImport/types';
+import StatementImportWizard from './statementImport/StatementImportWizard';
+import ReviewTable from './statementImport/ReviewTable';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
@@ -102,14 +102,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     const names = categoryNamesForTransactionTypes(importCategories, [type]);
     return current && !names.includes(current) ? [...names, current] : names;
   };
-  const fundNamesById = useMemo(
-    () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
-    [funds]
-  );
-  // Import review batch shared by CSV import, bank sync and the statement walkthrough.
+  // Import review batch shared by the statement walkthrough and bank sync.
   const importReview = useImportReview({ funds, categories, ledger: allTransactions, onPledgeCompleted });
   const {
-    isReviewOpen: showReviewModal,
+    isReviewOpen,
+    isBankReview,
     rows: pendingTransactions,
     duplicateWarnings,
     alreadyImportedRows,
@@ -123,7 +120,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     removeRow: removePendingTransactionAt,
     pairing,
     openReview,
-    startStatementReview,
     syncFromBank,
     fetchNextBankBatch,
     assignFundToAll,
@@ -139,13 +135,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [pledgeMatches, setPledgeMatches] = useState<any[]>([]);
   const [showMatchModal, setShowMatchModal] = useState(false);
   
-  // CSV Import State
-  const [showColumnMapper, setShowColumnMapper] = useState(false);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvRows, setCsvRows] = useState<CsvRecord[]>([]);
-  const [columnMapping, setColumnMapping] = useState({ date: '', description: '', amount: '', amountIn: '', amountOut: '' });
-  const [useSplitAmount, setUseSplitAmount] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Statement import walkthrough (file, columns, fix, categorise, check)
+  const [showStatementImport, setShowStatementImport] = useState(false);
 
   // Bank Sync State
   const [showBankSelector, setShowBankSelector] = useState(false);
@@ -565,62 +556,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
-  // --- CSV Handling ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-          const text = evt.target?.result as string;
-          const { records, error } = tokenizeCsv(text);
-          if (error) {
-              notify("Error", `We couldn't read this file: ${error.reason}.`);
-              return;
-          }
-          const { headerIndex, headers } = findHeaderRow(records);
-          const dataRecords = records.slice(headerIndex === null ? 0 : headerIndex + 1);
-          if (headers.length === 0 || dataRecords.length === 0) {
-              notify("Error", "We couldn't find any transactions in this file. Check it's a CSV export of your bank statement.");
-              return;
-          }
-          // Check for empty headers
-          if (headers.some(h => !h)) {
-             notify("Error", "CSV contains empty headers. Please check the file.");
-             return;
-          }
-
-          const { mapping, split } = detectColumns(headers, dataRecords.map(record => record.cells));
-          setCsvHeaders(headers);
-          setCsvRows(dataRecords);
-          setUseSplitAmount(split);
-          setColumnMapping(mapping);
-          setShowColumnMapper(true);
-      };
-      reader.readAsText(file);
-      // Reset input
-      if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleProcessMapping = () => {
-      const hasColumn = (name: string) => csvHeaders.includes(name);
-      const amountMapped = useSplitAmount
-         ? hasColumn(columnMapping.amountIn) || hasColumn(columnMapping.amountOut)
-         : hasColumn(columnMapping.amount);
-      if (!hasColumn(columnMapping.date) || !hasColumn(columnMapping.description) || !amountMapped) {
-         notify("Error", useSplitAmount ? "Please map Date, Description, and the In/Out columns." : "Please map Date, Description, and Amount columns.");
-         return;
-      }
-
-      if (!funds[0]) {
-          notify("Error", "Add a fund before importing transactions.");
-          return;
-      }
-
-      const mapped = mapStatementRows(csvRows, csvHeaders, columnMapping, useSplitAmount);
-      if (startStatementReview(mapped)) setShowColumnMapper(false);
-  };
-
   const startBankSync = (bankConnectionId: Id<"bankConnections">) => {
     setShowBankSelector(false);
     void syncFromBank(bankConnectionId);
@@ -644,29 +579,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       // Multiple banks - show selector
       setShowBankSelector(true);
     }
-  };
-
-  const renderPairing = (row: PendingReviewTransaction) => {
-    const rowId = row.reviewRowId ?? '';
-    const active = pairing.activeFor(rowId);
-    if (active) {
-      return (
-        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-dark">
-          <LinkIcon size={12} className="shrink-0" />
-          <span>Paired with {pairing.partnerLabel(active)}</span>
-          <button type="button" onClick={() => pairing.undo(rowId, active)} className="font-bold underline hover:text-ink">Undo</button>
-        </p>
-      );
-    }
-    const suggestion = pairing.suggestionFor(rowId);
-    if (!suggestion || pairing.isDismissed(rowId)) return null;
-    return (
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-grey-dark">
-        <span>Other side: {pairing.partnerLabel(suggestion)}</span>
-        <button type="button" aria-label="Accept other side" onClick={() => pairing.accept(rowId, suggestion)} className="font-bold text-sage-dark underline hover:text-ink">Accept</button>
-        <button type="button" aria-label="Dismiss other side" onClick={() => pairing.dismiss(rowId)} className="font-bold text-grey-mid underline hover:text-ink">Dismiss</button>
-      </p>
-    );
   };
 
 
@@ -758,18 +670,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     )}
                 </button>
                 <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => setShowStatementImport(true)}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
                 >
                     <FileSpreadsheet size={16} strokeWidth={1.9} className="text-grey-mid"/>
                     Import CSV
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                    />
                 </button>
                 {can(currentUser.role, "reconciliation.manage") && (
                     <button
@@ -1447,157 +1352,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           document.body
       )}
 
-      {/* CSV Column Mapping Modal - REFINED UI 2.0 */}
-      {showColumnMapper && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-5xl animate-enter border border-ledger overflow-hidden">
-                <div className="p-6 border-b border-[#efeee9] flex justify-between items-center bg-paper/50">
-                    <div>
-                        <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
-                            <TableIcon size={16} className="text-grey-mid" /> Map CSV Columns
-                        </h3>
-                        <p className="text-[10px] text-grey-mid mt-1 font-medium">Match your bank statement columns to the ledger.</p>
-                    </div>
-                    <button onClick={() => setShowColumnMapper(false)} className="text-grey-mid hover:text-grey-dark transition-colors p-2 hover:bg-grey-light rounded-full">
-                        <X size={18} />
-                    </button>
-                </div>
-
-                <div className="p-8">
-                    {/* Mode Toggle */}
-                    <div className="flex justify-center mb-8">
-                            <div className="flex bg-grey-light p-1.5 rounded-xl border border-ledger">
-                                <button 
-                                onClick={() => setUseSplitAmount(false)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-xs text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
-                            >
-                                Single Amount Column
-                            </button>
-                            <button
-                                onClick={() => setUseSplitAmount(true)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-xs text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
-                            >
-                                Split In/Out Columns
-                                <ArrowLeftRight size={14} />
-                            </button>
-                            </div>
-                    </div>
-
-                    <div className={`grid grid-cols-1 gap-6 mb-8 ${useSplitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                        <div className="ledger-space-y-2">
-                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Date Column</label>
-                            <div className="relative">
-                                <select 
-                                    value={columnMapping.date} 
-                                    onChange={(e) => setColumnMapping({...columnMapping, date: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
-                                >
-                                    <option value="">Select Column...</option>
-                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
-                            </div>
-                        </div>
-                        
-                         <div className="ledger-space-y-2">
-                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Description / Payee</label>
-                             <div className="relative">
-                                <select 
-                                    value={columnMapping.description} 
-                                    onChange={(e) => setColumnMapping({...columnMapping, description: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
-                                >
-                                    <option value="">Select Column...</option>
-                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
-                            </div>
-                        </div>
-                        
-                        {useSplitAmount ? (
-                             <>
-                                <div className="ledger-space-y-2">
-                                    <label className="block text-[10px] font-bold text-sage uppercase tracking-wide">Money In (Credit)</label>
-                                    <div className="relative">
-                                    <select
-                                        value={columnMapping.amountIn}
-                                        onChange={(e) => setColumnMapping({...columnMapping, amountIn: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-sage/30 rounded-lg text-xs bg-sage-light/50 hover:bg-sage-light focus:bg-white focus:ring-2 focus:ring-sage focus:border-transparent outline-hidden transition-all appearance-none font-medium text-sage-dark cursor-pointer"
-                                    >
-                                        <option value="">Select Column...</option>
-                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-sage pointer-events-none"/>
-                                    </div>
-                                </div>
-                                <div className="ledger-space-y-2">
-                                    <label className="block text-[10px] font-bold text-error uppercase tracking-wide">Money Out (Debit)</label>
-                                    <div className="relative">
-                                    <select
-                                        value={columnMapping.amountOut}
-                                        onChange={(e) => setColumnMapping({...columnMapping, amountOut: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-error/30 rounded-lg text-xs bg-error-light/50 hover:bg-error-light focus:bg-white focus:ring-2 focus:ring-error focus:border-transparent outline-hidden transition-all appearance-none font-medium text-error cursor-pointer"
-                                    >
-                                        <option value="">Select Column...</option>
-                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-error pointer-events-none"/>
-                                    </div>
-                                </div>
-                             </>
-                        ) : (
-                            <div className="ledger-space-y-2">
-                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Amount</label>
-                                <div className="relative">
-                                <select 
-                                    value={columnMapping.amount} 
-                                    onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
-                                >
-                                    <option value="">Select Column...</option>
-                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="rounded-lg border border-ledger overflow-hidden">
-                        <div className="bg-paper px-4 py-2 border-b border-ledger flex justify-between items-center">
-                            <h4 className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Preview (First 3 Rows)</h4>
-                            <span className="text-[10px] text-grey-mid font-mono">{csvRows.length} Rows Detected</span>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left ledger-table text-[10px]">
-                                <thead className="bg-white">
-                                    <tr>
-                                        {csvHeaders.map(h => <th key={h} className="px-3 py-2 text-grey-mid font-bold border-b border-[#efeee9] whitespace-nowrap">{h}</th>)}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {csvRows.slice(0, 3).map((record) => (
-                                        <tr key={record.line} className="border-b border-slate-50 last:border-0 hover:bg-paper/50 transition-colors">
-                                            {record.cells.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-grey-dark whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-8 mt-4">
-                        <button onClick={() => setShowColumnMapper(false)} className="px-5 py-2.5 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-lg transition-colors">Cancel</button>
-                        <button onClick={handleProcessMapping} className="btn-primary px-6 py-2.5 font-bold uppercase text-xs tracking-wide flex items-center gap-2 shadow-lg shadow-slate-900/10">
-                            Process Import <ArrowRight size={14} />
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>,
-        document.body
-      )}
-
       {/* New Transaction Modal */}
       {showAddModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
@@ -2038,8 +1792,21 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         document.body
       )}
 
-      {/* Review Modal */}
-      {showReviewModal && canEdit && createPortal(
+      {showStatementImport && canEdit && (
+        <StatementImportWizard
+          funds={funds}
+          categoryNamesFor={categoryNamesFor}
+          review={importReview}
+          onReconcile={can(currentUser.role, "reconciliation.manage") ? () => {
+            setShowStatementImport(false);
+            setShowReconciliation(true);
+          } : undefined}
+          onClose={() => setShowStatementImport(false)}
+        />
+      )}
+
+      {/* Bank sync review. Statement imports are handled by the walkthrough above. */}
+      {isReviewOpen && isBankReview && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-soft-lg w-full min-w-0 max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger overflow-hidden">
                 <div className="p-6 border-b border-[#efeee9] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center rounded-t-lg">
@@ -2098,128 +1865,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </p>
                       </div>
                     )}
-                    <div className="ledger-space-y-3 md:hidden">
-                        {pendingTransactions.map((transaction, index) => {
-                          const isDuplicate = duplicateWarnings.has(index);
-                          return (
-                            <article
-                              key={index}
-                              className={`rounded-lg border p-4 ${isDuplicate ? 'border-amber-200 bg-amber-50' : 'border-ledger bg-white'}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex min-w-0 items-center gap-2 text-xs font-mono text-grey-mid">
-                                  {isDuplicate && (
-                                    <span title="Potential duplicate">
-                                      <AlertTriangle size={13} className="shrink-0 text-amber-600" />
-                                    </span>
-                                  )}
-                                  <span>{transaction.date}</span>
-                                </div>
-                                <span className="shrink-0 text-sm font-bold font-mono text-ink">
-                                  £{transaction.amount?.toFixed(2)}
-                                </span>
-                              </div>
-                              <p className="mt-2 break-words text-sm font-medium text-ink">
-                                {transaction.description || 'No description'}
-                              </p>
-                              {transaction.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
-                              {renderPairing(transaction)}
-                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                <label className="min-w-0">
-                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Category</span>
-                                  <select
-                                    aria-label={`Category for import row ${index + 1}`}
-                                    title={transaction.category || 'Select category'}
-                                    className="block w-full min-w-0 max-w-full rounded-sm border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
-                                    value={transaction.category || ''}
-                                    onChange={(event) => updatePendingTransactionAt(index, { category: event.target.value })}
-                                  >
-                                    <option value="">Select...</option>
-                                    {categoryNamesFor(transaction.type).map((category) => <option key={category} value={category}>{category}</option>)}
-                                  </select>
-                                </label>
-                                <label className="min-w-0">
-                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Fund</span>
-                                  <select
-                                    aria-label={`Fund for import row ${index + 1}`}
-                                    title={fundNamesById.get(transaction.fundId || '') || 'Select fund'}
-                                    className="block w-full min-w-0 max-w-full rounded-sm border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
-                                    value={transaction.fundId || ''}
-                                    onChange={(event) => updatePendingTransactionAt(index, { fundId: event.target.value })}
-                                  >
-                                    <option value="">Select...</option>
-                                    {funds.map((fund) => <option key={fund._id} value={fund._id}>{fund.name}</option>)}
-                                  </select>
-                                </label>
-                              </div>
-                              {isDuplicate && (
-                                <button
-                                  type="button"
-                                  onClick={() => removePendingTransactionAt(index)}
-                                  className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-error hover:text-error-dark"
-                                >
-                                  <X size={14} /> Remove duplicate
-                                </button>
-                              )}
-                            </article>
-                          );
-                        })}
-                    </div>
-                    <table className="hidden w-full table-fixed text-left ledger-table md:table">
-                        <colgroup>
-                            <col className="w-[14%]" />
-                            <col className="w-[28%]" />
-                            <col className="w-[12%]" />
-                            <col className="w-[20%]" />
-                            <col className="w-[20%]" />
-                            <col className="w-[6%]" />
-                        </colgroup>
-                        <thead>
-                            <tr>
-                                <th className="pb-2">Date</th>
-                                <th className="pb-2">Description</th>
-                                <th className="pb-2">Amount</th>
-                                <th className="pb-2">Category</th>
-                                <th className="pb-2">Fund</th>
-                                <th className="pb-2 w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pendingTransactions.map((t, i) => (
-                                <tr key={t.reviewRowId ?? i} className={duplicateWarnings.has(i) ? 'bg-amber-50' : ''}>
-                                    <td className="py-3 text-grey-mid font-mono text-xs">
-                                      <div className="flex items-center gap-2">
-                                        {duplicateWarnings.has(i) && (
-                                          <span title="Potential duplicate">
-                                            <AlertTriangle size={12} className="text-amber-600 shrink-0" />
-                                          </span>
-                                        )}
-                                        {t.date}
-                                      </div>
-                                    </td>
-                                    <td className="py-3 font-medium text-ink text-sm overflow-hidden">
-                                      <div className="truncate" title={t.description}>{t.description}</div>
-                                      {t.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
-                                      {renderPairing(t)}
-                                    </td>
-                                    <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
-                                    <td className="py-3 text-center">
-                                      {duplicateWarnings.has(i) && (
-                                        <button
-                                          onClick={() => removePendingTransactionAt(i)}
-                                          className="text-error hover:text-error-dark text-xs font-bold"
-                                          title="Remove duplicate"
-                                        >
-                                          <X size={14} />
-                                        </button>
-                                      )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                    <ReviewTable rows={pendingTransactions} duplicateWarnings={duplicateWarnings} funds={funds} categoryNamesFor={categoryNamesFor} pairing={pairing} onUpdate={updatePendingTransactionAt} onRemove={removePendingTransactionAt} />
                 </div>
                 <div className="p-5 border-t border-[#efeee9] flex flex-col gap-3 rounded-b-lg bg-paper sm:flex-row sm:items-center sm:justify-between">
                     <div>

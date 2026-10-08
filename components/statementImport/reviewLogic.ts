@@ -54,11 +54,14 @@ export type ScreenedStatement =
 
 // What happens to a mapped statement once the columns are read: defaults are
 // applied, rows are keyed, and rows already in the ledger are split off.
+// `prior` is the rows already in the batch: new rows continue their occurrence
+// numbers, so an identical row added later gets its own import key.
 export function screenStatementRows(
   mapped: Pick<MappingResult, "rows" | "skipped" | "errors">,
   ledger: LedgerRows,
   categories: ReviewCategory[],
-  funds: Fund[]
+  funds: Fund[],
+  prior: StatementRow[] = []
 ): ScreenedStatement {
   const parsed: Array<PendingReviewTransaction & StatementRow> = mapped.rows.map((row) => applySmallIncomeDefaults({
     reviewRowId: crypto.randomUUID(),
@@ -68,7 +71,8 @@ export function screenStatementRows(
     type: row.type,
     category: "",
   }, categories, funds));
-  const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(withImportKeys(parsed), ledger);
+  const keyed = withImportKeys([...prior, ...parsed]).slice(prior.length);
+  const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(keyed, ledger);
   if (fresh.length > MAX_IMPORT_ROWS) return { tooMany: true, count: fresh.length };
   return {
     tooMany: false,
