@@ -39,6 +39,11 @@ const summary = buildExecutiveDashboardSummary({
 });
 
 describe("month-end checks", () => {
+  it("omits Gift Aid when the church disables it", () => {
+    const disabled = { ...summary, readiness: { ...summary.readiness, giftAidClaimable: null } };
+    expect(buildMonthEndChecks(disabled, { role: "Admin", bankFeedIssues: 0 }).map(check => check.id))
+      .not.toContain("gift-aid");
+  });
   it("ranks problems before opportunities before clear controls", () => {
     const checks = buildMonthEndChecks(summary, { role: "Admin", bankFeedIssues: 1 });
 

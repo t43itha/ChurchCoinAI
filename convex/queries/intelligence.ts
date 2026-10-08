@@ -1,6 +1,37 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../lib/auth";
+import type { NamedTableInfo, OrderedQuery } from "convex/server";
+import type { DataModel, Doc } from "../_generated/dataModel";
+import { isGiftAidEnabled } from "../../lib/giftAid";
+import { DONOR_RULES } from "../intelligence/rules/donorRules";
+
+const giftAidRuleIds = new Set(
+  DONOR_RULES.filter((rule) => rule.requiresGiftAid).map((rule) => rule.id)
+);
+
+const visibleSuggestions = (
+  suggestions: Doc<"intelligenceSuggestions">[],
+  giftAidEnabled: boolean
+) => suggestions.filter((suggestion) => giftAidEnabled || !giftAidRuleIds.has(suggestion.ruleId));
+
+// Read the tenant index incrementally and stop once enough visible rows are
+// found, so hidden reminders cannot crowd out the remaining suggestions.
+async function takeVisibleSuggestions(
+  query: OrderedQuery<NamedTableInfo<DataModel, "intelligenceSuggestions">>,
+  limit: number,
+  giftAidEnabled: boolean
+) {
+  if (giftAidEnabled) return query.take(limit);
+  const result: Doc<"intelligenceSuggestions">[] = [];
+  if (limit <= 0) return result;
+  for await (const suggestion of query) {
+    if (giftAidRuleIds.has(suggestion.ruleId)) continue;
+    result.push(suggestion);
+    if (result.length >= limit) break;
+  }
+  return result.slice(0, limit);
+}
 
 // Get pending suggestions for dashboard
 export const getPendingSuggestions = query({
@@ -8,14 +39,14 @@ export const getPendingSuggestions = query({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     const limit = args.limit ?? 10;
+    const giftAidEnabled = isGiftAidEnabled(await ctx.db.get(user.organizationId));
 
-    const suggestions = await ctx.db
+    const suggestions = await takeVisibleSuggestions(ctx.db
       .query("intelligenceSuggestions")
       .withIndex("by_organization_status", (q) =>
         q.eq("organizationId", user.organizationId).eq("status", "pending")
       )
-      .order("desc")
-      .take(limit * 2); // Take more to filter, then slice
+      .order("desc"), limit * 2, giftAidEnabled);
 
     // Sort by severity (critical > warning > info), then by date
     const sorted = suggestions.sort((a, b) => {
@@ -53,6 +84,7 @@ export const getSuggestionsByType = query({
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const giftAidEnabled = isGiftAidEnabled(await ctx.db.get(user.organizationId));
 
     const suggestions = await ctx.db
       .query("intelligenceSuggestions")
@@ -64,10 +96,10 @@ export const getSuggestionsByType = query({
       .collect();
 
     if (args.status) {
-      return suggestions.filter((s) => s.status === args.status);
+      return visibleSuggestions(suggestions, giftAidEnabled).filter((s) => s.status === args.status);
     }
 
-    return suggestions;
+    return visibleSuggestions(suggestions, giftAidEnabled);
   },
 });
 
@@ -76,13 +108,15 @@ export const getSuggestionCounts = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
+    const giftAidEnabled = isGiftAidEnabled(await ctx.db.get(user.organizationId));
 
-    const suggestions = await ctx.db
+    const storedSuggestions = await ctx.db
       .query("intelligenceSuggestions")
       .withIndex("by_organization_status", (q) =>
         q.eq("organizationId", user.organizationId).eq("status", "pending")
       )
       .collect();
+    const suggestions = visibleSuggestions(storedSuggestions, giftAidEnabled);
 
     return {
       total: suggestions.length,
@@ -112,25 +146,24 @@ export const listAll = query({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     const limit = args.limit ?? 50;
+    const giftAidEnabled = isGiftAidEnabled(await ctx.db.get(user.organizationId));
 
     if (args.status) {
-      return await ctx.db
+      return await takeVisibleSuggestions(ctx.db
         .query("intelligenceSuggestions")
         .withIndex("by_organization_status", (q) =>
           q.eq("organizationId", user.organizationId).eq("status", args.status!)
         )
-        .order("desc")
-        .take(limit);
+        .order("desc"), limit, giftAidEnabled);
     }
 
     // Get all suggestions for the organization
-    const suggestions = await ctx.db
+    const suggestions = await takeVisibleSuggestions(ctx.db
       .query("intelligenceSuggestions")
       .withIndex("by_organization_status", (q) =>
         q.eq("organizationId", user.organizationId)
       )
-      .order("desc")
-      .take(limit);
+      .order("desc"), limit, giftAidEnabled);
 
     return suggestions;
   },
