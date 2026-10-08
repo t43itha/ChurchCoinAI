@@ -1,6 +1,15 @@
 import type { UserRole } from "./lib/permissions";
 import type { MovementKind } from "./lib/movementCategories";
 import type { TransferSummary } from "./lib/reportableTransactions";
+import type { DateRange, ReportPeriod } from "./lib/reportPeriods";
+import type {
+  DataReadiness,
+  FundStatement,
+  GivingByDonor,
+  PeriodTotals,
+  ReserveCover,
+  TrendPoint,
+} from "./lib/reportSummary";
 
 export const TransactionType = {
   INCOME: "Income",
@@ -317,12 +326,22 @@ export interface LoanReportRow {
   outstanding: number;
 }
 
+// A comparison period's figures, grouped the same way as the report itself.
+export interface ReportComparison {
+  label: string;           // "August 2026", "September 2025", "2025/26 (6 Apr - 8 Oct)"
+  range: DateRange;
+  totals: PeriodTotals;
+  receipts: CategoryGroup[];
+  payments: CategoryGroup[];
+}
+
 export interface MonthlyReportData {
   year: number;
   month: number;
   monthName: string;
-  receipts: CategoryGroup[];        // Income grouped by mainCategory
-  payments: CategoryGroup[];        // Expenditure grouped by mainCategory
+  period: ReportPeriod;
+  receipts: CategoryGroup[];        // Income grouped by mainCategory, largest first
+  payments: CategoryGroup[];        // Expenditure grouped by mainCategory, largest first
   weeklyBreakdown: WeeklyBreakdownItem[];
   missionTithe: {
     weeklyBreakdown: MissionTitheItem[];
@@ -330,6 +349,8 @@ export interface MonthlyReportData {
     titheToPay: number;  // 10% of total
   };
   tithes: TitheBreakdownItem[];
+  // Tithes grouped by giver.
+  titheGivers: GivingByDonor;
   giftAidSummary: {
     eligible: number;
     claimable: number;
@@ -339,6 +360,16 @@ export interface MonthlyReportData {
     totalExpenditure: number;
     netBankable: number;
   };
+  comparison: {
+    previousMonth: ReportComparison;
+    sameMonthLastYear: ReportComparison;
+  };
+  // Twelve months ending with this one.
+  trend: TrendPoint[];
+  // The financial year containing this month, through the month's end.
+  yearToDate: { label: string; totals: PeriodTotals };
+  fundStatement: FundStatement;
+  readiness: DataReadiness;
   transfers: TransferSummary;
   loans: LoanReportRow[];
 }
@@ -363,21 +394,33 @@ export interface TitheBreakdownItem {
 
 // Annual Report Types (RCI Annual Report)
 export interface AnnualReportData {
+  // Start year of the financial year.
   year: number;
-  incomeByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }>;
-  expenditureByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }>;
-  monthlyTrend: { month: string; income: number; expenditure: number }[];
-  yearOverYear?: {
-    current: { income: number; expenditure: number };
-    previous: { income: number; expenditure: number };
-    incomeChange: number;
-    expenditureChange: number;
-  };
+  reportingPeriod: 'tax_year' | 'calendar_year';
+  period: ReportPeriod;
+  receipts: CategoryGroup[];        // largest first
+  payments: CategoryGroup[];        // largest first
+  // Twelve buckets, with priorIncome from the year before.
+  monthlyTrend: TrendPoint[];
+  // The same elapsed span one year earlier; null when it has no reportable rows.
+  prior: ReportComparison | null;
   giftAidAnnual: {
     totalEligible: number;
     totalClaimable: number;
   };
-  fundBalances: { fund: string; balance: number; type: string }[];
+  missionTithe: {
+    eligible: number;
+    due: number;
+  };
+  giving: {
+    donorCount: number;
+    giftCount: number;
+    // Named givers who gave in at least half of the elapsed months (minimum 1).
+    regularGivers: number;
+  };
+  fundStatement: FundStatement;
+  reserveCover: ReserveCover;
+  readiness: DataReadiness;
   totals: {
     totalIncome: number;
     totalExpenditure: number;
