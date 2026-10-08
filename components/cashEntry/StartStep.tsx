@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
+import DateInput from "./DateInput";
 import {
   SERVICE_PRESETS,
   customServiceDateRange,
@@ -99,8 +100,7 @@ export default function StartStep({ model, existingCount, resumable, onResume, o
           </button>
         </div>
         {changingWeek && (
-          <input
-            type="date"
+          <DateInput
             aria-label="Week ending date"
             value={draft.weekEndingDate}
             onChange={(event) => {
@@ -181,8 +181,7 @@ export default function StartStep({ model, existingCount, resumable, onResume, o
                 onChange={(event) => setCustomLabel(event.target.value)}
               />
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5">
-                <input
-                  type="date"
+                <DateInput
                   aria-label="Service date"
                   min={min}
                   max={max}

@@ -187,6 +187,64 @@ button {
   letter-spacing: 0;
 }
 
+/* Keep native date pickers, with predictable sizing and a visible icon on iOS. */
+.cash-date-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cash-date-field:focus-within {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.cash-date-input {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.cash-date-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.cash-date-input::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: left;
+}
+
+/* Desktop WebKit/Blink retain their native picker hit target over our icon.
+   On iOS the enclosing label activates the date input directly. */
+.cash-date-input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .ledger-grid-bg {
   background-image:
     linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
