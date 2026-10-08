@@ -1,4 +1,4 @@
-import { mutation, internalMutation } from "../_generated/server";
+import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
 import {
@@ -13,9 +13,30 @@ import {
   categoryNameConflict,
   findCategoryByName,
   loadOrganizationCategories,
+  sameCategoryName,
 } from "../lib/categoryIntegrity";
 import { isMovementCategory } from "../../lib/movementCategories";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
+
+// Funds name their default cash collection category by name, so it follows a
+// rename and falls back to Offerings (by clearing) when the category goes.
+async function replaceFundDefaultCategory(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  oldName: string,
+  newName: string | undefined
+) {
+  const funds = await ctx.db
+    .query("funds")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .collect();
+
+  for (const fund of funds) {
+    if (fund.defaultIncomeCategory && sameCategoryName(fund.defaultIncomeCategory, oldName)) {
+      await ctx.db.patch(fund._id, { defaultIncomeCategory: newName });
+    }
+  }
+}
 
 // Create a new category
 export const create = mutation({
@@ -76,6 +97,7 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.categoryId);
+    await replaceFundDefaultCategory(ctx, user.organizationId, category.name, undefined);
 
     return args.categoryId;
   },
@@ -119,6 +141,8 @@ export const rename = mutation({
     for (const t of transactions) {
       await patchTransaction(ctx, t._id, { category: args.newName }, { lockOverride: "category-rename-cascade" });
     }
+
+    await replaceFundDefaultCategory(ctx, user.organizationId, oldName, args.newName);
 
     return { categoryId: args.categoryId, updatedTransactions: transactions.length };
   },
@@ -206,6 +230,9 @@ export const setRetired = mutation({
     }
 
     await ctx.db.patch(args.categoryId, { isRetired: args.retired || undefined });
+    if (args.retired) {
+      await replaceFundDefaultCategory(ctx, user.organizationId, category.name, undefined);
+    }
 
     return null;
   },

@@ -11,6 +11,9 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
+import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
+import { isMovementCategory } from "../../lib/movementCategories";
+import { isNamedDonationTransaction } from "../../lib/inPersonGiving";
 import { assertNotLockedByReconciliation, deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to normalize donor names for matching
@@ -215,6 +218,49 @@ async function findOrCreateDonor(
   return { donorId, matchedName: name.trim(), isNew: true };
 }
 
+// Entries are deleted and re-inserted on edit, so an entry may keep a retired
+// category only if an entry of the same kind and fund already had it.
+type EntryKind = "service" | "donation";
+const retainedCategoryKey = (kind: EntryKind, fundId: Id<"funds">, category: string) =>
+  `${kind}:${fundId}:${category}`;
+
+function retainedCategoryKeys(transactions: Doc<"transactions">[]) {
+  return new Set(
+    transactions
+      .filter((transaction) => transaction.fundId)
+      .map((transaction) =>
+        retainedCategoryKey(
+          isNamedDonationTransaction(transaction) ? "donation" : "service",
+          transaction.fundId!,
+          transaction.category
+        )
+      )
+  );
+}
+
+// Clients from before entryFormat 2 send no categories, programmes or
+// donation dates, so their edits would silently erase them.
+function legacyEditWouldDropDetail(
+  transactions: Doc<"transactions">[],
+  weekEndingDate: string
+) {
+  return transactions.some((transaction) =>
+    isNamedDonationTransaction(transaction)
+      ? transaction.notes?.startsWith("service:") || transaction.date !== weekEndingDate
+      : transaction.programmeId !== undefined || transaction.category !== "Offerings"
+  );
+}
+
+function serviceRowDefaultCategory(
+  categories: Doc<"categories">[],
+  defaultIncomeCategory: string | undefined
+): string {
+  const defaultName = defaultIncomeCategory?.trim();
+  if (!defaultName) return "Offerings";
+  const resolved = resolveCategoryForTransaction(defaultName, "Income", categories);
+  return resolved && !resolved.isRetired && !isMovementCategory(resolved) ? defaultName : "Offerings";
+}
+
 async function insertCollectionEntries(
   ctx: MutationCtx,
   {
@@ -223,14 +269,14 @@ async function insertCollectionEntries(
     weekEndingDate,
     serviceRows,
     namedDonations,
-    previousCategories,
+    retainedCategories,
   }: {
     organizationId: Id<"organizations">;
     cashCollectionId: Id<"cashCollections">;
     weekEndingDate: string;
     serviceRows: ServiceRowInput[];
     namedDonations: NamedDonationInput[];
-    previousCategories?: Set<string>;
+    retainedCategories?: Set<string>;
   }
 ): Promise<Id<"transactions">[]> {
   const categories = await ensureTypedCategories(ctx, organizationId);
@@ -238,14 +284,17 @@ async function insertCollectionEntries(
 
   for (const row of serviceRows) {
     const fund = await loadOrganizationFund(ctx, organizationId, row.fundId);
-    const requested = row.category?.trim() || fund.defaultIncomeCategory || "Offerings";
+    const requested =
+      row.category?.trim() || serviceRowDefaultCategory(categories, fund.defaultIncomeCategory);
     const { category, movementKind } = requireCanonicalCategory(
       categories,
       requested,
       "Income",
       {
         cashCollectionId,
-        currentCategory: previousCategories?.has(requested) ? requested : undefined,
+        currentCategory: retainedCategories?.has(retainedCategoryKey("service", row.fundId, requested))
+          ? requested
+          : undefined,
       }
     );
     const programmeId = await resolveProgrammeId(ctx, organizationId, row.programmeId);
@@ -314,7 +363,11 @@ async function insertCollectionEntries(
       "Income",
       {
         cashCollectionId,
-        currentCategory: previousCategories?.has(requestedCategory) ? requestedCategory : undefined,
+        currentCategory: retainedCategories?.has(
+          retainedCategoryKey("donation", donation.fundId, requestedCategory)
+        )
+          ? requestedCategory
+          : undefined,
       }
     );
     const amount = positiveAmount(donation.amount);
@@ -399,6 +452,7 @@ export const replaceCollectionEntries = mutation({
     status: v.union(v.literal("draft"), v.literal("submitted")),
     serviceRows: v.array(serviceRowValidator),
     namedDonations: v.optional(v.array(namedDonationValidator)),
+    entryFormat: v.optional(v.literal(2)),
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "cashCollections.write");
@@ -409,11 +463,21 @@ export const replaceCollectionEntries = mutation({
     }
 
     const existingTransactions = await assertCollectionUnlocked(ctx, collection);
+    if (
+      args.entryFormat !== 2 &&
+      legacyEditWouldDropDetail(existingTransactions, collection.weekEndingDate)
+    ) {
+      throw new Error("This collection has details this page can't edit. Refresh the page and try again.");
+    }
     const { validRows, validNamedDonations } = filterValidEntries(args);
+    // An outdated page can only be editing Offerings rows (checked above), so
+    // its rows stay Offerings rather than taking the fund's current default.
+    const serviceRows =
+      args.entryFormat === 2
+        ? validRows
+        : validRows.map((row) => ({ ...row, category: row.category ?? "Offerings" }));
 
-    // Rows are deleted and re-inserted, so a retired category they already
-    // had still counts as theirs.
-    const previousCategories = new Set(existingTransactions.map((transaction) => transaction.category));
+    const retainedCategories = retainedCategoryKeys(existingTransactions);
     for (const transaction of existingTransactions) {
       await deleteTransaction(ctx, transaction._id, { lockOverride: "reconciliation-owner" });
     }
@@ -429,9 +493,9 @@ export const replaceCollectionEntries = mutation({
       organizationId: user.organizationId,
       cashCollectionId: args.cashCollectionId,
       weekEndingDate: args.weekEndingDate,
-      serviceRows: validRows,
+      serviceRows,
       namedDonations: validNamedDonations,
-      previousCategories,
+      retainedCategories,
     });
 
     return {

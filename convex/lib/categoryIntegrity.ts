@@ -12,8 +12,10 @@ const ALIAS_TARGETS = new Map(
 );
 const SEED_NAMES = new Set(getRCICategorySeedData().map((seed) => normalizeName(seed.name)));
 
+export const sameCategoryName = (a: string, b: string) => normalizeName(a) === normalizeName(b);
+
 export const findCategoryByName = <T extends { name: string }>(categories: T[], name: string) =>
-  categories.find((category) => normalizeName(category.name) === normalizeName(name));
+  categories.find((category) => sameCategoryName(category.name, name));
 
 // Names resolve case-insensitively and through aliases, so a name that only
 // differs by case, or is an alias of another category, would hide one of them.

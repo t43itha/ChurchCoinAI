@@ -285,7 +285,10 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             paymentMethod: row.paymentMethod,
             amount: parseMoney(row.amount),
             isGiftAidEligible: row.isGiftAidEligible,
-            ...(row.serviceDate ? { serviceDate: row.serviceDate } : {}),
+            // A donation dated on the old week ending follows a corrected one.
+            ...(row.serviceDate && row.serviceDate !== initialCollection?.weekEndingDate
+              ? { serviceDate: row.serviceDate }
+              : {}),
             ...(row.serviceNote ? { serviceNote: row.serviceNote } : {}),
           };
 
@@ -316,6 +319,7 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         ? await replaceCollectionEntries({
             cashCollectionId: initialCollection.collectionId as Id<"cashCollections">,
             ...payload,
+            entryFormat: 2,
           })
         : await submitCollection(payload);
 

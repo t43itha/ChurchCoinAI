@@ -3,6 +3,7 @@ import {
   filterInPersonGivingLedgersByMonth,
   groupInPersonGivingCollections,
   parseServiceNote,
+  type InPersonGivingLedger,
 } from "../lib/inPersonGiving";
 
 describe("in-person giving grouping", () => {
@@ -325,6 +326,69 @@ describe("in-person giving grouping", () => {
     expect(filterInPersonGivingLedgersByMonth(ledgers, null, 2026)).toEqual(
       ledgers
     );
+  });
+});
+
+describe("in-person giving month filter with named donations", () => {
+  const ledgerWith = (overrides: Partial<InPersonGivingLedger>): InPersonGivingLedger => ({
+    collectionId: "c",
+    weekEndingDate: "2026-11-01",
+    status: "submitted",
+    fundNames: [],
+    fundTotals: [],
+    rows: [],
+    namedDonations: [],
+    total: 0,
+    ...overrides,
+  });
+
+  const donation = (serviceDate: string) => ({
+    id: `donation-${serviceDate}`,
+    donorName: "Ruth Adeyemi",
+    category: "Tithes & First Fruits",
+    fundId: "general",
+    fundName: "General Fund",
+    isGiftAidEligible: false,
+    amount: 40,
+    serviceDate,
+  });
+
+  const serviceRow = (serviceDate: string) => ({
+    id: `row-${serviceDate}`,
+    day: "Sun",
+    serviceDate,
+    serviceNote: "Sunday",
+    fundId: "general",
+    fundName: "General Fund",
+    category: "Offerings",
+    cash: 100,
+    pdq: 0,
+    cheque: 0,
+    total: 100,
+  });
+
+  it("places a donation-only ledger in the month of its donation, not its week ending", () => {
+    const donationOnly = ledgerWith({
+      collectionId: "donation-only",
+      weekEndingDate: "2026-11-01",
+      namedDonations: [donation("2026-10-30")],
+    });
+
+    expect(filterInPersonGivingLedgersByMonth([donationOnly], 9, 2026)).toEqual([donationOnly]);
+    expect(filterInPersonGivingLedgersByMonth([donationOnly], 10, 2026)).toEqual([]);
+  });
+
+  it("places a mixed ledger in every month its rows and donations touch", () => {
+    const mixed = ledgerWith({
+      collectionId: "mixed",
+      weekEndingDate: "2026-11-08",
+      rows: [serviceRow("2026-10-25")],
+      namedDonations: [donation("2026-11-04")],
+    });
+
+    expect(filterInPersonGivingLedgersByMonth([mixed], 9, 2026)).toEqual([mixed]);
+    expect(filterInPersonGivingLedgersByMonth([mixed], 10, 2026)).toEqual([mixed]);
+    expect(filterInPersonGivingLedgersByMonth([mixed], 11, 2026)).toEqual([]);
   });
 });
 
