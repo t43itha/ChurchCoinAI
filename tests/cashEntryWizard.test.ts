@@ -1,0 +1,81 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import CashEntryWizard from "../components/cashEntry/CashEntryWizard";
+import type { InPersonGivingLedger } from "../lib/inPersonGiving";
+import type { Fund } from "../types";
+
+vi.mock("convex/react", () => ({
+  useQuery: () => [],
+  useAction: () => vi.fn(),
+  useMutation: () => vi.fn(),
+  useConvex: () => ({ query: vi.fn() }),
+}));
+
+const funds: Fund[] = [
+  { _id: "general", name: "General Fund", type: "Unrestricted", balance: 0 },
+  { _id: "building", name: "Building Fund", type: "Restricted", balance: 0 },
+];
+
+// A saved week: Friday offering of £100 and one named tithe of £40.
+const ledger: InPersonGivingLedger = {
+  collectionId: "collection-1",
+  weekEndingDate: "2026-10-04",
+  status: "submitted",
+  fundNames: ["General Fund"],
+  fundTotals: [{ fundId: "general", fundName: "General Fund", total: 140 }],
+  rows: [
+    {
+      id: "row-1",
+      day: "Friday",
+      serviceDate: "2026-10-02",
+      serviceNote: "Friday",
+      fundId: "general",
+      fundName: "General Fund",
+      category: "Offerings",
+      cash: 100,
+      pdq: 0,
+      cheque: 0,
+      total: 100,
+    },
+  ],
+  namedDonations: [
+    {
+      id: "tithe-1",
+      donorName: "Margaret Owusu",
+      category: "Offerings",
+      fundId: "general",
+      fundName: "General Fund",
+      paymentMethod: "Cash",
+      isGiftAidEligible: true,
+      amount: 40,
+      serviceDate: "2026-10-02",
+      serviceNote: "Friday",
+    },
+  ],
+  total: 140,
+};
+
+const render = (props: Partial<Parameters<typeof CashEntryWizard>[0]> = {}) =>
+  renderToStaticMarkup(
+    createElement(CashEntryWizard, { funds, categories: [], onClose: () => {}, ...props })
+  );
+
+describe("cash entry wizard", () => {
+  it("starts with the usual services only, Friday and Sunday morning", () => {
+    const markup = render();
+    expect(markup).toContain("Friday");
+    expect(markup).toContain("Sunday morning");
+    expect(markup).toContain("Start with Friday");
+    // Extra days stay behind "+ Another service this week" until asked for.
+    expect(markup).not.toContain("Monday");
+  });
+
+  it("opens an existing collection on the check screen with its week total", () => {
+    const markup = render({ initialCollection: ledger });
+    expect(markup).toContain("Does this match your count?");
+    expect(markup).toContain("Week total");
+    expect(markup).toContain("£140.00");
+    expect(markup).not.toContain("Start with Friday");
+  });
+});

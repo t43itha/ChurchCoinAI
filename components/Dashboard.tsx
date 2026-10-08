@@ -2,10 +2,11 @@ import { can } from "../lib/permissions";
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "convex/react";
+import { useNavigate } from "react-router-dom";
 import { Banknote, CalendarRange, ChevronDown } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import { AppUser, Category, Fund } from "../types";
-import CashTakingsEntry from "./CashTakingsEntry";
+import CashEntryWizard from "./cashEntry/CashEntryWizard";
 import DashboardDonorFollowUp from "./dashboard/DashboardDonorFollowUp";
 import DashboardFundHealth from "./dashboard/DashboardFundHealth";
 import DashboardHealthCards from "./dashboard/DashboardHealthCards";
@@ -33,6 +34,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
   const [periodKey, setPeriodKey] = useState<DashboardPeriodKey>("previousMonth");
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
   const canEdit = can(currentUser.role, "cashCollections.write");
+  const navigate = useNavigate();
   const summary = useQuery(api.queries.dashboard.executiveSummary, {
     periodKey,
     today: formatLocalDateInputValue(new Date()),
@@ -131,13 +133,15 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
       )}
 
       {showCashTakingsModal && canEdit ? (
-        <CashTakingsEntry
+        <CashEntryWizard
           funds={funds}
           categories={categories}
           onClose={() => setShowCashTakingsModal(false)}
-          onSuccess={(result) => {
-            console.log(`Cash collection created: ${result.transactionCount} transactions`);
-          }}
+          onBankIt={
+            can(currentUser.role, "reconciliation.manage")
+              ? () => navigate("/transactions?view=cash-banking")
+              : undefined
+          }
         />
       ) : null}
 
