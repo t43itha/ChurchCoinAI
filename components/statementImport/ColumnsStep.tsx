@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import type { ColumnMapping } from "../../lib/statementImport";
 import { mapStatementRows } from "../../lib/statementImport";
-import { ROLE_LABEL, ignoredColumns, isMappingComplete, isOptionalRole, rolesFor, type ColumnRole, type ParsedStatement } from "./statementFile";
+import { ROLE_LABEL, ignoredColumns, isOptionalRole, rolesFor, rolesNeedingChoice, type ColumnRole, type ParsedStatement } from "./statementFile";
 import { signedGbp, fullDate } from "./format";
 import { Segmented, linkBtnSm, screenHelp, screenTitle, tagAmber, txtInput } from "../wizard/ui";
 
@@ -125,16 +125,17 @@ function LivePreview({ statement }: { statement: ParsedStatement }) {
 // Columns found in the header, with the live translation of the first row.
 export default function ColumnsStep({ statement, onChange }: ColumnsStepProps) {
   const { headers, mapping, split } = statement;
-  const complete = isMappingComplete(mapping, split, headers);
   const ignored = ignoredColumns(mapping, split, headers);
+  // Only the roles that still need a choice are asked about; matched ones are settled facts.
+  const toCheck = rolesNeedingChoice(mapping, split, headers).length;
 
   return (
     <div>
-      <h2 className={screenTitle}>{complete ? "We've matched your columns" : "Check your columns"}</h2>
+      <h2 className={screenTitle}>{toCheck === 0 ? "We've matched your columns" : "Check your columns"}</h2>
       <p className={screenHelp}>
-        {complete
-          ? "Check one thing below. The preview shows exactly what row 1 will become."
-          : "We couldn't match every column. Choose the ones marked amber, then check the preview."}
+        {toCheck === 0
+          ? "Everything matched. The preview shows exactly what row 1 will become."
+          : `Check ${toCheck} ${toCheck === 1 ? "thing" : "things"} below. Choose the ones marked amber, then check the preview.`}
       </p>
 
       <Segmented
@@ -165,7 +166,7 @@ export default function ColumnsStep({ statement, onChange }: ColumnsStepProps) {
         </p>
       )}
 
-      {complete && <LivePreview statement={statement} />}
+      {toCheck === 0 && <LivePreview statement={statement} />}
     </div>
   );
 }

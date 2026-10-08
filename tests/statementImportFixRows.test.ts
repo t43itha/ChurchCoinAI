@@ -11,6 +11,7 @@ import {
   accountedFor,
   ignoredColumns,
   isMappingComplete,
+  rolesNeedingChoice,
   parseStatementText,
   type StatementSummary,
 } from "../components/statementImport/statementFile";
@@ -258,5 +259,26 @@ describe("accountedFor", () => {
 
   it("counts nothing before the batch exists", () => {
     expect(accountedFor({ ...summary, added: null })).toBe(12);
+  });
+});
+
+describe("rolesNeedingChoice", () => {
+  const headers = ["Date", "Description", "Money in", "Money out"];
+  const full = { date: "Date", description: "Description", amount: "", amountIn: "Money in", amountOut: "Money out" };
+
+  it("needs nothing when every role matched", () => {
+    expect(rolesNeedingChoice(full, true, headers)).toEqual([]);
+  });
+
+  it("needs nothing for an absent money side while the other side is mapped", () => {
+    expect(rolesNeedingChoice({ ...full, amountIn: "" }, true, headers)).toEqual([]);
+  });
+
+  it("names each required role that did not match", () => {
+    expect(rolesNeedingChoice({ ...full, date: "" }, true, headers)).toEqual(["date"]);
+  });
+
+  it("names both money sides when neither was matched", () => {
+    expect(rolesNeedingChoice({ ...full, amountIn: "", amountOut: "" }, true, headers)).toEqual(["amountIn", "amountOut"]);
   });
 });

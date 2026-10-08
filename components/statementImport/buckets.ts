@@ -14,20 +14,41 @@ const SURE_SOURCES: ReadonlySet<string> = new Set(["rule", "memory"]);
 export const isValidCategory = (row: PendingReviewTransaction, namesFor: CategoryNamesFor): boolean =>
   Boolean(row.category) && namesFor(row.type).includes(row.category as string);
 
+// A row can only be sorted, and only counts as answered, when its fund is one of this organisation's funds.
+// CSV rows arrive without a fund, so this is the check that most often holds a row back.
+export const hasValidFund = (row: PendingReviewTransaction, fundIds: ReadonlySet<string>): boolean =>
+  Boolean(row.fundId) && fundIds.has(row.fundId as string);
+
+// Batch positions of the rows with no valid fund.
+export const rowsMissingFund = (rows: PendingReviewTransaction[], fundIds: ReadonlySet<string>): number[] =>
+  rows.flatMap((row, index) => (hasValidFund(row, fundIds) ? [] : [index]));
+
+// The fund to pre-select on a row, from the last fund the user picked in this import.
+// Only for a row with no valid fund, and only once the user has chosen one. Never by position.
+export function batchFundFor(
+  row: PendingReviewTransaction,
+  batchFundId: string | null,
+  fundIds: ReadonlySet<string>
+): string | undefined {
+  if (hasValidFund(row, fundIds)) return undefined;
+  return batchFundId && fundIds.has(batchFundId) ? batchFundId : undefined;
+}
+
 const isConfident = (prediction: OriginalPrediction): boolean =>
   prediction.confidence.toLowerCase() === "high" ||
   (typeof prediction.confidenceScore === "number" && prediction.confidenceScore >= LIKELY_SCORE);
 
 // Sure: a valid category from a rule or memory, or one the user has answered.
 // Likely: a valid category from another source that the pipeline is confident in.
-// Needs you: everything else, including rows with no valid category.
+// Needs you: everything else, including rows with no valid category or no valid fund.
 export function bucketOf(
   row: PendingReviewTransaction,
   rawPrediction: OriginalPrediction | undefined,
   approved: boolean,
-  namesFor: CategoryNamesFor
+  namesFor: CategoryNamesFor,
+  fundIds: ReadonlySet<string>
 ): ReviewBucket {
-  if (!isValidCategory(row, namesFor)) return "needs";
+  if (!isValidCategory(row, namesFor) || !hasValidFund(row, fundIds)) return "needs";
   if (approved) return "sure";
   // A prediction only speaks for the row while the category is still the one it suggested.
   const prediction = rawPrediction && rawPrediction.category === row.category ? rawPrediction : undefined;
@@ -41,12 +62,13 @@ export function groupBuckets(
   rows: PendingReviewTransaction[],
   predictions: ReadonlyMap<string, OriginalPrediction>,
   approved: ReadonlySet<string>,
-  namesFor: CategoryNamesFor
+  namesFor: CategoryNamesFor,
+  fundIds: ReadonlySet<string>
 ): Record<ReviewBucket, string[]> {
   const groups: Record<ReviewBucket, string[]> = { sure: [], likely: [], needs: [] };
   for (const row of rows) {
     const id = row.reviewRowId ?? "";
-    groups[bucketOf(row, predictions.get(id), approved.has(id), namesFor)].push(id);
+    groups[bucketOf(row, predictions.get(id), approved.has(id), namesFor, fundIds)].push(id);
   }
   return groups;
 }

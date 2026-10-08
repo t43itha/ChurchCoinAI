@@ -37,6 +37,18 @@ export function isMappingComplete(mapping: ColumnMapping, split: boolean, header
   return hasRequired && hasMoney;
 }
 
+// The roles the user still has to choose a column for. A money side is left out when
+// the other side is mapped, so a debit-only statement needs nothing more.
+export function rolesNeedingChoice(mapping: ColumnMapping, split: boolean, headers: string[]): ColumnRole[] {
+  const matched = (role: ColumnRole) => headers.includes(mapping[role]);
+  return rolesFor(split).filter((role) => {
+    if (matched(role)) return false;
+    if (!isOptionalRole(role, split)) return true;
+    const other: ColumnRole = role === "amountIn" ? "amountOut" : "amountIn";
+    return !matched(other);
+  });
+}
+
 // Columns the import does not read. Shown so nothing is ignored silently.
 export function ignoredColumns(mapping: ColumnMapping, split: boolean, headers: string[]): string[] {
   const used = new Set(rolesFor(split).map((role) => mapping[role]));

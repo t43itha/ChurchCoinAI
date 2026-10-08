@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildImportSteps } from "../components/statementImport/steps";
+import { buildImportSteps, railStateFor } from "../components/statementImport/steps";
 import {
   bucketOf,
+  batchFundFor,
+  hasValidFund,
+  rowsMissingFund,
   categoryChoicesFor,
   applicableGroupIds,
   describeGroupKey,
@@ -26,6 +29,14 @@ describe("buildImportSteps", () => {
 const namesFor: CategoryNamesFor = (type) =>
   type === "Income" ? ["Offerings", "Gift Aid claim"] : type === "Expenditure" ? ["Insurance", "Hospitality"] : [];
 
+
+// Every fund the rows below may be put in. Rows default to "general".
+const FUNDS = new Set(["general", "missions"]);
+const bucket = (
+  row: PendingReviewTransaction,
+  prediction: OriginalPrediction | undefined,
+  approved: boolean
+) => bucketOf(row, prediction, approved, namesFor, FUNDS);
 const row = (id: string, overrides: Partial<PendingReviewTransaction> = {}): PendingReviewTransaction => ({
   reviewRowId: id,
   date: "2026-03-02",
@@ -46,38 +57,38 @@ const prediction = (overrides: Partial<OriginalPrediction> = {}): OriginalPredic
 
 describe("bucketOf", () => {
   it("puts a valid rule or memory match in Sure", () => {
-    expect(bucketOf(row("a"), prediction({ predictionSource: "rule" }), false, namesFor)).toBe("sure");
-    expect(bucketOf(row("a"), prediction({ predictionSource: "memory" }), false, namesFor)).toBe("sure");
+    expect(bucket(row("a"), prediction({ predictionSource: "rule" }), false)).toBe("sure");
+    expect(bucket(row("a"), prediction({ predictionSource: "memory" }), false)).toBe("sure");
   });
 
   it("puts a high-confidence AI match in Likely, by label or by score", () => {
-    expect(bucketOf(row("a"), prediction({ confidence: "High" }), false, namesFor)).toBe("likely");
-    expect(bucketOf(row("a"), prediction({ confidence: "Low", confidenceScore: 0.85 }), false, namesFor)).toBe("likely");
+    expect(bucket(row("a"), prediction({ confidence: "High" }), false)).toBe("likely");
+    expect(bucket(row("a"), prediction({ confidence: "Low", confidenceScore: 0.85 }), false)).toBe("likely");
   });
 
   it("leaves a low-confidence AI match in Needs you", () => {
-    expect(bucketOf(row("a"), prediction({ confidence: "Low", confidenceScore: 0.5 }), false, namesFor)).toBe("needs");
+    expect(bucket(row("a"), prediction({ confidence: "Low", confidenceScore: 0.5 }), false)).toBe("needs");
   });
 
   it("puts a row with no valid category in Needs you, whatever the prediction says", () => {
-    expect(bucketOf(row("a", { category: "" }), prediction({ predictionSource: "rule" }), false, namesFor)).toBe("needs");
+    expect(bucket(row("a", { category: "" }), prediction({ predictionSource: "rule" }), false)).toBe("needs");
     // An income category is not valid on an expenditure row.
-    expect(bucketOf(row("a", { type: "Expenditure" }), prediction({ predictionSource: "rule" }), false, namesFor)).toBe("needs");
+    expect(bucket(row("a", { type: "Expenditure" }), prediction({ predictionSource: "rule" }), false)).toBe("needs");
   });
 
   it("treats a row with no prediction as Needs you, even with a category", () => {
-    expect(bucketOf(row("a"), undefined, false, namesFor)).toBe("needs");
+    expect(bucket(row("a"), undefined, false)).toBe("needs");
   });
 
   it("moves an answered row to Sure", () => {
-    expect(bucketOf(row("a"), prediction({ confidence: "Low" }), true, namesFor)).toBe("sure");
+    expect(bucket(row("a"), prediction({ confidence: "Low" }), true)).toBe("sure");
   });
 
   it("does not trust a prediction whose category is not the row's current category", () => {
     // A suggestion for "Tithes & First Fruits" arrived after the row was kept as "Offerings".
     const kept = row("a", { category: "Offerings" });
-    expect(bucketOf(kept, prediction({ category: "Tithes & First Fruits", predictionSource: "rule" }), false, namesFor)).toBe("needs");
-    expect(bucketOf(kept, prediction({ category: "Tithes & First Fruits", confidence: "High" }), false, namesFor)).toBe("needs");
+    expect(bucket(kept, prediction({ category: "Tithes & First Fruits", predictionSource: "rule" }), false)).toBe("needs");
+    expect(bucket(kept, prediction({ category: "Tithes & First Fruits", confidence: "High" }), false)).toBe("needs");
   });
 });
 
@@ -88,7 +99,7 @@ describe("groupBuckets", () => {
       ["b", prediction({ predictionSource: "rule" })],
       ["c", prediction({ confidence: "High" })],
     ]);
-    expect(groupBuckets(rows, predictions, new Set(), namesFor)).toEqual({
+    expect(groupBuckets(rows, predictions, new Set(), namesFor, FUNDS)).toEqual({
       sure: ["b"],
       likely: ["c"],
       needs: ["a"],
@@ -233,5 +244,72 @@ describe("categoryChoicesFor", () => {
     const answering = only[0];
     // Insurance is used only by the row itself, so only Hospitality is a choice.
     expect(categoryChoicesFor(answering, only, undefined, namesFor)).toEqual(["Hospitality"]);
+  });
+});
+
+describe("a row needs a valid fund as well as a category", () => {
+  it("keeps a row with a category but no fund in Needs you, even when a rule matched", () => {
+    const noFund = row("a", { fundId: undefined });
+    expect(bucket(noFund, prediction({ predictionSource: "rule" }), false)).toBe("needs");
+  });
+
+  it("keeps an answered row without a fund in Needs you", () => {
+    expect(bucket(row("a", { fundId: undefined }), undefined, true)).toBe("needs");
+  });
+
+  it("treats a fund that no longer exists as missing", () => {
+    expect(bucket(row("a", { fundId: "deleted" }), prediction({ predictionSource: "rule" }), false)).toBe("needs");
+  });
+
+  it("sorts a row with a category and a fund as before", () => {
+    expect(bucket(row("a"), prediction({ predictionSource: "rule" }), false)).toBe("sure");
+  });
+
+  it("reports which rows lack a valid fund, by index", () => {
+    const rows = [row("a"), row("b", { fundId: undefined }), row("c", { fundId: "deleted" })];
+    expect(rowsMissingFund(rows, FUNDS)).toEqual([1, 2]);
+    expect(hasValidFund(rows[0], FUNDS)).toBe(true);
+    expect(hasValidFund(rows[1], FUNDS)).toBe(false);
+  });
+});
+
+describe("batchFundFor", () => {
+  it("offers the batch fund for a row that has none", () => {
+    expect(batchFundFor(row("a", { fundId: undefined }), "missions", FUNDS)).toBe("missions");
+  });
+
+  it("never overrides a fund the row already has", () => {
+    expect(batchFundFor(row("a", { fundId: "general" }), "missions", FUNDS)).toBeUndefined();
+  });
+
+  it("offers nothing before the user has chosen a fund in this import", () => {
+    expect(batchFundFor(row("a", { fundId: undefined }), null, FUNDS)).toBeUndefined();
+  });
+
+  it("offers nothing when the batch fund is no longer valid", () => {
+    expect(batchFundFor(row("a", { fundId: undefined }), "deleted", FUNDS)).toBeUndefined();
+  });
+});
+
+describe("railStateFor", () => {
+  it("shows fix rows as a to-do before the file is mapped", () => {
+    expect(railStateFor("fix", "upload", null)).toBe("todo");
+    expect(railStateFor("fix", "columns", null)).toBe("todo");
+  });
+
+  it("shows fix rows as skipped only once the mapping has produced no errors", () => {
+    expect(railStateFor("fix", "categorise", 0)).toBe("skipped");
+    expect(railStateFor("fix", "check", 0)).toBe("skipped");
+  });
+
+  it("shows fix rows as now or done once there are errors to fix", () => {
+    expect(railStateFor("fix", "fix", 2)).toBe("now");
+    expect(railStateFor("fix", "categorise", 2)).toBe("done");
+  });
+
+  it("marks the steps before the current one done and the rest to do", () => {
+    expect(railStateFor("upload", "columns", null)).toBe("done");
+    expect(railStateFor("categorise", "columns", 0)).toBe("todo");
+    expect(railStateFor("check", "check", 0)).toBe("now");
   });
 });

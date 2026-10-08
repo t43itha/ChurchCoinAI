@@ -101,13 +101,27 @@ describe("statement import wizard", () => {
     expect(markup).not.toContain("Add 2 transactions");
   });
 
-  it("lists the steps on the rail and skips the fix step when no rows need fixing", () => {
+  it("lists the steps on the rail, with fix rows as a to-do before the file is mapped", () => {
     const markup = render();
     expect(markup).toContain("Check columns");
     expect(markup).toContain("Categorise");
     expect(markup).toContain("Check &amp; import");
-    // The fix step is on the rail but struck through and not clickable.
-    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*line-through[^>]*>(?:(?!<\/button>)[\s\S])*Fix rows/);
+    // Before the mapping has run we do not yet know whether rows need fixing.
+    expect(markup).not.toMatch(/<button[^>]*line-through[^>]*>(?:(?!<\/button>)[\s\S])*Fix rows/);
+  });
+
+  it("asks for a fund inline on the check step when rows have none, and only links back for categories", () => {
+    const noFund = [{ ...batch[0], reviewRowId: "x", fundId: undefined }, batch[1]];
+    const markup = render({ review: fakeReview(noFund), initialStep: "check" });
+    expect(markup).toContain("1 transaction has no fund. Put it in");
+    expect(markup).toContain("Apply");
+    expect(markup).not.toContain("Back to Categorise");
+  });
+
+  it("links back to Categorise when a row has no category", () => {
+    const noCategory = [{ ...batch[0], reviewRowId: "x", category: "" }, batch[1]];
+    const markup = render({ review: fakeReview(noCategory), initialStep: "check" });
+    expect(markup).toContain("Back to Categorise");
   });
 
   it("renders the check step with the totals, the fund split and one button to add", () => {

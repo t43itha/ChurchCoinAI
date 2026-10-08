@@ -9,10 +9,18 @@ import { ReceiptRow } from "../wizard/Receipt";
 import StepFooter from "../wizard/StepFooter";
 import WizardFrame from "../wizard/WizardFrame";
 import { btnLg, btnMd, btnOutline, btnPrimary, eyebrow, linkBtn } from "../wizard/ui";
-import { buildImportSteps, type ImportStepKind } from "./steps";
+import { buildImportSteps, railStateFor, type ImportStepKind } from "./steps";
 import { isMappingComplete, parseStatementText, type ParsedStatement, type StatementSummary } from "./statementFile";
 import { attemptFix, type Corrections, type FixableError } from "./fixRows";
-import { applicableGroupIds, focusedRowId, groupBuckets, nextNeedsId, type CategoryNamesFor } from "./buckets";
+import {
+  applicableGroupIds,
+  batchFundFor,
+  focusedRowId,
+  groupBuckets,
+  nextNeedsId,
+  rowsMissingFund,
+  type CategoryNamesFor,
+} from "./buckets";
 import type { ImportReview } from "./useImportReview";
 import type { PendingReviewTransaction } from "./types";
 import UploadStep from "./UploadStep";
@@ -70,6 +78,8 @@ export default function StatementImportWizard({
   const [approved, setApproved] = useState<Set<string>>(() => new Set());
   const [view, setView] = useState<CategoriseView>("needs");
   const [focusId, setFocusId] = useState<string | null>(null);
+  // The fund the user last picked on a card. Pre-selected on later cards that have no fund.
+  const [batchFundId, setBatchFundId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [added, setAdded] = useState(0);
   // Categorisation runs once per import; coming back to this step must not wipe answers.
@@ -83,7 +93,8 @@ export default function StatementImportWizard({
   const draftCorrections = new Map([...fixDrafts].map(([line, draft]) => [line, draft.corrections] as const));
   const unresolved = errors.filter((error) => !fixStatuses.has(error.line));
   const leftOutErrors = [...fixStatuses.values()].filter((status) => status === "left-out").length;
-  const buckets = groupBuckets(review.rows, review.predictions, approved, categoryNamesFor);
+  const fundIds = new Set(funds.map((fund) => fund._id));
+  const buckets = groupBuckets(review.rows, review.predictions, approved, categoryNamesFor, fundIds);
   const blockers = importBlockers(review.rows, funds, categoryNamesFor);
   const blocked = saving || review.rows.length === 0 || blockers.noCategory + blockers.noFund + blockers.badDate > 0;
   const pairedCount =
@@ -113,6 +124,7 @@ export default function StatementImportWizard({
     setApproved(new Set());
     setView("needs");
     setFocusId(null);
+    setBatchFundId(null);
     categoriseStarted.current = false;
   };
 
@@ -309,11 +321,8 @@ export default function StatementImportWizard({
     bodyRef.current?.scrollTo({ top: 0 });
   };
 
-  const railState = (kind: ImportStepKind): RailStepState => {
-    if (kind === "fix" && !steps.includes("fix")) return "skipped";
-    const at = steps.indexOf(kind);
-    return at < stepIndex ? "done" : at === stepIndex ? "now" : "todo";
-  };
+  const railState = (kind: ImportStepKind): RailStepState =>
+    railStateFor(kind, step, mapped ? mapped.errors.length : null);
 
   const rail = (
     <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-ledger bg-white p-4 lg:flex">
@@ -347,9 +356,32 @@ export default function StatementImportWizard({
     );
 
   const categorising = review.isCategorising;
-  // Next moves on from the row the card is showing, which is not always the focus id.
-  const goToNextNeed = () =>
-    setFocusId(nextNeedsId(review.rows, buckets.needs, focusedRowId(review.rows, buckets.needs, focusId)));
+  // Next (and Enter) moves on from the row the card is showing. With applyDefault, a
+  // pre-selected batch fund becomes a real choice on that row first. S skips without it.
+  const goToNextNeed = (applyDefault: boolean) => {
+    const shownId = focusedRowId(review.rows, buckets.needs, focusId);
+    const shown = review.rows.find((row) => row.reviewRowId === shownId);
+    const fundId = shown && applyDefault ? batchFundFor(shown, batchFundId, fundIds) : undefined;
+    if (shownId && fundId) updateRowById(shownId, { fundId });
+    const rowsAfter = shownId && fundId
+      ? review.rows.map((row) => (row.reviewRowId === shownId ? { ...row, fundId } : row))
+      : review.rows;
+    // Recomputed from the rows as they will be, so the next pointer never lands on a row that just became sure.
+    const needsAfter = groupBuckets(rowsAfter, review.predictions, approved, categoryNamesFor, fundIds).needs;
+    setFocusId(nextNeedsId(rowsAfter, needsAfter, shownId));
+  };
+
+  // A fund picked on a card is remembered as the batch default for the next card without one.
+  const pickFundOnCard = (rowId: string, fundId: string) => {
+    setFocusId(rowId);
+    setBatchFundId(fundId);
+    updateRowById(rowId, { fundId });
+  };
+
+  // Check step: puts exactly the rows with no valid fund into one fund.
+  const assignFundToMissing = (fundId: string) => {
+    rowsMissingFund(review.rows, fundIds).forEach((index) => review.updateRow(index, { fundId }));
+  };
   let body: ReactNode = null;
   let footer: ReactNode = null;
 
@@ -405,6 +437,9 @@ export default function StatementImportWizard({
         onView={setView}
         focusId={focusId}
         onNext={goToNextNeed}
+        batchFundId={batchFundId}
+        fundIds={fundIds}
+        onPickFund={pickFundOnCard}
         onAnswer={answerRow}
         onUpdateRow={updateRowById}
         onApplyToGroup={applyToGroup}
@@ -417,7 +452,7 @@ export default function StatementImportWizard({
     const needsCount = buckets.needs.length;
     const nextButton =
       needsCount > 0 && view === "needs" ? (
-        <button type="button" disabled={categorising} onClick={goToNextNeed} className={`${btnPrimary} ${btnLg}`}>
+        <button type="button" disabled={categorising} onClick={() => goToNextNeed(true)} className={`${btnPrimary} ${btnLg}`}>
           Next →
         </button>
       ) : (
@@ -445,9 +480,9 @@ export default function StatementImportWizard({
       </StepFooter>
     );
   } else if (step === "check") {
+    // Missing funds are fixed inline on this step; only missing categories send the user back.
     const blockerLine = [
       blockers.noCategory > 0 && `${blockers.noCategory} still need a category`,
-      blockers.noFund > 0 && `${blockers.noFund} need a fund`,
       blockers.badDate > 0 && `${blockers.badDate} need a date`,
     ].filter(Boolean).join(" · ");
     const count = review.rows.length;
@@ -458,6 +493,7 @@ export default function StatementImportWizard({
         duplicateCount={review.duplicateWarnings.size}
         pairedCount={pairedCount}
         alreadyImported={review.alreadyImportedRows.length}
+        onAssignFund={assignFundToMissing}
         onLookDuplicates={() => {
           setView("all");
           goTo("categorise");
@@ -469,9 +505,11 @@ export default function StatementImportWizard({
         {blockerLine && (
           <p className="mb-2.5 text-sm font-semibold text-amber">
             {blockerLine}.{" "}
-            <button type="button" onClick={() => goTo("categorise")} className={linkBtn}>
-              Back to Categorise
-            </button>
+            {blockers.noCategory > 0 && (
+              <button type="button" onClick={() => goTo("categorise")} className={linkBtn}>
+                Back to Categorise
+              </button>
+            )}
           </p>
         )}
         <button type="button" disabled={blocked} onClick={() => void addRows()} className={`${btnPrimary} ${btnLg}`}>

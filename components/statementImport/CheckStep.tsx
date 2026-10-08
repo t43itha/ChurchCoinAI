@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { isRealIsoDate } from "../../lib/csvImport";
 import { sumMoney } from "../../convex/lib/money";
 import type { Fund } from "../../types";
-import { isValidCategory, type CategoryNamesFor } from "./buckets";
+import { isValidCategory, rowsMissingFund, type CategoryNamesFor } from "./buckets";
+import { FundSelect } from "./ReviewTable";
 import { signedGbp } from "./format";
 import { gbp } from "../cashEntry/format";
 import type { PendingReviewTransaction } from "./types";
-import { screenTitle, screenHelp, eyebrow } from "../wizard/ui";
+import { screenTitle, screenHelp, eyebrow, txtInput } from "../wizard/ui";
 
 export interface ImportBlockers {
   noCategory: number;
@@ -29,9 +31,34 @@ export function importBlockers(
 const signed = (row: PendingReviewTransaction) =>
   row.type === "Income" ? (row.amount ?? 0) : -(row.amount ?? 0);
 
+// Rows with no valid fund, put into one fund in a single step. This is the fix for the
+// blocker, so the user never has to walk back through every card.
+function FundFix({ count, funds, onApply }: { count: number; funds: Fund[]; onApply: (fundId: string) => void }) {
+  const [fundId, setFundId] = useState("");
+  return (
+    <div className="mt-3.5 flex flex-col gap-2 rounded-2xl border border-amber bg-amber-light px-4 py-3 text-sm text-amber sm:flex-row sm:flex-wrap sm:items-center">
+      <span className="font-semibold">
+        {count} {count === 1 ? "transaction has" : "transactions have"} no fund. Put {count === 1 ? "it" : "them"} in
+      </span>
+      <div className="flex min-w-0 flex-1 gap-2">
+        <FundSelect label="Fund for rows with no fund" value={fundId} funds={funds} onChange={setFundId} className={`${txtInput} min-w-0 flex-1 font-semibold`} />
+        <button
+          type="button"
+          disabled={!fundId}
+          onClick={() => onApply(fundId)}
+          className="min-h-11 shrink-0 rounded-xl bg-ink px-4 text-sm font-bold text-white disabled:opacity-35"
+        >
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface CheckStepProps {
   rows: PendingReviewTransaction[];
   funds: Fund[];
+  onAssignFund: (fundId: string) => void;
   duplicateCount: number;
   pairedCount: number;
   alreadyImported: number;
@@ -39,7 +66,8 @@ interface CheckStepProps {
 }
 
 // The last look before anything is saved: totals, where the money goes, and possible duplicates.
-export default function CheckStep({ rows, funds, duplicateCount, pairedCount, alreadyImported, onLookDuplicates }: CheckStepProps) {
+export default function CheckStep({ rows, funds, onAssignFund, duplicateCount, pairedCount, alreadyImported, onLookDuplicates }: CheckStepProps) {
+  const missingFund = rowsMissingFund(rows, new Set(funds.map((fund) => fund._id))).length;
   const moneyIn = sumMoney(rows.filter((row) => row.type === "Income"), (row) => row.amount ?? 0);
   const moneyOut = sumMoney(rows.filter((row) => row.type !== "Income"), (row) => row.amount ?? 0);
 
@@ -80,6 +108,8 @@ export default function CheckStep({ rows, funds, duplicateCount, pairedCount, al
           <span className="text-xs text-grey-mid">Transfers paired</span>
         </div>
       </div>
+
+      {missingFund > 0 && <FundFix count={missingFund} funds={funds} onApply={onAssignFund} />}
 
       {byFund.length > 0 && (
         <div className="mt-3.5 rounded-2xl border border-ledger bg-white px-4 py-1.5">

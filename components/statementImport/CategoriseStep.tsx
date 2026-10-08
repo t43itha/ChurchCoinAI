@@ -3,10 +3,12 @@ import ImportCategorizationProgress from "../ImportCategorizationProgress";
 import { dayMonth } from "../cashEntry/format";
 import type { Fund } from "../../types";
 import {
+  applicableGroupIds,
+  batchFundFor,
   categoryChoicesFor,
   focusedRowId,
+  hasValidFund,
   isValidCategory,
-  applicableGroupIds,
   type CategoryNamesFor,
   type ReviewBucket,
 } from "./buckets";
@@ -40,7 +42,11 @@ export interface CategoriseStepProps {
   view: CategoriseView;
   onView: (view: CategoriseView) => void;
   focusId: string | null;
-  onNext: () => void;
+  // applyDefault: Next and Enter make the pre-selected batch fund a real choice; S does not.
+  onNext: (applyDefault: boolean) => void;
+  batchFundId: string | null;
+  fundIds: ReadonlySet<string>;
+  onPickFund: (rowId: string, fundId: string) => void;
   onAnswer: (rowId: string, category: string) => void;
   onUpdateRow: (rowId: string, updates: Partial<PendingReviewTransaction>) => void;
   onApplyToGroup: (rowId: string, category: string) => void;
@@ -202,6 +208,8 @@ function NeedsView(props: CategoriseStepProps & { byId: Map<string, PendingRevie
   }
 
   const prediction: OriginalPrediction | undefined = review.predictions.get(focusedId);
+  const hasFund = hasValidFund(row, props.fundIds);
+  const suggestedFundId = batchFundFor(row, props.batchFundId, props.fundIds);
   // Only rows the current category would be valid for, of the same type.
   const groupIds = applicableGroupIds(review.rows, focusedId, row.category ?? "", needsSet, namesFor);
   const canApply = isValidCategory(row, namesFor);
@@ -214,9 +222,12 @@ function NeedsView(props: CategoriseStepProps & { byId: Map<string, PendingRevie
       answered={!needsSet.has(focusedId)}
       namesFor={namesFor}
       funds={funds}
+      hasFund={hasFund}
+      suggestedFundId={suggestedFundId}
       groupIds={groupIds}
       canApply={canApply}
       onAnswer={(category) => props.onAnswer(focusedId, category)}
+      onPickFund={(fundId) => props.onPickFund(focusedId, fundId)}
       onUpdate={(updates) => props.onUpdateRow(focusedId, updates)}
       onApplyToGroup={() => props.onApplyToGroup(focusedId, row.category ?? "")}
       onNext={props.onNext}
@@ -231,9 +242,12 @@ function NeedsCard({
   answered,
   namesFor,
   funds,
+  hasFund,
+  suggestedFundId,
   groupIds,
   canApply,
   onAnswer,
+  onPickFund,
   onUpdate,
   onApplyToGroup,
   onNext,
@@ -244,13 +258,19 @@ function NeedsCard({
   answered: boolean;
   namesFor: CategoryNamesFor;
   funds: Fund[];
+  hasFund: boolean;
+  // The batch fund shown as a pre-selection, not yet a choice on this row.
+  suggestedFundId: string | undefined;
   groupIds: string[];
   canApply: boolean;
   onAnswer: (category: string) => void;
+  onPickFund: (fundId: string) => void;
   onUpdate: (updates: Partial<PendingReviewTransaction>) => void;
   onApplyToGroup: () => void;
-  onNext: () => void;
+  onNext: (applyDefault: boolean) => void;
 }) {
+  // Nothing is chosen and nothing is pre-selected: the card asks for one in amber.
+  const needsFund = !hasFund && !suggestedFundId;
   const choices = categoryChoicesFor(row, batch, suggestion, namesFor);
   const isIncome = row.type === "Income";
   const amount = row.amount ?? 0;
@@ -263,9 +283,9 @@ function NeedsCard({
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (event.key === "Enter") {
         event.preventDefault();
-        onNext();
+        onNext(true);
       } else if (event.key === "s" || event.key === "S") {
-        onNext();
+        onNext(false);
       } else if (/^[1-3]$/.test(event.key)) {
         const choice = choices[Number(event.key) - 1];
         if (choice) {
@@ -321,14 +341,21 @@ function NeedsCard({
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">
         <label className="min-w-0">
-          <span className={`${eyebrow} mb-1.5 block`}>Fund</span>
+          <span className={`${eyebrow} mb-1.5 block ${needsFund ? "text-amber" : ""}`}>
+            {needsFund ? "Choose a fund" : "Fund"}
+          </span>
           <FundSelect
             label="Fund for this row"
-            value={row.fundId || ""}
+            value={hasFund ? row.fundId || "" : suggestedFundId || ""}
             funds={funds}
-            onChange={(fundId) => onUpdate({ fundId })}
-            className={`${txtInput} font-semibold`}
+            onChange={(fundId) => {
+              if (fundId) onPickFund(fundId);
+            }}
+            className={`${txtInput} font-semibold ${needsFund ? "border-amber bg-amber-light" : ""}`}
           />
+          {!hasFund && suggestedFundId && (
+            <span className="mt-1 block text-xs text-grey-mid">Pre-selected from your last pick. Next keeps it.</span>
+          )}
         </label>
         {isIncome && (
           <div className="flex flex-col justify-end">
