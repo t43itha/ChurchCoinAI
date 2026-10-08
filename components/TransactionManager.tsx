@@ -1,5 +1,5 @@
 import { can } from "../lib/permissions";
-import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
+import React, { useState, useMemo, useRef, useEffect, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
@@ -12,14 +12,12 @@ import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
-import { isRealIsoDate } from '../lib/csvImport';
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
-import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
-import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
-import { CsvRecord, describeLeftOutRows, detectColumns, exceedsImportLimit, findHeaderRow, mapStatementRows, MAX_IMPORT_ROWS, tokenizeCsv } from '../lib/statementImport';
-import { resolveAssignableCategory } from '../convex/intelligence/categorization/categoryResolver';
+import { CsvRecord, detectColumns, findHeaderRow, mapStatementRows, tokenizeCsv } from '../lib/statementImport';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
-import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
+import { linkState } from '../lib/movementMatching';
+import { useImportReview } from './statementImport/useImportReview';
+import type { PendingReviewTransaction } from './statementImport/types';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
@@ -60,48 +58,6 @@ type StatusFilter = (typeof STATUS_FILTER_OPTIONS)[number]['value'];
 const parseStatusFilter = (value: string | null): StatusFilter =>
   STATUS_FILTER_OPTIONS.find((option) => option.value === value)?.value ?? 'all';
 
-type BankSyncCursor = {
-  dateFrom: string;
-  dateTo: string;
-  accountIndex: number;
-  continuationKey?: string;
-};
-
-type PendingReviewTransaction = Partial<Transaction> & {
-  reviewRowId?: string;
-  requiresReview?: boolean;
-  source?: 'bank';
-  providerTransactionId?: string;
-  bankConnectionId?: Id<"bankConnections">;
-  importKey?: string;
-  pairWith?: PairSuggestion;
-  pairBasis?: string;
-};
-
-type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
-
-type OriginalPrediction = {
-  category: string;
-  fundId?: string;
-  isGiftAidEligible?: boolean;
-  donorName?: string | null;
-  confidence: string;
-  confidenceScore?: number;
-  predictionSource: PipelinePredictionSource;
-  ragScore?: number;
-};
-
-const reindexSetAfterRemoval = (values: Set<number>, removedIndex: number): Set<number> => {
-  const reindexed = new Set<number>();
-  values.forEach((value) => {
-    if (value < removedIndex) {
-      reindexed.add(value);
-    } else if (value > removedIndex) {
-      reindexed.add(value - 1);
-    }
-  });
-  return reindexed;
-};
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -126,23 +82,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Convex mutations and actions
   const createTransaction = useMutation(api.mutations.transactions.create);
   const updateTransaction = useMutation(api.mutations.transactions.update);
-  const bulkCreateTransactions = useMutation(api.mutations.transactions.bulkCreate);
   const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
   const batchUpdateTransactions = useMutation(api.mutations.transactions.batchUpdate);
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
-  const categorizeWithPipeline = useAction(api.actions.ai.categorizeWithPipelinePreview);
-  const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
   const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
   const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
   const unlinkTransaction = useMutation(api.mutations.movements.unlink);
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
-  const linkTransactions = useMutation(api.mutations.movements.link);
 
   // Bank sync
   const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
-  const syncTransactions = useAction(api.actions.bankConnections.syncTransactions);
-  const acknowledgeBankSync = useMutation(api.mutations.bankConnections.acknowledgeSyncThrough);
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
@@ -156,19 +106,34 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
     [funds]
   );
-  const [isUploading, setIsUploading] = useState(false);
-  const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [categorizationTransactionCount, setCategorizationTransactionCount] = useState(0);
-  const [categorizationStatusMessage, setCategorizationStatusMessage] = useState('');
+  // Import review batch shared by CSV import, bank sync and the statement walkthrough.
+  const importReview = useImportReview({ funds, categories, ledger: allTransactions, onPledgeCompleted });
+  const {
+    isReviewOpen: showReviewModal,
+    rows: pendingTransactions,
+    duplicateWarnings,
+    alreadyImportedRows,
+    isCategorising: isProcessingAI,
+    categorisingCount: categorizationTransactionCount,
+    statusMessage: categorizationStatusMessage,
+    isSyncingBank,
+    isFetchingMoreBank: isFetchingMoreBankTransactions,
+    hasMoreBankRows,
+    updateRow: updatePendingTransactionAt,
+    removeRow: removePendingTransactionAt,
+    pairing,
+    openReview,
+    startStatementReview,
+    syncFromBank,
+    fetchNextBankBatch,
+    assignFundToAll,
+    includeAlreadyImported,
+    categorise,
+    confirm,
+    clear: clearReview,
+  } = importReview;
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
-  const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(() => new Set());
 
-  // Track original AI predictions for correction learning
-  const categorizationRun = useRef(0);
-  const [originalPredictions, setOriginalPredictions] = useState<Map<string, OriginalPrediction>>(new Map());
-  
   // Smart Link State
   const [isReconciling, setIsReconciling] = useState(false);
   const [pledgeMatches, setPledgeMatches] = useState<any[]>([]);
@@ -184,12 +149,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // Bank Sync State
   const [showBankSelector, setShowBankSelector] = useState(false);
-  const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
-  const [alreadyImportedRows, setAlreadyImportedRows] = useState<PendingReviewTransaction[]>([]);
-  const [nextBankSyncCursor, setNextBankSyncCursor] = useState<BankSyncCursor | null>(null);
-  const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"bankConnections"> | null>(null);
-  const [bankSyncReviewConnectionId, setBankSyncReviewConnectionId] = useState<Id<"bankConnections"> | null>(null);
-  const [isFetchingMoreBankTransactions, setIsFetchingMoreBankTransactions] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const bulkCategoryNames = useMemo(() => {
@@ -658,175 +617,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           return;
       }
 
-      const { rows, skipped, errors } = mapStatementRows(csvRows, csvHeaders, columnMapping, useSplitAmount);
-      const parsed: Array<PendingReviewTransaction & StatementRow> = rows.map((row) => applySmallIncomeDefaults({
-          reviewRowId: crypto.randomUUID(),
-          date: row.date,
-          description: row.description,
-          amount: row.amount,
-          type: row.type,
-          category: "",
-      }, categories, funds));
-
-      const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(withImportKeys(parsed), transactions);
-      if (fresh.length > MAX_IMPORT_ROWS) {
-          notify("Too many transactions", `This file has ${fresh.length} transactions. Import up to ${MAX_IMPORT_ROWS} at a time — split the file by date range.`);
-          return;
-      }
-      const leftOut = describeLeftOutRows({ skipped, errors });
-      if (leftOut) notify("Rows left out", leftOut);
-
-      setDuplicateWarnings(possibleDuplicates);
-      setAlreadyImportedRows(alreadyImported);
-      setNextBankSyncCursor(null);
-      setNextBankSyncConnectionId(null);
-      setBankSyncReviewConnectionId(null);
-      setPendingTransactions(fresh);
-      setShowColumnMapper(false);
-      setShowReviewModal(true);
+      const mapped = mapStatementRows(csvRows, csvHeaders, columnMapping, useSplitAmount);
+      if (startStatementReview(mapped)) setShowColumnMapper(false);
   };
 
-  const clearBankSyncReviewState = () => {
-    categorizationRun.current += 1;
-    setIsProcessingAI(false);
-    setCategorizationStatusMessage('');
-    setCategorizationTransactionCount(0);
-    setPendingTransactions([]);
-    setDuplicateWarnings(new Set());
-    setAlreadyImportedRows([]);
-    setNextBankSyncCursor(null);
-    setNextBankSyncConnectionId(null);
-    setBankSyncReviewConnectionId(null);
-    setOriginalPredictions(new Map());
-    setDismissedPairs(new Set());
-  };
-
-  const removePendingTransactionAt = useCallback((removedIndex: number) => {
-    setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
-    setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
-  }, []);
-
-  // Statement rows can match a ledger row from another account's statement, so
-  // the user may override; bank rows matched by provider id are never re-imported.
-  const includeAlreadyImportedStatementRows = () => {
-    const rows = alreadyImportedRows.filter((row) => row.importKey).map((row) => ({ ...row, importKey: undefined }));
-    const total = pendingTransactions.length + rows.length;
-    if (exceedsImportLimit(total)) {
-      notify("Too many transactions", `Adding these would make ${total} transactions. Import up to ${MAX_IMPORT_ROWS} at a time — split the file by date range.`);
-      return;
-    }
-    const startIndex = pendingTransactions.length;
-    setPendingTransactions((current) => [...current, ...rows]);
-    setDuplicateWarnings((current) => new Set([...current, ...rows.map((_, index) => startIndex + index)]));
-    setAlreadyImportedRows((current) => current.filter((row) => !row.importKey));
-  };
-
-  const updatePendingTransactionAt = useCallback((index: number, updates: Partial<PendingReviewTransaction>) => {
-    setPendingTransactions((current) => current.map((transaction, currentIndex) => (
-      currentIndex === index ? { ...transaction, ...updates } : transaction
-    )));
-  }, []);
-
-  const pairSuggestions = useMemo(
-    () => suggestImportPairs(importMovementLegs(pendingTransactions, importCategories), ledgerMovementLegs(allTransactions ?? [])),
-    [pendingTransactions, importCategories, allTransactions]
-  );
-  const activePairs = useMemo(() => livePairs(pendingTransactions), [pendingTransactions]);
-  const pendingById = useMemo(
-    () => new Map(pendingTransactions.flatMap((row) => (row.reviewRowId ? [[row.reviewRowId, row] as const] : []))),
-    [pendingTransactions]
-  );
-  const transactionsById = useMemo(
-    () => new Map((allTransactions ?? []).map((transaction) => [String(transaction._id), transaction] as const)),
-    [allTransactions]
-  );
-
-  const pairPartnerLabel = (pair: PairSuggestion) => {
-    const partner = pair.source === 'import' ? pendingById.get(pair.id) : transactionsById.get(pair.id);
-    if (!partner) return 'another transaction';
-    const [year, month, day] = (partner.date ?? '').split('-');
-    return `${partner.description || 'No description'}, ${day}/${month}/${year}`;
-  };
-
-  const acceptPair = (rowId: string, pair: PairSuggestion) => {
-    setPendingTransactions((current) => current.map((row) => {
-      if (row.reviewRowId === rowId) return { ...row, pairWith: pair, pairBasis: pairBasis(row) };
-      if (pair.source === 'import' && row.reviewRowId === pair.id) {
-        return { ...row, pairWith: { source: 'import', id: rowId }, pairBasis: pairBasis(row) };
-      }
-      return row;
-    }));
-  };
-
-  const undoPair = (rowId: string, pair: PairSuggestion) => {
-    setPendingTransactions((current) => current.map((row) => {
-      const isThisRow = row.reviewRowId === rowId;
-      const isPartner = pair.source === 'import' && row.reviewRowId === pair.id && row.pairWith?.id === rowId;
-      return isThisRow || isPartner ? { ...row, pairWith: undefined, pairBasis: undefined } : row;
-    }));
-  };
-
-  const renderPairing = (row: PendingReviewTransaction) => {
-    const rowId = row.reviewRowId ?? '';
-    const active = activePairs.get(rowId);
-    if (active) {
-      return (
-        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-dark">
-          <LinkIcon size={12} className="shrink-0" />
-          <span>Paired with {pairPartnerLabel(active)}</span>
-          <button type="button" onClick={() => undoPair(rowId, active)} className="font-bold underline hover:text-ink">Undo</button>
-        </p>
-      );
-    }
-    const suggestion = pairSuggestions.get(rowId);
-    if (!suggestion || dismissedPairs.has(rowId)) return null;
-    return (
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-grey-dark">
-        <span>Other side: {pairPartnerLabel(suggestion)}</span>
-        <button type="button" aria-label="Accept other side" onClick={() => acceptPair(rowId, suggestion)} className="font-bold text-sage-dark underline hover:text-ink">Accept</button>
-        <button type="button" aria-label="Dismiss other side" onClick={() => setDismissedPairs((current) => new Set(current).add(rowId))} className="font-bold text-grey-mid underline hover:text-ink">Dismiss</button>
-      </p>
-    );
-  };
-
-  const handleSyncedBankTransactions = (
-    syncedTransactions: Array<{
-      date: string;
-      description: string;
-      amount: number;
-      type: TransactionType;
-      fundId?: string | null;
-      providerTransactionId: string;
-    }>,
-    append: boolean,
-    bankConnectionId: Id<"bankConnections">
-  ) => {
-    const pending: Array<PendingReviewTransaction & StatementRow> = syncedTransactions.map((tx) => applySmallIncomeDefaults({
-      reviewRowId: crypto.randomUUID(),
-      date: tx.date,
-      description: tx.description,
-      amount: tx.amount,
-      type: tx.type,
-      fundId: tx.fundId || undefined,
-      category: '',
-      isGiftAidEligible: false,
-      source: 'bank' as const,
-      providerTransactionId: tx.providerTransactionId,
-      bankConnectionId,
-    }, categories, funds));
-
-    const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(pending, transactions);
-    setAlreadyImportedRows((current) => (append ? [...current, ...alreadyImported] : alreadyImported));
-    setPendingTransactions((current) => {
-      const startIndex = append ? current.length : 0;
-      setDuplicateWarnings((currentWarnings) => {
-        const duplicates = new Set<number>(append ? currentWarnings : []);
-        possibleDuplicates.forEach((index) => duplicates.add(startIndex + index));
-        return duplicates;
-      });
-
-      return append ? [...current, ...fresh] : fresh;
-    });
+  const startBankSync = (bankConnectionId: Id<"bankConnections">) => {
+    setShowBankSelector(false);
+    void syncFromBank(bankConnectionId);
   };
 
   // Bank sync: show selector if multiple banks, otherwise sync directly
@@ -836,343 +633,42 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       return;
     }
     if (pendingTransactions.length > 0) {
-      setShowReviewModal(true);
+      openReview();
       notify("Review Import", "Finish or discard the current review batch before starting a new bank sync.");
       return;
     }
     if (bankConnections.length === 1) {
       // Single bank - sync directly
-      handleSyncFromBank(bankConnections[0]._id);
+      startBankSync(bankConnections[0]._id);
     } else {
       // Multiple banks - show selector
       setShowBankSelector(true);
     }
   };
 
-  // Sync transactions from a specific bank connection
-  const handleSyncFromBank = async (
-    bankConnectionId: Id<"bankConnections">,
-    cursor?: BankSyncCursor,
-    options: { append?: boolean } = {}
-  ) => {
-    const append = options.append === true;
-    setShowBankSelector(false);
-    if (append) {
-      setIsFetchingMoreBankTransactions(true);
-    } else {
-      setIsUploading(true);
-      setDuplicateWarnings(new Set());
-      setAlreadyImportedRows([]);
-      setNextBankSyncCursor(null);
-      setNextBankSyncConnectionId(null);
-      setOriginalPredictions(new Map());
-    }
-
-    try {
-      const result = await syncTransactions({
-        bankConnectionId,
-        ...(cursor ? { cursor } : {}),
-      });
-
-      handleSyncedBankTransactions(result.transactions, append, bankConnectionId);
-      setBankSyncReviewConnectionId(bankConnectionId);
-      setShowReviewModal(true);
-
-      if (result.hasMore && result.nextCursor) {
-        setNextBankSyncCursor(result.nextCursor);
-        setNextBankSyncConnectionId(bankConnectionId);
-        notify("More Available", "More bank transactions are available. Fetch the next batch before importing if you want to include them in this review.");
-      } else {
-        setNextBankSyncCursor(null);
-        setNextBankSyncConnectionId(null);
-        if (result.hasMore) {
-          notify("More Available", "More bank transactions may be available, but the bank did not return a resume point. Import or discard this batch before syncing again.");
-        }
-      }
-    } catch (error: any) {
-      console.error('Bank sync error:', error);
-      notify("Error", error.message || "Failed to sync transactions from bank. Please try again.");
-    } finally {
-      if (append) {
-        setIsFetchingMoreBankTransactions(false);
-      } else {
-        setIsUploading(false);
-      }
-    }
-  };
-
-  const handleFetchMoreBankTransactions = async () => {
-    if (!nextBankSyncConnectionId || !nextBankSyncCursor) return;
-    await handleSyncFromBank(nextBankSyncConnectionId, nextBankSyncCursor, { append: true });
-  };
-
-  const getPipelineConfidenceLabel = (suggestion: {
-    confidenceLabel?: string;
-    confidence?: string | number;
-  }): string => {
-    const confidence = suggestion.confidenceLabel ?? suggestion.confidence;
-    if (typeof confidence === 'number') return String(confidence);
-    return confidence || 'Low';
-  };
-
-  const getPipelineSourceLabel = (predictionSource: PipelinePredictionSource, ragScore?: number): string => {
-    switch (predictionSource) {
-      case 'memory':
-        return 'Memory Match';
-      case 'rule':
-        return 'Rule Match';
-      case 'rag':
-        return typeof ragScore === 'number'
-          ? `RAG Match (${Math.round(ragScore * 100)}%)`
-          : 'RAG Match';
-      case 'gemini':
-        return 'Gemini AI';
-      case 'openai':
-        return 'Luna AI (OpenAI)';
-      case 'openrouter':
-        return 'Luna AI';
-      case 'none':
-      default:
-        return 'No AI suggestion';
-    }
-  };
-
-  const handleApplyAI = async () => {
-    const run = ++categorizationRun.current;
-    const snapshot = pendingTransactions.map((row) => ({ ...row, reviewRowId: row.reviewRowId ?? crypto.randomUUID() }));
-    setPendingTransactions(snapshot);
-    setCategorizationTransactionCount(snapshot.length);
-    setCategorizationStatusMessage('');
-    setIsProcessingAI(true);
-    setOriginalPredictions(new Map());
-    let next = 0;
-    let completed = 0;
-    let failed = 0;
-    const worker = async () => {
-      while (next < snapshot.length && categorizationRun.current === run) {
-        const batch = snapshot.slice(next, next += 20);
-        try {
-          const suggestions = await categorizeWithPipeline({ transactions: batch.map((row) => ({
-            rowId: row.reviewRowId, description: row.description ?? '', amount: row.amount ?? 0,
-            type: row.type ?? 'Income', category: row.category,
-            fundId: funds.some((fund) => fund._id === row.fundId) ? row.fundId as Id<'funds'> : undefined,
-            donorName: row.donorName,
-          })) });
-          if (categorizationRun.current !== run) return;
-          const byId = new Map(suggestions.map((suggestion) => [suggestion.rowId, suggestion]));
-          const originals = new Map(batch.map((row) => [row.reviewRowId, row]));
-          setPendingTransactions((current) => current.map((row) => {
-            const original = originals.get(row.reviewRowId ?? '');
-            const suggestion = byId.get(row.reviewRowId);
-            // A user edit or removal while inference was running wins.
-            if (!suggestion || row !== original) return row;
-            return applySmallIncomeDefaults({
-              ...row, category: suggestion.category || row.category,
-              fundId: suggestion.fundId || row.fundId,
-              donorName: row.donorName ?? suggestion.donorName ?? undefined,
-              // Model inference cannot establish a donor's declaration status.
-              isGiftAidEligible: row.isGiftAidEligible ?? false,
-              requiresReview: suggestion.requiresReview,
-              notes: `${getPipelineSourceLabel(suggestion.predictionSource, suggestion.ragScore)} | Confidence: ${getPipelineConfidenceLabel(suggestion)}`,
-            }, categories, funds);
-          }));
-          setOriginalPredictions((current) => {
-            const updated = new Map(current);
-            suggestions.forEach((suggestion) => {
-              if (!suggestion.rowId) return;
-              updated.set(suggestion.rowId, { category: suggestion.category, fundId: suggestion.fundId,
-                isGiftAidEligible: suggestion.isGiftAidEligible, donorName: suggestion.donorName,
-                confidence: getPipelineConfidenceLabel(suggestion), confidenceScore: suggestion.confidence,
-                predictionSource: suggestion.predictionSource, ragScore: suggestion.ragScore });
-            });
-            return updated;
-          });
-        } catch {
-          failed += batch.length;
-        }
-        completed += batch.length;
-        if (categorizationRun.current === run) setCategorizationStatusMessage(`${completed} of ${snapshot.length} entries processed. Suggestions are ready to review as they arrive.`);
-      }
-    };
-    try {
-      await Promise.all(Array.from({ length: Math.min(2, Math.ceil(snapshot.length / 20)) }, worker));
-    } finally {
-      if (categorizationRun.current === run) {
-        setIsProcessingAI(false);
-        setCategorizationStatusMessage(failed ? `${snapshot.length - failed} entries processed; ${failed} need manual review or a retry.` : `Auto-categorisation complete. ${snapshot.length} entries ready to review.`);
-      }
-    }
-  };
-
-  const handleConfirmImport = async () => {
-    if (isProcessingAI) {
-      notify(
-        "Categorisation in progress",
-        "Wait for auto-categorisation to finish before confirming this import."
+  const renderPairing = (row: PendingReviewTransaction) => {
+    const rowId = row.reviewRowId ?? '';
+    const active = pairing.activeFor(rowId);
+    if (active) {
+      return (
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-dark">
+          <LinkIcon size={12} className="shrink-0" />
+          <span>Paired with {pairing.partnerLabel(active)}</span>
+          <button type="button" onClick={() => pairing.undo(rowId, active)} className="font-bold underline hover:text-ink">Undo</button>
+        </p>
       );
-      return;
     }
-    if (bankSyncReviewConnectionId && nextBankSyncCursor) {
-      notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
-      return;
-    }
-    if (!funds[0]) {
-      notify("Error", "Add a fund before importing transactions.");
-      return;
-    }
-    const importRows = pendingTransactions.map((transaction) => applySmallIncomeDefaults(transaction, categories, funds));
-    setPendingTransactions(importRows);
-    const problems = importRows.flatMap((transaction) => {
-      const reason = !resolveAssignableCategory(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) ? 'Choose a category for'
-        : !funds.some((fund) => fund._id === transaction.fundId) ? 'Choose a fund for'
-        : !isRealIsoDate(transaction.date || "") ? 'Check the date for'
-        : null;
-      return reason ? [{ reason, label: `"${transaction.description || 'Untitled'}" (${transaction.date || 'no date'})` }] : [];
-    });
-    if (problems.length > 0) {
-      const detail = [...new Set(problems.map((problem) => problem.reason))].map((reason) => {
-        const labels = problems.filter((problem) => problem.reason === reason).map((problem) => problem.label);
-        return `${reason}: ${labels.slice(0, 5).join(", ")}${labels.length > 5 ? ` and ${labels.length - 5} more` : ""}`;
-      });
-      notify("Error", `Every row needs a real date, a valid category and a valid fund before import. ${detail.join(". ")}.`);
-      return;
-    }
-
-    try {
-        // Build transactions - NO auto-donor creation or pledge linking
-        // Just store the extracted donor name as text for manual linking later
-        const transactionsToCreate = importRows.map((pt) => {
-            return {
-                date: pt.date!,
-                description: pt.description || '',
-                amount: pt.amount || 0,
-                type: (pt.type || 'Income') as 'Income' | 'Expenditure',
-                category: pt.category,
-                fundId: pt.fundId as Id<"funds">,
-                isGiftAidEligible: pt.isGiftAidEligible || false,
-                donorName: pt.donorName, // Keep extracted name for reference
-                // No auto-linking: donorId and pledgeId left undefined
-                // User can manually link transactions to donors/pledges later
-                notes: pt.notes?.replace(/ \| New Donor:.*$/, '').replace(/ \| Donor:.*$/, '').replace(/ \| Pledge:.*$/, '') || undefined,
-                // Bank rows carry provider ids and statement rows carry import keys
-                // so the server can skip anything already imported
-                bankConnectionId: pt.bankConnectionId as Id<"bankConnections"> | undefined,
-                providerTransactionId: pt.providerTransactionId,
-                importKey: pt.importKey,
-            };
-        });
-
-        const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
-
-        // Rows left out as already imported were still fetched by this sync.
-        const bankTransactionDates = bankSyncReviewConnectionId
-            ? [...pendingTransactions, ...alreadyImportedRows]
-                .filter((pt) => pt.source === 'bank' && pt.bankConnectionId === bankSyncReviewConnectionId && pt.date)
-                .map((pt) => pt.date as string)
-            : [];
-
-        if (bankSyncReviewConnectionId && bankTransactionDates.length > 0) {
-            const lastSyncedThrough = bankTransactionDates.reduce((latest, date) =>
-                date > latest ? date : latest
-            );
-            try {
-                await acknowledgeBankSync({
-                    bankConnectionId: bankSyncReviewConnectionId,
-                    lastSyncedThrough,
-                });
-            } catch (syncStateError) {
-                console.warn('Failed to update bank sync checkpoint:', syncStateError);
-                notify("Warning", "Transactions were imported, but the bank sync checkpoint was not updated. The next sync may show duplicate warnings.");
-            }
-        }
-
-        // Record corrections for ML learning if we have original predictions
-        if (originalPredictions.size > 0 && result?.ids) {
-            const correctionsToRecord = importRows
-                .map((pt, idx) => {
-                    const prediction = originalPredictions.get(pt.reviewRowId ?? '');
-                    if (!prediction || !result.ids[idx]) return null;
-
-                    return {
-                        transactionId: result.ids[idx] as Id<"transactions">,
-                        description: pt.description || '',
-                        aiPredictedCategory: prediction.category,
-                        aiConfidence: prediction.confidence,
-                        predictionSource: prediction.predictionSource,
-                        ragScore: prediction.ragScore,
-                        finalCategory: pt.category || '',
-                        aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,
-                        aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
-                        aiPredictedDonorName: prediction.donorName || undefined,
-                        aiConfidenceScore: prediction.confidenceScore,
-                        finalFundId: pt.fundId as Id<"funds">,
-                        finalGiftAidEligible: pt.isGiftAidEligible || false,
-                        finalDonorName: pt.donorName || undefined,
-                    };
-                })
-                .filter((c): c is NonNullable<typeof c> => c !== null);
-
-            if (correctionsToRecord.length > 0) {
-                try {
-                    await recordCorrections({ corrections: correctionsToRecord });
-                } catch (correctionError) {
-                    console.warn('Failed to record corrections:', correctionError);
-                    // Don't block import if correction recording fails
-                }
-            }
-        }
-
-        // Accepted pairs are re-checked against current state, then linked.
-        const createdIds = new Map<string, string>();
-        importRows.forEach((row, index) => {
-            const id = result?.ids[index];
-            if (row.reviewRowId && id) createdIds.set(row.reviewRowId, id);
-        });
-        const { links, unmatched } = acceptedPairsToLink({
-            rows: importRows,
-            createdIds,
-            categories: importCategories,
-            ledger: allTransactions ?? [],
-        });
-        let linkedCount = 0;
-        let unlinkedCount = unmatched;
-        for (const [firstId, secondId] of links) {
-            try {
-                await linkTransactions({ transactionIds: [firstId as Id<"transactions">, secondId as Id<"transactions">] });
-                linkedCount += 1;
-            } catch (linkError) {
-                console.warn('Failed to link import pair:', linkError);
-                unlinkedCount += 1;
-            }
-        }
-        if (linkedCount > 0) {
-            notify("Pairs Linked", `${linkedCount} pair${linkedCount === 1 ? ' was' : 's were'} linked.`);
-        }
-        if (unlinkedCount > 0) {
-            notify("Warning", `Imported, but ${unlinkedCount} pair${unlinkedCount === 1 ? " couldn't" : "s couldn't"} be linked. Link them from Transactions.`);
-        }
-
-        // Notify about completed pledges (if any were manually linked)
-        if (result?.completedPledges && onPledgeCompleted) {
-            for (const completed of result.completedPledges) {
-                onPledgeCompleted(completed.donorName, completed.amount);
-            }
-        }
-
-        if (result?.skippedDuplicates) {
-            notify(
-                "Duplicates Skipped",
-                `${result.skippedDuplicates} transaction${result.skippedDuplicates === 1 ? ' was' : 's were'} already imported and ${result.skippedDuplicates === 1 ? 'was' : 'were'} skipped.`
-            );
-        }
-
-        setShowReviewModal(false);
-        clearBankSyncReviewState();
-    } catch (error) {
-        console.error("Import failed:", error);
-        notify("Error", error instanceof Error ? error.message : "Failed to import transactions.");
-    }
+    const suggestion = pairing.suggestionFor(rowId);
+    if (!suggestion || pairing.isDismissed(rowId)) return null;
+    return (
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-grey-dark">
+        <span>Other side: {pairing.partnerLabel(suggestion)}</span>
+        <button type="button" aria-label="Accept other side" onClick={() => pairing.accept(rowId, suggestion)} className="font-bold text-sage-dark underline hover:text-ink">Accept</button>
+        <button type="button" aria-label="Dismiss other side" onClick={() => pairing.dismiss(rowId)} className="font-bold text-grey-mid underline hover:text-ink">Dismiss</button>
+      </p>
+    );
   };
+
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1250,10 +746,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </button>
                 <button
                     onClick={handleSyncBank}
-                    disabled={isUploading}
+                    disabled={isSyncingBank}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors disabled:opacity-60"
                 >
-                    {isUploading ? <Loader2 size={16} strokeWidth={1.9} className="animate-spin text-grey-mid"/> : <Building2 size={16} strokeWidth={1.9} className="text-grey-mid" />}
+                    {isSyncingBank ? <Loader2 size={16} strokeWidth={1.9} className="animate-spin text-grey-mid"/> : <Building2 size={16} strokeWidth={1.9} className="text-grey-mid" />}
                     Sync Bank
                     {bankConnections.length > 0 && (
                       <span className="ml-0.5 px-1.5 py-0.5 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold">
@@ -2555,12 +2051,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <select
                             disabled={isProcessingAI}
                             onChange={(e) => {
-                                if (e.target.value) {
-                                    setPendingTransactions(prev => prev.map(t => ({
-                                        ...t,
-                                        fundId: e.target.value
-                                    })));
-                                }
+                                if (e.target.value) assignFundToAll(e.target.value);
                             }}
                             className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto disabled:cursor-wait disabled:opacity-60"
                             defaultValue=""
@@ -2570,7 +2061,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
-                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap disabled:cursor-wait disabled:opacity-80">
+                        <button onClick={() => void categorise()} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap disabled:cursor-wait disabled:opacity-80">
                             {isProcessingAI ? <><Loader2 size={14} className="animate-spin" /> Categorising</> : <><Sparkles size={14} /> Auto-Categorise</>}
                         </button>
                     </div>
@@ -2590,7 +2081,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         {alreadyImportedRows.some((row) => row.importKey) && (
                           <button
                             type="button"
-                            onClick={includeAlreadyImportedStatementRows}
+                            onClick={includeAlreadyImported}
                             className="self-start text-xs font-bold text-grey-dark underline hover:text-ink sm:self-auto"
                           >
                             Import anyway
@@ -2732,11 +2223,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </div>
                 <div className="p-5 border-t border-[#efeee9] flex flex-col gap-3 rounded-b-lg bg-paper sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      {nextBankSyncCursor && nextBankSyncConnectionId && (
+                      {hasMoreBankRows && (
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                           <p className="text-xs font-semibold text-sage-dark">More bank transactions are available.</p>
                           <button
-                            onClick={handleFetchMoreBankTransactions}
+                            onClick={() => void fetchNextBankBatch()}
                             disabled={isFetchingMoreBankTransactions}
                             className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-sage/40 rounded-md text-sage-dark hover:border-sage hover:bg-sage-light/30 transition-colors font-bold text-xs uppercase tracking-wide"
                           >
@@ -2748,16 +2239,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                     <div className="flex justify-end gap-3">
                     <button
-                      onClick={() => {
-                        setShowReviewModal(false);
-                        clearBankSyncReviewState();
-                      }}
+                      onClick={clearReview}
                       className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded-sm transition-colors disabled:cursor-wait disabled:opacity-50"
                     >
                       Discard
                     </button>
                     <button
-                      onClick={handleConfirmImport}
+                      onClick={() => void confirm()}
                       disabled={isProcessingAI}
                       aria-busy={isProcessingAI}
                       className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide disabled:cursor-wait disabled:opacity-60"
@@ -2788,7 +2276,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               {bankConnections.map((item) => (
                 <button
                   key={item._id}
-                  onClick={() => handleSyncFromBank(item._id)}
+                  onClick={() => startBankSync(item._id)}
                   className="w-full p-4 bg-paper border border-ledger rounded-lg hover:border-sage hover:bg-sage-light/30 transition-all flex items-center gap-4 text-left group"
                 >
                   <div className="w-10 h-10 bg-white border border-ledger rounded-lg flex items-center justify-center group-hover:border-sage">
