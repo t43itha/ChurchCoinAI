@@ -195,6 +195,11 @@ describe("detectColumns", () => {
     }
   });
 
+  it("never guesses a column of numbers as the description", () => {
+    const { mapping } = importFile("01/03/2026,Gift,100.00,1\n02/03/2026,Tea,20.00,2");
+    expect(mapping).toMatchObject({ date: "Column 1", description: "Column 2", amount: "" });
+  });
+
   it("recognises a headerless file whose first row has a zero amount", () => {
     for (const zero of ["0.00", "0", "£0.00", "(0.00)", "-0.00"]) {
       const { headers } = importFile(`01/03/2026,Opening balance,${zero}\n02/03/2026,Sunday offering,25.00`);

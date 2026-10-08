@@ -235,6 +235,7 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
       return best === null || value > score(best) ? index : best;
     }, null);
   const indexes = headers.map((_, index) => index);
+  const amountShare = (index: number) => share(index, (cell) => (readAmount(cell) === "bad" ? null : true));
   const headerIndexOf = (name: string) => headers.indexOf(name);
 
   if (!mapping.date) {
@@ -243,7 +244,6 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
   }
   if (!split && !mapping.amount) {
     const candidates = indexes.filter((index) => !NOT_AN_AMOUNT_HEADER.test(headers[index]) && index !== headerIndexOf(mapping.date));
-    const amountShare = (index: number) => share(index, (cell) => (readAmount(cell) === "bad" ? null : true));
     const qualifying = candidates.filter((index) => amountShare(index) > 0.5);
     // Values alone can't tell an amount from a balance, so two numeric columns are
     // ambiguous and the user picks the amount column.
@@ -254,6 +254,8 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
     let best: { index: number; length: number } | null = null;
     for (const index of indexes) {
       if (taken.has(headers[index])) continue;
+      // Columns of amounts or dates are never descriptions, even when nothing else is left.
+      if (amountShare(index) > 0.5 || share(index, parseImportedDate) > 0.5) continue;
       const cells = cellsOf(index);
       if (cells.length === 0) continue;
       const length = cells.reduce((sum, cell) => sum + cell.length, 0) / cells.length;
