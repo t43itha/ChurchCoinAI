@@ -1,9 +1,10 @@
 import { draftTotals, serviceGivingTotal, type CollectionDraft } from "../../lib/cashCollectionDraft";
 import { roundMoney } from "../../convex/lib/money";
-import Receipt, { ReceiptRow } from "./Receipt";
+import Receipt, { MoneyRow } from "./Receipt";
 import { useGiftAidEnabled } from "../app/useGiftAidEnabled";
 import { gbp, shortDate } from "./format";
-import { eyebrow } from "./ui";
+import RailStep, { type RailStepState } from "../wizard/RailStep";
+import { eyebrow } from "../wizard/ui";
 import type { WizardStep } from "./steps";
 import type { WizardModel } from "./useCollectionDraft";
 
@@ -16,46 +17,9 @@ interface RailProps {
   onGo: (position: number) => void;
 }
 
-function RailStep({
-  letter,
-  label,
-  amount,
-  state,
-  onClick,
-}: {
-  letter: string;
-  label: string;
-  amount?: string;
-  state: "done" | "now" | "todo";
-  onClick: () => void;
-}) {
-  const marker =
-    state === "done"
-      ? "border-sage bg-sage text-white"
-      : state === "now"
-        ? "border-ink bg-ink text-white"
-        : "border-ledger text-grey-mid";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={state === "now" ? "step" : undefined}
-      className={`flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13.5px] font-semibold transition-colors hover:bg-grey-light ${
-        state === "now" ? "bg-grey-light text-ink" : state === "done" ? "text-grey-dark" : "text-grey-mid"
-      }`}
-    >
-      <span className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] font-mono text-[11px] ${marker}`}>
-        {state === "done" ? "✓" : letter}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {amount && <em className="font-mono text-[11.5px] not-italic text-grey-mid">{amount}</em>}
-    </button>
-  );
-}
-
 // Left rail (lg and up): each service's two steps with running totals, and the check.
 export function WizardRail({ draft, steps, current, onGo }: RailProps) {
-  const stateAt = (position: number): "done" | "now" | "todo" =>
+  const stateAt = (position: number): RailStepState =>
     position < current ? "done" : position === current ? "now" : "todo";
   const checkPosition = steps.findIndex((step) => step.kind === "review");
 
@@ -72,16 +36,16 @@ export function WizardRail({ draft, steps, current, onGo }: RailProps) {
               {service.label} · {shortDate(service.date).split(" ").slice(1).join(" ")}
             </div>
             <RailStep
-              letter="A"
+              marker="A"
               label="Loose giving"
-              amount={givingTotal ? gbp(givingTotal) : undefined}
+              trailing={givingTotal ? gbp(givingTotal) : undefined}
               state={stateAt(givingAt)}
               onClick={() => onGo(givingAt)}
             />
             <RailStep
-              letter="B"
+              marker="B"
               label="Tithe envelopes"
-              amount={service.tithes.length ? String(service.tithes.length) : undefined}
+              trailing={service.tithes.length ? String(service.tithes.length) : undefined}
               state={stateAt(tithesAt)}
               onClick={() => onGo(tithesAt)}
             />
@@ -90,7 +54,7 @@ export function WizardRail({ draft, steps, current, onGo }: RailProps) {
       })}
       {checkPosition >= 0 && (
         <div className="mt-4">
-          <RailStep letter="✓" label="Check" state={stateAt(checkPosition)} onClick={() => onGo(checkPosition)} />
+          <RailStep marker="✓" label="Check" state={stateAt(checkPosition)} onClick={() => onGo(checkPosition)} />
         </div>
       )}
     </aside>
@@ -118,8 +82,8 @@ export function WizardReceipt({
       <Receipt model={model} className="shadow-soft-md">
         {giftAidEnabled && (
           <div className="mt-1 border-t border-dashed border-ledger pt-1">
-            <ReceiptRow label="Gift Aid eligible" value={totals.giftAidEligible} muted />
-            <ReceiptRow label="≈ to claim (25%)" value={roundMoney(totals.giftAidEligible * GIFT_AID_RATE)} muted />
+            <MoneyRow label="Gift Aid eligible" value={totals.giftAidEligible} muted />
+            <MoneyRow label="≈ to claim (25%)" value={roundMoney(totals.giftAidEligible * GIFT_AID_RATE)} muted />
           </div>
         )}
         <div className="flex items-baseline justify-between gap-2 border-t border-dashed border-ledger pb-2 pt-3">

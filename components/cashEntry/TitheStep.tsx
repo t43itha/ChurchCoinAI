@@ -24,7 +24,7 @@ import {
   screenHelp,
   screenTitle,
   Segmented,
-} from "./ui";
+} from "../wizard/ui";
 import type { WizardModel } from "./useCollectionDraft";
 
 interface TitheStepProps {

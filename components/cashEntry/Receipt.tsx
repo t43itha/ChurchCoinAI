@@ -5,16 +5,13 @@ import {
   type ServiceDraft,
 } from "../../lib/cashCollectionDraft";
 import { dayMonth, gbp } from "./format";
-import { eyebrow, linkBtnSm, receipt } from "./ui";
+import { ReceiptCard, ReceiptRow } from "../wizard/Receipt";
+import { eyebrow, linkBtnSm } from "../wizard/ui";
 import type { WizardModel } from "./useCollectionDraft";
 
-export function ReceiptRow({ label, value, sub, muted }: { label: string; value: number; sub?: boolean; muted?: boolean }) {
-  return (
-    <div className={`flex justify-between gap-2.5 py-1 text-sm ${value ? "" : "text-[#b8b3ab]"}`}>
-      <span className={`min-w-0 ${sub ? "pl-3 text-grey-dark" : ""} ${muted ? "text-grey-mid" : ""}`}>{label}</span>
-      <span className="whitespace-nowrap font-mono font-semibold">{value ? gbp(value) : "—"}</span>
-    </div>
-  );
+// A money line: zero shows a dash and greys out.
+export function MoneyRow({ label, value, sub, muted }: { label: string; value: number; sub?: boolean; muted?: boolean }) {
+  return <ReceiptRow label={label} value={value ? gbp(value) : "—"} sub={sub} muted={muted} dim={!value} />;
 }
 
 function ServiceSection({
@@ -44,16 +41,16 @@ function ServiceSection({
           </button>
         )}
       </div>
-      <ReceiptRow label="Offering" value={lineTotal(service.offering)} />
+      <MoneyRow label="Offering" value={lineTotal(service.offering)} />
       {service.funds
         .filter((line) => lineTotal(line) > 0)
         .map((line) => (
-          <ReceiptRow key={line.id} label={model.fundLineLabel(line)} value={lineTotal(line)} />
+          <MoneyRow key={line.id} label={model.fundLineLabel(line)} value={lineTotal(line)} />
         ))}
       {service.programmes.map((line) => (
-        <ReceiptRow key={line.id} label={model.programmeLineLabel(line)} value={lineTotal(line)} />
+        <MoneyRow key={line.id} label={model.programmeLineLabel(line)} value={lineTotal(line)} />
       ))}
-      <ReceiptRow label={tithesLabel} value={serviceTitheTotal(service)} />
+      <MoneyRow label={tithesLabel} value={serviceTitheTotal(service)} />
       <div className="my-2 border-t border-dashed border-ledger" />
     </div>
   );
@@ -72,7 +69,7 @@ export default function Receipt({
   children?: ReactNode;
 }) {
   return (
-    <div className={`${receipt} ${className}`}>
+    <ReceiptCard className={className}>
       {model.draft.services.map((service, index) => (
         <ServiceSection
           key={service.id}
@@ -82,6 +79,6 @@ export default function Receipt({
         />
       ))}
       {children}
-    </div>
+    </ReceiptCard>
   );
 }

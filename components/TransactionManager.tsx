@@ -1,25 +1,23 @@
 import { can } from "../lib/permissions";
-import React, { useState, useMemo, useRef, useEffect, useCallback, startTransition } from 'react';
+import React, { useState, useMemo, useEffect, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { AppUser, Fund, Pledge, Transaction, TransactionType } from '../types';
-import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, Table as TableIcon, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
+import { Plus, Check, FileSpreadsheet, Building2, Edit2, X, Save, Filter, Calendar, Tag, CheckCircle2, RotateCcw, CheckSquare, Wallet, Loader2, Sparkles, Link as LinkIcon, Search, Lock, ArrowLeft, ArrowRight, ArrowLeftRight, Wand2, AlertTriangle, RefreshCw, Banknote, ChevronDown, ChevronRight, Scale, Link2, Unlink, Trash2 } from 'lucide-react';
 import CashEntryWizard from './cashEntry/CashEntryWizard';
 import Reconciliation from './Reconciliation';
 import DonorSearchInput from './DonorSearchInput';
 import { notify } from '../lib/notifications';
 import { formatLocalDateInputValue } from '../lib/dateUtils';
-import { isRealIsoDate } from '../lib/csvImport';
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
-import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
-import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
-import { CsvRecord, describeLeftOutRows, detectColumns, exceedsImportLimit, findHeaderRow, mapStatementRows, MAX_IMPORT_ROWS, tokenizeCsv } from '../lib/statementImport';
-import { resolveAssignableCategory } from '../convex/intelligence/categorization/categoryResolver';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
-import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
+import { linkState } from '../lib/movementMatching';
+import { useImportReview } from './statementImport/useImportReview';
+import StatementImportWizard from './statementImport/StatementImportWizard';
+import ReviewTable from './statementImport/ReviewTable';
 import { roundMoney, sumMoney } from '../convex/lib/money';
 import { filterInPersonGivingLedgersByMonth, groupInPersonGivingCollections, InPersonGivingLedger } from '../lib/inPersonGiving';
 import CashChequeBanking from './CashChequeBanking';
@@ -61,48 +59,6 @@ type StatusFilter = (typeof STATUS_FILTER_OPTIONS)[number]['value'];
 const parseStatusFilter = (value: string | null): StatusFilter =>
   STATUS_FILTER_OPTIONS.find((option) => option.value === value)?.value ?? 'all';
 
-type BankSyncCursor = {
-  dateFrom: string;
-  dateTo: string;
-  accountIndex: number;
-  continuationKey?: string;
-};
-
-type PendingReviewTransaction = Partial<Transaction> & {
-  reviewRowId?: string;
-  requiresReview?: boolean;
-  source?: 'bank';
-  providerTransactionId?: string;
-  bankConnectionId?: Id<"bankConnections">;
-  importKey?: string;
-  pairWith?: PairSuggestion;
-  pairBasis?: string;
-};
-
-type PipelinePredictionSource = 'memory' | 'rule' | 'gemini' | 'openrouter' | 'openai' | 'rag' | 'none';
-
-type OriginalPrediction = {
-  category: string;
-  fundId?: string;
-  isGiftAidEligible?: boolean;
-  donorName?: string | null;
-  confidence: string;
-  confidenceScore?: number;
-  predictionSource: PipelinePredictionSource;
-  ragScore?: number;
-};
-
-const reindexSetAfterRemoval = (values: Set<number>, removedIndex: number): Set<number> => {
-  const reindexed = new Set<number>();
-  values.forEach((value) => {
-    if (value < removedIndex) {
-      reindexed.add(value);
-    } else if (value > removedIndex) {
-      reindexed.add(value - 1);
-    }
-  });
-  return reindexed;
-};
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -128,23 +84,17 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // Convex mutations and actions
   const createTransaction = useMutation(api.mutations.transactions.create);
   const updateTransaction = useMutation(api.mutations.transactions.update);
-  const bulkCreateTransactions = useMutation(api.mutations.transactions.bulkCreate);
   const bulkUpdateTransactions = useMutation(api.mutations.transactions.bulkUpdate);
   const batchUpdateTransactions = useMutation(api.mutations.transactions.batchUpdate);
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
-  const categorizeWithPipeline = useAction(api.actions.ai.categorizeWithPipelinePreview);
-  const recordCorrections = useMutation(api.mutations.transactions.recordCorrections);
   const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
   const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
   const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
   const unlinkTransaction = useMutation(api.mutations.movements.unlink);
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
-  const linkTransactions = useMutation(api.mutations.movements.link);
 
   // Bank sync
   const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
-  const syncTransactions = useAction(api.actions.bankConnections.syncTransactions);
-  const acknowledgeBankSync = useMutation(api.mutations.bankConnections.acknowledgeSyncThrough);
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
@@ -154,44 +104,44 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     const names = categoryNamesForTransactionTypes(importCategories, [type]);
     return current && !names.includes(current) ? [...names, current] : names;
   };
-  const fundNamesById = useMemo(
-    () => new Map<string, string>(funds.map((fund) => [fund._id, fund.name])),
-    [funds]
-  );
-  const [isUploading, setIsUploading] = useState(false);
-  const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [categorizationTransactionCount, setCategorizationTransactionCount] = useState(0);
-  const [categorizationStatusMessage, setCategorizationStatusMessage] = useState('');
+  // Import review batch shared by the statement walkthrough and bank sync.
+  const importReview = useImportReview({ funds, categories, ledger: allTransactions, onPledgeCompleted });
+  const {
+    isReviewOpen,
+    isBankReview,
+    rows: pendingTransactions,
+    duplicateWarnings,
+    alreadyImportedRows,
+    isCategorising: isProcessingAI,
+    categorisingCount: categorizationTransactionCount,
+    statusMessage: categorizationStatusMessage,
+    isSyncingBank,
+    isFetchingMoreBank: isFetchingMoreBankTransactions,
+    hasMoreBankRows,
+    updateRow: updatePendingTransactionAt,
+    removeRow: removePendingTransactionAt,
+    pairing,
+    openReview,
+    syncFromBank,
+    fetchNextBankBatch,
+    assignFundToAll,
+    includeAlreadyImported,
+    categorise,
+    confirm,
+    clear: clearReview,
+  } = importReview;
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
-  const [pendingTransactions, setPendingTransactions] = useState<PendingReviewTransaction[]>([]);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [dismissedPairs, setDismissedPairs] = useState<Set<string>>(() => new Set());
 
-  // Track original AI predictions for correction learning
-  const categorizationRun = useRef(0);
-  const [originalPredictions, setOriginalPredictions] = useState<Map<string, OriginalPrediction>>(new Map());
-  
   // Smart Link State
   const [isReconciling, setIsReconciling] = useState(false);
   const [pledgeMatches, setPledgeMatches] = useState<any[]>([]);
   const [showMatchModal, setShowMatchModal] = useState(false);
   
-  // CSV Import State
-  const [showColumnMapper, setShowColumnMapper] = useState(false);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvRows, setCsvRows] = useState<CsvRecord[]>([]);
-  const [columnMapping, setColumnMapping] = useState({ date: '', description: '', amount: '', amountIn: '', amountOut: '' });
-  const [useSplitAmount, setUseSplitAmount] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Statement import walkthrough (file, columns, fix, categorise, check)
+  const [showStatementImport, setShowStatementImport] = useState(false);
 
   // Bank Sync State
   const [showBankSelector, setShowBankSelector] = useState(false);
-  const [duplicateWarnings, setDuplicateWarnings] = useState<Set<number>>(new Set());
-  const [alreadyImportedRows, setAlreadyImportedRows] = useState<PendingReviewTransaction[]>([]);
-  const [nextBankSyncCursor, setNextBankSyncCursor] = useState<BankSyncCursor | null>(null);
-  const [nextBankSyncConnectionId, setNextBankSyncConnectionId] = useState<Id<"bankConnections"> | null>(null);
-  const [bankSyncReviewConnectionId, setBankSyncReviewConnectionId] = useState<Id<"bankConnections"> | null>(null);
-  const [isFetchingMoreBankTransactions, setIsFetchingMoreBankTransactions] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const bulkCategoryNames = useMemo(() => {
@@ -608,227 +558,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
-  // --- CSV Handling ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-          const text = evt.target?.result as string;
-          const { records, error } = tokenizeCsv(text);
-          if (error) {
-              notify("Error", `We couldn't read this file: ${error.reason}.`);
-              return;
-          }
-          const { headerIndex, headers } = findHeaderRow(records);
-          const dataRecords = records.slice(headerIndex === null ? 0 : headerIndex + 1);
-          if (headers.length === 0 || dataRecords.length === 0) {
-              notify("Error", "We couldn't find any transactions in this file. Check it's a CSV export of your bank statement.");
-              return;
-          }
-          // Check for empty headers
-          if (headers.some(h => !h)) {
-             notify("Error", "CSV contains empty headers. Please check the file.");
-             return;
-          }
-
-          const { mapping, split } = detectColumns(headers, dataRecords.map(record => record.cells));
-          setCsvHeaders(headers);
-          setCsvRows(dataRecords);
-          setUseSplitAmount(split);
-          setColumnMapping(mapping);
-          setShowColumnMapper(true);
-      };
-      reader.readAsText(file);
-      // Reset input
-      if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleProcessMapping = () => {
-      const hasColumn = (name: string) => csvHeaders.includes(name);
-      const amountMapped = useSplitAmount
-         ? hasColumn(columnMapping.amountIn) || hasColumn(columnMapping.amountOut)
-         : hasColumn(columnMapping.amount);
-      if (!hasColumn(columnMapping.date) || !hasColumn(columnMapping.description) || !amountMapped) {
-         notify("Error", useSplitAmount ? "Please map Date, Description, and the In/Out columns." : "Please map Date, Description, and Amount columns.");
-         return;
-      }
-
-      if (!funds[0]) {
-          notify("Error", "Add a fund before importing transactions.");
-          return;
-      }
-
-      const { rows, skipped, errors } = mapStatementRows(csvRows, csvHeaders, columnMapping, useSplitAmount);
-      const parsed: Array<PendingReviewTransaction & StatementRow> = rows.map((row) => applySmallIncomeDefaults({
-          reviewRowId: crypto.randomUUID(),
-          date: row.date,
-          description: row.description,
-          amount: row.amount,
-          type: row.type,
-          category: "",
-      }, categories, funds));
-
-      const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(withImportKeys(parsed), transactions);
-      if (fresh.length > MAX_IMPORT_ROWS) {
-          notify("Too many transactions", `This file has ${fresh.length} transactions. Import up to ${MAX_IMPORT_ROWS} at a time — split the file by date range.`);
-          return;
-      }
-      const leftOut = describeLeftOutRows({ skipped, errors });
-      if (leftOut) notify("Rows left out", leftOut);
-
-      setDuplicateWarnings(possibleDuplicates);
-      setAlreadyImportedRows(alreadyImported);
-      setNextBankSyncCursor(null);
-      setNextBankSyncConnectionId(null);
-      setBankSyncReviewConnectionId(null);
-      setPendingTransactions(fresh);
-      setShowColumnMapper(false);
-      setShowReviewModal(true);
-  };
-
-  const clearBankSyncReviewState = () => {
-    categorizationRun.current += 1;
-    setIsProcessingAI(false);
-    setCategorizationStatusMessage('');
-    setCategorizationTransactionCount(0);
-    setPendingTransactions([]);
-    setDuplicateWarnings(new Set());
-    setAlreadyImportedRows([]);
-    setNextBankSyncCursor(null);
-    setNextBankSyncConnectionId(null);
-    setBankSyncReviewConnectionId(null);
-    setOriginalPredictions(new Map());
-    setDismissedPairs(new Set());
-  };
-
-  const removePendingTransactionAt = useCallback((removedIndex: number) => {
-    setPendingTransactions((current) => current.filter((_, idx) => idx !== removedIndex));
-    setDuplicateWarnings((current) => reindexSetAfterRemoval(current, removedIndex));
-  }, []);
-
-  // Statement rows can match a ledger row from another account's statement, so
-  // the user may override; bank rows matched by provider id are never re-imported.
-  const includeAlreadyImportedStatementRows = () => {
-    const rows = alreadyImportedRows.filter((row) => row.importKey).map((row) => ({ ...row, importKey: undefined }));
-    const total = pendingTransactions.length + rows.length;
-    if (exceedsImportLimit(total)) {
-      notify("Too many transactions", `Adding these would make ${total} transactions. Import up to ${MAX_IMPORT_ROWS} at a time — split the file by date range.`);
-      return;
-    }
-    const startIndex = pendingTransactions.length;
-    setPendingTransactions((current) => [...current, ...rows]);
-    setDuplicateWarnings((current) => new Set([...current, ...rows.map((_, index) => startIndex + index)]));
-    setAlreadyImportedRows((current) => current.filter((row) => !row.importKey));
-  };
-
-  const updatePendingTransactionAt = useCallback((index: number, updates: Partial<PendingReviewTransaction>) => {
-    setPendingTransactions((current) => current.map((transaction, currentIndex) => (
-      currentIndex === index ? { ...transaction, ...updates } : transaction
-    )));
-  }, []);
-
-  const pairSuggestions = useMemo(
-    () => suggestImportPairs(importMovementLegs(pendingTransactions, importCategories), ledgerMovementLegs(allTransactions ?? [])),
-    [pendingTransactions, importCategories, allTransactions]
-  );
-  const activePairs = useMemo(() => livePairs(pendingTransactions), [pendingTransactions]);
-  const pendingById = useMemo(
-    () => new Map(pendingTransactions.flatMap((row) => (row.reviewRowId ? [[row.reviewRowId, row] as const] : []))),
-    [pendingTransactions]
-  );
-  const transactionsById = useMemo(
-    () => new Map((allTransactions ?? []).map((transaction) => [String(transaction._id), transaction] as const)),
-    [allTransactions]
-  );
-
-  const pairPartnerLabel = (pair: PairSuggestion) => {
-    const partner = pair.source === 'import' ? pendingById.get(pair.id) : transactionsById.get(pair.id);
-    if (!partner) return 'another transaction';
-    const [year, month, day] = (partner.date ?? '').split('-');
-    return `${partner.description || 'No description'}, ${day}/${month}/${year}`;
-  };
-
-  const acceptPair = (rowId: string, pair: PairSuggestion) => {
-    setPendingTransactions((current) => current.map((row) => {
-      if (row.reviewRowId === rowId) return { ...row, pairWith: pair, pairBasis: pairBasis(row) };
-      if (pair.source === 'import' && row.reviewRowId === pair.id) {
-        return { ...row, pairWith: { source: 'import', id: rowId }, pairBasis: pairBasis(row) };
-      }
-      return row;
-    }));
-  };
-
-  const undoPair = (rowId: string, pair: PairSuggestion) => {
-    setPendingTransactions((current) => current.map((row) => {
-      const isThisRow = row.reviewRowId === rowId;
-      const isPartner = pair.source === 'import' && row.reviewRowId === pair.id && row.pairWith?.id === rowId;
-      return isThisRow || isPartner ? { ...row, pairWith: undefined, pairBasis: undefined } : row;
-    }));
-  };
-
-  const renderPairing = (row: PendingReviewTransaction) => {
-    const rowId = row.reviewRowId ?? '';
-    const active = activePairs.get(rowId);
-    if (active) {
-      return (
-        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-sage-dark">
-          <LinkIcon size={12} className="shrink-0" />
-          <span>Paired with {pairPartnerLabel(active)}</span>
-          <button type="button" onClick={() => undoPair(rowId, active)} className="font-bold underline hover:text-ink">Undo</button>
-        </p>
-      );
-    }
-    const suggestion = pairSuggestions.get(rowId);
-    if (!suggestion || dismissedPairs.has(rowId)) return null;
-    return (
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-grey-dark">
-        <span>Other side: {pairPartnerLabel(suggestion)}</span>
-        <button type="button" aria-label="Accept other side" onClick={() => acceptPair(rowId, suggestion)} className="font-bold text-sage-dark underline hover:text-ink">Accept</button>
-        <button type="button" aria-label="Dismiss other side" onClick={() => setDismissedPairs((current) => new Set(current).add(rowId))} className="font-bold text-grey-mid underline hover:text-ink">Dismiss</button>
-      </p>
-    );
-  };
-
-  const handleSyncedBankTransactions = (
-    syncedTransactions: Array<{
-      date: string;
-      description: string;
-      amount: number;
-      type: TransactionType;
-      fundId?: string | null;
-      providerTransactionId: string;
-    }>,
-    append: boolean,
-    bankConnectionId: Id<"bankConnections">
-  ) => {
-    const pending: Array<PendingReviewTransaction & StatementRow> = syncedTransactions.map((tx) => applySmallIncomeDefaults({
-      reviewRowId: crypto.randomUUID(),
-      date: tx.date,
-      description: tx.description,
-      amount: tx.amount,
-      type: tx.type,
-      fundId: tx.fundId || undefined,
-      category: '',
-      isGiftAidEligible: false,
-      source: 'bank' as const,
-      providerTransactionId: tx.providerTransactionId,
-      bankConnectionId,
-    }, categories, funds));
-
-    const { fresh, alreadyImported, possibleDuplicates } = screenImportRows(pending, transactions);
-    setAlreadyImportedRows((current) => (append ? [...current, ...alreadyImported] : alreadyImported));
-    setPendingTransactions((current) => {
-      const startIndex = append ? current.length : 0;
-      setDuplicateWarnings((currentWarnings) => {
-        const duplicates = new Set<number>(append ? currentWarnings : []);
-        possibleDuplicates.forEach((index) => duplicates.add(startIndex + index));
-        return duplicates;
-      });
-
-      return append ? [...current, ...fresh] : fresh;
-    });
+  const startBankSync = (bankConnectionId: Id<"bankConnections">) => {
+    setShowBankSelector(false);
+    void syncFromBank(bankConnectionId);
   };
 
   // Bank sync: show selector if multiple banks, otherwise sync directly
@@ -838,343 +570,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       return;
     }
     if (pendingTransactions.length > 0) {
-      setShowReviewModal(true);
+      openReview();
       notify("Review Import", "Finish or discard the current review batch before starting a new bank sync.");
       return;
     }
     if (bankConnections.length === 1) {
       // Single bank - sync directly
-      handleSyncFromBank(bankConnections[0]._id);
+      startBankSync(bankConnections[0]._id);
     } else {
       // Multiple banks - show selector
       setShowBankSelector(true);
     }
   };
 
-  // Sync transactions from a specific bank connection
-  const handleSyncFromBank = async (
-    bankConnectionId: Id<"bankConnections">,
-    cursor?: BankSyncCursor,
-    options: { append?: boolean } = {}
-  ) => {
-    const append = options.append === true;
-    setShowBankSelector(false);
-    if (append) {
-      setIsFetchingMoreBankTransactions(true);
-    } else {
-      setIsUploading(true);
-      setDuplicateWarnings(new Set());
-      setAlreadyImportedRows([]);
-      setNextBankSyncCursor(null);
-      setNextBankSyncConnectionId(null);
-      setOriginalPredictions(new Map());
-    }
-
-    try {
-      const result = await syncTransactions({
-        bankConnectionId,
-        ...(cursor ? { cursor } : {}),
-      });
-
-      handleSyncedBankTransactions(result.transactions, append, bankConnectionId);
-      setBankSyncReviewConnectionId(bankConnectionId);
-      setShowReviewModal(true);
-
-      if (result.hasMore && result.nextCursor) {
-        setNextBankSyncCursor(result.nextCursor);
-        setNextBankSyncConnectionId(bankConnectionId);
-        notify("More Available", "More bank transactions are available. Fetch the next batch before importing if you want to include them in this review.");
-      } else {
-        setNextBankSyncCursor(null);
-        setNextBankSyncConnectionId(null);
-        if (result.hasMore) {
-          notify("More Available", "More bank transactions may be available, but the bank did not return a resume point. Import or discard this batch before syncing again.");
-        }
-      }
-    } catch (error: any) {
-      console.error('Bank sync error:', error);
-      notify("Error", error.message || "Failed to sync transactions from bank. Please try again.");
-    } finally {
-      if (append) {
-        setIsFetchingMoreBankTransactions(false);
-      } else {
-        setIsUploading(false);
-      }
-    }
-  };
-
-  const handleFetchMoreBankTransactions = async () => {
-    if (!nextBankSyncConnectionId || !nextBankSyncCursor) return;
-    await handleSyncFromBank(nextBankSyncConnectionId, nextBankSyncCursor, { append: true });
-  };
-
-  const getPipelineConfidenceLabel = (suggestion: {
-    confidenceLabel?: string;
-    confidence?: string | number;
-  }): string => {
-    const confidence = suggestion.confidenceLabel ?? suggestion.confidence;
-    if (typeof confidence === 'number') return String(confidence);
-    return confidence || 'Low';
-  };
-
-  const getPipelineSourceLabel = (predictionSource: PipelinePredictionSource, ragScore?: number): string => {
-    switch (predictionSource) {
-      case 'memory':
-        return 'Memory Match';
-      case 'rule':
-        return 'Rule Match';
-      case 'rag':
-        return typeof ragScore === 'number'
-          ? `RAG Match (${Math.round(ragScore * 100)}%)`
-          : 'RAG Match';
-      case 'gemini':
-        return 'Gemini AI';
-      case 'openai':
-        return 'Luna AI (OpenAI)';
-      case 'openrouter':
-        return 'Luna AI';
-      case 'none':
-      default:
-        return 'No AI suggestion';
-    }
-  };
-
-  const handleApplyAI = async () => {
-    const run = ++categorizationRun.current;
-    const snapshot = pendingTransactions.map((row) => ({ ...row, reviewRowId: row.reviewRowId ?? crypto.randomUUID() }));
-    setPendingTransactions(snapshot);
-    setCategorizationTransactionCount(snapshot.length);
-    setCategorizationStatusMessage('');
-    setIsProcessingAI(true);
-    setOriginalPredictions(new Map());
-    let next = 0;
-    let completed = 0;
-    let failed = 0;
-    const worker = async () => {
-      while (next < snapshot.length && categorizationRun.current === run) {
-        const batch = snapshot.slice(next, next += 20);
-        try {
-          const suggestions = await categorizeWithPipeline({ transactions: batch.map((row) => ({
-            rowId: row.reviewRowId, description: row.description ?? '', amount: row.amount ?? 0,
-            type: row.type ?? 'Income', category: row.category,
-            fundId: funds.some((fund) => fund._id === row.fundId) ? row.fundId as Id<'funds'> : undefined,
-            donorName: row.donorName,
-          })) });
-          if (categorizationRun.current !== run) return;
-          const byId = new Map(suggestions.map((suggestion) => [suggestion.rowId, suggestion]));
-          const originals = new Map(batch.map((row) => [row.reviewRowId, row]));
-          setPendingTransactions((current) => current.map((row) => {
-            const original = originals.get(row.reviewRowId ?? '');
-            const suggestion = byId.get(row.reviewRowId);
-            // A user edit or removal while inference was running wins.
-            if (!suggestion || row !== original) return row;
-            return applySmallIncomeDefaults({
-              ...row, category: suggestion.category || row.category,
-              fundId: suggestion.fundId || row.fundId,
-              donorName: row.donorName ?? suggestion.donorName ?? undefined,
-              // Model inference cannot establish a donor's declaration status.
-              isGiftAidEligible: row.isGiftAidEligible ?? false,
-              requiresReview: suggestion.requiresReview,
-              notes: `${getPipelineSourceLabel(suggestion.predictionSource, suggestion.ragScore)} | Confidence: ${getPipelineConfidenceLabel(suggestion)}`,
-            }, categories, funds);
-          }));
-          setOriginalPredictions((current) => {
-            const updated = new Map(current);
-            suggestions.forEach((suggestion) => {
-              if (!suggestion.rowId) return;
-              updated.set(suggestion.rowId, { category: suggestion.category, fundId: suggestion.fundId,
-                isGiftAidEligible: suggestion.isGiftAidEligible, donorName: suggestion.donorName,
-                confidence: getPipelineConfidenceLabel(suggestion), confidenceScore: suggestion.confidence,
-                predictionSource: suggestion.predictionSource, ragScore: suggestion.ragScore });
-            });
-            return updated;
-          });
-        } catch {
-          failed += batch.length;
-        }
-        completed += batch.length;
-        if (categorizationRun.current === run) setCategorizationStatusMessage(`${completed} of ${snapshot.length} entries processed. Suggestions are ready to review as they arrive.`);
-      }
-    };
-    try {
-      await Promise.all(Array.from({ length: Math.min(2, Math.ceil(snapshot.length / 20)) }, worker));
-    } finally {
-      if (categorizationRun.current === run) {
-        setIsProcessingAI(false);
-        setCategorizationStatusMessage(failed ? `${snapshot.length - failed} entries processed; ${failed} need manual review or a retry.` : `Auto-categorisation complete. ${snapshot.length} entries ready to review.`);
-      }
-    }
-  };
-
-  const handleConfirmImport = async () => {
-    if (isProcessingAI) {
-      notify(
-        "Categorisation in progress",
-        "Wait for auto-categorisation to finish before confirming this import."
-      );
-      return;
-    }
-    if (bankSyncReviewConnectionId && nextBankSyncCursor) {
-      notify("More Available", "Fetch the next bank transaction batch before importing, or discard this review batch to sync again later.");
-      return;
-    }
-    if (!funds[0]) {
-      notify("Error", "Add a fund before importing transactions.");
-      return;
-    }
-    const importRows = pendingTransactions.map((transaction) => applySmallIncomeDefaults(transaction, categories, funds));
-    setPendingTransactions(importRows);
-    const problems = importRows.flatMap((transaction) => {
-      const reason = !resolveAssignableCategory(transaction.category ?? '', transaction.type || 'Income', effectiveCategories(categories)) ? 'Choose a category for'
-        : !funds.some((fund) => fund._id === transaction.fundId) ? 'Choose a fund for'
-        : !isRealIsoDate(transaction.date || "") ? 'Check the date for'
-        : null;
-      return reason ? [{ reason, label: `"${transaction.description || 'Untitled'}" (${transaction.date || 'no date'})` }] : [];
-    });
-    if (problems.length > 0) {
-      const detail = [...new Set(problems.map((problem) => problem.reason))].map((reason) => {
-        const labels = problems.filter((problem) => problem.reason === reason).map((problem) => problem.label);
-        return `${reason}: ${labels.slice(0, 5).join(", ")}${labels.length > 5 ? ` and ${labels.length - 5} more` : ""}`;
-      });
-      notify("Error", `Every row needs a real date, a valid category and a valid fund before import. ${detail.join(". ")}.`);
-      return;
-    }
-
-    try {
-        // Build transactions - NO auto-donor creation or pledge linking
-        // Just store the extracted donor name as text for manual linking later
-        const transactionsToCreate = importRows.map((pt) => {
-            return {
-                date: pt.date!,
-                description: pt.description || '',
-                amount: pt.amount || 0,
-                type: (pt.type || 'Income') as 'Income' | 'Expenditure',
-                category: pt.category,
-                fundId: pt.fundId as Id<"funds">,
-                isGiftAidEligible: pt.isGiftAidEligible || false,
-                donorName: pt.donorName, // Keep extracted name for reference
-                // No auto-linking: donorId and pledgeId left undefined
-                // User can manually link transactions to donors/pledges later
-                notes: pt.notes?.replace(/ \| New Donor:.*$/, '').replace(/ \| Donor:.*$/, '').replace(/ \| Pledge:.*$/, '') || undefined,
-                // Bank rows carry provider ids and statement rows carry import keys
-                // so the server can skip anything already imported
-                bankConnectionId: pt.bankConnectionId as Id<"bankConnections"> | undefined,
-                providerTransactionId: pt.providerTransactionId,
-                importKey: pt.importKey,
-            };
-        });
-
-        const result = await bulkCreateTransactions({ transactions: transactionsToCreate });
-
-        // Rows left out as already imported were still fetched by this sync.
-        const bankTransactionDates = bankSyncReviewConnectionId
-            ? [...pendingTransactions, ...alreadyImportedRows]
-                .filter((pt) => pt.source === 'bank' && pt.bankConnectionId === bankSyncReviewConnectionId && pt.date)
-                .map((pt) => pt.date as string)
-            : [];
-
-        if (bankSyncReviewConnectionId && bankTransactionDates.length > 0) {
-            const lastSyncedThrough = bankTransactionDates.reduce((latest, date) =>
-                date > latest ? date : latest
-            );
-            try {
-                await acknowledgeBankSync({
-                    bankConnectionId: bankSyncReviewConnectionId,
-                    lastSyncedThrough,
-                });
-            } catch (syncStateError) {
-                console.warn('Failed to update bank sync checkpoint:', syncStateError);
-                notify("Warning", "Transactions were imported, but the bank sync checkpoint was not updated. The next sync may show duplicate warnings.");
-            }
-        }
-
-        // Record corrections for ML learning if we have original predictions
-        if (originalPredictions.size > 0 && result?.ids) {
-            const correctionsToRecord = importRows
-                .map((pt, idx) => {
-                    const prediction = originalPredictions.get(pt.reviewRowId ?? '');
-                    if (!prediction || !result.ids[idx]) return null;
-
-                    return {
-                        transactionId: result.ids[idx] as Id<"transactions">,
-                        description: pt.description || '',
-                        aiPredictedCategory: prediction.category,
-                        aiConfidence: prediction.confidence,
-                        predictionSource: prediction.predictionSource,
-                        ragScore: prediction.ragScore,
-                        finalCategory: pt.category || '',
-                        aiPredictedFundId: prediction.fundId as Id<"funds"> | undefined,
-                        aiPredictedGiftAidEligible: prediction.isGiftAidEligible,
-                        aiPredictedDonorName: prediction.donorName || undefined,
-                        aiConfidenceScore: prediction.confidenceScore,
-                        finalFundId: pt.fundId as Id<"funds">,
-                        finalGiftAidEligible: pt.isGiftAidEligible || false,
-                        finalDonorName: pt.donorName || undefined,
-                    };
-                })
-                .filter((c): c is NonNullable<typeof c> => c !== null);
-
-            if (correctionsToRecord.length > 0) {
-                try {
-                    await recordCorrections({ corrections: correctionsToRecord });
-                } catch (correctionError) {
-                    console.warn('Failed to record corrections:', correctionError);
-                    // Don't block import if correction recording fails
-                }
-            }
-        }
-
-        // Accepted pairs are re-checked against current state, then linked.
-        const createdIds = new Map<string, string>();
-        importRows.forEach((row, index) => {
-            const id = result?.ids[index];
-            if (row.reviewRowId && id) createdIds.set(row.reviewRowId, id);
-        });
-        const { links, unmatched } = acceptedPairsToLink({
-            rows: importRows,
-            createdIds,
-            categories: importCategories,
-            ledger: allTransactions ?? [],
-        });
-        let linkedCount = 0;
-        let unlinkedCount = unmatched;
-        for (const [firstId, secondId] of links) {
-            try {
-                await linkTransactions({ transactionIds: [firstId as Id<"transactions">, secondId as Id<"transactions">] });
-                linkedCount += 1;
-            } catch (linkError) {
-                console.warn('Failed to link import pair:', linkError);
-                unlinkedCount += 1;
-            }
-        }
-        if (linkedCount > 0) {
-            notify("Pairs Linked", `${linkedCount} pair${linkedCount === 1 ? ' was' : 's were'} linked.`);
-        }
-        if (unlinkedCount > 0) {
-            notify("Warning", `Imported, but ${unlinkedCount} pair${unlinkedCount === 1 ? " couldn't" : "s couldn't"} be linked. Link them from Transactions.`);
-        }
-
-        // Notify about completed pledges (if any were manually linked)
-        if (result?.completedPledges && onPledgeCompleted) {
-            for (const completed of result.completedPledges) {
-                onPledgeCompleted(completed.donorName, completed.amount);
-            }
-        }
-
-        if (result?.skippedDuplicates) {
-            notify(
-                "Duplicates Skipped",
-                `${result.skippedDuplicates} transaction${result.skippedDuplicates === 1 ? ' was' : 's were'} already imported and ${result.skippedDuplicates === 1 ? 'was' : 'were'} skipped.`
-            );
-        }
-
-        setShowReviewModal(false);
-        clearBankSyncReviewState();
-    } catch (error) {
-        console.error("Import failed:", error);
-        notify("Error", error instanceof Error ? error.message : "Failed to import transactions.");
-    }
-  };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1252,10 +660,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 </button>
                 <button
                     onClick={handleSyncBank}
-                    disabled={isUploading}
+                    disabled={isSyncingBank}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors disabled:opacity-60"
                 >
-                    {isUploading ? <Loader2 size={16} strokeWidth={1.9} className="animate-spin text-grey-mid"/> : <Building2 size={16} strokeWidth={1.9} className="text-grey-mid" />}
+                    {isSyncingBank ? <Loader2 size={16} strokeWidth={1.9} className="animate-spin text-grey-mid"/> : <Building2 size={16} strokeWidth={1.9} className="text-grey-mid" />}
                     Sync Bank
                     {bankConnections.length > 0 && (
                       <span className="ml-0.5 px-1.5 py-0.5 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold">
@@ -1264,18 +672,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     )}
                 </button>
                 <button
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => setShowStatementImport(true)}
                     className="inline-flex items-center whitespace-nowrap gap-2 px-4 py-[11px] rounded-xl border border-[#e3e1dc] bg-white text-sm font-semibold text-ink hover:border-[#c9c5be] transition-colors"
                 >
                     <FileSpreadsheet size={16} strokeWidth={1.9} className="text-grey-mid"/>
                     Import CSV
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                    />
                 </button>
                 {can(currentUser.role, "reconciliation.manage") && (
                     <button
@@ -1953,157 +1354,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           document.body
       )}
 
-      {/* CSV Column Mapping Modal - REFINED UI 2.0 */}
-      {showColumnMapper && canEdit && createPortal(
-        <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-soft-lg w-full max-w-5xl animate-enter border border-ledger overflow-hidden">
-                <div className="p-6 border-b border-[#efeee9] flex justify-between items-center bg-paper/50">
-                    <div>
-                        <h3 className="font-bold text-ink text-sm uppercase tracking-wide flex items-center gap-2">
-                            <TableIcon size={16} className="text-grey-mid" /> Map CSV Columns
-                        </h3>
-                        <p className="text-[10px] text-grey-mid mt-1 font-medium">Match your bank statement columns to the ledger.</p>
-                    </div>
-                    <button onClick={() => setShowColumnMapper(false)} className="text-grey-mid hover:text-grey-dark transition-colors p-2 hover:bg-grey-light rounded-full">
-                        <X size={18} />
-                    </button>
-                </div>
-
-                <div className="p-8">
-                    {/* Mode Toggle */}
-                    <div className="flex justify-center mb-8">
-                            <div className="flex bg-grey-light p-1.5 rounded-xl border border-ledger">
-                                <button 
-                                onClick={() => setUseSplitAmount(false)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent ${!useSplitAmount ? 'bg-white shadow-xs text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
-                            >
-                                Single Amount Column
-                            </button>
-                            <button
-                                onClick={() => setUseSplitAmount(true)}
-                                className={`px-6 py-2.5 text-xs font-bold rounded-lg transition-all border border-transparent flex items-center gap-2 ${useSplitAmount ? 'bg-white shadow-xs text-ink border-ledger' : 'text-grey-mid hover:text-grey-dark hover:bg-grey-light'}`}
-                            >
-                                Split In/Out Columns
-                                <ArrowLeftRight size={14} />
-                            </button>
-                            </div>
-                    </div>
-
-                    <div className={`grid grid-cols-1 gap-6 mb-8 ${useSplitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-                        <div className="ledger-space-y-2">
-                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Date Column</label>
-                            <div className="relative">
-                                <select 
-                                    value={columnMapping.date} 
-                                    onChange={(e) => setColumnMapping({...columnMapping, date: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
-                                >
-                                    <option value="">Select Column...</option>
-                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
-                            </div>
-                        </div>
-                        
-                         <div className="ledger-space-y-2">
-                             <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Description / Payee</label>
-                             <div className="relative">
-                                <select 
-                                    value={columnMapping.description} 
-                                    onChange={(e) => setColumnMapping({...columnMapping, description: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
-                                >
-                                    <option value="">Select Column...</option>
-                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
-                            </div>
-                        </div>
-                        
-                        {useSplitAmount ? (
-                             <>
-                                <div className="ledger-space-y-2">
-                                    <label className="block text-[10px] font-bold text-sage uppercase tracking-wide">Money In (Credit)</label>
-                                    <div className="relative">
-                                    <select
-                                        value={columnMapping.amountIn}
-                                        onChange={(e) => setColumnMapping({...columnMapping, amountIn: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-sage/30 rounded-lg text-xs bg-sage-light/50 hover:bg-sage-light focus:bg-white focus:ring-2 focus:ring-sage focus:border-transparent outline-hidden transition-all appearance-none font-medium text-sage-dark cursor-pointer"
-                                    >
-                                        <option value="">Select Column...</option>
-                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-sage pointer-events-none"/>
-                                    </div>
-                                </div>
-                                <div className="ledger-space-y-2">
-                                    <label className="block text-[10px] font-bold text-error uppercase tracking-wide">Money Out (Debit)</label>
-                                    <div className="relative">
-                                    <select
-                                        value={columnMapping.amountOut}
-                                        onChange={(e) => setColumnMapping({...columnMapping, amountOut: e.target.value})}
-                                        className="w-full py-2 pl-3 pr-8 border border-error/30 rounded-lg text-xs bg-error-light/50 hover:bg-error-light focus:bg-white focus:ring-2 focus:ring-error focus:border-transparent outline-hidden transition-all appearance-none font-medium text-error cursor-pointer"
-                                    >
-                                        <option value="">Select Column...</option>
-                                        {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                    </select>
-                                    <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-error pointer-events-none"/>
-                                    </div>
-                                </div>
-                             </>
-                        ) : (
-                            <div className="ledger-space-y-2">
-                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide">Amount</label>
-                                <div className="relative">
-                                <select 
-                                    value={columnMapping.amount} 
-                                    onChange={(e) => setColumnMapping({...columnMapping, amount: e.target.value})}
-                                    className="w-full py-2 pl-3 pr-8 border border-ledger rounded-lg text-xs bg-paper/50 hover:bg-white focus:bg-white focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-hidden transition-all appearance-none font-medium text-grey-dark cursor-pointer"
-                                >
-                                    <option value="">Select Column...</option>
-                                    {csvHeaders.map(h => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                                <TableIcon size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"/>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="rounded-lg border border-ledger overflow-hidden">
-                        <div className="bg-paper px-4 py-2 border-b border-ledger flex justify-between items-center">
-                            <h4 className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Preview (First 3 Rows)</h4>
-                            <span className="text-[10px] text-grey-mid font-mono">{csvRows.length} Rows Detected</span>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left ledger-table text-[10px]">
-                                <thead className="bg-white">
-                                    <tr>
-                                        {csvHeaders.map(h => <th key={h} className="px-3 py-2 text-grey-mid font-bold border-b border-[#efeee9] whitespace-nowrap">{h}</th>)}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {csvRows.slice(0, 3).map((record) => (
-                                        <tr key={record.line} className="border-b border-slate-50 last:border-0 hover:bg-paper/50 transition-colors">
-                                            {record.cells.map((cell, j) => <td key={j} className="px-3 py-2 font-mono text-grey-dark whitespace-nowrap max-w-[200px] truncate">{cell}</td>)}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-8 mt-4">
-                        <button onClick={() => setShowColumnMapper(false)} className="px-5 py-2.5 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-lg transition-colors">Cancel</button>
-                        <button onClick={handleProcessMapping} className="btn-primary px-6 py-2.5 font-bold uppercase text-xs tracking-wide flex items-center gap-2 shadow-lg shadow-slate-900/10">
-                            Process Import <ArrowRight size={14} />
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>,
-        document.body
-      )}
-
       {/* New Transaction Modal */}
       {showAddModal && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
@@ -2548,8 +1798,21 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         document.body
       )}
 
-      {/* Review Modal */}
-      {showReviewModal && canEdit && createPortal(
+      {showStatementImport && canEdit && (
+        <StatementImportWizard
+          funds={funds}
+          categoryNamesFor={categoryNamesFor}
+          review={importReview}
+          onReconcile={can(currentUser.role, "reconciliation.manage") ? () => {
+            setShowStatementImport(false);
+            setShowReconciliation(true);
+          } : undefined}
+          onClose={() => setShowStatementImport(false)}
+        />
+      )}
+
+      {/* Bank sync review. Statement imports are handled by the walkthrough above. */}
+      {isReviewOpen && isBankReview && canEdit && createPortal(
         <div className="fixed inset-0 bg-ink/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-soft-lg w-full min-w-0 max-w-4xl max-h-[90vh] flex flex-col animate-enter border border-ledger overflow-hidden">
                 <div className="p-6 border-b border-[#efeee9] flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center rounded-t-lg">
@@ -2561,12 +1824,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <select
                             disabled={isProcessingAI}
                             onChange={(e) => {
-                                if (e.target.value) {
-                                    setPendingTransactions(prev => prev.map(t => ({
-                                        ...t,
-                                        fundId: e.target.value
-                                    })));
-                                }
+                                if (e.target.value) assignFundToAll(e.target.value);
                             }}
                             className="w-full min-w-0 max-w-full px-3 py-2 border border-amber/30 bg-amber-light text-amber-dark rounded-lg text-xs font-bold cursor-pointer sm:w-auto disabled:cursor-wait disabled:opacity-60"
                             defaultValue=""
@@ -2576,7 +1834,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 <option key={f._id} value={f._id}>{f.name}</option>
                             ))}
                         </select>
-                        <button onClick={handleApplyAI} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap disabled:cursor-wait disabled:opacity-80">
+                        <button onClick={() => void categorise()} disabled={isProcessingAI} className="flex items-center justify-center gap-2 px-4 py-2 bg-sage-light text-sage-dark rounded-lg hover:bg-sage/20 transition-colors font-bold text-xs uppercase tracking-wide whitespace-nowrap disabled:cursor-wait disabled:opacity-80">
                             {isProcessingAI ? <><Loader2 size={14} className="animate-spin" /> Categorising</> : <><Sparkles size={14} /> Auto-Categorise</>}
                         </button>
                     </div>
@@ -2596,7 +1854,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         {alreadyImportedRows.some((row) => row.importKey) && (
                           <button
                             type="button"
-                            onClick={includeAlreadyImportedStatementRows}
+                            onClick={includeAlreadyImported}
                             className="self-start text-xs font-bold text-grey-dark underline hover:text-ink sm:self-auto"
                           >
                             Import anyway
@@ -2613,136 +1871,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         </p>
                       </div>
                     )}
-                    <div className="ledger-space-y-3 md:hidden">
-                        {pendingTransactions.map((transaction, index) => {
-                          const isDuplicate = duplicateWarnings.has(index);
-                          return (
-                            <article
-                              key={index}
-                              className={`rounded-lg border p-4 ${isDuplicate ? 'border-amber-200 bg-amber-50' : 'border-ledger bg-white'}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex min-w-0 items-center gap-2 text-xs font-mono text-grey-mid">
-                                  {isDuplicate && (
-                                    <span title="Potential duplicate">
-                                      <AlertTriangle size={13} className="shrink-0 text-amber-600" />
-                                    </span>
-                                  )}
-                                  <span>{transaction.date}</span>
-                                </div>
-                                <span className="shrink-0 text-sm font-bold font-mono text-ink">
-                                  £{transaction.amount?.toFixed(2)}
-                                </span>
-                              </div>
-                              <p className="mt-2 break-words text-sm font-medium text-ink">
-                                {transaction.description || 'No description'}
-                              </p>
-                              {transaction.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
-                              {renderPairing(transaction)}
-                              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                <label className="min-w-0">
-                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Category</span>
-                                  <select
-                                    aria-label={`Category for import row ${index + 1}`}
-                                    title={transaction.category || 'Select category'}
-                                    className="block w-full min-w-0 max-w-full rounded-sm border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
-                                    value={transaction.category || ''}
-                                    onChange={(event) => updatePendingTransactionAt(index, { category: event.target.value })}
-                                  >
-                                    <option value="">Select...</option>
-                                    {categoryNamesFor(transaction.type).map((category) => <option key={category} value={category}>{category}</option>)}
-                                  </select>
-                                </label>
-                                <label className="min-w-0">
-                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-grey-mid">Fund</span>
-                                  <select
-                                    aria-label={`Fund for import row ${index + 1}`}
-                                    title={fundNamesById.get(transaction.fundId || '') || 'Select fund'}
-                                    className="block w-full min-w-0 max-w-full rounded-sm border-transparent bg-paper py-2 text-xs font-bold text-grey-dark"
-                                    value={transaction.fundId || ''}
-                                    onChange={(event) => updatePendingTransactionAt(index, { fundId: event.target.value })}
-                                  >
-                                    <option value="">Select...</option>
-                                    {funds.map((fund) => <option key={fund._id} value={fund._id}>{fund.name}</option>)}
-                                  </select>
-                                </label>
-                              </div>
-                              {isDuplicate && (
-                                <button
-                                  type="button"
-                                  onClick={() => removePendingTransactionAt(index)}
-                                  className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-error hover:text-error-dark"
-                                >
-                                  <X size={14} /> Remove duplicate
-                                </button>
-                              )}
-                            </article>
-                          );
-                        })}
-                    </div>
-                    <table className="hidden w-full table-fixed text-left ledger-table md:table">
-                        <colgroup>
-                            <col className="w-[14%]" />
-                            <col className="w-[28%]" />
-                            <col className="w-[12%]" />
-                            <col className="w-[20%]" />
-                            <col className="w-[20%]" />
-                            <col className="w-[6%]" />
-                        </colgroup>
-                        <thead>
-                            <tr>
-                                <th className="pb-2">Date</th>
-                                <th className="pb-2">Description</th>
-                                <th className="pb-2">Amount</th>
-                                <th className="pb-2">Category</th>
-                                <th className="pb-2">Fund</th>
-                                <th className="pb-2 w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pendingTransactions.map((t, i) => (
-                                <tr key={t.reviewRowId ?? i} className={duplicateWarnings.has(i) ? 'bg-amber-50' : ''}>
-                                    <td className="py-3 text-grey-mid font-mono text-xs">
-                                      <div className="flex items-center gap-2">
-                                        {duplicateWarnings.has(i) && (
-                                          <span title="Potential duplicate">
-                                            <AlertTriangle size={12} className="text-amber-600 shrink-0" />
-                                          </span>
-                                        )}
-                                        {t.date}
-                                      </div>
-                                    </td>
-                                    <td className="py-3 font-medium text-ink text-sm overflow-hidden">
-                                      <div className="truncate" title={t.description}>{t.description}</div>
-                                      {t.requiresReview && <p className="mt-1 text-xs text-amber-700">Check suggested category and fund</p>}
-                                      {renderPairing(t)}
-                                    </td>
-                                    <td className="py-3 font-mono text-xs">£{t.amount?.toFixed(2)}</td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Category for import row ${i + 1}`} title={t.category || 'Select category'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.category || ''} onChange={(event) => updatePendingTransactionAt(i, { category: event.target.value })}><option value="">Select...</option>{categoryNamesFor(t.type).map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
-                                    <td className="py-3 overflow-hidden"><select aria-label={`Fund for import row ${i + 1}`} title={fundNamesById.get(t.fundId || '') || 'Select fund'} className="block w-full min-w-0 max-w-full bg-paper border-transparent rounded-sm text-xs font-bold text-grey-dark py-1" value={t.fundId || ''} onChange={(event) => updatePendingTransactionAt(i, { fundId: event.target.value })}><option value="">Select...</option>{funds.map(f => <option key={f._id} value={f._id}>{f.name}</option>)}</select></td>
-                                    <td className="py-3 text-center">
-                                      {duplicateWarnings.has(i) && (
-                                        <button
-                                          onClick={() => removePendingTransactionAt(i)}
-                                          className="text-error hover:text-error-dark text-xs font-bold"
-                                          title="Remove duplicate"
-                                        >
-                                          <X size={14} />
-                                        </button>
-                                      )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                    <ReviewTable rows={pendingTransactions} duplicateWarnings={duplicateWarnings} funds={funds} categoryNamesFor={categoryNamesFor} pairing={pairing} onUpdate={updatePendingTransactionAt} onRemove={removePendingTransactionAt} />
                 </div>
                 <div className="p-5 border-t border-[#efeee9] flex flex-col gap-3 rounded-b-lg bg-paper sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      {nextBankSyncCursor && nextBankSyncConnectionId && (
+                      {hasMoreBankRows && (
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                           <p className="text-xs font-semibold text-sage-dark">More bank transactions are available.</p>
                           <button
-                            onClick={handleFetchMoreBankTransactions}
+                            onClick={() => void fetchNextBankBatch()}
                             disabled={isFetchingMoreBankTransactions}
                             className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-sage/40 rounded-md text-sage-dark hover:border-sage hover:bg-sage-light/30 transition-colors font-bold text-xs uppercase tracking-wide"
                           >
@@ -2754,16 +1891,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     </div>
                     <div className="flex justify-end gap-3">
                     <button
-                      onClick={() => {
-                        setShowReviewModal(false);
-                        clearBankSyncReviewState();
-                      }}
+                      onClick={clearReview}
                       className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-grey-light rounded-sm transition-colors disabled:cursor-wait disabled:opacity-50"
                     >
                       Discard
                     </button>
                     <button
-                      onClick={handleConfirmImport}
+                      onClick={() => void confirm()}
                       disabled={isProcessingAI}
                       aria-busy={isProcessingAI}
                       className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide disabled:cursor-wait disabled:opacity-60"
@@ -2794,7 +1928,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               {bankConnections.map((item) => (
                 <button
                   key={item._id}
-                  onClick={() => handleSyncFromBank(item._id)}
+                  onClick={() => startBankSync(item._id)}
                   className="w-full p-4 bg-paper border border-ledger rounded-lg hover:border-sage hover:bg-sage-light/30 transition-all flex items-center gap-4 text-left group"
                 >
                   <div className="w-10 h-10 bg-white border border-ledger rounded-lg flex items-center justify-center group-hover:border-sage">

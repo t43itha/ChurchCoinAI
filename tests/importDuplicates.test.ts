@@ -1,14 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { bulkCreate } from "../convex/mutations/transactions";
 import { backfillImportKeys } from "../convex/mutations/maintenance";
-import { resolveAssignableCategory } from "../convex/intelligence/categorization/categoryResolver";
 import { getRCICategorySeedData } from "../constants/rciCategories";
-import { isRealIsoDate, parseImportedAmount, parseImportedDate } from "../lib/csvImport";
 import { importKeyPrefix, screenImportRows, withImportKeys } from "../lib/importKeys";
-import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
-import { describeLeftOutRows, MAX_IMPORT_ROWS, mapStatementRows } from "../lib/statementImport";
-import { effectiveCategories } from "../lib/transactionCategories";
-import { uiFunction } from "./helpers/transactionManagerHandlers";
+import { mapStatementRows } from "../lib/statementImport";
+import { runConfirmImport, screenStatementRows } from "../components/statementImport/reviewLogic";
+import { confirmDeps, confirmInput } from "./helpers/importReview";
 
 type Row = { _id: string } & Record<string, any>;
 
@@ -58,24 +55,26 @@ function database(transactions: Row[] = []) {
   return { ctx, records };
 }
 
+// Maps and screens a statement exactly as the CSV import does, then returns a
+// confirm step that runs the real review confirmation against the same ledger.
 function importStatement(ctx: any, records: Record<string, Row[]>, csvLines: string[][]) {
-  const scope: any = {
-    useSplitAmount: false, funds: records.funds, categories: getRCICategorySeedData(), transactions: records.transactions,
-    csvRows: csvLines.map((cells, index) => ({ cells, line: index + 2 })), csvHeaders: ["Date", "Description", "Amount"],
-    columnMapping: { date: "Date", description: "Description", amount: "Amount", amountIn: "", amountOut: "" },
-    parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory,
-    parseAmountString: parseImportedAmount, mapStatementRows, describeLeftOutRows, MAX_IMPORT_ROWS, screenImportRows, withImportKeys,
-    notify: vi.fn(), setDuplicateWarnings: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
-    setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
-    setAlreadyImportedRows: (rows: any[]) => { scope.alreadyImportedRows = rows; },
-    setPendingTransactions: (rows: any[]) => { scope.pendingTransactions = rows; },
-    isProcessingAI: false, bankSyncReviewConnectionId: null, originalPredictions: new Map(), onPledgeCompleted: undefined,
-    clearBankSyncReviewState: vi.fn(), bulkCreateTransactions: (args: any) => (bulkCreate as any)._handler(ctx, args),
-  };
-  uiFunction("handleProcessMapping", scope)();
+  const mapped = mapStatementRows(
+    csvLines.map((cells, index) => ({ cells, line: index + 2 })) as any,
+    ["Date", "Description", "Amount"],
+    { date: "Date", description: "Description", amount: "Amount", amountIn: "", amountOut: "" },
+    false
+  );
+  const screen = screenStatementRows(mapped, records.transactions as any, getRCICategorySeedData(), records.funds as any);
+  if (screen.tooMany) throw new Error("unexpected batch size");
   return {
-    scope,
-    confirm: () => uiFunction("handleConfirmImport", scope)(),
+    pendingRows: screen.fresh,
+    alreadyImportedRows: screen.alreadyImported,
+    confirm: () => runConfirmImport(confirmInput({
+      pendingRows: screen.fresh,
+      alreadyImportedRows: screen.alreadyImported,
+      funds: records.funds as any,
+      ledger: records.transactions as any,
+    }), confirmDeps(ctx)),
   };
 }
 
@@ -122,15 +121,15 @@ describe("statement re-import", () => {
     expect(records.transactions).toHaveLength(3);
 
     const second = importStatement(ctx, records, statement);
-    expect(second.scope.pendingTransactions).toEqual([]);
-    expect(second.scope.alreadyImportedRows).toHaveLength(3);
+    expect(second.pendingRows).toEqual([]);
+    expect(second.alreadyImportedRows).toHaveLength(3);
   });
 
   it("imports only the new rows from an overlapping statement", async () => {
     const { ctx, records } = database();
     await importStatement(ctx, records, statement).confirm();
     const overlap = importStatement(ctx, records, [...statement.slice(1), ["23/09/2026", "Cash gift", "15"]]);
-    expect(overlap.scope.pendingTransactions.map((row: Row) => row.date)).toEqual(["2026-09-23"]);
+    expect(overlap.pendingRows.map((row) => row.date)).toEqual(["2026-09-23"]);
     await overlap.confirm();
     expect(records.transactions).toHaveLength(4);
   });
@@ -138,7 +137,7 @@ describe("statement re-import", () => {
   it("skips already-imported rows on the server even when the review was stale", async () => {
     const { ctx, records } = database();
     const first = importStatement(ctx, records, statement);
-    const rows = first.scope.pendingTransactions.map((row: Row) => ({
+    const rows = first.pendingRows.map((row) => ({
       date: row.date, description: row.description, amount: row.amount, type: row.type,
       category: row.category, fundId: row.fundId, importKey: row.importKey,
     }));
@@ -176,26 +175,19 @@ describe("import key backfill", () => {
     expect(await run()).toEqual({ keyed: 0, isDone: true });
 
     const reupload = importStatement(ctx, records, [["21/09/2026", "Cash gift", "10"]]);
-    expect(reupload.scope.pendingTransactions).toEqual([]);
+    expect(reupload.pendingRows).toEqual([]);
   });
 });
 
 describe("bank sync acknowledgement", () => {
   it("advances the sync checkpoint past rows that were already imported", async () => {
     const { ctx } = database();
-    const acknowledgeBankSync = vi.fn();
-    const scope: any = {
-      isProcessingAI: false, bankSyncReviewConnectionId: "connection", nextBankSyncCursor: null,
-      funds: [{ _id: "general", name: "General Fund" }], categories: getRCICategorySeedData(),
-      pendingTransactions: [],
-      alreadyImportedRows: [{ source: "bank", bankConnectionId: "connection", providerTransactionId: "p1", date: "2026-09-30" }],
-      applySmallIncomeDefaults, resolveAssignableCategory, effectiveCategories, isRealIsoDate,
-      setPendingTransactions: vi.fn(), notify: vi.fn(), acknowledgeBankSync,
-      bulkCreateTransactions: (args: any) => (bulkCreate as any)._handler(ctx, args),
-      originalPredictions: new Map(), onPledgeCompleted: undefined,
-      setShowReviewModal: vi.fn(), clearBankSyncReviewState: vi.fn(),
-    };
-    await uiFunction("handleConfirmImport", scope)();
+    const acknowledgeBankSync = vi.fn(async () => null);
+    await runConfirmImport(confirmInput({
+      bankSyncReviewConnectionId: "connection" as any,
+      funds: [{ _id: "general", name: "General Fund" }] as any,
+      alreadyImportedRows: [{ source: "bank", bankConnectionId: "connection", providerTransactionId: "p1", date: "2026-09-30" }] as any,
+    }), confirmDeps(ctx, { acknowledgeBankSync }));
     expect(acknowledgeBankSync).toHaveBeenCalledWith({ bankConnectionId: "connection", lastSyncedThrough: "2026-09-30" });
   });
 });
