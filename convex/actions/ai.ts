@@ -18,6 +18,7 @@ import {
   buildGeminiCategorizationPrompt,
   CATEGORIZATION_MODEL,
 } from "../intelligence/categorization/gemini";
+import { isGiftAidEnabled } from "../../lib/giftAid";
 import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
@@ -929,6 +930,11 @@ export const generateGiftAidSchedule = action({
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
+    const { api } = await import("../_generated/api");
+    const organization = await ctx.runQuery(api.queries.organizations.current, {});
+    if (!isGiftAidEnabled(organization)) {
+      throw new Error("Gift Aid is switched off for this church");
+    }
     const ai = getAI();
 
     const parsedEligible = safeJsonParse<unknown>(
@@ -1462,6 +1468,8 @@ export const chatWithTreasurer = action({
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
+    const { api } = await import("../_generated/api");
+    const giftAidEnabled = isGiftAidEnabled(await ctx.runQuery(api.queries.organizations.current, {}));
     const ai = getAI();
     const message = args.message.trim();
 
@@ -1486,6 +1494,7 @@ export const chatWithTreasurer = action({
       You have access to the current financial data provided in the context.
       Answer questions based on this data. If you don't know, say so.
       Keep answers concise.
+      ${giftAidEnabled ? "" : "Gift Aid is disabled for this church. Do not recommend Gift Aid claims or declaration follow-up. If asked about a claim, explain that Gift Aid is switched off in church settings."}
     `;
 
     const response = await ai.models.generateContent({
@@ -1531,6 +1540,8 @@ export const generateRCIMonthlyNarrative = action({
   },
   handler: async (ctx, args) => {
     await requireUser(ctx);
+    const { api } = await import("../_generated/api");
+    const giftAidEnabled = isGiftAidEnabled(await ctx.runQuery(api.queries.organizations.current, {}));
     const ai = getAI();
 
     const reportData = safeJsonParse<Record<string, any>>(
@@ -1546,8 +1557,8 @@ You are writing a monthly financial update for the Senior Pastor. They need to q
 **Total Received**: £${reportData.totals?.grossIncome?.toLocaleString() || 0}
 **Total Spent**: £${reportData.totals?.totalExpenditure?.toLocaleString() || 0}
 **Net Position**: ${netPosition >= 0 ? 'Surplus' : 'Shortfall'} of £${Math.abs(netPosition).toLocaleString()}
-**Gift Aid Eligible**: £${reportData.giftAidSummary?.eligible?.toLocaleString() || 0}
-**HMRC Claimable**: £${reportData.giftAidSummary?.claimable?.toLocaleString() || 0}
+${giftAidEnabled ? `**Gift Aid Eligible**: £${reportData.giftAidSummary?.eligible?.toLocaleString() || 0}
+**HMRC Claimable**: £${reportData.giftAidSummary?.claimable?.toLocaleString() || 0}` : ""}
 
 **Income by Category**:
 ${JSON.stringify(reportData.receipts, null, 2)}
@@ -1559,7 +1570,7 @@ ${JSON.stringify(reportData.payments, null, 2)}
 ${JSON.stringify(reportData.weeklyBreakdown, null, 2)}
 
 **Named Tithes/Offerings**:
-${JSON.stringify(reportData.tithes, null, 2)}
+${JSON.stringify(giftAidEnabled ? reportData.tithes : reportData.tithes?.map(({ isGiftAidEligible: _isGiftAidEligible, ...tithe }: Record<string, unknown>) => tithe), null, 2)}
 
 **Write in this structure**:
 
@@ -1579,10 +1590,10 @@ Start with a single sentence a busy pastor could read: "This month we received �
 - Any significant one-off payments?
 - Were there any unexpected costs?
 
-### Gift Aid Bonus 🎁
+${giftAidEnabled ? `### Gift Aid Bonus 🎁
 Explain Gift Aid simply: "Because our givers signed Gift Aid declarations, we can claim an extra £X from HMRC - essentially free money for the church!"
 - Amount eligible: £X
-- Claimable: £X (this is 25% the government gives us back)
+- Claimable: £X (this is 25% the government gives us back)` : ""}
 
 ### Things to Note
 Any items the Pastor should be aware of:
@@ -1592,7 +1603,7 @@ Any items the Pastor should be aware of:
 
 ### Suggested Actions
 If relevant, 1-2 simple recommendations:
-- "Remind congregation about Gift Aid signup"
+${giftAidEnabled ? '- "Remind congregation about Gift Aid signup"' : ""}
 - "Consider a giving update in the bulletin"
 
 ### Closing Reflection
@@ -1601,6 +1612,7 @@ End with a brief, faith-affirming statement appropriate for a church context. Ex
 **Tone**: Warm, clear, pastoral. Like a trusted treasurer having a 5-minute chat with the pastor.
 **Length**: 250-350 words.
 **Format**: Use headers, bullets, and emojis sparingly for scannability.
+${giftAidEnabled ? "" : "Gift Aid is disabled for this church. Omit Gift Aid sections, claims, and declaration or signup recommendations."}
     `;
 
     const response = await ai.models.generateContent({

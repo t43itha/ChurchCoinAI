@@ -18,6 +18,7 @@ export default defineSchema({
     email: v.optional(v.string()),
     website: v.optional(v.string()),
     reportingPeriod: v.optional(v.union(v.literal("tax_year"), v.literal("calendar_year"))),
+    giftAidEnabled: v.optional(v.boolean()),
     logoUrl: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()), // Stripe customer ID for billing
     // Missing values are treated as `legacy` during the billing re-enable

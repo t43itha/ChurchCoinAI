@@ -292,6 +292,7 @@ function App() {
     email: currentOrganization.email,
     website: currentOrganization.website,
     reportingPeriod: currentOrganization.reportingPeriod,
+    giftAidEnabled: currentOrganization.giftAidEnabled,
     logoUrl: currentOrganization.logoUrl,
   };
 

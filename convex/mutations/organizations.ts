@@ -470,6 +470,7 @@ export const update = mutation({
     reportingPeriod: v.optional(
       v.union(v.literal("tax_year"), v.literal("calendar_year"))
     ),
+    giftAidEnabled: v.optional(v.boolean()),
     logoUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -486,6 +487,8 @@ export const update = mutation({
     if (args.website !== undefined) updates.website = args.website;
     if (args.reportingPeriod !== undefined)
       updates.reportingPeriod = args.reportingPeriod;
+    if (args.giftAidEnabled !== undefined)
+      updates.giftAidEnabled = args.giftAidEnabled;
     if (args.logoUrl !== undefined) updates.logoUrl = args.logoUrl;
 
     await ctx.db.patch(user.organizationId, updates);

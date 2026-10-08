@@ -102,6 +102,7 @@ export interface ChurchDetails {
   email?: string;
   website?: string;
   reportingPeriod?: 'tax_year' | 'calendar_year';
+  giftAidEnabled?: boolean;
   logoUrl?: string;
 }
 

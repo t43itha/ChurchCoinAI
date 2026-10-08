@@ -1,6 +1,7 @@
 import { Check, Landmark, PenLine, Plus } from "lucide-react";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
 import { gbp, shortDate } from "./format";
+import { useGiftAidEnabled } from "../app/useGiftAidEnabled";
 import { fieldLabel, screenTitle } from "../wizard/ui";
 import type { SavedResult, WizardModel } from "./useCollectionDraft";
 
@@ -20,6 +21,7 @@ const NEXT_ITEM =
 const NEXT_ICON = "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl";
 
 export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: DoneStepProps) {
+  const giftAidEnabled = useGiftAidEnabled();
   const { totals, draft } = saved;
   const isDraft = saved.status === "draft";
   const tithes = totals.namedCount + totals.anonymousCount;
@@ -58,7 +60,7 @@ export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: Do
           </button>
         )}
 
-        {totals.noDeclaration.length > 0 && (
+        {giftAidEnabled && totals.noDeclaration.length > 0 && (
           <div className={`${NEXT_ITEM} mb-2 cursor-default hover:bg-white`}>
             <span className={`${NEXT_ICON} bg-amber-light text-amber`}>
               <PenLine size={17} aria-hidden="true" />

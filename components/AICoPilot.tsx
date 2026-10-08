@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Sparkles, RotateCcw, MessageSquare } from 'lucide-react';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
+import { useGiftAidEnabled } from './app/useGiftAidEnabled';
 
 interface Message {
     id: string;
@@ -21,12 +22,15 @@ const starterPrompts = [
     'Who are our top donors?',
     'Which month was best for giving?',
     'How is the Building Fund appeal doing?',
-    'What Gift Aid can we claim?',
     'Summarise May 2026',
     'Which donors need follow-up?'
 ];
 
 const AICoPilot: React.FC = () => {
+    const giftAidEnabled = useGiftAidEnabled();
+    const visibleStarterPrompts = giftAidEnabled
+        ? [...starterPrompts.slice(0, 3), 'What Gift Aid can we claim?', ...starterPrompts.slice(3)]
+        : starterPrompts;
     const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);
@@ -149,7 +153,7 @@ const AICoPilot: React.FC = () => {
                         <div className="md:ml-12 max-w-3xl">
                             <p className="text-[11px] font-mono uppercase tracking-[0.08em] text-grey-mid mb-3">Try asking</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {starterPrompts.map((prompt) => (
+                                {visibleStarterPrompts.map((prompt) => (
                                     <button
                                         key={prompt}
                                         type="button"

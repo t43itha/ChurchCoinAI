@@ -3,6 +3,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Search, UserPlus, Check, Loader2, X } from 'lucide-react';
+import { useGiftAidEnabled } from './app/useGiftAidEnabled';
 
 interface DonorSearchResult {
   _id: string;
@@ -46,6 +47,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
   autoFocus = false,
   showGiftAidBadge = true,
 }) => {
+  const giftAidEnabled = useGiftAidEnabled();
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -271,7 +273,7 @@ const DonorSearchInput: React.FC<DonorSearchInputProps> = ({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {showGiftAidBadge && donor.isGiftAidActive && (
+                {showGiftAidBadge && giftAidEnabled && donor.isGiftAidActive && (
                   <span className="bg-sage-100 text-sage-700 border border-sage-300 px-1.5 py-0.5 text-[10px] rounded-sm font-medium">
                     Gift Aid
                   </span>

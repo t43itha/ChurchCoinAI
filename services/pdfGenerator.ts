@@ -3,6 +3,7 @@ import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, Ann
 import { filterIncomeAndExpenditure, type TransferSummary } from "../lib/reportableTransactions";
 import type { ProgrammeIncome } from "../lib/programmeIncome";
 import { sumMoney } from "../convex/lib/money";
+import { isGiftAidEnabled } from "../lib/giftAid";
 
 // Escape HTML entities to prevent injection when rendering user-supplied data
 const escapeHtml = (value?: string) =>
@@ -342,6 +343,7 @@ export const generateScheduleHTML = (
       <p style="text-align:center; color:#999; padding: 30px;">No transactions found.</p>
       `}
 
+      ${isGiftAidEnabled(churchDetails) ? `
       <div class="gift-aid-box">
         <h4>Gift Aid Declaration Status</h4>
         <p>
@@ -350,6 +352,7 @@ export const generateScheduleHTML = (
             : "<strong>Not Active:</strong> We do not currently hold an active Gift Aid declaration for these donations."}
         </p>
       </div>
+      ` : ''}
 
       <div class="footer">
         <div>
@@ -621,6 +624,7 @@ export const generateMonthlyReportHTML = (
   churchDetails: ChurchDetails,
   programmeIncome: ProgrammeIncome[] = []
 ) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const html = `
@@ -659,10 +663,12 @@ export const generateMonthlyReportHTML = (
           <div class="label">Net Bankable</div>
           <div class="value ${reportData.totals.netBankable >= 0 ? 'positive' : 'negative'}">${formatCurrency(reportData.totals.netBankable)}</div>
         </div>
+        ${giftAidEnabled ? `
         <div class="summary-card">
           <div class="label">Gift Aid Claimable</div>
           <div class="value">${formatCurrency(reportData.giftAidSummary.claimable)}</div>
         </div>
+        ` : ''}
       </div>
 
       <div class="two-column">
@@ -787,7 +793,7 @@ export const generateMonthlyReportHTML = (
           <thead>
             <tr>
               <th>Donor</th>
-              <th>Gift Aid</th>
+              ${giftAidEnabled ? '<th>Gift Aid</th>' : ''}
               <th class="right">Amount</th>
             </tr>
           </thead>
@@ -795,18 +801,19 @@ export const generateMonthlyReportHTML = (
             ${reportData.tithes.map(tithe => `
               <tr>
                 <td>${escapeHtml(tithe.donorName)}</td>
-                <td>${tithe.isGiftAidEligible ? 'Yes' : '-'}</td>
+                ${giftAidEnabled ? `<td>${tithe.isGiftAidEligible ? 'Yes' : '-'}</td>` : ''}
                 <td class="amount">${formatCurrency(tithe.amount)}</td>
               </tr>
             `).join('')}
             <tr class="total-row">
-              <td colspan="2">Total Tithes</td>
+              <td colspan="${giftAidEnabled ? 2 : 1}">Total Tithes</td>
               <td class="amount">${formatCurrency(reportData.tithes.reduce((sum, t) => sum + t.amount, 0))}</td>
             </tr>
           </tbody>
         </table>
       ` : ''}
 
+      ${giftAidEnabled ? `
       <div class="section-title">Gift Aid Summary</div>
       <table>
         <tbody>
@@ -820,6 +827,7 @@ export const generateMonthlyReportHTML = (
           </tr>
         </tbody>
       </table>
+      ` : ''}
 
       ${transfersSectionHTML(reportData.transfers)}
       ${programmeIncomeSectionHTML(programmeIncome)}
@@ -847,6 +855,7 @@ export const generateAnnualReportHTML = (
   churchDetails: ChurchDetails,
   programmeIncome: ProgrammeIncome[] = []
 ) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const html = `
@@ -885,10 +894,12 @@ export const generateAnnualReportHTML = (
           <div class="label">Net Movement</div>
           <div class="value ${reportData.totals.netMovement >= 0 ? 'positive' : 'negative'}">${formatCurrency(reportData.totals.netMovement)}</div>
         </div>
+        ${giftAidEnabled ? `
         <div class="summary-card">
           <div class="label">Gift Aid Claimable</div>
           <div class="value">${formatCurrency(reportData.giftAidAnnual.totalClaimable)}</div>
         </div>
+        ` : ''}
       </div>
 
       <div class="two-column">
@@ -1009,6 +1020,7 @@ export const generateAnnualReportHTML = (
         </table>
       ` : ''}
 
+      ${giftAidEnabled ? `
       <div class="section-title">Gift Aid Annual Summary</div>
       <table>
         <tbody>
@@ -1022,6 +1034,7 @@ export const generateAnnualReportHTML = (
           </tr>
         </tbody>
       </table>
+      ` : ''}
 
       <div class="section-title">Fund Balances (End of Year)</div>
       <table>

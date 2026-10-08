@@ -10,14 +10,18 @@ type DashboardDonorFollowUpProps = DashboardSummaryProps & {
 export default function DashboardDonorFollowUp({ summary, canOpenDonors }: DashboardDonorFollowUpProps) {
   const { missedGiftAidCount, missedGiftAidValue, pledgesBehindCount } = summary.donorFollowUp;
   const rows = [
-    {
-      label: "Gifts missing Gift Aid",
-      value: missedGiftAidCount,
-      detail:
-        missedGiftAidCount === 0
-          ? "Every gift from a declared donor is marked eligible"
-          : `${formatCurrency(missedGiftAidValue)} reclaimable once marked eligible`,
-    },
+    ...(missedGiftAidCount === null
+      ? []
+      : [
+          {
+            label: "Gifts missing Gift Aid",
+            value: missedGiftAidCount,
+            detail:
+              missedGiftAidCount === 0
+                ? "Every gift from a declared donor is marked eligible"
+                : `${formatCurrency(missedGiftAidValue ?? 0)} reclaimable once marked eligible`,
+          },
+        ]),
     {
       label: "Pledges behind",
       value: pledgesBehindCount,

@@ -887,6 +887,24 @@ describe("dashboard KPI helpers", () => {
       expect(summary.donorFollowUp.missedGiftAidValue).toBe(25);
     });
 
+    it("drops Gift Aid figures and follow-ups when the church has Gift Aid switched off", () => {
+      const input = {
+        donors: [{ _id: "declared", name: "Declared", type: "Individual", isGiftAidActive: true }],
+        transactions: [
+          income("missed", "2026-05-03", 100, { donorId: "declared", isGiftAidEligible: false }),
+          income("claimed", "2026-05-10", 100, { donorId: "declared", isGiftAidEligible: true }),
+        ],
+      };
+
+      const on = summarize(input);
+      const off = summarize({ ...input, giftAidEnabled: false });
+
+      expect(on.readiness.giftAidClaimable).toBe(25);
+      expect(on.donorFollowUp).toMatchObject({ missedGiftAidCount: 1, missedGiftAidValue: 25 });
+      expect(off.readiness.giftAidClaimable).toBeNull();
+      expect(off.donorFollowUp).toMatchObject({ missedGiftAidCount: null, missedGiftAidValue: null });
+    });
+
     it("only flags pledges whose payment cadence has lapsed", () => {
       const pledge = (id: string, frequency: string, startDate: string): DashboardPledge => ({
         _id: id,

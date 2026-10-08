@@ -121,6 +121,7 @@ export const useOrganizationAdminActions = ({
         email: details.email,
         website: details.website,
         reportingPeriod: details.reportingPeriod,
+        giftAidEnabled: details.giftAidEnabled,
         logoUrl: details.logoUrl,
       });
       showNotification(

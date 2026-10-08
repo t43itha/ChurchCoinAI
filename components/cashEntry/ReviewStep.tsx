@@ -3,6 +3,7 @@ import { roundMoney } from "../../convex/lib/money";
 import { NOTE_VALUES, draftTotals } from "../../lib/cashCollectionDraft";
 import { FundType } from "../../types";
 import Receipt, { MoneyRow } from "./Receipt";
+import { useGiftAidEnabled } from "../app/useGiftAidEnabled";
 import { gbp, shortDate } from "./format";
 import {
   btnGhost,
@@ -28,6 +29,7 @@ interface ReviewStepProps {
 }
 
 export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
+  const giftAidEnabled = useGiftAidEnabled();
   const { draft, ctx, dispatch, missingFunds } = model;
   const totals = draftTotals(draft, ctx);
   const envelopesCash = roundMoney(totals.byMethod.cash - totals.slip.counted);
@@ -101,10 +103,14 @@ export default function ReviewStep({ model, onEdit }: ReviewStepProps) {
         <MoneyRow label="Cheques" value={totals.byMethod.cheque} />
         <MoneyRow label="Card machine (settles itself)" value={totals.byMethod.card} />
 
-        <div className="my-2 border-t border-dashed border-ledger" />
-        <div className={`${eyebrow} mb-1 mt-1.5`}>Gift Aid</div>
-        <MoneyRow label="Eligible tithes" value={totals.giftAidEligible} />
-        <MoneyRow label="≈ to claim (25%)" value={claimable} />
+        {giftAidEnabled && (
+          <>
+            <div className="my-2 border-t border-dashed border-ledger" />
+            <div className={`${eyebrow} mb-1 mt-1.5`}>Gift Aid</div>
+            <MoneyRow label="Eligible tithes" value={totals.giftAidEligible} />
+            <MoneyRow label="≈ to claim (25%)" value={claimable} />
+          </>
+        )}
       </div>
 
       <span className={fieldLabel}>Counted by (optional)</span>
