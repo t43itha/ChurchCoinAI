@@ -220,6 +220,20 @@ describe("detectColumns", () => {
     ]);
   });
 
+  it("ignores delimiters inside a quoted description that spans several lines", () => {
+    const { headers, result } = importFile('Date,Description,Amount\n01/03/2026,"Invoice payment\nBuilding; Repairs\nChurch; Hall\nReference; 42",-3.50');
+    expect(headers).toEqual(["Date", "Description", "Amount"]);
+    expect(result.rows).toEqual([
+      { line: 2, date: "2026-03-01", description: "Invoice payment\nBuilding; Repairs\nChurch; Hall\nReference; 42", amount: 3.5, type: "Expenditure" },
+    ]);
+  });
+
+  it("treats an amount below half a penny as zero rather than an unreadable number", () => {
+    const { result } = importFile("Date,Description,Amount\n01/03/2026,Donation,0.0000001\n02/03/2026,Offering,25.00");
+    expect(result.errors).toEqual([{ line: 2, reason: "Amount is zero", raw: "0.0000001" }]);
+    expect(result.rows.map((row) => [row.amount, row.type])).toEqual([[25, "Income"]]);
+  });
+
   it("never picks a reference or account column as the amount, even when it is all numbers", () => {
     const { mapping, result } = importFile("Date,Payee,Ref,Total\n01/03/2026,Shop,10045,-3.50\n02/03/2026,Offering,10046,20.00");
     expect(mapping).toMatchObject({ amount: "Total" });

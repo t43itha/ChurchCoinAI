@@ -25,25 +25,38 @@ const ZERO_TEXT = /^\(?[-+]?0+(\.0+)?\)?$/;
 const NOT_AN_AMOUNT_HEADER = /\b(ref|reference|account|acc|number|no|sort ?code|cheque|id|balance)\b/i;
 const MONEY_SHAPE = /[.\-+()£$]/;
 
-const countOutsideQuotes = (line: string, delimiter: string) => {
+// Splits text into logical lines, keeping quote state across physical line
+// breaks, and counts each delimiter outside quotes on every line.
+const delimiterCounts = (text: string, limit: number) => {
+  const lines: Array<Record<string, number>> = [];
+  let counts: Record<string, number> = {};
+  let filled = false;
   let inQuotes = false;
-  let count = 0;
-  for (const ch of line) {
+  for (let i = 0; i < text.length && lines.length < limit; i += 1) {
+    const ch = text.charAt(i);
     if (ch === '"') inQuotes = !inQuotes;
-    else if (!inQuotes && ch === delimiter) count += 1;
+    if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      if (filled) lines.push(counts);
+      counts = {};
+      filled = false;
+      continue;
+    }
+    if (ch.trim()) filled = true;
+    if (!inQuotes && DELIMITERS.includes(ch)) counts[ch] = (counts[ch] ?? 0) + 1;
   }
-  return count;
+  if (filled && lines.length < limit) lines.push(counts);
+  return lines;
 };
 
-// Looks at the first 20 non-empty physical lines. For each delimiter, takes its
+// Looks at the first 20 non-empty logical lines. For each delimiter, takes its
 // modal non-zero count (outside quotes) and how many lines share that count. The
 // delimiter shared by the most lines wins, then the higher modal count; comma
 // wins any remaining tie, and is the default when no line holds a delimiter.
 const sniffDelimiter = (text: string) => {
-  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 20);
+  const lines = delimiterCounts(text, 20);
   let best: { delimiter: string; shared: number; modal: number } | null = null;
   for (const delimiter of DELIMITERS) {
-    const counts = lines.map((line) => countOutsideQuotes(line, delimiter)).filter((count) => count > 0);
+    const counts = lines.map((line) => line[delimiter] ?? 0).filter((count) => count > 0);
     if (counts.length === 0) continue;
     const frequency = new Map<number, number>();
     for (const count of counts) frequency.set(count, (frequency.get(count) ?? 0) + 1);
@@ -143,8 +156,11 @@ type AmountCell = number | "blank" | "bad";
 const readAmount = (text: string): AmountCell => {
   if (!text.trim()) return "blank";
   const parsed = parseImportedAmount(text);
-  // Exponent notation shifts the decimal exactly, so 1.005 becomes 100.5 pence, not 100.4999.
-  if (parsed !== null) return Math.sign(parsed) * (Math.round(Number(`${Math.abs(parsed)}e2`)) / 100);
+  if (parsed !== null) {
+    // toFixed gives a plain decimal string (never exponent form), and the e2 suffix shifts it exactly.
+    const pence = Math.round(Number(`${Math.abs(parsed).toFixed(10)}e2`));
+    return Number.isFinite(pence) ? Math.sign(parsed) * (pence / 100) : "bad";
+  }
   if (ZERO_TEXT.test(text.replace(/[£$,\s]/g, ""))) return 0;
   return "bad";
 };
