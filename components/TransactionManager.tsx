@@ -16,7 +16,7 @@ import { isRealIsoDate } from '../lib/csvImport';
 import { categoryNamesForTransactionTypes, effectiveCategories } from '../lib/transactionCategories';
 import { applySmallIncomeDefaults } from '../lib/smallIncomeDefaults';
 import { screenImportRows, StatementRow, withImportKeys } from '../lib/importKeys';
-import { CsvRecord, describeLeftOutRows, detectColumns, findHeaderRow, mapStatementRows, MAX_IMPORT_ROWS, tokenizeCsv } from '../lib/statementImport';
+import { CsvRecord, describeLeftOutRows, detectColumns, exceedsImportLimit, findHeaderRow, mapStatementRows, MAX_IMPORT_ROWS, tokenizeCsv } from '../lib/statementImport';
 import { resolveAssignableCategory } from '../convex/intelligence/categorization/categoryResolver';
 import { filterFundBalanceRows, isUnlinkedMovementLeg, isVoidedTransaction } from '../lib/reportableTransactions';
 import { acceptedPairsToLink, importMovementLegs, ledgerMovementLegs, linkState, livePairs, pairBasis, suggestImportPairs, type PairSuggestion } from '../lib/movementMatching';
@@ -710,6 +710,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   // the user may override; bank rows matched by provider id are never re-imported.
   const includeAlreadyImportedStatementRows = () => {
     const rows = alreadyImportedRows.filter((row) => row.importKey).map((row) => ({ ...row, importKey: undefined }));
+    const total = pendingTransactions.length + rows.length;
+    if (exceedsImportLimit(total)) {
+      notify("Too many transactions", `Adding these would make ${total} transactions. Import up to ${MAX_IMPORT_ROWS} at a time — split the file by date range.`);
+      return;
+    }
     const startIndex = pendingTransactions.length;
     setPendingTransactions((current) => [...current, ...rows]);
     setDuplicateWarnings((current) => new Set([...current, ...rows.map((_, index) => startIndex + index)]));

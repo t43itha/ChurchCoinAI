@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   describeLeftOutRows,
   detectColumns,
+  exceedsImportLimit,
   findHeaderRow,
   mapStatementRows,
+  MAX_IMPORT_ROWS,
   tokenizeCsv,
 } from "../lib/statementImport";
 
@@ -31,8 +33,8 @@ const NATIONWIDE = [
 ].join("\n");
 
 const HSBC_HEADERLESS = [
-  "01/03/2026,SYNTHETIC COFFEE,-3.50,96.50",
-  "02/03/2026,SYNTHETIC INCOME,20.00,116.50",
+  "01/03/2026,SYNTHETIC COFFEE,-3.50",
+  "02/03/2026,SYNTHETIC INCOME,20.00",
 ].join("\n");
 
 // Parses the way the component does: tokenize, find the header, detect columns, map the data records.
@@ -107,7 +109,7 @@ describe("findHeaderRow", () => {
   it("treats data rows with no header as headerless and names the columns", () => {
     expect(findHeaderRow(tokenizeCsv(HSBC_HEADERLESS).records)).toEqual({
       headerIndex: null,
-      headers: ["Column 1", "Column 2", "Column 3", "Column 4"],
+      headers: ["Column 1", "Column 2", "Column 3"],
     });
   });
 
@@ -127,6 +129,15 @@ describe("findHeaderRow", () => {
   it("does not read a row as a header when the date word shares a cell with the label or the row holds an amount", () => {
     expect(findHeaderRow(tokenizeCsv("Statement download\n01/03/2026,Sunday offering,100.00\n31/02/2026,Date correction credit,25.00\n").records).headerIndex).toBeNull();
     expect(findHeaderRow(tokenizeCsv("Statement\nDate,Description,100.00\n").records).headerIndex).toBeNull();
+  });
+
+  it("uses an unfamiliar header with two or more text cells when no date label matches", () => {
+    const { headerIndex, headers, mapping, result, data } = importFile("Posted,Payee,Amount\n01/03/2026,Shop,-3.50");
+    expect(headerIndex).toBe(0);
+    expect(headers).toEqual(["Posted", "Payee", "Amount"]);
+    expect(data).toHaveLength(1);
+    expect(mapping).toMatchObject({ date: "Posted", description: "Payee", amount: "Amount" });
+    expect(result.rows).toEqual([{ line: 2, date: "2026-03-01", description: "Shop", amount: 3.5, type: "Expenditure" }]);
   });
 
   it("reports no header for text that is neither a header nor transaction data", () => {
@@ -164,39 +175,66 @@ describe("detectColumns", () => {
     expect(mapping.amount).toBe("Value");
   });
 
-  it("infers columns from values for headerless files and prefers the earlier amount column over a balance", () => {
+  it("infers columns from values for headerless files", () => {
     const { headers, mapping, split } = importFile(HSBC_HEADERLESS);
-    expect(headers).toEqual(["Column 1", "Column 2", "Column 3", "Column 4"]);
+    expect(headers).toEqual(["Column 1", "Column 2", "Column 3"]);
     expect(split).toBe(false);
     expect(mapping).toEqual({ date: "Column 1", description: "Column 2", amount: "Column 3", amountIn: "", amountOut: "" });
   });
 
-  it("counts readable zeros as amounts and prefers the amount column over a running balance", () => {
-    const { mapping, result } = importFile([
-      "01/03/2026,Opening balance,0.00,100.00",
-      "02/03/2026,Coffee,-3.50,96.50",
-      "03/03/2026,Offering,20.00,116.50",
-    ].join("\n"));
-    expect(mapping).toMatchObject({ amount: "Column 3" });
-    expect(result.rows.map((row) => [row.description, row.amount, row.type])).toEqual([
-      ["Coffee", 3.5, "Expenditure"],
-      ["Offering", 20, "Income"],
-    ]);
-    expect(result.errors).toEqual([{ line: 1, reason: "Amount is zero", raw: "0.00" }]);
+  it("leaves the amount for the user when a headerless file has two numeric columns", () => {
+    for (const lines of [
+      ["01/03/2026,Opening balance,0.00,100.00", "02/03/2026,Coffee,-3.50,96.50", "03/03/2026,Offering,20.00,116.50"],
+      ["02/03/2026,Electricity bill,-10.00,-5.00", "01/03/2026,Church hall rent,-5.00,5.00"],
+      ["01/03/2026,Coffee,100.00,-3.50", "02/03/2026,Donation,96.50,-3.50"],
+    ]) {
+      const { headers, mapping } = importFile(lines.join("\n"));
+      expect(headers).toEqual(["Column 1", "Column 2", "Column 3", "Column 4"]);
+      expect(mapping).toMatchObject({ date: "Column 1", description: "Column 2", amount: "" });
+    }
   });
 
-  it("skips a running balance that comes before the amount column", () => {
-    const { mapping, result } = importFile([
-      "01/03/2026,Coffee,100.00,-3.50",
-      "02/03/2026,Donation,96.50,-3.50",
-      "03/03/2026,Offering,116.50,20.00",
-    ].join("\n"));
-    expect(mapping).toMatchObject({ amount: "Column 4" });
-    expect(result.rows.map((row) => [row.description, row.amount, row.type])).toEqual([
-      ["Coffee", 3.5, "Expenditure"],
-      ["Donation", 3.5, "Expenditure"],
-      ["Offering", 20, "Income"],
+  it("recognises a headerless file whose first row has a zero amount", () => {
+    for (const zero of ["0.00", "0", "£0.00", "(0.00)", "-0.00"]) {
+      const { headers } = importFile(`01/03/2026,Opening balance,${zero}\n02/03/2026,Sunday offering,25.00`);
+      expect(headers).toEqual(["Column 1", "Column 2", "Column 3"]);
+    }
+  });
+
+  it("finds the delimiter below a preamble that contains commas", () => {
+    for (const delimiter of [";", "\t"]) {
+      const body = [["Date", "Description", "Amount"], ["01/03/2026", "Sunday offering", "25.00"], ["02/03/2026", "Coffee", "-3.50"]]
+        .map((cells) => cells.join(delimiter)).join("\n");
+      const { headers, result } = importFile(`Statement for Church, London\n${body}`);
+      expect(headers).toEqual(["Date", "Description", "Amount"]);
+      expect(result.rows).toHaveLength(2);
+    }
+  });
+
+  it("rounds half pennies away from zero without floating-point loss", () => {
+    const { result } = importFile("Date,Description,Amount\n01/03/2026,Donation,1.005\n02/03/2026,Coffee,-1.005\n03/03/2026,Gift,1.015");
+    expect(result.rows.map((row) => [row.amount, row.type])).toEqual([
+      [1.01, "Income"],
+      [1.01, "Expenditure"],
+      [1.02, "Income"],
     ]);
+  });
+
+  it("never picks a reference or account column as the amount, even when it is all numbers", () => {
+    const { mapping, result } = importFile("Date,Payee,Ref,Total\n01/03/2026,Shop,10045,-3.50\n02/03/2026,Offering,10046,20.00");
+    expect(mapping).toMatchObject({ amount: "Total" });
+    expect(result.rows.map((row) => [row.amount, row.type])).toEqual([
+      [3.5, "Expenditure"],
+      [20, "Income"],
+    ]);
+  });
+
+  it("leaves the amount empty when two columns look equally like amounts", () => {
+    const { mapping } = detectColumns(
+      ["Date", "Description", "Foo", "Bar"],
+      [["01/03/2026", "SYNTHETIC", "-3.50", "20.00"], ["02/03/2026", "SYNTHETIC", "4.00", "-1.00"]]
+    );
+    expect(mapping.amount).toBe("");
   });
 
   it("returns a reference column when the file has one", () => {
@@ -246,6 +284,15 @@ describe("mapStatementRows", () => {
     expect(headers).toEqual(["Date", "Description", "Amount"]);
     expect(result.rows).toEqual([
       { line: 2, date: "2026-03-01", description: "Shop, London, UK, card, tea, coffee", amount: 3.5, type: "Expenditure" },
+    ]);
+  });
+
+  it("ignores a comma in a preamble line when the data is semicolon-delimited", () => {
+    const { headers, result } = importFile("Account: Church, Main\nDate;Description;Amount\n01/03/2026;Shop, London;-3.50\n02/03/2026;Offering;20.00\n");
+    expect(headers).toEqual(["Date", "Description", "Amount"]);
+    expect(result.rows).toEqual([
+      { line: 3, date: "2026-03-01", description: "Shop, London", amount: 3.5, type: "Expenditure" },
+      { line: 4, date: "2026-03-02", description: "Offering", amount: 20, type: "Income" },
     ]);
   });
 
@@ -362,18 +409,44 @@ describe("mapStatementRows", () => {
   });
 });
 
+describe("exceedsImportLimit", () => {
+  it("allows a total up to the import limit and rejects anything above it", () => {
+    expect(exceedsImportLimit(MAX_IMPORT_ROWS)).toBe(false);
+    expect(exceedsImportLimit(MAX_IMPORT_ROWS + 1)).toBe(true);
+  });
+});
+
 describe("describeLeftOutRows", () => {
-  it("names counts and the first few line numbers", () => {
+  it("groups left-out rows by reason and lists the skipped rows separately", () => {
     const message = describeLeftOutRows({
-      errors: [47, 88, 103].map((line) => ({ line, reason: "Amount unreadable", raw: "x" })),
-      skipped: [{ line: 5, reason: "No amount" }, { line: 9, reason: "No amount" }],
+      errors: [
+        { line: 47, reason: "Date not real", raw: "31/02/2026" },
+        { line: 52, reason: "Date not real", raw: "30/02/2026" },
+        { line: 88, reason: "Amount unreadable", raw: "12abc" },
+      ],
+      skipped: [{ line: 12, reason: "No amount" }, { line: 13, reason: "No amount" }],
     });
-    expect(message).toBe("3 rows couldn't be read (lines 47, 88, 103) and were left out. 2 rows had no amount and were skipped.");
+    expect(message).toBe(
+      "Left out: Date not real (lines 47, 52); Amount unreadable (line 88). Skipped with no amount: lines 12, 13."
+    );
+  });
+
+  it("caps each list at five line numbers and says how many more there are", () => {
+    const message = describeLeftOutRows({
+      errors: [1, 2, 3, 4, 5, 6, 7].map((line) => ({ line, reason: "No description", raw: "x" })),
+      skipped: [9, 10, 11, 12, 13, 14].map((line) => ({ line, reason: "No amount" })),
+    });
+    expect(message).toBe(
+      "Left out: No description (lines 1, 2, 3, 4, 5 and 2 more). Skipped with no amount: lines 9, 10, 11, 12, 13 and 1 more."
+    );
   });
 
   it("uses singular wording for one row and returns null when nothing was left out", () => {
     expect(describeLeftOutRows({ errors: [{ line: 12, reason: "No description", raw: "x" }], skipped: [] })).toBe(
-      "1 row couldn't be read (line 12) and was left out."
+      "Left out: No description (line 12)."
+    );
+    expect(describeLeftOutRows({ errors: [], skipped: [{ line: 5, reason: "No amount" }] })).toBe(
+      "Skipped with no amount: line 5."
     );
     expect(describeLeftOutRows({ errors: [], skipped: [] })).toBeNull();
   });

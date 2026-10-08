@@ -1,5 +1,4 @@
 import { parseImportedAmount, parseImportedDate } from "./csvImport";
-import { roundMoney } from "../convex/lib/money";
 
 export type CsvRecord = { cells: string[]; line: number };
 
@@ -22,6 +21,9 @@ const DEBIT_WORDS = ["debit", "paid out", "money out", "withdrawal"];
 const DATE_SHAPE = /^\d{1,4}[/-]\d{1,2}[/-]\d{1,4}$/;
 // "0", "0.00", "£0.00" and "(0.00)" are readable zeros, not unreadable text.
 const ZERO_TEXT = /^\(?[-+]?0+(\.0+)?\)?$/;
+// Headers that name something other than money, so their numbers are never amounts.
+const NOT_AN_AMOUNT_HEADER = /\b(ref|reference|account|acc|number|no|sort ?code|cheque|id|balance)\b/i;
+const MONEY_SHAPE = /[.\-+()£$]/;
 
 const countOutsideQuotes = (line: string, delimiter: string) => {
   let inQuotes = false;
@@ -33,23 +35,24 @@ const countOutsideQuotes = (line: string, delimiter: string) => {
   return count;
 };
 
-// A delimiter wins when it appears with the same non-zero count on each of the
-// first five non-empty lines. Otherwise the first line that contains any
-// delimiter decides by its highest count, and comma wins when nothing matches.
+// Looks at the first 20 non-empty physical lines. For each delimiter, takes its
+// modal non-zero count (outside quotes) and how many lines share that count. The
+// delimiter shared by the most lines wins, then the higher modal count; comma
+// wins any remaining tie, and is the default when no line holds a delimiter.
 const sniffDelimiter = (text: string) => {
-  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 5);
-  if (lines.length === 0) return ",";
-  const countsPerLine = lines.map((line) => DELIMITERS.map((delimiter) => countOutsideQuotes(line, delimiter)));
-  const first = countsPerLine[0];
-  const consistent = DELIMITERS.filter((_, index) =>
-    first[index] > 0 && countsPerLine.every((counts) => counts[index] === first[index])
-  );
-  if (consistent.length === 1) return consistent[0];
-  for (const counts of countsPerLine) {
-    const best = Math.max(...counts);
-    if (best > 0) return DELIMITERS[counts.indexOf(best)];
+  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 20);
+  let best: { delimiter: string; shared: number; modal: number } | null = null;
+  for (const delimiter of DELIMITERS) {
+    const counts = lines.map((line) => countOutsideQuotes(line, delimiter)).filter((count) => count > 0);
+    if (counts.length === 0) continue;
+    const frequency = new Map<number, number>();
+    for (const count of counts) frequency.set(count, (frequency.get(count) ?? 0) + 1);
+    const [modal, shared] = [...frequency].reduce((top, entry) => (entry[1] > top[1] ? entry : top));
+    if (!best || shared > best.shared || (shared === best.shared && modal > best.modal)) {
+      best = { delimiter, shared, modal };
+    }
   }
-  return ",";
+  return best?.delimiter ?? ",";
 };
 
 export type CsvTokenizeResult = { records: CsvRecord[]; error: { line: number; reason: string } | null };
@@ -133,12 +136,32 @@ const isHeaderRecord = ({ cells }: CsvRecord) => {
   return hasDateLabel && !cells.some((cell) => parseImportedDate(cell) !== null || parseImportedAmount(cell) !== null);
 };
 
+type AmountCell = number | "blank" | "bad";
+
+// Returns the amount rounded to pennies (half a penny away from zero), a blank marker,
+// or "bad" for text that is not an amount. Readable zeros are numbers.
+const readAmount = (text: string): AmountCell => {
+  if (!text.trim()) return "blank";
+  const parsed = parseImportedAmount(text);
+  // Exponent notation shifts the decimal exactly, so 1.005 becomes 100.5 pence, not 100.4999.
+  if (parsed !== null) return Math.sign(parsed) * (Math.round(Number(`${Math.abs(parsed)}e2`)) / 100);
+  if (ZERO_TEXT.test(text.replace(/[£$,\s]/g, ""))) return 0;
+  return "bad";
+};
+
 const looksLikeData = (cells: string[]) =>
-  parseImportedDate(cells[0] ?? "") !== null && cells.some((cell) => parseImportedAmount(cell) !== null);
+  parseImportedDate(cells[0] ?? "") !== null && cells.some((cell) => typeof readAmount(cell) === "number");
+
+// Any row with two or more filled cells and no date or amount in it. Used only when
+// no row has a recognised date label, so the user can map an unfamiliar header.
+const isPlainTextRecord = ({ cells }: CsvRecord) =>
+  cells.filter((cell) => cell.trim()).length >= 2 &&
+  !cells.some((cell) => parseImportedDate(cell) !== null || parseImportedAmount(cell) !== null);
 
 // Finds the real header below any bank preamble. When the first record is a
 // data row instead, the file has no header, so nothing below it is searched and
-// columns are named Column 1, 2, ...
+// columns are named Column 1, 2, ... When no row has a recognised date label, the
+// first plain-text row is used as the header so its columns can be mapped by hand.
 export function findHeaderRow(records: CsvRecord[]): { headerIndex: number | null; headers: string[] } {
   const first = records[0];
   if (first && looksLikeData(first.cells)) {
@@ -147,23 +170,14 @@ export function findHeaderRow(records: CsvRecord[]): { headerIndex: number | nul
   }
   const headerIndex = records.findIndex(isHeaderRecord);
   if (headerIndex !== -1) return { headerIndex, headers: records[headerIndex].cells };
+  const fallbackIndex = records.findIndex(isPlainTextRecord);
+  if (fallbackIndex !== -1) return { headerIndex: fallbackIndex, headers: records[fallbackIndex].cells };
   return { headerIndex: null, headers: [] };
 }
 
-type AmountCell = number | "blank" | "bad";
-
-// Returns the amount rounded to pennies (half a penny away from zero), a blank marker,
-// or "bad" for text that is not an amount. Readable zeros are numbers.
-const readAmount = (text: string): AmountCell => {
-  if (!text.trim()) return "blank";
-  const parsed = parseImportedAmount(text);
-  if (parsed !== null) return Math.sign(parsed) * roundMoney(Math.abs(parsed));
-  if (ZERO_TEXT.test(text.replace(/[£$,\s]/g, ""))) return 0;
-  return "bad";
-};
-
 // Guesses the column roles from header names first, then from cell values for
-// any role the headers did not name. Balance columns are never amounts.
+// any role the headers did not name. Balance and reference columns are never
+// amounts, and when several numeric columns remain equally likely the user picks.
 export function detectColumns(headers: string[], sampleRows: string[][]): { mapping: ColumnMapping; split: boolean; reference?: string } {
   const mapping: ColumnMapping = { date: "", description: "", amount: "", amountIn: "", amountOut: "" };
   headers.forEach((header) => {
@@ -197,7 +211,6 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
     const cells = cellsOf(index);
     return cells.length === 0 ? 0 : cells.filter((cell) => parse(cell) !== null).length / cells.length;
   };
-  // Earlier columns win ties, so a running balance after the amount is never chosen.
   const bestBy = (candidates: number[], score: (index: number) => number) =>
     candidates.reduce<number | null>((best, index) => {
       const value = score(index);
@@ -212,31 +225,16 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
     if (best !== null) mapping.date = headers[best];
   }
   if (!split && !mapping.amount) {
-    const candidates = indexes.filter((index) => !headers[index].toLowerCase().includes("balance") && index !== headerIndexOf(mapping.date));
+    const candidates = indexes.filter((index) => !NOT_AN_AMOUNT_HEADER.test(headers[index]) && index !== headerIndexOf(mapping.date));
     const amountShare = (index: number) => share(index, (cell) => (readAmount(cell) === "bad" ? null : true));
-    // Running balance check: balance[i] = balance[i-1] + amount[i] for every row after the first.
-    const numberAt = (row: number, index: number) => {
-      const value = readAmount(sampleRows[row][index] ?? "");
-      return typeof value === "number" ? value : null;
-    };
-    const isRunningBalance = (balance: number, amount: number) => {
-      let pairs = 0;
-      for (let row = 1; row < sampleRows.length; row += 1) {
-        const previous = numberAt(row - 1, balance);
-        const current = numberAt(row, balance);
-        const change = numberAt(row, amount);
-        if (previous === null || current === null || change === null) return false;
-        if (Math.abs(previous + change - current) > 0.005) return false;
-        pairs += 1;
-      }
-      return pairs > 0;
-    };
-    const fullyNumeric = candidates.filter((index) => amountShare(index) === 1);
-    const isBalance = (index: number) =>
-      fullyNumeric.includes(index) && fullyNumeric.some((other) => other !== index && isRunningBalance(index, other));
-    const preferred = candidates.filter((index) => !isBalance(index));
-    const best = bestBy(preferred.length > 0 ? preferred : candidates, amountShare);
-    if (best !== null) mapping.amount = headers[best];
+    const qualifying = candidates.filter((index) => amountShare(index) > 0.5);
+    // Columns with a decimal point, a sign or brackets look like money; whole numbers may be references.
+    const moneyShaped = qualifying.filter((index) => cellsOf(index).some((cell) => MONEY_SHAPE.test(cell)));
+    const ranked = moneyShaped.length > 0 ? moneyShaped : qualifying;
+    const topShare = ranked.reduce((top, index) => Math.max(top, amountShare(index)), 0);
+    const tied = ranked.filter((index) => amountShare(index) === topShare);
+    // Two equally good candidates are ambiguous; the user picks the amount column.
+    if (tied.length === 1) mapping.amount = headers[tied[0]];
   }
   if (!mapping.description) {
     const taken = new Set([mapping.date, mapping.amount, mapping.amountIn, mapping.amountOut]);
@@ -312,7 +310,8 @@ export function mapStatementRows(records: CsvRecord[], headers: string[], mappin
 // Matches the server's limit on a single bulkCreate call.
 export const MAX_IMPORT_ROWS = 500;
 
-const countRows = (count: number) => `${count} row${count === 1 ? "" : "s"}`;
+// Whether a total number of rows to import is over the limit for one bulkCreate call.
+export const exceedsImportLimit = (total: number) => total > MAX_IMPORT_ROWS;
 
 const listLines = (lines: number[]) => {
   const shown = lines.slice(0, 5).join(", ");
@@ -320,14 +319,18 @@ const listLines = (lines: number[]) => {
   return `${lines.length === 1 ? "line" : "lines"} ${shown}${more}`;
 };
 
-// One sentence per kind of row that was left out, or null when every row was accepted.
+// Names each reason a row was left out with its lines, grouped by reason, or null
+// when every row was accepted. Skipped rows (no amount) are listed separately.
 export function describeLeftOutRows({ skipped, errors }: Pick<MappingResult, "skipped" | "errors">): string | null {
   const parts: string[] = [];
-  if (errors.length > 0) {
-    parts.push(`${countRows(errors.length)} couldn't be read (${listLines(errors.map((error) => error.line))}) and ${errors.length === 1 ? "was" : "were"} left out.`);
+  const linesByReason = new Map<string, number[]>();
+  for (const error of errors) linesByReason.set(error.reason, [...(linesByReason.get(error.reason) ?? []), error.line]);
+  if (linesByReason.size > 0) {
+    const groups = [...linesByReason].map(([reason, lines]) => `${reason} (${listLines(lines)})`);
+    parts.push(`Left out: ${groups.join("; ")}.`);
   }
   if (skipped.length > 0) {
-    parts.push(`${countRows(skipped.length)} had no amount and ${skipped.length === 1 ? "was" : "were"} skipped.`);
+    parts.push(`Skipped with no amount: ${listLines(skipped.map((row) => row.line))}.`);
   }
   return parts.length > 0 ? parts.join(" ") : null;
 }

@@ -142,7 +142,7 @@ describe("import category and date acceptance", () => {
     expect(scope.csvRows).toHaveLength(2);
     uiFunction("handleProcessMapping", scope)();
     // The impossible 31/02 row is reported with its line and kept out of review, not stored as typed.
-    expect(scope.notify).toHaveBeenLastCalledWith("Rows left out", "1 row couldn't be read (line 2) and was left out.");
+    expect(scope.notify).toHaveBeenLastCalledWith("Rows left out", "Left out: Date not real (line 2).");
     expect(scope.pendingTransactions).toHaveLength(1);
     expect(scope.pendingTransactions[0]).toMatchObject({ date: "2026-03-01", type: "Expenditure", amount: 250, category: "" });
     Object.assign(scope, { isProcessingAI: false, bankSyncReviewConnectionId: null, originalPredictions: new Map(), onPledgeCompleted: undefined,
