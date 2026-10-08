@@ -1,5 +1,5 @@
 import { mutation, type MutationCtx } from "../_generated/server";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 import { requireCapability } from "../lib/auth";
 import { Doc, Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
@@ -11,6 +11,9 @@ import {
   ensureTypedCategories,
   requireCanonicalCategory,
 } from "../lib/categoryIntegrity";
+import { resolveCategoryForTransaction } from "../intelligence/categorization/categoryResolver";
+import { isMovementCategory } from "../../lib/movementCategories";
+import { isNamedDonationTransaction } from "../../lib/inPersonGiving";
 import { assertNotLockedByReconciliation, deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 
 // Helper to normalize donor names for matching
@@ -74,6 +77,8 @@ const serviceRowValidator = v.object({
   serviceDate: v.string(),
   serviceNote: v.string(),
   fundId: v.id("funds"),
+  category: v.optional(v.string()),
+  programmeId: v.optional(v.id("programmes")),
   cash: v.number(),
   pdq: v.number(),
   cheque: v.number(),
@@ -91,7 +96,63 @@ const namedDonationValidator = v.object({
   ),
   amount: v.number(),
   isGiftAidEligible: v.boolean(),
+  serviceDate: v.optional(v.string()),
+  serviceNote: v.optional(v.string()),
 });
+
+type ServiceRowInput = Infer<typeof serviceRowValidator>;
+type NamedDonationInput = Infer<typeof namedDonationValidator>;
+
+function filterValidEntries({
+  serviceRows,
+  namedDonations = [],
+}: {
+  serviceRows: ServiceRowInput[];
+  namedDonations?: NamedDonationInput[];
+}) {
+  const validRows = serviceRows.filter(
+    (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
+  );
+  const validNamedDonations = namedDonations.filter(
+    (donation) =>
+      donation.donorName.trim().length >= 2 &&
+      donation.fundId &&
+      donation.amount > 0 &&
+      donation.category.trim().length > 0 &&
+      validNamedDonationPaymentMethods.has(donation.paymentMethod)
+  );
+
+  if (validRows.length === 0 && validNamedDonations.length === 0) {
+    throw new Error("Please add at least one service row or named donation with an amount.");
+  }
+
+  return { validRows, validNamedDonations };
+}
+
+async function loadOrganizationFund(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  fundId: Id<"funds">
+) {
+  const fund = await ctx.db.get(fundId);
+  if (!fund || fund.organizationId !== organizationId) {
+    throw new Error(`Invalid fund: ${fundId}`);
+  }
+  return fund;
+}
+
+async function resolveProgrammeId(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  programmeId: Id<"programmes"> | undefined
+) {
+  if (!programmeId) return undefined;
+  const programme = await ctx.db.get(programmeId);
+  if (!programme || programme.organizationId !== organizationId) {
+    throw new Error("Invalid programme");
+  }
+  return programme._id;
+}
 
 // Find or create donor by name (internal helper)
 async function findOrCreateDonor(
@@ -157,6 +218,191 @@ async function findOrCreateDonor(
   return { donorId, matchedName: name.trim(), isNew: true };
 }
 
+// Entries are deleted and re-inserted on edit, so an entry may keep a retired
+// category only if an entry of the same kind and fund already had it.
+type EntryKind = "service" | "donation";
+const retainedCategoryKey = (kind: EntryKind, fundId: Id<"funds">, category: string) =>
+  `${kind}:${fundId}:${category}`;
+
+function retainedCategoryKeys(transactions: Doc<"transactions">[]) {
+  return new Set(
+    transactions
+      .filter((transaction) => transaction.fundId)
+      .map((transaction) =>
+        retainedCategoryKey(
+          isNamedDonationTransaction(transaction) ? "donation" : "service",
+          transaction.fundId!,
+          transaction.category
+        )
+      )
+  );
+}
+
+// Clients from before entryFormat 2 send no categories, programmes or
+// donation dates, so their edits would silently erase them.
+function legacyEditWouldDropDetail(
+  transactions: Doc<"transactions">[],
+  weekEndingDate: string
+) {
+  return transactions.some((transaction) =>
+    isNamedDonationTransaction(transaction)
+      ? transaction.notes?.startsWith("service:") || transaction.date !== weekEndingDate
+      : transaction.programmeId !== undefined || transaction.category !== "Offerings"
+  );
+}
+
+function serviceRowDefaultCategory(
+  categories: Doc<"categories">[],
+  defaultIncomeCategory: string | undefined
+): string {
+  const defaultName = defaultIncomeCategory?.trim();
+  if (!defaultName) return "Offerings";
+  const resolved = resolveCategoryForTransaction(defaultName, "Income", categories);
+  return resolved && !resolved.isRetired && !isMovementCategory(resolved) ? defaultName : "Offerings";
+}
+
+async function insertCollectionEntries(
+  ctx: MutationCtx,
+  {
+    organizationId,
+    cashCollectionId,
+    weekEndingDate,
+    serviceRows,
+    namedDonations,
+    retainedCategories,
+  }: {
+    organizationId: Id<"organizations">;
+    cashCollectionId: Id<"cashCollections">;
+    weekEndingDate: string;
+    serviceRows: ServiceRowInput[];
+    namedDonations: NamedDonationInput[];
+    retainedCategories?: Set<string>;
+  }
+): Promise<Id<"transactions">[]> {
+  const categories = await ensureTypedCategories(ctx, organizationId);
+  const transactionIds: Id<"transactions">[] = [];
+
+  for (const row of serviceRows) {
+    const fund = await loadOrganizationFund(ctx, organizationId, row.fundId);
+    const requested =
+      row.category?.trim() || serviceRowDefaultCategory(categories, fund.defaultIncomeCategory);
+    const { category, movementKind } = requireCanonicalCategory(
+      categories,
+      requested,
+      "Income",
+      {
+        cashCollectionId,
+        currentCategory: retainedCategories?.has(retainedCategoryKey("service", row.fundId, requested))
+          ? requested
+          : undefined,
+      }
+    );
+    const programmeId = await resolveProgrammeId(ctx, organizationId, row.programmeId);
+    const serviceNote = row.serviceNote.trim() || "Service";
+
+    const methods = [
+      { label: "Cash", amount: row.cash, paymentMethod: "Cash" as const },
+      { label: "PDQ", amount: row.pdq, paymentMethod: "Card" as const },
+      { label: "Cheque", amount: row.cheque, paymentMethod: "Cheque" as const },
+    ];
+
+    for (const method of methods) {
+      const amount = positiveAmount(method.amount);
+      if (amount === null) continue;
+      assertValidTransactionDate(row.serviceDate);
+
+      const transactionId = await ctx.db.insert("transactions", {
+        organizationId,
+        date: row.serviceDate,
+        description: `${serviceNote} - ${method.label}`,
+        amount,
+        type: "Income",
+        category,
+        movementKind,
+        fundId: row.fundId,
+        isReconciled: false,
+        paymentMethod: method.paymentMethod,
+        cashCollectionId,
+        notes: `service:${serviceNote}`,
+        programmeId,
+        createdAt: Date.now(),
+      });
+
+      transactionIds.push(transactionId);
+    }
+  }
+
+  for (const donation of namedDonations) {
+    await loadOrganizationFund(ctx, organizationId, donation.fundId);
+
+    let donorId: Id<"donors">;
+    let matchedName: string;
+
+    if (donation.donorId) {
+      const donor = await ctx.db.get(donation.donorId);
+      if (!donor || donor.organizationId !== organizationId) {
+        throw new Error("Invalid donor");
+      }
+      donorId = donor._id;
+      matchedName = donor.name;
+    } else {
+      const donorMatch = await findOrCreateDonor(
+        ctx,
+        organizationId,
+        donation.donorName,
+        donation.isGiftAidEligible
+      );
+      donorId = donorMatch.donorId;
+      matchedName = donorMatch.matchedName;
+    }
+
+    const requestedCategory = donation.category.trim();
+    const { category, movementKind } = requireCanonicalCategory(
+      categories,
+      requestedCategory,
+      "Income",
+      {
+        cashCollectionId,
+        currentCategory: retainedCategories?.has(
+          retainedCategoryKey("donation", donation.fundId, requestedCategory)
+        )
+          ? requestedCategory
+          : undefined,
+      }
+    );
+    const amount = positiveAmount(donation.amount);
+    if (amount === null) {
+      throw new Error("Transaction amount must be greater than 0");
+    }
+    const serviceDate = donation.serviceDate || weekEndingDate;
+    assertValidTransactionDate(serviceDate);
+    const serviceNote = donation.serviceNote?.trim();
+
+    const transactionId = await ctx.db.insert("transactions", {
+      organizationId,
+      date: serviceDate,
+      description: `${category} - ${matchedName}`,
+      amount,
+      type: "Income",
+      category,
+      movementKind,
+      fundId: donation.fundId,
+      isReconciled: false,
+      paymentMethod: donation.paymentMethod,
+      cashCollectionId,
+      donorId,
+      donorName: matchedName,
+      isGiftAidEligible: donation.isGiftAidEligible,
+      notes: serviceNote ? `service:${serviceNote}` : undefined,
+      createdAt: Date.now(),
+    });
+
+    transactionIds.push(transactionId);
+  }
+
+  return transactionIds;
+}
+
 export const submitCollection = mutation({
   args: {
     weekEndingDate: v.string(),
@@ -168,21 +414,7 @@ export const submitCollection = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "cashCollections.write");
-    const validRows = args.serviceRows.filter(
-      (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
-    );
-    const validNamedDonations = (args.namedDonations ?? []).filter(
-      (donation) =>
-        donation.donorName.trim().length >= 2 &&
-        donation.fundId &&
-        donation.amount > 0 &&
-        donation.category.trim().length > 0 &&
-        validNamedDonationPaymentMethods.has(donation.paymentMethod)
-    );
-
-    if (validRows.length === 0 && validNamedDonations.length === 0) {
-      throw new Error("Please add at least one service row or named donation with an amount.");
-    }
+    const { validRows, validNamedDonations } = filterValidEntries(args);
 
     const cashCollectionId = await ctx.db.insert("cashCollections", {
       organizationId: user.organizationId,
@@ -195,104 +427,13 @@ export const submitCollection = mutation({
       createdAt: Date.now(),
     });
 
-    const transactionIds: Id<"transactions">[] = [];
-
-    for (const row of validRows) {
-      const fund = await ctx.db.get(row.fundId);
-      if (!fund || fund.organizationId !== user.organizationId) {
-        throw new Error(`Invalid fund: ${row.fundId}`);
-      }
-      const serviceNote = row.serviceNote.trim() || "Service";
-
-      const methods = [
-        { label: "Cash", amount: row.cash, paymentMethod: "Cash" as const },
-        { label: "PDQ", amount: row.pdq, paymentMethod: "Card" as const },
-        { label: "Cheque", amount: row.cheque, paymentMethod: "Cheque" as const },
-      ];
-
-      for (const method of methods) {
-        const amount = positiveAmount(method.amount);
-        if (amount === null) continue;
-        assertValidTransactionDate(row.serviceDate);
-
-        const transactionId = await ctx.db.insert("transactions", {
-          organizationId: user.organizationId,
-          date: row.serviceDate,
-          description: `${serviceNote} - ${method.label}`,
-          amount,
-          type: "Income",
-          category: "Offerings",
-          fundId: row.fundId,
-          isReconciled: false,
-          paymentMethod: method.paymentMethod,
-          cashCollectionId,
-          notes: `service:${serviceNote}`,
-          createdAt: Date.now(),
-        });
-
-        transactionIds.push(transactionId);
-      }
-    }
-
-    for (const donation of validNamedDonations) {
-      const fund = await ctx.db.get(donation.fundId);
-      if (!fund || fund.organizationId !== user.organizationId) {
-        throw new Error(`Invalid fund: ${donation.fundId}`);
-      }
-
-      let donorId: Id<"donors">;
-      let matchedName: string;
-
-      if (donation.donorId) {
-        const donor = await ctx.db.get(donation.donorId);
-        if (!donor || donor.organizationId !== user.organizationId) {
-          throw new Error("Invalid donor");
-        }
-        donorId = donor._id;
-        matchedName = donor.name;
-      } else {
-        const donorMatch = await findOrCreateDonor(
-          ctx,
-          user.organizationId,
-          donation.donorName,
-          donation.isGiftAidEligible
-        );
-        donorId = donorMatch.donorId;
-        matchedName = donorMatch.matchedName;
-      }
-
-      const categories = await ensureTypedCategories(ctx, user.organizationId);
-      const { category, movementKind } = requireCanonicalCategory(
-        categories,
-        donation.category.trim(),
-        "Income",
-        { cashCollectionId }
-      );
-      const amount = positiveAmount(donation.amount);
-      if (amount === null) {
-        throw new Error("Transaction amount must be greater than 0");
-      }
-      assertValidTransactionDate(args.weekEndingDate);
-      const transactionId = await ctx.db.insert("transactions", {
-        organizationId: user.organizationId,
-        date: args.weekEndingDate,
-        description: `${category} - ${matchedName}`,
-        amount,
-        type: "Income",
-        category,
-        movementKind,
-        fundId: donation.fundId,
-        isReconciled: false,
-        paymentMethod: donation.paymentMethod,
-        cashCollectionId,
-        donorId,
-        donorName: matchedName,
-        isGiftAidEligible: donation.isGiftAidEligible,
-        createdAt: Date.now(),
-      });
-
-      transactionIds.push(transactionId);
-    }
+    const transactionIds = await insertCollectionEntries(ctx, {
+      organizationId: user.organizationId,
+      cashCollectionId,
+      weekEndingDate: args.weekEndingDate,
+      serviceRows: validRows,
+      namedDonations: validNamedDonations,
+    });
 
     return {
       cashCollectionId,
@@ -311,6 +452,7 @@ export const replaceCollectionEntries = mutation({
     status: v.union(v.literal("draft"), v.literal("submitted")),
     serviceRows: v.array(serviceRowValidator),
     namedDonations: v.optional(v.array(namedDonationValidator)),
+    entryFormat: v.optional(v.literal(2)),
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "cashCollections.write");
@@ -321,26 +463,21 @@ export const replaceCollectionEntries = mutation({
     }
 
     const existingTransactions = await assertCollectionUnlocked(ctx, collection);
-
-    const validRows = args.serviceRows.filter(
-      (row) => row.serviceDate && row.fundId && row.cash + row.pdq + row.cheque > 0
-    );
-    const validNamedDonations = (args.namedDonations ?? []).filter(
-      (donation) =>
-        donation.donorName.trim().length >= 2 &&
-        donation.fundId &&
-        donation.amount > 0 &&
-        donation.category.trim().length > 0 &&
-        validNamedDonationPaymentMethods.has(donation.paymentMethod)
-    );
-
-    if (validRows.length === 0 && validNamedDonations.length === 0) {
-      throw new Error("Please add at least one service row or named donation with an amount.");
+    if (
+      args.entryFormat !== 2 &&
+      legacyEditWouldDropDetail(existingTransactions, collection.weekEndingDate)
+    ) {
+      throw new Error("This collection has details this page can't edit. Refresh the page and try again.");
     }
+    const { validRows, validNamedDonations } = filterValidEntries(args);
+    // An outdated page can only be editing Offerings rows (checked above), so
+    // its rows stay Offerings rather than taking the fund's current default.
+    const serviceRows =
+      args.entryFormat === 2
+        ? validRows
+        : validRows.map((row) => ({ ...row, category: row.category ?? "Offerings" }));
 
-    // Rows are deleted and re-inserted, so a retired category they already
-    // had still counts as theirs.
-    const previousCategories = new Set(existingTransactions.map((transaction) => transaction.category));
+    const retainedCategories = retainedCategoryKeys(existingTransactions);
     for (const transaction of existingTransactions) {
       await deleteTransaction(ctx, transaction._id, { lockOverride: "reconciliation-owner" });
     }
@@ -352,107 +489,14 @@ export const replaceCollectionEntries = mutation({
       status: args.status,
     });
 
-    const transactionIds: Id<"transactions">[] = [];
-
-    for (const row of validRows) {
-      const fund = await ctx.db.get(row.fundId);
-      if (!fund || fund.organizationId !== user.organizationId) {
-        throw new Error(`Invalid fund: ${row.fundId}`);
-      }
-      const serviceNote = row.serviceNote.trim() || "Service";
-
-      const methods = [
-        { label: "Cash", amount: row.cash, paymentMethod: "Cash" as const },
-        { label: "PDQ", amount: row.pdq, paymentMethod: "Card" as const },
-        { label: "Cheque", amount: row.cheque, paymentMethod: "Cheque" as const },
-      ];
-
-      for (const method of methods) {
-        const amount = positiveAmount(method.amount);
-        if (amount === null) continue;
-        assertValidTransactionDate(row.serviceDate);
-
-        const transactionId = await ctx.db.insert("transactions", {
-          organizationId: user.organizationId,
-          date: row.serviceDate,
-          description: `${serviceNote} - ${method.label}`,
-          amount,
-          type: "Income",
-          category: "Offerings",
-          fundId: row.fundId,
-          isReconciled: false,
-          paymentMethod: method.paymentMethod,
-          cashCollectionId: args.cashCollectionId,
-          notes: `service:${serviceNote}`,
-          createdAt: Date.now(),
-        });
-
-        transactionIds.push(transactionId);
-      }
-    }
-
-    for (const donation of validNamedDonations) {
-      const fund = await ctx.db.get(donation.fundId);
-      if (!fund || fund.organizationId !== user.organizationId) {
-        throw new Error(`Invalid fund: ${donation.fundId}`);
-      }
-
-      let donorId: Id<"donors">;
-      let matchedName: string;
-
-      if (donation.donorId) {
-        const donor = await ctx.db.get(donation.donorId);
-        if (!donor || donor.organizationId !== user.organizationId) {
-          throw new Error("Invalid donor");
-        }
-        donorId = donor._id;
-        matchedName = donor.name;
-      } else {
-        const donorMatch = await findOrCreateDonor(
-          ctx,
-          user.organizationId,
-          donation.donorName,
-          donation.isGiftAidEligible
-        );
-        donorId = donorMatch.donorId;
-        matchedName = donorMatch.matchedName;
-      }
-
-      const categories = await ensureTypedCategories(ctx, user.organizationId);
-      const { category, movementKind } = requireCanonicalCategory(
-        categories,
-        donation.category.trim(),
-        "Income",
-        {
-          cashCollectionId: args.cashCollectionId,
-          currentCategory: previousCategories.has(donation.category.trim()) ? donation.category.trim() : undefined,
-        }
-      );
-      const amount = positiveAmount(donation.amount);
-      if (amount === null) {
-        throw new Error("Transaction amount must be greater than 0");
-      }
-      assertValidTransactionDate(args.weekEndingDate);
-      const transactionId = await ctx.db.insert("transactions", {
-        organizationId: user.organizationId,
-        date: args.weekEndingDate,
-        description: `${category} - ${matchedName}`,
-        amount,
-        type: "Income",
-        category,
-        movementKind,
-        fundId: donation.fundId,
-        isReconciled: false,
-        paymentMethod: donation.paymentMethod,
-        cashCollectionId: args.cashCollectionId,
-        donorId,
-        donorName: matchedName,
-        isGiftAidEligible: donation.isGiftAidEligible,
-        createdAt: Date.now(),
-      });
-
-      transactionIds.push(transactionId);
-    }
+    const transactionIds = await insertCollectionEntries(ctx, {
+      organizationId: user.organizationId,
+      cashCollectionId: args.cashCollectionId,
+      weekEndingDate: args.weekEndingDate,
+      serviceRows,
+      namedDonations: validNamedDonations,
+      retainedCategories,
+    });
 
     return {
       cashCollectionId: args.cashCollectionId,

@@ -1,6 +1,27 @@
-import { mutation } from "../_generated/server";
+import { mutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
+import {
+  ensureTypedCategories,
+  requireCanonicalCategory,
+} from "../lib/categoryIntegrity";
+import type { Id } from "../_generated/dataModel";
+
+// An empty value resolves to undefined, which clears the stored default.
+async function canonicalDefaultIncomeCategory(
+  ctx: MutationCtx,
+  organizationId: Id<"organizations">,
+  value: string
+) {
+  const requested = value.trim();
+  if (!requested) return undefined;
+  const categories = await ensureTypedCategories(ctx, organizationId);
+  const { category, movementKind } = requireCanonicalCategory(categories, requested, "Income");
+  if (movementKind) {
+    throw new Error("A fund's cash collection category can't be a transfer, returned payment or loan");
+  }
+  return category;
+}
 
 // Create a new fund
 export const create = mutation({
@@ -16,6 +37,7 @@ export const create = mutation({
     targetAmount: v.optional(v.number()),
     deadline: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
+    defaultIncomeCategory: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "funds.write");
@@ -33,6 +55,11 @@ export const create = mutation({
       throw new Error(`A fund named "${args.name}" already exists`);
     }
 
+    const defaultIncomeCategory =
+      args.defaultIncomeCategory === undefined
+        ? undefined
+        : await canonicalDefaultIncomeCategory(ctx, user.organizationId, args.defaultIncomeCategory);
+
     const fundId = await ctx.db.insert("funds", {
       organizationId: user.organizationId,
       name: args.name,
@@ -41,6 +68,7 @@ export const create = mutation({
       targetAmount: args.targetAmount,
       deadline: args.deadline,
       logoUrl: args.logoUrl,
+      defaultIncomeCategory,
       createdAt: Date.now(),
     });
 
@@ -65,6 +93,7 @@ export const update = mutation({
     targetAmount: v.optional(v.number()),
     deadline: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
+    defaultIncomeCategory: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "funds.write");
@@ -96,6 +125,13 @@ export const update = mutation({
     if (args.targetAmount !== undefined) updates.targetAmount = args.targetAmount;
     if (args.deadline !== undefined) updates.deadline = args.deadline;
     if (args.logoUrl !== undefined) updates.logoUrl = args.logoUrl;
+    if (args.defaultIncomeCategory !== undefined) {
+      updates.defaultIncomeCategory = await canonicalDefaultIncomeCategory(
+        ctx,
+        user.organizationId,
+        args.defaultIncomeCategory
+      );
+    }
 
     await ctx.db.patch(args.fundId, updates);
 

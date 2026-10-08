@@ -114,11 +114,12 @@ export interface Fund {
   targetAmount?: number;
   deadline?: string; // For campaigns/projects
   logoUrl?: string;
+  defaultIncomeCategory?: string;
 }
 
 export type FundCreateInput = Pick<
   Fund,
-  "name" | "type" | "description" | "targetAmount" | "deadline" | "logoUrl"
+  "name" | "type" | "description" | "targetAmount" | "deadline" | "logoUrl" | "defaultIncomeCategory"
 >;
 
 export interface Pledge {

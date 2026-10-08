@@ -30,6 +30,7 @@ export const useFundCategoryActions = ({
         targetAmount: fund.targetAmount,
         deadline: fund.deadline,
         logoUrl: fund.logoUrl,
+        defaultIncomeCategory: fund.defaultIncomeCategory,
       });
       showNotification("Fund Created", `${fund.name} has been created.`);
     } catch (error) {
@@ -48,6 +49,7 @@ export const useFundCategoryActions = ({
         targetAmount: fund.targetAmount,
         deadline: fund.deadline,
         logoUrl: fund.logoUrl,
+        defaultIncomeCategory: fund.defaultIncomeCategory,
       });
       showNotification("Fund Updated", `${fund.name} has been updated.`);
     } catch (error) {

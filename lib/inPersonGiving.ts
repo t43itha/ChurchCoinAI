@@ -33,6 +33,7 @@ interface GivingTransaction {
   isVoided?: boolean;
   movementKind?: MovementKind;
   isJournal?: boolean;
+  programmeId?: string;
 }
 
 interface GivingFund {
@@ -47,6 +48,8 @@ export interface InPersonGivingLedgerRow {
   serviceNote: string;
   fundId: string;
   fundName: string;
+  category: string;
+  programmeId?: string;
   cash: number;
   pdq: number;
   cheque: number;
@@ -63,6 +66,8 @@ export interface InPersonGivingNamedDonation {
   paymentMethod?: PaymentMethod;
   isGiftAidEligible: boolean;
   amount: number;
+  serviceDate: string;
+  serviceNote?: string;
 }
 
 export interface InPersonGivingLedger {
@@ -83,19 +88,21 @@ export interface InPersonGivingLedger {
 
 export const SERVICE_NOTE_PREFIX = "service:";
 
-export function parseServiceNote(notes: string | undefined): string {
+function serviceNoteOf(notes: string | undefined): string | undefined {
   if (!notes?.startsWith(SERVICE_NOTE_PREFIX)) {
-    return "Service";
+    return undefined;
   }
 
-  return notes.slice(SERVICE_NOTE_PREFIX.length).trim() || "Service";
+  return notes.slice(SERVICE_NOTE_PREFIX.length).trim() || undefined;
 }
 
-function isServiceTransaction(transaction: GivingTransaction): boolean {
-  return transaction.notes?.startsWith(SERVICE_NOTE_PREFIX) === true;
+export function parseServiceNote(notes: string | undefined): string {
+  return serviceNoteOf(notes) ?? "Service";
 }
 
-function isNamedDonationTransaction(transaction: GivingTransaction): boolean {
+export function isNamedDonationTransaction(
+  transaction: Pick<GivingTransaction, "donorId" | "donorName">
+): boolean {
   return Boolean(transaction.donorId || transaction.donorName?.trim());
 }
 
@@ -109,9 +116,13 @@ function rowId(
   collectionId: string,
   serviceDate: string,
   serviceNote: string,
-  fundId: string
+  fundId: string,
+  category: string,
+  programmeId: string | undefined
 ) {
-  return `${collectionId}-${serviceDate}-${serviceNote}-${fundId}`;
+  return [collectionId, serviceDate, serviceNote, fundId, category, programmeId]
+    .filter((part) => part !== undefined)
+    .join("-");
 }
 
 export function groupInPersonGivingCollections({
@@ -157,10 +168,8 @@ export function groupInPersonGivingCollections({
         fundTotalsById.set(transaction.fundId, fundTotal);
         fundNames.add(fundName);
 
-        if (
-          !isServiceTransaction(transaction) &&
-          isNamedDonationTransaction(transaction)
-        ) {
+        // Donor first: a named donation keeps any service note it carries.
+        if (isNamedDonationTransaction(transaction)) {
           namedDonations.push({
             id: transaction._id,
             donorId: transaction.donorId,
@@ -171,6 +180,8 @@ export function groupInPersonGivingCollections({
             paymentMethod: transaction.paymentMethod,
             isGiftAidEligible: transaction.isGiftAidEligible === true,
             amount: transaction.amount,
+            serviceDate: transaction.date,
+            serviceNote: serviceNoteOf(transaction.notes),
           });
           continue;
         }
@@ -180,7 +191,9 @@ export function groupInPersonGivingCollections({
           collection._id,
           transaction.date,
           serviceNote,
-          transaction.fundId
+          transaction.fundId,
+          transaction.category,
+          transaction.programmeId
         );
         const existing =
           rowsByKey.get(key) ??
@@ -191,6 +204,8 @@ export function groupInPersonGivingCollections({
             serviceNote,
             fundId: transaction.fundId,
             fundName,
+            category: transaction.category,
+            programmeId: transaction.programmeId,
             cash: 0,
             pdq: 0,
             cheque: 0,
@@ -257,10 +272,11 @@ export function filterInPersonGivingLedgersByMonth(
   }
 
   return ledgers.filter((ledger) => {
-    const candidateDates =
-      ledger.rows.length > 0
-        ? ledger.rows.map((row) => row.serviceDate)
-        : [ledger.weekEndingDate];
+    const serviceDates = [
+      ...ledger.rows.map((row) => row.serviceDate),
+      ...ledger.namedDonations.map((donation) => donation.serviceDate),
+    ];
+    const candidateDates = serviceDates.length > 0 ? serviceDates : [ledger.weekEndingDate];
 
     return candidateDates.some((candidateDate) => {
       const date = new Date(`${candidateDate}T00:00:00`);

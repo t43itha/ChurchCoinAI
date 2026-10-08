@@ -3,6 +3,7 @@ import {
   filterInPersonGivingLedgersByMonth,
   groupInPersonGivingCollections,
   parseServiceNote,
+  type InPersonGivingLedger,
 } from "../lib/inPersonGiving";
 
 describe("in-person giving grouping", () => {
@@ -71,12 +72,13 @@ describe("in-person giving grouping", () => {
     ]);
     expect(ledgers[0].rows).toEqual([
       {
-        id: "collection-1-2026-05-17-Sunday Service-building-fund",
+        id: "collection-1-2026-05-17-Sunday Service-building-fund-Offerings",
         day: "Sun",
         serviceDate: "2026-05-17",
         serviceNote: "Sunday Service",
         fundId: "building-fund",
         fundName: "Building Fund",
+        category: "Offerings",
         cash: 780,
         pdq: 284.5,
         cheque: 220,
@@ -170,12 +172,13 @@ describe("in-person giving grouping", () => {
     ]);
     expect(ledgers[0].rows).toEqual([
       {
-        id: "collection-1-2026-06-08-Sunday Service-general-fund",
+        id: "collection-1-2026-06-08-Sunday Service-general-fund-Offerings",
         day: "Mon",
         serviceDate: "2026-06-08",
         serviceNote: "Sunday Service",
         fundId: "general-fund",
         fundName: "General Fund",
+        category: "Offerings",
         cash: 420,
         pdq: 180,
         cheque: 0,
@@ -193,6 +196,7 @@ describe("in-person giving grouping", () => {
         paymentMethod: "Cash",
         isGiftAidEligible: true,
         amount: 250,
+        serviceDate: "2026-06-14",
       },
       {
         id: "tx-named-tithe",
@@ -204,6 +208,7 @@ describe("in-person giving grouping", () => {
         paymentMethod: "Cheque",
         isGiftAidEligible: false,
         amount: 100,
+        serviceDate: "2026-06-14",
       },
     ]);
   });
@@ -242,12 +247,13 @@ describe("in-person giving grouping", () => {
     expect(ledgers[0].namedDonations).toEqual([]);
     expect(ledgers[0].rows).toEqual([
       {
-        id: "collection-1-2026-06-14-Service-general-fund",
+        id: "collection-1-2026-06-14-Service-general-fund-Offerings",
         day: "Sun",
         serviceDate: "2026-06-14",
         serviceNote: "Service",
         fundId: "general-fund",
         fundName: "General Fund",
+        category: "Offerings",
         cash: 75,
         pdq: 0,
         cheque: 0,
@@ -273,6 +279,7 @@ describe("in-person giving grouping", () => {
         rows: [
           {
             id: "may-row",
+            category: "Offerings",
             day: "Sun",
             serviceDate: "2026-05-10",
             serviceNote: "Sunday Service",
@@ -296,6 +303,7 @@ describe("in-person giving grouping", () => {
         rows: [
           {
             id: "june-row",
+            category: "Offerings",
             day: "Sun",
             serviceDate: "2026-06-07",
             serviceNote: "Sunday Service",
@@ -321,6 +329,69 @@ describe("in-person giving grouping", () => {
   });
 });
 
+describe("in-person giving month filter with named donations", () => {
+  const ledgerWith = (overrides: Partial<InPersonGivingLedger>): InPersonGivingLedger => ({
+    collectionId: "c",
+    weekEndingDate: "2026-11-01",
+    status: "submitted",
+    fundNames: [],
+    fundTotals: [],
+    rows: [],
+    namedDonations: [],
+    total: 0,
+    ...overrides,
+  });
+
+  const donation = (serviceDate: string) => ({
+    id: `donation-${serviceDate}`,
+    donorName: "Ruth Adeyemi",
+    category: "Tithes & First Fruits",
+    fundId: "general",
+    fundName: "General Fund",
+    isGiftAidEligible: false,
+    amount: 40,
+    serviceDate,
+  });
+
+  const serviceRow = (serviceDate: string) => ({
+    id: `row-${serviceDate}`,
+    day: "Sun",
+    serviceDate,
+    serviceNote: "Sunday",
+    fundId: "general",
+    fundName: "General Fund",
+    category: "Offerings",
+    cash: 100,
+    pdq: 0,
+    cheque: 0,
+    total: 100,
+  });
+
+  it("places a donation-only ledger in the month of its donation, not its week ending", () => {
+    const donationOnly = ledgerWith({
+      collectionId: "donation-only",
+      weekEndingDate: "2026-11-01",
+      namedDonations: [donation("2026-10-30")],
+    });
+
+    expect(filterInPersonGivingLedgersByMonth([donationOnly], 9, 2026)).toEqual([donationOnly]);
+    expect(filterInPersonGivingLedgersByMonth([donationOnly], 10, 2026)).toEqual([]);
+  });
+
+  it("places a mixed ledger in every month its rows and donations touch", () => {
+    const mixed = ledgerWith({
+      collectionId: "mixed",
+      weekEndingDate: "2026-11-08",
+      rows: [serviceRow("2026-10-25")],
+      namedDonations: [donation("2026-11-04")],
+    });
+
+    expect(filterInPersonGivingLedgersByMonth([mixed], 9, 2026)).toEqual([mixed]);
+    expect(filterInPersonGivingLedgersByMonth([mixed], 10, 2026)).toEqual([mixed]);
+    expect(filterInPersonGivingLedgersByMonth([mixed], 11, 2026)).toEqual([]);
+  });
+});
+
 describe("in-person giving with movement rows", () => {
   it("keeps a collection row marked as a loan, so editing the collection does not drop it", () => {
     const [ledger] = groupInPersonGivingCollections({
@@ -337,5 +408,96 @@ describe("in-person giving with movement rows", () => {
 
     expect(ledger.total).toBe(110);
     expect(ledger.namedDonations.map((donation) => [donation.id, donation.category])).toEqual([["loan", "Loan"]]);
+  });
+});
+
+describe("in-person giving with service notes, categories and programmes", () => {
+  const collection = {
+    _id: "c1",
+    weekEndingDate: "2026-10-04",
+    collectionDate: "2026-10-04",
+    status: "submitted" as const,
+    recordedAt: 1,
+    recordedBy: "u",
+    createdAt: 1,
+  };
+  const funds = [{ _id: "general", name: "General Fund" }];
+  const base = {
+    date: "2026-10-04",
+    amount: 20,
+    type: "Income" as const,
+    fundId: "general",
+    isReconciled: false,
+    paymentMethod: "Cash" as const,
+    cashCollectionId: "c1",
+  };
+
+  it("keeps a named tithe with a service note as a named donation with its service date and note", () => {
+    const [ledger] = groupInPersonGivingCollections({
+      collections: [collection],
+      transactions: [
+        {
+          ...base,
+          _id: "tithe",
+          description: "Tithes & First Fruits - Kwame Mensah",
+          category: "Tithes & First Fruits",
+          donorName: "Kwame Mensah",
+          donorId: "donor-2",
+          notes: "service:Friday",
+          date: "2026-10-02",
+        },
+      ],
+      funds,
+    });
+
+    expect(ledger.rows).toEqual([]);
+    expect(ledger.namedDonations).toEqual([
+      {
+        id: "tithe",
+        donorId: "donor-2",
+        donorName: "Kwame Mensah",
+        category: "Tithes & First Fruits",
+        fundId: "general",
+        fundName: "General Fund",
+        paymentMethod: "Cash",
+        isGiftAidEligible: false,
+        amount: 20,
+        serviceDate: "2026-10-02",
+        serviceNote: "Friday",
+      },
+    ]);
+  });
+
+  it("keeps an offering and an anonymous tithe for the same service and fund as separate rows", () => {
+    const [ledger] = groupInPersonGivingCollections({
+      collections: [collection],
+      transactions: [
+        { ...base, _id: "offering", description: "Sunday - Cash", category: "Offerings", notes: "service:Sunday" },
+        { ...base, _id: "anon-tithe", description: "Tithes - Cash", category: "Tithes & First Fruits", notes: "service:Sunday" },
+      ],
+      funds,
+    });
+
+    expect(ledger.rows.map((row) => [row.category, row.cash, row.total])).toEqual([
+      ["Offerings", 20, 20],
+      ["Tithes & First Fruits", 20, 20],
+    ]);
+    expect(new Set(ledger.rows.map((row) => row.id)).size).toBe(2);
+  });
+
+  it("keeps the same service rows under different programmes as separate rows", () => {
+    const [ledger] = groupInPersonGivingCollections({
+      collections: [collection],
+      transactions: [
+        { ...base, _id: "harvest", description: "Sunday - Cash", category: "Offerings", notes: "service:Sunday", programmeId: "harvest" },
+        { ...base, _id: "plain", description: "Sunday - Cash", category: "Offerings", notes: "service:Sunday" },
+      ],
+      funds,
+    });
+
+    expect(ledger.rows.map((row) => [row.programmeId, row.total])).toEqual([
+      ["harvest", 20],
+      [undefined, 20],
+    ]);
   });
 });

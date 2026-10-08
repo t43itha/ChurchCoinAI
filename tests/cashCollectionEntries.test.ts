@@ -1,0 +1,311 @@
+import { describe, expect, it } from "vitest";
+import * as cashCollections from "../convex/mutations/cashCollections";
+import { fixture, invoke, type Row } from "./helpers/convexFixture";
+
+const generalFund = (extra: Record<string, unknown> = {}): Row => ({
+  _id: "fund",
+  organizationId: "org",
+  name: "General Fund",
+  type: "Unrestricted",
+  ...extra,
+});
+
+const serviceRow = (extra: Record<string, unknown> = {}) => ({
+  serviceDate: "2026-10-04",
+  serviceNote: "Sunday",
+  fundId: "fund",
+  cash: 50,
+  pdq: 0,
+  cheque: 0,
+  ...extra,
+});
+
+const donation = (extra: Record<string, unknown> = {}) => ({
+  donorName: "Ruth Adeyemi",
+  category: "Tithes & First Fruits",
+  fundId: "fund",
+  paymentMethod: "Cash" as const,
+  amount: 40,
+  isGiftAidEligible: false,
+  ...extra,
+});
+
+const submit = (ctx: Parameters<typeof invoke>[1], args: Record<string, unknown>) =>
+  invoke(cashCollections.submitCollection, ctx, {
+    weekEndingDate: "2026-10-04",
+    collectionDate: "2026-10-04",
+    ...args,
+  }) as Promise<{ cashCollectionId: string }>;
+
+const collectionTransactions = (records: Record<string, Row[]>, cashCollectionId: string) =>
+  records.transactions
+    .filter((transaction) => transaction.cashCollectionId === cashCollectionId)
+    .map((transaction) => ({
+      date: transaction.date,
+      amount: transaction.amount,
+      category: transaction.category,
+      programmeId: transaction.programmeId ?? null,
+      notes: transaction.notes ?? null,
+      donorName: transaction.donorName,
+    }));
+
+describe("cash collection service rows", () => {
+  it("saves the category the row names", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    await submit(ctx, {
+      serviceRows: [serviceRow({ category: "Tithes & First Fruits" })],
+    });
+
+    expect(records.transactions.map((transaction) => transaction.category)).toEqual(["Tithes & First Fruits"]);
+  });
+
+  it("falls back to the fund's default category when the row names none", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund({ defaultIncomeCategory: "Building Fund" })] });
+    await submit(ctx, { serviceRows: [serviceRow()] });
+
+    expect(records.transactions.map((transaction) => transaction.category)).toEqual(["Building Fund"]);
+  });
+
+  it("saves Offerings when neither the row nor the fund names a category", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    await submit(ctx, { serviceRows: [serviceRow()] });
+
+    expect(records.transactions.map((transaction) => transaction.category)).toEqual(["Offerings"]);
+  });
+
+  it("saves Offerings for an untagged row when the fund's default category has been retired", async () => {
+    const { ctx, records } = fixture({
+      funds: [generalFund({ defaultIncomeCategory: "Building Fund" })],
+      categories: [
+        { _id: "building", organizationId: "org", name: "Building Fund", transactionType: "Income", isRetired: true, createdAt: 1 },
+      ],
+    });
+    await submit(ctx, { serviceRows: [serviceRow()] });
+
+    expect(records.transactions.map((transaction) => transaction.category)).toEqual(["Offerings"]);
+  });
+
+  it("saves Offerings for an untagged row when the fund's default category has been deleted", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund({ defaultIncomeCategory: "Harvest Giving" })] });
+    await submit(ctx, { serviceRows: [serviceRow()] });
+
+    expect(records.transactions.map((transaction) => transaction.category)).toEqual(["Offerings"]);
+  });
+
+  it("still rejects a row that explicitly names a retired category", async () => {
+    const { ctx } = fixture({
+      funds: [generalFund()],
+      categories: [
+        { _id: "tithes", organizationId: "org", name: "Tithes & First Fruits", transactionType: "Income", isRetired: true, createdAt: 1 },
+      ],
+    });
+
+    await expect(
+      submit(ctx, { serviceRows: [serviceRow({ category: "Tithes & First Fruits" })] })
+    ).rejects.toThrow("Tithes & First Fruits is retired. Choose another category.");
+  });
+
+  it("rejects a programme from another organization", async () => {
+    const { ctx } = fixture({
+      funds: [generalFund()],
+      programmes: [{ _id: "camp", organizationId: "other-org", name: "Camp", createdAt: 1 }],
+    });
+
+    await expect(submit(ctx, { serviceRows: [serviceRow({ programmeId: "camp" })] })).rejects.toThrow("Invalid programme");
+  });
+
+  it("stores a valid programme on every transaction the row inserts", async () => {
+    const { ctx, records } = fixture({
+      funds: [generalFund()],
+      programmes: [{ _id: "harvest", organizationId: "org", name: "Harvest", createdAt: 1 }],
+    });
+    const { cashCollectionId } = await submit(ctx, {
+      serviceRows: [serviceRow({ cash: 30, pdq: 20, programmeId: "harvest" })],
+    });
+
+    expect(collectionTransactions(records, cashCollectionId).map((transaction) => transaction.programmeId)).toEqual([
+      "harvest",
+      "harvest",
+    ]);
+  });
+});
+
+describe("cash collection named donations", () => {
+  it("dates a named donation from its service date and keeps its service note", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, {
+      serviceRows: [],
+      namedDonations: [donation({ serviceDate: "2026-10-02", serviceNote: "Friday" })],
+    });
+
+    expect(collectionTransactions(records, cashCollectionId)).toEqual([
+      {
+        date: "2026-10-02",
+        amount: 40,
+        category: "Tithes & First Fruits",
+        programmeId: null,
+        notes: "service:Friday",
+        donorName: "Ruth Adeyemi",
+      },
+    ]);
+  });
+
+  it("dates a named donation with no service date on the week ending", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [], namedDonations: [donation()] });
+
+    expect(collectionTransactions(records, cashCollectionId)).toMatchObject([
+      { date: "2026-10-04", notes: null },
+    ]);
+  });
+
+  it("rejects an invalid service date on a named donation", async () => {
+    const { ctx } = fixture({ funds: [generalFund()] });
+
+    await expect(
+      submit(ctx, { serviceRows: [], namedDonations: [donation({ serviceDate: "2026-02-30" })] })
+    ).rejects.toThrow("Transaction date is not a real calendar date");
+  });
+});
+
+describe("replacing a cash collection applies the same rules", () => {
+  it("re-saves rows with their category, programme and service dates", async () => {
+    const { ctx, records } = fixture({
+      funds: [generalFund({ defaultIncomeCategory: "Building Fund" })],
+      programmes: [{ _id: "harvest", organizationId: "org", name: "Harvest", createdAt: 1 }],
+    });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow({ cash: 10 })] });
+
+    await invoke(cashCollections.replaceCollectionEntries, ctx, {
+      cashCollectionId,
+      weekEndingDate: "2026-10-04",
+      collectionDate: "2026-10-04",
+      status: "submitted",
+      entryFormat: 2,
+      serviceRows: [
+        serviceRow({ cash: 30, programmeId: "harvest" }),
+        serviceRow({
+          serviceNote: "Harvest",
+          cash: 0,
+          pdq: 20,
+          category: "Tithes & First Fruits",
+          programmeId: "harvest",
+        }),
+      ],
+      namedDonations: [donation({ serviceDate: "2026-10-02", serviceNote: "Friday" })],
+    });
+
+    expect(collectionTransactions(records, cashCollectionId)).toEqual([
+      { date: "2026-10-04", amount: 30, category: "Building Fund", programmeId: "harvest", notes: "service:Sunday", donorName: undefined },
+      { date: "2026-10-04", amount: 20, category: "Tithes & First Fruits", programmeId: "harvest", notes: "service:Harvest", donorName: undefined },
+      { date: "2026-10-02", amount: 40, category: "Tithes & First Fruits", programmeId: null, notes: "service:Friday", donorName: "Ruth Adeyemi" },
+    ]);
+  });
+
+  it("rejects a programme from another organization", async () => {
+    const { ctx } = fixture({
+      funds: [generalFund()],
+      programmes: [{ _id: "camp", organizationId: "other-org", name: "Camp", createdAt: 1 }],
+    });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow()] });
+
+    await expect(
+      invoke(cashCollections.replaceCollectionEntries, ctx, {
+        cashCollectionId,
+        weekEndingDate: "2026-10-04",
+        collectionDate: "2026-10-04",
+        status: "submitted",
+        serviceRows: [serviceRow({ programmeId: "camp" })],
+      })
+    ).rejects.toThrow("Invalid programme");
+  });
+});
+
+describe("editing a cash collection keeps what it already recorded", () => {
+  const replace = (ctx: Parameters<typeof invoke>[1], cashCollectionId: string, args: Record<string, unknown>) =>
+    invoke(cashCollections.replaceCollectionEntries, ctx, {
+      cashCollectionId,
+      weekEndingDate: "2026-10-04",
+      collectionDate: "2026-10-04",
+      status: "submitted",
+      ...args,
+    });
+
+  const harvestGiving = () => ({ _id: "harvest-giving", organizationId: "org", name: "Harvest Giving", transactionType: "Income", createdAt: 1 });
+
+  it("rejects an edit from an outdated page that would erase a donation's service date and Gift Aid detail", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, {
+      serviceRows: [serviceRow({ category: "Tithes & First Fruits" })],
+      namedDonations: [donation({ serviceDate: "2026-10-02", serviceNote: "Friday", isGiftAidEligible: true })],
+    });
+    const before = collectionTransactions(records, cashCollectionId);
+
+    await expect(
+      replace(ctx, cashCollectionId, { serviceRows: [serviceRow({ serviceNote: "Friday", cash: 40 })] })
+    ).rejects.toThrow("Refresh the page");
+    expect(collectionTransactions(records, cashCollectionId)).toEqual(before);
+  });
+
+  it("lets an outdated page edit a collection that only has plain offerings", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow()], namedDonations: [donation()] });
+
+    await replace(ctx, cashCollectionId, { serviceRows: [serviceRow({ cash: 75 })] });
+
+    expect(collectionTransactions(records, cashCollectionId)).toMatchObject([{ amount: 75, category: "Offerings" }]);
+  });
+
+  it("treats a donation whose donor was deleted as a donation, not a service row", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, {
+      serviceRows: [],
+      namedDonations: [donation({ category: "Offerings", serviceNote: "Friday", isGiftAidEligible: true })],
+    });
+    delete records.transactions[0].donorId;
+
+    await expect(
+      replace(ctx, cashCollectionId, { serviceRows: [serviceRow({ serviceNote: "Friday", cash: 40 })] })
+    ).rejects.toThrow("Refresh the page");
+  });
+
+  it("keeps an outdated page's edited rows in Offerings when the fund has since gained a default", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()] });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow()] });
+    records.funds[0].defaultIncomeCategory = "Tithes & First Fruits";
+
+    await replace(ctx, cashCollectionId, { serviceRows: [serviceRow({ cash: 80 })] });
+
+    expect(collectionTransactions(records, cashCollectionId)).toMatchObject([{ amount: 80, category: "Offerings" }]);
+  });
+
+  it("lets a service row keep a category retired since it was saved", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()], categories: [harvestGiving()] });
+    const { cashCollectionId } = await submit(ctx, { serviceRows: [serviceRow({ category: "Harvest Giving" })] });
+    records.categories.find((category) => category._id === "harvest-giving")!.isRetired = true;
+
+    await replace(ctx, cashCollectionId, {
+      entryFormat: 2,
+      serviceRows: [serviceRow({ category: "Harvest Giving", cash: 60 })],
+    });
+
+    expect(collectionTransactions(records, cashCollectionId)).toMatchObject([{ amount: 60, category: "Harvest Giving" }]);
+  });
+
+  it("does not let a donation's retired category authorise a new service row in it", async () => {
+    const { ctx, records } = fixture({ funds: [generalFund()], categories: [harvestGiving()] });
+    const { cashCollectionId } = await submit(ctx, {
+      serviceRows: [],
+      namedDonations: [donation({ category: "Harvest Giving" })],
+    });
+    records.categories.find((category) => category._id === "harvest-giving")!.isRetired = true;
+
+    await expect(
+      replace(ctx, cashCollectionId, {
+        entryFormat: 2,
+        serviceRows: [serviceRow({ category: "Harvest Giving", cash: 100 })],
+        namedDonations: [donation({ category: "Harvest Giving" })],
+      })
+    ).rejects.toThrow("Harvest Giving is retired. Choose another category.");
+  });
+});
