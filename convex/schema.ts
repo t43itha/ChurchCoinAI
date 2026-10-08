@@ -165,10 +165,22 @@ export default defineSchema({
     targetAmount: v.optional(v.number()),
     deadline: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
+    // Category that cash collection rows on this fund use when they name none.
+    defaultIncomeCategory: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_type", ["organizationId", "type"]),
+
+  // Programmes tag cash collection rows (e.g. a harvest or camp appeal).
+  programmes: defineTable({
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    isArchived: v.optional(v.boolean()),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_name", ["organizationId", "name"]),
 
   // Donors
   donors: defineTable({
@@ -272,12 +284,14 @@ export default defineSchema({
     movementId: v.optional(v.id("movements")),
     // App-created leg of a transfer between funds that never leaves the bank.
     isJournal: v.optional(v.boolean()),
+    programmeId: v.optional(v.id("programmes")),
     createdAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
     .index("by_fund", ["fundId"])
     .index("by_movement", ["movementId"])
     .index("by_organization_date", ["organizationId", "date"])
+    .index("by_organization_programme", ["organizationId", "programmeId"])
     .index("by_pledge", ["pledgeId"])
     .index("by_donor", ["donorId"])
     .index("by_cashCollection", ["cashCollectionId"])

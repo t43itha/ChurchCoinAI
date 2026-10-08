@@ -200,7 +200,7 @@ export const setRetired = mutation({
     if (category.movementKind) {
       throw new Error("Built-in transfer, returned payment and loan categories can't be retired.");
     }
-    // Cash collection service rows are always recorded as Offerings.
+    // Cash collection service rows fall back to Offerings when they name no category.
     if (args.retired && category.name.trim().toLowerCase() === "offerings") {
       throw new Error("Offerings can't be retired: cash collections record service giving there.");
     }

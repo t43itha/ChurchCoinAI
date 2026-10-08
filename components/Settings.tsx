@@ -5,7 +5,7 @@ import { useConvex } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { useLocation } from 'react-router-dom';
-import { AppUser, Category, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult } from '../types';
+import { AppUser, Category, FundCreateInput, UserRole, ChurchDetails, Fund, FundType, Invitation, InvitationCreateInput, InvitationSendResult, TransactionType } from '../types';
 import { ShieldAlert, Plus, X, Tag, Save, Building2, Wallet, Users, Edit2, Trash2, Mail, MapPin, Hash, CalendarClock, Upload, Image as ImageIcon, Landmark, Clock, Copy, Check, Database, CreditCard } from 'lucide-react';
 
 import BankConnectionsSettings from './BankConnectionsSettings';
@@ -13,6 +13,7 @@ import DataPrivacySettings from './DataPrivacySettings';
 import BillingSettings from './BillingSettings';
 import { notify } from '../lib/notifications';
 import { isMovementCategory } from '../lib/movementCategories';
+import { categoryNamesForTransactionTypes } from '../lib/transactionCategories';
 
 // Refined Ledger tone palette (dot badges)
 const TONE = {
@@ -332,6 +333,15 @@ ${currentUser.name}`;
     }
   };
 
+  const fundIncomeCategoryNames = (() => {
+      const valid = new Set(categoryNamesForTransactionTypes(categories, [TransactionType.INCOME]));
+      const names = categories
+          .filter((category) => valid.has(category.name) && !isMovementCategory(category))
+          .map((category) => category.name);
+      const saved = editingFund?.defaultIncomeCategory;
+      return saved && !names.includes(saved) ? [...names, saved] : names;
+  })();
+
   const handleSaveFund = (e: React.FormEvent) => {
       e.preventDefault();
       if (editingFund?.name && editingFund.type) {
@@ -344,7 +354,8 @@ ${currentUser.name}`;
                   description: editingFund.description,
                   targetAmount: editingFund.targetAmount ? Number(editingFund.targetAmount) : undefined,
                   deadline: editingFund.deadline,
-                  logoUrl: editingFund.logoUrl
+                  logoUrl: editingFund.logoUrl,
+                  defaultIncomeCategory: editingFund.defaultIncomeCategory || undefined
               });
           }
           setShowFundModal(false);
@@ -1065,6 +1076,20 @@ ${currentUser.name}`;
                             <option value={FundType.UNRESTRICTED}>Unrestricted (General)</option>
                             <option value={FundType.RESTRICTED}>Restricted (Campaign)</option>
                             <option value={FundType.DESIGNATED}>Designated</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className={labelClass}>Cash collections use category</label>
+                        <select
+                            value={editingFund?.defaultIncomeCategory || ''}
+                            onChange={(e) => setEditingFund({...editingFund, defaultIncomeCategory: e.target.value})}
+                            className={inputClass}
+                        >
+                            <option value="">Offerings (default)</option>
+                            {fundIncomeCategoryNames.map((name) => (
+                                <option key={name} value={name}>{name}</option>
+                            ))}
                         </select>
                     </div>
 

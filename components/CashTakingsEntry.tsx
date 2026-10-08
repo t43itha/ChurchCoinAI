@@ -33,6 +33,8 @@ interface ServiceRowEntry {
   serviceDate: string;
   serviceNote: string;
   fundId: string;
+  category?: string;
+  programmeId?: Id<"programmes">;
   cash: string;
   pdq: string;
   cheque: string;
@@ -49,6 +51,8 @@ interface NamedDonationEntry {
   paymentMethod: NamedDonationPaymentMethod;
   amount: string;
   isGiftAidEligible: boolean;
+  serviceDate?: string;
+  serviceNote?: string;
 }
 
 interface CashTakingsEntryProps {
@@ -135,6 +139,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             : "Cash",
         amount: donation.amount.toFixed(2),
         isGiftAidEligible: donation.isGiftAidEligible,
+        serviceDate: donation.serviceDate,
+        serviceNote: donation.serviceNote,
       })) ?? []
   );
   const [serviceRows, setServiceRows] = useState<ServiceRowEntry[]>(() => {
@@ -144,6 +150,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
         serviceDate: row.serviceDate,
         serviceNote: row.serviceNote,
         fundId: row.fundId,
+        category: row.category,
+        programmeId: row.programmeId as Id<"programmes"> | undefined,
         cash: row.cash > 0 ? row.cash.toFixed(2) : "",
         pdq: row.pdq > 0 ? row.pdq.toFixed(2) : "",
         cheque: row.cheque > 0 ? row.cheque.toFixed(2) : "",
@@ -260,6 +268,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
           serviceDate: row.serviceDate,
           serviceNote: row.serviceNote.trim() || "Service",
           fundId: row.fundId as Id<"funds">,
+          ...(row.category ? { category: row.category } : {}),
+          ...(row.programmeId ? { programmeId: row.programmeId } : {}),
           cash: parseMoney(row.cash),
           pdq: parseMoney(row.pdq),
           cheque: parseMoney(row.cheque),
@@ -275,6 +285,8 @@ const CashTakingsEntry: React.FC<CashTakingsEntryProps> = ({
             paymentMethod: row.paymentMethod,
             amount: parseMoney(row.amount),
             isGiftAidEligible: row.isGiftAidEligible,
+            ...(row.serviceDate ? { serviceDate: row.serviceDate } : {}),
+            ...(row.serviceNote ? { serviceNote: row.serviceNote } : {}),
           };
 
           return row.donorId ? { ...donation, donorId: row.donorId } : donation;

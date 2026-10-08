@@ -547,6 +547,9 @@ export const deleteDataBatch = internalMutation({
       case "movements":
         records = await ctx.db.query("movements").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
+      case "programmes":
+        records = await ctx.db.query("programmes").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
+        break;
       case "cashCollections":
         records = await ctx.db.query("cashCollections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).take(batchSize);
         break;
@@ -617,6 +620,7 @@ export const finalizeDeletion = internalMutation({
       ["donors", await ctx.db.query("donors").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["pledges", await ctx.db.query("pledges").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["transactions", await ctx.db.query("transactions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
+      ["programmes", await ctx.db.query("programmes").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["cashCollections", await ctx.db.query("cashCollections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["reconciliationSessions", await ctx.db.query("reconciliationSessions").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],
       ["cashBankingReconciliations", await ctx.db.query("cashBankingReconciliations").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).first()],

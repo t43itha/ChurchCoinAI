@@ -182,6 +182,9 @@ export const exportDataPage = query({
       case "movements":
         result = await ctx.db.query("movements").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
         break;
+      case "programmes":
+        result = await ctx.db.query("programmes").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
+        break;
       case "cashCollections":
         result = await ctx.db.query("cashCollections").withIndex("by_organization", (q) => q.eq("organizationId", organizationId)).paginate(args.paginationOpts);
         break;
