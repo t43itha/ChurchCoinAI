@@ -228,6 +228,14 @@ describe("detectColumns", () => {
     ]);
   });
 
+  it("rounds half pennies on large amounts as written", () => {
+    const { result } = importFile("Date,Description,Amount\n01/03/2026,Building payment,-600000.065\n02/03/2026,Legacy,600000.065");
+    expect(result.rows.map((row) => [row.amount, row.type])).toEqual([
+      [600000.07, "Expenditure"],
+      [600000.07, "Income"],
+    ]);
+  });
+
   it("treats an amount below half a penny as zero rather than an unreadable number", () => {
     const { result } = importFile("Date,Description,Amount\n01/03/2026,Donation,0.0000001\n02/03/2026,Offering,25.00");
     expect(result.errors).toEqual([{ line: 2, reason: "Amount is zero", raw: "0.0000001" }]);

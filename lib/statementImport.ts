@@ -157,8 +157,10 @@ const readAmount = (text: string): AmountCell => {
   if (!text.trim()) return "blank";
   const parsed = parseImportedAmount(text);
   if (parsed !== null) {
-    // toFixed gives a plain decimal string (never exponent form), and the e2 suffix shifts it exactly.
-    const pence = Math.round(Number(`${Math.abs(parsed).toFixed(10)}e2`));
+    // Shift the shortest decimal form by two places (adding to any exponent), so 1.005,
+    // 600000.065 and 1e-7 round as written rather than through their binary approximations.
+    const [mantissa, exponent = "0"] = String(Math.abs(parsed)).split("e");
+    const pence = Math.round(Number(`${mantissa}e${Number(exponent) + 2}`));
     return Number.isFinite(pence) ? Math.sign(parsed) * (pence / 100) : "bad";
   }
   if (ZERO_TEXT.test(text.replace(/[£$,\s]/g, ""))) return 0;
