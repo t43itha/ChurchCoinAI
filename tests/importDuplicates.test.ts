@@ -6,6 +6,7 @@ import { getRCICategorySeedData } from "../constants/rciCategories";
 import { isRealIsoDate, parseImportedAmount, parseImportedDate } from "../lib/csvImport";
 import { importKeyPrefix, screenImportRows, withImportKeys } from "../lib/importKeys";
 import { applySmallIncomeDefaults } from "../lib/smallIncomeDefaults";
+import { describeLeftOutRows, MAX_IMPORT_ROWS, mapStatementRows } from "../lib/statementImport";
 import { effectiveCategories } from "../lib/transactionCategories";
 import { uiFunction } from "./helpers/transactionManagerHandlers";
 
@@ -57,12 +58,13 @@ function database(transactions: Row[] = []) {
   return { ctx, records };
 }
 
-function importStatement(ctx: any, records: Record<string, Row[]>, csvRows: string[][]) {
+function importStatement(ctx: any, records: Record<string, Row[]>, csvLines: string[][]) {
   const scope: any = {
     useSplitAmount: false, funds: records.funds, categories: getRCICategorySeedData(), transactions: records.transactions,
-    csvRows, csvHeaders: ["Date", "Description", "Amount"], columnMapping: { date: "Date", description: "Description", amount: "Amount" },
+    csvRows: csvLines.map((cells, index) => ({ cells, line: index + 2 })), csvHeaders: ["Date", "Description", "Amount"],
+    columnMapping: { date: "Date", description: "Description", amount: "Amount", amountIn: "", amountOut: "" },
     parseImportedAmount, parseImportedDate, isRealIsoDate, applySmallIncomeDefaults, effectiveCategories, resolveAssignableCategory,
-    parseAmountString: parseImportedAmount, screenImportRows, withImportKeys,
+    parseAmountString: parseImportedAmount, mapStatementRows, describeLeftOutRows, MAX_IMPORT_ROWS, screenImportRows, withImportKeys,
     notify: vi.fn(), setDuplicateWarnings: vi.fn(), setNextBankSyncCursor: vi.fn(), setNextBankSyncConnectionId: vi.fn(),
     setBankSyncReviewConnectionId: vi.fn(), setShowColumnMapper: vi.fn(), setShowReviewModal: vi.fn(),
     setAlreadyImportedRows: (rows: any[]) => { scope.alreadyImportedRows = rows; },
