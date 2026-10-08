@@ -37,7 +37,7 @@ const HSBC_HEADERLESS = [
 
 // Parses the way the component does: tokenize, find the header, detect columns, map the data records.
 function importFile(text: string) {
-  const records = tokenizeCsv(text);
+  const records = tokenizeCsv(text).records;
   const { headerIndex, headers } = findHeaderRow(records);
   const data = records.slice(headerIndex === null ? 0 : headerIndex + 1);
   const { mapping, split, reference } = detectColumns(headers, data.map((record) => record.cells));
@@ -47,7 +47,7 @@ function importFile(text: string) {
 
 describe("tokenizeCsv", () => {
   it("handles quoted commas, newlines inside quotes and doubled quotes, keeping source line numbers", () => {
-    const records = tokenizeCsv('Date,Description,Amount\n01/03/2026,"SYNTHETIC, MULTI\nLINE PAYEE",-12.00\n02/03/2026,"Say ""hi""",5.00\n');
+    const records = tokenizeCsv('Date,Description,Amount\n01/03/2026,"SYNTHETIC, MULTI\nLINE PAYEE",-12.00\n02/03/2026,"Say ""hi""",5.00\n').records;
     expect(records).toEqual([
       { cells: ["Date", "Description", "Amount"], line: 1 },
       { cells: ["01/03/2026", "SYNTHETIC, MULTI\nLINE PAYEE", "-12.00"], line: 2 },
@@ -56,12 +56,12 @@ describe("tokenizeCsv", () => {
   });
 
   it("strips a leading UTF-8 BOM", () => {
-    const records = tokenizeCsv("﻿Date,Amount\n01/03/2026,1.00\n");
+    const records = tokenizeCsv("﻿Date,Amount\n01/03/2026,1.00\n").records;
     expect(records[0].cells).toEqual(["Date", "Amount"]);
   });
 
   it("accepts CRLF line endings and trims unquoted cells only", () => {
-    const records = tokenizeCsv('Date , Amount\r\n01/03/2026,"  kept  "\r\n');
+    const records = tokenizeCsv('Date , Amount\r\n01/03/2026,"  kept  "\r\n').records;
     expect(records).toEqual([
       { cells: ["Date", "Amount"], line: 1 },
       { cells: ["01/03/2026", "  kept  "], line: 2 },
@@ -69,44 +69,68 @@ describe("tokenizeCsv", () => {
   });
 
   it("sniffs semicolon and tab delimiters", () => {
-    expect(tokenizeCsv("Date;Description;Amount\n01/03/2026;\"Coffee, Tea\";-3.50")[1].cells).toEqual(["01/03/2026", "Coffee, Tea", "-3.50"]);
-    expect(tokenizeCsv("Date\tAmount\n01/03/2026\t1.00")[1].cells).toEqual(["01/03/2026", "1.00"]);
+    expect(tokenizeCsv("Date;Description;Amount\n01/03/2026;\"Coffee, Tea\";-3.50").records[1].cells).toEqual(["01/03/2026", "Coffee, Tea", "-3.50"]);
+    expect(tokenizeCsv("Date\tAmount\n01/03/2026\t1.00").records[1].cells).toEqual(["01/03/2026", "1.00"]);
   });
 
   it("drops fully empty lines but keeps physical line numbers", () => {
-    const records = tokenizeCsv("\n\nDate,Amount\n\n01/03/2026,1.00\n");
+    const records = tokenizeCsv("\n\nDate,Amount\n\n01/03/2026,1.00\n").records;
     expect(records).toEqual([
       { cells: ["Date", "Amount"], line: 3 },
       { cells: ["01/03/2026", "1.00"], line: 5 },
     ]);
   });
 
+  it("reports an unterminated quote and does not emit the unclosed record", () => {
+    const { records, error } = tokenizeCsv('Date,Amount,Description\n01/03/2026,-10.00,"First payment\n02/03/2026,20.00,Second payment\n');
+    expect(error).toEqual({ line: 2, reason: "A quote opened on line 2 is never closed" });
+    expect(records).toEqual([{ cells: ["Date", "Amount", "Description"], line: 1 }]);
+  });
+
   it("returns no records for empty text", () => {
-    expect(tokenizeCsv("")).toEqual([]);
-    expect(tokenizeCsv("\n \n")).toEqual([]);
+    expect(tokenizeCsv("").records).toEqual([]);
+    expect(tokenizeCsv("\n \n").records).toEqual([]);
   });
 });
 
 describe("findHeaderRow", () => {
   it("skips a bank preamble and blank line above the real header", () => {
-    const { headerIndex, headers } = findHeaderRow(tokenizeCsv(NATIONWIDE));
+    const { headerIndex, headers } = findHeaderRow(tokenizeCsv(NATIONWIDE).records);
     expect(headerIndex).toBe(3);
     expect(headers).toEqual(["Date", "Transaction type", "Description", "Paid out", "Paid in", "Balance"]);
   });
 
   it("finds a header on the first line of a Lloyds-style export", () => {
-    expect(findHeaderRow(tokenizeCsv(LLOYDS)).headerIndex).toBe(0);
+    expect(findHeaderRow(tokenizeCsv(LLOYDS).records).headerIndex).toBe(0);
   });
 
   it("treats data rows with no header as headerless and names the columns", () => {
-    expect(findHeaderRow(tokenizeCsv(HSBC_HEADERLESS))).toEqual({
+    expect(findHeaderRow(tokenizeCsv(HSBC_HEADERLESS).records)).toEqual({
       headerIndex: null,
       headers: ["Column 1", "Column 2", "Column 3", "Column 4"],
     });
   });
 
+  it("keeps every record of a headerless file even when a later row looks like a header", () => {
+    const text = "01/03/2026,Sunday offering,100.00\n31/02/2026,Date correction credit,25.00\n02/03/2026,Donation,50.00";
+    const { headerIndex, headers } = findHeaderRow(tokenizeCsv(text).records);
+    expect({ headerIndex, headers }).toEqual({ headerIndex: null, headers: ["Column 1", "Column 2", "Column 3"] });
+    const { data, result } = importFile(text);
+    expect(data).toHaveLength(3);
+    expect(result.errors).toEqual([{ line: 2, reason: "Date not real", raw: "31/02/2026" }]);
+    expect(result.rows).toEqual([
+      { line: 1, date: "2026-03-01", description: "Sunday offering", amount: 100, type: "Income" },
+      { line: 3, date: "2026-03-02", description: "Donation", amount: 50, type: "Income" },
+    ]);
+  });
+
+  it("does not read a row as a header when the date word shares a cell with the label or the row holds an amount", () => {
+    expect(findHeaderRow(tokenizeCsv("Statement download\n01/03/2026,Sunday offering,100.00\n31/02/2026,Date correction credit,25.00\n").records).headerIndex).toBeNull();
+    expect(findHeaderRow(tokenizeCsv("Statement\nDate,Description,100.00\n").records).headerIndex).toBeNull();
+  });
+
   it("reports no header for text that is neither a header nor transaction data", () => {
-    expect(findHeaderRow(tokenizeCsv("Hello there\nNothing to see"))).toEqual({ headerIndex: null, headers: [] });
+    expect(findHeaderRow(tokenizeCsv("Hello there\nNothing to see").records)).toEqual({ headerIndex: null, headers: [] });
   });
 });
 
@@ -145,6 +169,34 @@ describe("detectColumns", () => {
     expect(headers).toEqual(["Column 1", "Column 2", "Column 3", "Column 4"]);
     expect(split).toBe(false);
     expect(mapping).toEqual({ date: "Column 1", description: "Column 2", amount: "Column 3", amountIn: "", amountOut: "" });
+  });
+
+  it("counts readable zeros as amounts and prefers the amount column over a running balance", () => {
+    const { mapping, result } = importFile([
+      "01/03/2026,Opening balance,0.00,100.00",
+      "02/03/2026,Coffee,-3.50,96.50",
+      "03/03/2026,Offering,20.00,116.50",
+    ].join("\n"));
+    expect(mapping).toMatchObject({ amount: "Column 3" });
+    expect(result.rows.map((row) => [row.description, row.amount, row.type])).toEqual([
+      ["Coffee", 3.5, "Expenditure"],
+      ["Offering", 20, "Income"],
+    ]);
+    expect(result.errors).toEqual([{ line: 1, reason: "Amount is zero", raw: "0.00" }]);
+  });
+
+  it("skips a running balance that comes before the amount column", () => {
+    const { mapping, result } = importFile([
+      "01/03/2026,Coffee,100.00,-3.50",
+      "02/03/2026,Donation,96.50,-3.50",
+      "03/03/2026,Offering,116.50,20.00",
+    ].join("\n"));
+    expect(mapping).toMatchObject({ amount: "Column 4" });
+    expect(result.rows.map((row) => [row.description, row.amount, row.type])).toEqual([
+      ["Coffee", 3.5, "Expenditure"],
+      ["Donation", 3.5, "Expenditure"],
+      ["Offering", 20, "Income"],
+    ]);
   });
 
   it("returns a reference column when the file has one", () => {
@@ -189,6 +241,14 @@ describe("mapStatementRows", () => {
     ]);
   });
 
+  it("sniffs the delimiter from CR-only line endings", () => {
+    const { headers, result } = importFile("Date;Description;Amount\r01/03/2026;Shop, London, UK, card, tea, coffee;-3.50\r");
+    expect(headers).toEqual(["Date", "Description", "Amount"]);
+    expect(result.rows).toEqual([
+      { line: 2, date: "2026-03-01", description: "Shop, London, UK, card, tea, coffee", amount: 3.5, type: "Expenditure" },
+    ]);
+  });
+
   it("keeps a semicolon-delimited comma inside a quoted description", () => {
     const { headers, result } = importFile("Date;Description;Amount\n01/03/2026;\"Coffee, Tea\";-3.50");
     expect(headers).toEqual(["Date", "Description", "Amount"]);
@@ -200,6 +260,29 @@ describe("mapStatementRows", () => {
     expect(result.rows).toEqual([
       { line: 2, date: "2026-03-01", description: "SYNTHETIC, MULTI\nLINE PAYEE", amount: 12, type: "Expenditure" },
       { line: 4, date: "2026-03-02", description: "Plain", amount: 5, type: "Income" },
+    ]);
+  });
+
+  it("treats signed Paid out values as expenditure and signed Paid in values as income", () => {
+    const { result } = importFile([
+      "Date,Description,Paid in,Paid out",
+      "01/03/2026,Electricity,,-12.50",
+      "02/03/2026,Rent,,(50.00)",
+      "03/03/2026,Refund,-7.00,",
+    ].join("\n"));
+    expect(result.errors).toEqual([]);
+    expect(result.rows).toEqual([
+      { line: 2, date: "2026-03-01", description: "Electricity", amount: 12.5, type: "Expenditure" },
+      { line: 3, date: "2026-03-02", description: "Rent", amount: 50, type: "Expenditure" },
+      { line: 4, date: "2026-03-03", description: "Refund", amount: 7, type: "Income" },
+    ]);
+  });
+
+  it("rounds half-penny amounts away from zero and keeps the sign", () => {
+    const { result } = importFile("Date,Description,Amount\n01/03/2026,Out,-1.125\n02/03/2026,In,1.125");
+    expect(result.rows).toEqual([
+      { line: 2, date: "2026-03-01", description: "Out", amount: 1.13, type: "Expenditure" },
+      { line: 3, date: "2026-03-02", description: "In", amount: 1.13, type: "Income" },
     ]);
   });
 

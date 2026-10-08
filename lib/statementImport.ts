@@ -33,21 +33,31 @@ const countOutsideQuotes = (line: string, delimiter: string) => {
   return count;
 };
 
-// The first of the first five non-empty lines that contains a delimiter decides.
-// The header line is the most reliable signal, and comma wins when nothing matches.
+// A delimiter wins when it appears with the same non-zero count on each of the
+// first five non-empty lines. Otherwise the first line that contains any
+// delimiter decides by its highest count, and comma wins when nothing matches.
 const sniffDelimiter = (text: string) => {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 5);
-  for (const line of lines) {
-    const counts = DELIMITERS.map((delimiter) => countOutsideQuotes(line, delimiter));
+  const lines = text.split(/\r\n|\r|\n/).filter((line) => line.trim()).slice(0, 5);
+  if (lines.length === 0) return ",";
+  const countsPerLine = lines.map((line) => DELIMITERS.map((delimiter) => countOutsideQuotes(line, delimiter)));
+  const first = countsPerLine[0];
+  const consistent = DELIMITERS.filter((_, index) =>
+    first[index] > 0 && countsPerLine.every((counts) => counts[index] === first[index])
+  );
+  if (consistent.length === 1) return consistent[0];
+  for (const counts of countsPerLine) {
     const best = Math.max(...counts);
     if (best > 0) return DELIMITERS[counts.indexOf(best)];
   }
   return ",";
 };
 
+export type CsvTokenizeResult = { records: CsvRecord[]; error: { line: number; reason: string } | null };
+
 // RFC 4180 tokenizer. Each record carries the physical line it starts on, so
 // errors can point back at the source file even after multi-line quoted fields.
-export function tokenizeCsv(text: string): CsvRecord[] {
+// A quote that is never closed is reported as an error and its record is dropped.
+export function tokenizeCsv(text: string): CsvTokenizeResult {
   const source = text.replace(/^\u{FEFF}/u, "");
   const delimiter = sniffDelimiter(source);
   const records: CsvRecord[] = [];
@@ -55,6 +65,7 @@ export function tokenizeCsv(text: string): CsvRecord[] {
   let field = "";
   let quoted = false;
   let inQuotes = false;
+  let quoteLine = 1;
   let line = 1;
   let recordLine = 1;
 
@@ -89,6 +100,7 @@ export function tokenizeCsv(text: string): CsvRecord[] {
     if (ch === '"' && !quoted && field.trim() === "") {
       inQuotes = true;
       quoted = true;
+      quoteLine = line;
       field = "";
     } else if (ch === delimiter) {
       endField();
@@ -100,36 +112,55 @@ export function tokenizeCsv(text: string): CsvRecord[] {
       field += ch;
     }
   }
+  if (inQuotes) {
+    return { records, error: { line: quoteLine, reason: `A quote opened on line ${quoteLine} is never closed` } };
+  }
   if (cells.length > 0 || field !== "" || quoted) endRecord();
-  return records;
+  return { records, error: null };
 }
 
+const isAmountWordCell = (lower: string) => AMOUNT_WORDS.some((word) => lower.includes(word)) || lower === "in" || lower === "out";
+const isDescriptionWordCell = (lower: string) => DESCRIPTION_WORDS.some((word) => lower.includes(word));
+
+// A header names a date column and an amount or description column in different
+// cells, and holds no value that parses as an amount or a date.
 const isHeaderRecord = ({ cells }: CsvRecord) => {
   if (cells.filter((cell) => cell.trim()).length < 3) return false;
   const lowered = cells.map((cell) => cell.toLowerCase());
-  const hasDate = cells.some((cell) => DATE_WORD.test(cell));
-  const hasAmount = lowered.some((cell) => AMOUNT_WORDS.some((word) => cell.includes(word)) || cell === "in" || cell === "out");
-  const hasDescription = lowered.some((cell) => DESCRIPTION_WORDS.some((word) => cell.includes(word)));
-  // A data row can contain the word "date" in a description, but never a parseable date cell.
-  return hasDate && (hasAmount || hasDescription) && !cells.some((cell) => parseImportedDate(cell));
+  const labelledOtherCell = (dateIndex: number) =>
+    lowered.some((cell, index) => index !== dateIndex && (isAmountWordCell(cell) || isDescriptionWordCell(cell)));
+  const hasDateLabel = cells.some((cell, index) => DATE_WORD.test(cell) && labelledOtherCell(index));
+  return hasDateLabel && !cells.some((cell) => parseImportedDate(cell) !== null || parseImportedAmount(cell) !== null);
 };
 
 const looksLikeData = (cells: string[]) =>
   parseImportedDate(cells[0] ?? "") !== null && cells.some((cell) => parseImportedAmount(cell) !== null);
 
 // Finds the real header below any bank preamble. When the first record is a
-// data row instead, the file has no header and columns are named Column 1, 2, ...
+// data row instead, the file has no header, so nothing below it is searched and
+// columns are named Column 1, 2, ...
 export function findHeaderRow(records: CsvRecord[]): { headerIndex: number | null; headers: string[] } {
-  const headerIndex = records.findIndex(isHeaderRecord);
-  if (headerIndex !== -1) return { headerIndex, headers: records[headerIndex].cells };
-
   const first = records[0];
   if (first && looksLikeData(first.cells)) {
     const width = records.reduce((max, record) => Math.max(max, record.cells.length), 0);
     return { headerIndex: null, headers: Array.from({ length: width }, (_, i) => `Column ${i + 1}`) };
   }
+  const headerIndex = records.findIndex(isHeaderRecord);
+  if (headerIndex !== -1) return { headerIndex, headers: records[headerIndex].cells };
   return { headerIndex: null, headers: [] };
 }
+
+type AmountCell = number | "blank" | "bad";
+
+// Returns the amount rounded to pennies (half a penny away from zero), a blank marker,
+// or "bad" for text that is not an amount. Readable zeros are numbers.
+const readAmount = (text: string): AmountCell => {
+  if (!text.trim()) return "blank";
+  const parsed = parseImportedAmount(text);
+  if (parsed !== null) return Math.sign(parsed) * roundMoney(Math.abs(parsed));
+  if (ZERO_TEXT.test(text.replace(/[£$,\s]/g, ""))) return 0;
+  return "bad";
+};
 
 // Guesses the column roles from header names first, then from cell values for
 // any role the headers did not name. Balance columns are never amounts.
@@ -182,7 +213,29 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
   }
   if (!split && !mapping.amount) {
     const candidates = indexes.filter((index) => !headers[index].toLowerCase().includes("balance") && index !== headerIndexOf(mapping.date));
-    const best = bestBy(candidates, (index) => share(index, parseImportedAmount));
+    const amountShare = (index: number) => share(index, (cell) => (readAmount(cell) === "bad" ? null : true));
+    // Running balance check: balance[i] = balance[i-1] + amount[i] for every row after the first.
+    const numberAt = (row: number, index: number) => {
+      const value = readAmount(sampleRows[row][index] ?? "");
+      return typeof value === "number" ? value : null;
+    };
+    const isRunningBalance = (balance: number, amount: number) => {
+      let pairs = 0;
+      for (let row = 1; row < sampleRows.length; row += 1) {
+        const previous = numberAt(row - 1, balance);
+        const current = numberAt(row, balance);
+        const change = numberAt(row, amount);
+        if (previous === null || current === null || change === null) return false;
+        if (Math.abs(previous + change - current) > 0.005) return false;
+        pairs += 1;
+      }
+      return pairs > 0;
+    };
+    const fullyNumeric = candidates.filter((index) => amountShare(index) === 1);
+    const isBalance = (index: number) =>
+      fullyNumeric.includes(index) && fullyNumeric.some((other) => other !== index && isRunningBalance(index, other));
+    const preferred = candidates.filter((index) => !isBalance(index));
+    const best = bestBy(preferred.length > 0 ? preferred : candidates, amountShare);
     if (best !== null) mapping.amount = headers[best];
   }
   if (!mapping.description) {
@@ -202,17 +255,6 @@ export function detectColumns(headers: string[], sampleRows: string[][]): { mapp
   const reference = headers.find((header) => /\b(reference|ref)\b/i.test(header) && !used.has(header));
   return { mapping, split, reference };
 }
-
-type AmountCell = number | "blank" | "bad";
-
-// Returns the amount rounded to pennies, a blank marker, or "bad" for text that is not an amount.
-const readAmount = (text: string): AmountCell => {
-  if (!text.trim()) return "blank";
-  const parsed = parseImportedAmount(text);
-  if (parsed !== null) return roundMoney(parsed);
-  if (ZERO_TEXT.test(text.replace(/[£$,\s]/g, ""))) return 0;
-  return "bad";
-};
 
 // Turns data records into review rows. Every record ends up in exactly one of
 // rows, skipped or errors, so nothing is silently dropped.
@@ -238,8 +280,9 @@ export function mapStatementRows(records: CsvRecord[], headers: string[], mappin
       const inFilled = typeof inValue === "number" && inValue !== 0;
       const outFilled = typeof outValue === "number" && outValue !== 0;
       if (inFilled && outFilled) { fail("Both money in and money out filled", rowText); continue; }
-      if (inFilled) signed = inValue;
-      else if (outFilled) signed = -outValue;
+      // The column sets the direction; a sign inside the cell is not a second instruction.
+      if (inFilled) signed = Math.abs(inValue);
+      else if (outFilled) signed = -Math.abs(outValue);
       else {
         if (inValue === "blank" && outValue === "blank") result.skipped.push({ line, reason: "No amount" });
         else fail("Amount is zero", inText || outText);

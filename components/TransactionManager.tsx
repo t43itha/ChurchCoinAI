@@ -614,7 +614,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       const reader = new FileReader();
       reader.onload = (evt) => {
           const text = evt.target?.result as string;
-          const records = tokenizeCsv(text);
+          const { records, error } = tokenizeCsv(text);
+          if (error) {
+              notify("Error", `We couldn't read this file: ${error.reason}.`);
+              return;
+          }
           const { headerIndex, headers } = findHeaderRow(records);
           const dataRecords = records.slice(headerIndex === null ? 0 : headerIndex + 1);
           if (headers.length === 0 || dataRecords.length === 0) {
