@@ -5,7 +5,7 @@ import { getFunctionName } from "convex/server";
 import { describe, expect, it, vi } from "vitest";
 import TransactionManager from "../components/TransactionManager";
 import { longDate } from "../components/cashEntry/format";
-import TransactionEditPanel from "../components/transactions/TransactionEditPanel";
+import TransactionEditPanel, { editActionsFor } from "../components/transactions/TransactionEditPanel";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import type { UserRole } from "../lib/permissions";
 import type { Fund, Pledge, Transaction } from "../types";
@@ -147,17 +147,64 @@ describe("edit panel", () => {
     expect(html).toMatch(/aria-label="Amount"[^>]*disabled/);
   });
 
-  it("says a reconciled row is locked by a completed reconciliation, and shows a refused save", () => {
-    const transaction = row({ isReconciled: true });
-    const html = renderPanel(createElement(TransactionEditPanel, panelProps(transaction)));
-    expect(html).toContain("Ticked in a bank reconciliation");
-    expect(html).toContain("Save changes");
+  it("locks a row in a completed reconciliation: inputs disabled, no save or void, and the reason", () => {
+    const html = renderPanel(createElement(TransactionEditPanel, panelProps(row({ isReconciled: true }))));
+    expect(html).toContain("This line is in a completed reconciliation. Reopen that reconciliation to change it.");
+    expect(html).toMatch(/aria-label="Amount"[^>]*disabled/);
+    expect(html).toMatch(/type="text"[^>]*disabled/);
+    expect(html).not.toContain("Save changes");
+    expect(html).not.toContain("Void transaction");
+  });
+
+  it("offers Save and close beside Save · next, each submitting the form", () => {
+    const html = renderPanel(
+      createElement(TransactionEditPanel, { ...panelProps(row({})), nextTransaction: row({ _id: "next" }) })
+    );
+    expect(html).toContain("Save · next");
+    expect(html).toMatch(/type="submit" value="close"[^>]*>Save and close/);
+    expect(html).not.toMatch(/type="button"[^>]*>Save and close/);
   });
 
   it("is read-only for roles without ledger write access", () => {
     const html = renderPanel(createElement(TransactionEditPanel, panelProps(row({}), false)));
     expect(html).toContain("You can view this entry.");
     expect(html).not.toContain("Save changes");
+  });
+
+  it("shows Restore transaction for a voided row to an editor", () => {
+    const html = renderPanel(createElement(TransactionEditPanel, panelProps(row({ isVoided: true }))));
+    expect(html).toContain("Restore transaction");
+    expect(html).not.toContain("Void transaction");
+  });
+});
+
+describe("edit actions", () => {
+  const calls: string[] = [];
+  const handlers = {
+    onLinkOtherSide: (t: Transaction) => calls.push(`link:${t._id}`),
+    onUnlink: (t: Transaction) => calls.push(`unlink:${t._id}`),
+    onDeleteTransfer: (t: Transaction) => calls.push(`delete:${t._id}`),
+    onVoid: (t: Transaction) => calls.push(`void:${t._id}`),
+    onRestore: (t: Transaction) => calls.push(`restore:${t._id}`),
+  };
+  const editor = { canEdit: true, canDeleteTransfer: false };
+
+  it("restores a voided row through onRestore, with the row it was given", () => {
+    const voided = row({ _id: "v", isVoided: true });
+    const restore = editActionsFor(voided, editor, handlers).find((action) => action.key === "restore");
+    expect(restore?.label).toBe("Restore transaction");
+    restore?.run();
+    expect(calls).toEqual(["restore:v"]);
+  });
+
+  it("offers void, not restore, on a live row", () => {
+    const keys = editActionsFor(row({}), editor, handlers).map((action) => action.key);
+    expect(keys).toEqual(["void"]);
+  });
+
+  it("offers nothing to read-only roles or to rows in a completed reconciliation", () => {
+    expect(editActionsFor(row({ isVoided: true }), { canEdit: false, canDeleteTransfer: false }, handlers)).toEqual([]);
+    expect(editActionsFor(row({ isReconciled: true, movementId: "m1", movementKind: "transfer" }), editor, handlers)).toEqual([]);
   });
 });
 
