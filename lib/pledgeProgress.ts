@@ -2,6 +2,62 @@ import { roundMoney, meetsMoneyTarget } from "../convex/lib/money";
 
 export type PledgeFrequency = "One-off" | "Weekly" | "Monthly" | "Annual";
 
+// Days a pledge can go without a payment before it counts as behind. One-off
+// pledges have no cadence, so they never fall behind.
+export const PLEDGE_LAPSE_DAYS: Partial<Record<string, number>> = {
+  Weekly: 14,
+  Monthly: 45,
+  Annual: 395,
+};
+
+type BehindPayment = {
+  date: string;
+  type: string;
+  donorId?: string;
+  donorName?: string;
+  pledgeId?: string | null;
+};
+
+type BehindPledge = {
+  _id: string;
+  donorId?: string;
+  donorName?: string;
+  frequency: string;
+  startDate: string;
+  endDate?: string;
+  status: string;
+};
+
+const shiftIsoDate = (date: string, days: number) => {
+  const shifted = new Date(`${date}T00:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+};
+
+// A payment counts towards a pledge when it is income linked to it, or from the same donor
+// when it is not linked to any other pledge.
+const isPledgePayment = (pledge: BehindPledge, payment: BehindPayment) => {
+  if (payment.type !== "Income") return false;
+  if (payment.pledgeId) return payment.pledgeId === pledge._id;
+  if (payment.donorId && pledge.donorId && payment.donorId === pledge.donorId) return true;
+  return Boolean(payment.donorName && pledge.donorName && payment.donorName === pledge.donorName);
+};
+
+// Active recurring pledge that has run longer than its lapse window with no payment in that
+// window up to `throughDate`. Pass only income that counts (no voided rows).
+export const isPledgeBehind = (pledge: BehindPledge, payments: BehindPayment[], throughDate: string) => {
+  const lapseDays = PLEDGE_LAPSE_DAYS[pledge.frequency];
+  if (pledge.status !== "Active" || lapseDays === undefined) return false;
+
+  const windowStart = shiftIsoDate(throughDate, -lapseDays);
+  if (pledge.startDate > windowStart || (pledge.endDate && pledge.endDate < windowStart)) return false;
+
+  return !payments.some(
+    (payment) =>
+      payment.date >= windowStart && payment.date <= throughDate && isPledgePayment(pledge, payment)
+  );
+};
+
 const parseIsoDate = (value: string) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;

@@ -10,6 +10,7 @@ import {
   sumFundBalance,
 } from "./reportableTransactions";
 import type { MovementKind } from "./movementCategories";
+import { isPledgeBehind } from "./pledgeProgress";
 import { meetsMoneyTarget, roundMoney, sumMoney } from "../convex/lib/money";
 
 export type DashboardPeriodKey = "currentMonth" | "previousMonth" | "quarter" | "ytd";
@@ -176,14 +177,6 @@ const GIVING_CATEGORIES = new Set(RCI_INCOME_CATEGORIES["Donations"] ?? []);
 const UNCATEGORIZED = "Uncategorized";
 const LOW_BALANCE_THRESHOLD = 1000;
 const MAX_CAMPAIGNS = 3;
-
-// Days a pledge can go without a payment before it counts as behind. One-off
-// pledges have no cadence, so they never fall behind.
-const PLEDGE_LAPSE_DAYS: Partial<Record<string, number>> = {
-  Weekly: 14,
-  Monthly: 45,
-  Annual: 395,
-};
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   month: "long",
@@ -663,54 +656,13 @@ function buildDonorFollowUp(
       isGivingCategory(transaction.category) &&
       transaction.isGiftAidEligible !== true
   );
-  const pledgesBehind = pledges.filter((pledge) => {
-    const lapseDays = PLEDGE_LAPSE_DAYS[pledge.frequency];
-
-    if (pledge.status !== "Active" || lapseDays === undefined) {
-      return false;
-    }
-
-    const windowStart = addDays(period.throughDate, -lapseDays);
-
-    if (pledge.startDate > windowStart || (pledge.endDate && pledge.endDate < windowStart)) {
-      return false;
-    }
-
-    const window = { startDate: windowStart, endDate: period.throughDate };
-    return !transactions.some(
-      (transaction) =>
-        isWithinRange(transaction.date, window) && isPledgeSatisfiedByTransaction(pledge, transaction)
-    );
-  });
+  const pledgesBehind = pledges.filter((pledge) => isPledgeBehind(pledge, transactions, period.throughDate));
 
   return {
     missedGiftAidCount: giftAidEnabled ? missedGiftAid.length : null,
     missedGiftAidValue: giftAidEnabled ? roundMoney(sumAmounts(missedGiftAid) * 0.25) : null,
     pledgesBehindCount: pledgesBehind.length,
   };
-}
-
-function isPledgeSatisfiedByTransaction(
-  pledge: DashboardPledge,
-  transaction: DashboardTransaction
-) {
-  if (transaction.type !== "Income") {
-    return false;
-  }
-
-  if (transaction.pledgeId) {
-    return transaction.pledgeId === pledge._id;
-  }
-
-  if (transaction.donorId && pledge.donorId && transaction.donorId === pledge.donorId) {
-    return true;
-  }
-
-  return Boolean(
-    transaction.donorName &&
-      pledge.donorName &&
-      transaction.donorName === pledge.donorName
-  );
 }
 
 function buildFundBalances(funds: DashboardFund[], transactions: DashboardTransaction[]) {
