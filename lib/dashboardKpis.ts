@@ -462,7 +462,7 @@ function sumByType(transactions: DashboardTransaction[], type: DashboardTransact
   return sumAmounts(transactions.filter((transaction) => transaction.type === type));
 }
 
-function completionPercent(numerator: number, denominator: number) {
+export function completionPercent(numerator: number, denominator: number) {
   return denominator === 0 ? null : Math.round((numerator / denominator) * 100);
 }
 
@@ -476,7 +476,7 @@ function average(values: number[]) {
     : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function isCategorized(category?: string) {
+export function isCategorized(category?: string) {
   return Boolean(category) && category !== UNCATEGORIZED;
 }
 

@@ -1,16 +1,45 @@
 import { query, QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import { requireCapability } from "../lib/auth";
+import { roundMoney, sumMoney } from "../lib/money";
 import { CATEGORY_ALIASES, INCOME_MAIN_CATEGORY_ORDER } from "../../constants/rciCategories";
 import {
   buildTransferSummary,
   filterIncomeAndExpenditure,
   isReportableIncomeTransaction,
-  sumFundBalance,
 } from "../../lib/reportableTransactions";
 import { resolveReportingMainCategory } from "../intelligence/categorization/categoryResolver";
 import { loanReportRows } from "../../lib/movementMatching";
+import {
+  clipToElapsedDays,
+  financialYearPeriod,
+  financialYearStartFor,
+  isWithinRange,
+  likeForLikePrior,
+  monthBuckets,
+  monthPeriod,
+  type DateRange,
+  type ReportingPeriod,
+} from "../../lib/reportPeriods";
+import {
+  buildFundStatement,
+  buildReadiness,
+  buildTrend,
+  groupGivingByDonor,
+  periodTotals,
+  rankCategoryGroups,
+  reserveCover,
+  type ReportFund,
+  type ReportTransaction,
+} from "../../lib/reportSummary";
+import type {
+  AnnualReportData,
+  CategoryGroup,
+  MonthlyReportData,
+  ReportComparison,
+  WeeklyBreakdownItem,
+} from "../../types";
 
 // Mission Tithe eligible categories (canonical names only)
 const MISSION_TITHE_CATEGORIES = new Set([
@@ -35,6 +64,7 @@ async function loadLoanRows(ctx: QueryCtx, organizationId: Id<"organizations">, 
     movements
       .filter((movement) => movement.kind === "loan")
       .map(async (movement) => ({
+        movementId: String(movement._id),
         lender: movement.lender,
         dueDate: movement.dueDate,
         legs: await ctx.db
@@ -58,17 +88,18 @@ function getWeekEndingDate(date: Date): string {
 // Helper to get all Sundays in a month
 function getSundaysInMonth(year: number, month: number): string[] {
   const sundays: string[] = [];
-  const date = new Date(year, month, 1);
+  // UTC throughout, so the Sundays do not depend on the host's timezone.
+  const date = new Date(Date.UTC(year, month, 1));
 
   // Find first Sunday
-  while (date.getDay() !== 0) {
-    date.setDate(date.getDate() + 1);
+  while (date.getUTCDay() !== 0) {
+    date.setUTCDate(date.getUTCDate() + 1);
   }
 
   // Collect all Sundays in the month
-  while (date.getMonth() === month) {
+  while (date.getUTCMonth() === month) {
     sundays.push(date.toISOString().split("T")[0]);
-    date.setDate(date.getDate() + 7);
+    date.setUTCDate(date.getUTCDate() + 7);
   }
 
   return sundays;
@@ -247,7 +278,7 @@ export const monthlyCashBreakdown = query({
       status: "draft" | "submitted" | "banked" | "none";
     }> = [];
 
-    let monthlyTotals = {
+    const monthlyTotals = {
       grossIncome: 0,
       pettyCashTotal: 0,
       bankableTotal: 0,
@@ -379,302 +410,305 @@ export const getCurrentWeekEnding = query({
   },
 });
 
-// RCI Monthly Report Data - structured for RCI Monthly Accounts template
-export const monthlyReportData = query({
-  args: {
-    year: v.number(),
-    month: v.number(), // 0-indexed (0 = January)
-  },
-  handler: async (ctx, args) => {
-    const user = await requireCapability(ctx, "reports.read");
 
-    // Calculate date range for the month
-    const startDate = new Date(args.year, args.month, 1);
-    const endDate = new Date(args.year, args.month + 1, 0);
-    const startDateStr = startDate.toISOString().split("T")[0];
-    const endDateStr = endDate.toISOString().split("T")[0];
+// Shared by the monthly and annual reports: one load per query, then every
+// figure is derived in memory by date range.
+type ReportLookup = {
+  categoryDetails: Parameters<typeof resolveReportingMainCategory>[2];
+  fundMap: Map<string, Doc<"funds">>;
+};
 
-    // Get all transactions for this organization in the date range
-    // Use .gte() in index and filter for upper bound (Convex doesn't support both .gte and .lte in same query)
-    const allTransactions = await ctx.db
+type ReportInputs = Awaited<ReturnType<typeof loadReportInputs>>;
+
+function toReportTransaction(transaction: Doc<"transactions">): ReportTransaction {
+  return {
+    ...transaction,
+    fundId: String(transaction.fundId),
+    donorId: transaction.donorId ? String(transaction.donorId) : undefined,
+  };
+}
+
+async function loadReportingPeriod(
+  ctx: QueryCtx,
+  organizationId: Id<"organizations">
+): Promise<ReportingPeriod> {
+  const organization = await ctx.db.get(organizationId);
+  return organization?.reportingPeriod ?? "tax_year";
+}
+
+// Non-voided transactions on or before endDate, plus categories and funds.
+// Ranges are applied in memory.
+async function loadReportInputs(ctx: QueryCtx, organizationId: Id<"organizations">, endDate: string) {
+  const [transactions, categories, funds] = await Promise.all([
+    ctx.db
       .query("transactions")
       .withIndex("by_organization_date", (q) =>
-        q
-          .eq("organizationId", user.organizationId)
-          .gte("date", startDateStr)
+        q.eq("organizationId", organizationId).lte("date", endDate)
       )
-      .filter((q) =>
-        q.and(
-          q.lte(q.field("date"), endDateStr),
-          q.neq(q.field("isVoided"), true)
-        )
-      )
-      .collect();
-    const reportableTransactions = filterIncomeAndExpenditure(allTransactions);
-
-    // Get categories with mainCategory data
-    const categories = await ctx.db
+      .filter((q) => q.neq(q.field("isVoided"), true))
+      .collect(),
+    ctx.db
       .query("categories")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
-
-    // Get funds for Mission Tithe fund-type filtering and Donation grouping
-    const funds = await ctx.db
+      .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+      .collect(),
+    ctx.db
       .query("funds")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
+      .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+      .collect(),
+  ]);
 
-    const fundMap = new Map(funds.map((f) => [f._id, f]));
-
-    const categoryDetails = categories.map((cat) => ({
+  const lookup: ReportLookup = {
+    categoryDetails: categories.map((cat) => ({
       name: cat.name,
       mainCategory: cat.mainCategory,
       transactionType: cat.transactionType,
       displayOrder: cat.displayOrder,
-    }));
+    })),
+    fundMap: new Map(funds.map((fund) => [String(fund._id), fund])),
+  };
 
-    // Resolve mainCategory for a transaction, with alias fallback and fund-based grouping
-    const getMainCategory = (
-      category: string,
-      fundId: Id<"funds">,
-      transactionType: "Income" | "Expenditure"
-    ): string => {
-      const resolvedMainCategory = resolveReportingMainCategory(
-        category,
-        transactionType,
-        categoryDetails
-      );
+  return {
+    rows: transactions.map(toReportTransaction),
+    funds,
+    reportFunds: funds.map(
+      (fund): ReportFund => ({ _id: String(fund._id), name: fund.name, type: fund.type })
+    ),
+    lookup,
+  };
+}
 
-      // Special case for "Donation"/"Donations": group by fund (primarily for Building Fund)
-      if (category === "Donation" || category === "Donations") {
-        if (fundId) {
-          const fund = fundMap.get(fundId);
-          if (fund) {
-            if (INCOME_MAIN_CATEGORY_ORDER.includes(fund.name)) {
-              return fund.name;
-            }
-            if (fund.type === "Unrestricted") {
-              return "Donations";
-            }
-            return fund.name;
-          }
-        }
-        return resolvedMainCategory;
+function rowsIn(rows: ReportTransaction[], range: DateRange): ReportTransaction[] {
+  return rows.filter((row) => isWithinRange(row.date, range));
+}
+
+
+function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const group = groups.get(key(item));
+    if (group) group.push(item);
+    else groups.set(key(item), [item]);
+  }
+  return groups;
+}
+
+// Resolve a transaction's main category, with a fund-based grouping for
+// "Donation"/"Donations" (primarily the Building Fund).
+function mainCategoryFor(
+  row: ReportTransaction,
+  type: "Income" | "Expenditure",
+  lookup: ReportLookup
+): string {
+  if (row.category === "Donation" || row.category === "Donations") {
+    const fund = lookup.fundMap.get(row.fundId);
+    if (fund) {
+      if (fund.type === "Unrestricted" && !INCOME_MAIN_CATEGORY_ORDER.includes(fund.name)) {
+        return "Donations";
       }
-
-      return resolvedMainCategory;
-    };
-
-    // Separate income and expenditure
-    const incomeTransactions = reportableTransactions.filter(
-      isReportableIncomeTransaction
-    );
-    const expenditureTransactions = reportableTransactions.filter(
-      (t) => t.type === "Expenditure"
-    );
-
-    // Group income by mainCategory
-    const receiptsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
-    for (const t of incomeTransactions) {
-      const mainCategory = getMainCategory(t.category, t.fundId, "Income");
-
-      if (!receiptsMap.has(mainCategory)) {
-        receiptsMap.set(mainCategory, { subcategories: new Map(), total: 0 });
-      }
-      const group = receiptsMap.get(mainCategory)!;
-      group.subcategories.set(t.category, (group.subcategories.get(t.category) || 0) + t.amount);
-      group.total += t.amount;
+      return fund.name;
     }
+  }
+  return resolveReportingMainCategory(row.category, type, lookup.categoryDetails);
+}
 
-    // Group expenditure by mainCategory
-    const paymentsMap = new Map<string, { subcategories: Map<string, number>; total: number }>();
-    for (const t of expenditureTransactions) {
-      const mainCategory = getMainCategory(t.category, t.fundId, "Expenditure");
-
-      if (!paymentsMap.has(mainCategory)) {
-        paymentsMap.set(mainCategory, { subcategories: new Map(), total: 0 });
-      }
-      const group = paymentsMap.get(mainCategory)!;
-      group.subcategories.set(t.category, (group.subcategories.get(t.category) || 0) + t.amount);
-      group.total += t.amount;
-    }
-
-    // Convert maps to arrays
-    const receipts = Array.from(receiptsMap.entries()).map(([mainCategory, data]) => ({
+// Groups reportable rows by main category and subcategory, largest first.
+function groupByMainCategory(
+  rows: ReportTransaction[],
+  type: "Income" | "Expenditure",
+  lookup: ReportLookup
+): CategoryGroup[] {
+  const groups = [...groupBy(rows, (row) => mainCategoryFor(row, type, lookup))].map(
+    ([mainCategory, groupRows]) => ({
       mainCategory,
-      subcategories: Array.from(data.subcategories.entries()).map(([name, total]) => ({ name, total })),
-      total: data.total,
-    }));
+      subcategories: [...groupBy(groupRows, (row) => row.category)].map(([name, subRows]) => ({
+        name,
+        total: sumMoney(subRows, (row) => row.amount),
+      })),
+      total: sumMoney(groupRows, (row) => row.amount),
+    })
+  );
+  return rankCategoryGroups(groups).map(({ mainCategory, subcategories, total }) => ({
+    mainCategory,
+    subcategories,
+    total,
+  }));
+}
 
-    const payments = Array.from(paymentsMap.entries()).map(([mainCategory, data]) => ({
-      mainCategory,
-      subcategories: Array.from(data.subcategories.entries()).map(([name, total]) => ({ name, total })),
-      total: data.total,
-    }));
+function groupReport(reportable: ReportTransaction[], lookup: ReportLookup) {
+  return {
+    receipts: groupByMainCategory(reportable.filter(isReportableIncomeTransaction), "Income", lookup),
+    payments: groupByMainCategory(
+      reportable.filter((row) => row.type === "Expenditure"),
+      "Expenditure",
+      lookup
+    ),
+  };
+}
 
-    // Weekly breakdown
+function comparisonFor(inputs: ReportInputs, label: string, range: DateRange): ReportComparison {
+  const reportable = filterIncomeAndExpenditure(rowsIn(inputs.rows, range));
+  return {
+    label,
+    range,
+    totals: periodTotals(inputs.rows, range),
+    ...groupReport(reportable, inputs.lookup),
+  };
+}
+
+// Mission Tithe: Offerings, Tithes & First Fruits and Thanksgiving in Unrestricted funds.
+function isMissionTitheRow(row: ReportTransaction, lookup: ReportLookup): boolean {
+  return (
+    MISSION_TITHE_CATEGORIES.has(resolveCategory(row.category)) &&
+    lookup.fundMap.get(row.fundId)?.type === "Unrestricted"
+  );
+}
+
+function addDays(isoDate: string, days: number): string {
+  return new Date(new Date(isoDate).getTime() + days * 86_400_000).toISOString().split("T")[0];
+}
+
+function categoryTotals(rows: ReportTransaction[]): Record<string, number> {
+  return Object.fromEntries(
+    [...groupBy(rows, (row) => row.category)].map(([category, categoryRows]) => [
+      category,
+      sumMoney(categoryRows, (row) => row.amount),
+    ])
+  );
+}
+
+// Receipts and payments for one week or partial week.
+function weekBreakdown(
+  reportable: ReportTransaction[],
+  startDate: string,
+  endDate: string,
+  weekEnding: string
+): WeeklyBreakdownItem {
+  const weekRows = rowsIn(reportable, { startDate, endDate });
+  return {
+    weekEnding,
+    receiptsTotal: sumMoney(weekRows.filter((row) => row.type === "Income"), (row) => row.amount),
+    paymentsTotal: sumMoney(weekRows.filter((row) => row.type === "Expenditure"), (row) => row.amount),
+    byCategory: categoryTotals(weekRows),
+  };
+}
+
+// RCI Monthly Accounts data for one calendar month. month is 0-indexed.
+export const monthlyReportData = query({
+  args: {
+    year: v.number(),
+    month: v.number(), // 0-indexed (0 = January)
+    today: v.string(), // client's yyyy-mm-dd
+  },
+  handler: async (ctx, args): Promise<MonthlyReportData> => {
+    const user = await requireCapability(ctx, "reports.read");
+
+    const period = monthPeriod(args.year, args.month, args.today);
+    const [inputs, reportingPeriod] = await Promise.all([
+      loadReportInputs(ctx, user.organizationId, period.endDate),
+      loadReportingPeriod(ctx, user.organizationId),
+    ]);
+    const { rows, lookup } = inputs;
+
+    // Figures cover the month up to today (the whole month once it has finished).
+    const activity: DateRange = { startDate: period.startDate, endDate: period.throughDate };
+    const activityRows = rowsIn(rows, activity);
+    const reportable = filterIncomeAndExpenditure(activityRows);
+    const incomeRows = reportable.filter(isReportableIncomeTransaction);
+    const expenditureRows = reportable.filter((row) => row.type === "Expenditure");
+    const { receipts, payments } = groupReport(reportable, lookup);
+
+    // Weekly breakdown: a row per Sunday, plus a partial week after the last Sunday.
+    // Weeks after throughDate are listed but total 0.
     const sundays = getSundaysInMonth(args.year, args.month);
-    const weeklyBreakdown = sundays.map((weekEnding) => {
-      const weekStart = new Date(weekEnding);
-      weekStart.setDate(weekStart.getDate() - 6);
-      const weekStartStr = weekStart.toISOString().split("T")[0];
-
-      const weekTransactions = reportableTransactions.filter(
-        (t) => t.date >= weekStartStr && t.date <= weekEnding
-      );
-
-      const receiptsTotal = weekTransactions
-        .filter((t) => t.type === "Income")
-        .reduce((sum, t) => sum + t.amount, 0);
-      const paymentsTotal = weekTransactions
-        .filter((t) => t.type === "Expenditure")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const byCategory = weekTransactions.reduce(
-        (acc, t) => {
-          acc[t.category] = (acc[t.category] || 0) + t.amount;
-          return acc;
-        },
-        {} as Record<string, number>
-      );
-
-      return {
-        weekEnding,
-        receiptsTotal,
-        paymentsTotal,
-        byCategory,
-      };
-    });
-
-    // Add partial-week row for days after the last Sunday of the month
-    const lastSunday = sundays[sundays.length - 1];
-    if (lastSunday && lastSunday < endDateStr) {
-      const dayAfterLastSunday = new Date(lastSunday);
-      dayAfterLastSunday.setDate(dayAfterLastSunday.getDate() + 1);
-      const partialStartStr = dayAfterLastSunday.toISOString().split("T")[0];
-
-      const partialWeekTransactions = reportableTransactions.filter(
-        (t) => t.date >= partialStartStr && t.date <= endDateStr
-      );
-
-      const partialReceipts = partialWeekTransactions
-        .filter((t) => t.type === "Income")
-        .reduce((sum, t) => sum + t.amount, 0);
-      const partialPayments = partialWeekTransactions
-        .filter((t) => t.type === "Expenditure")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const partialByCategory = partialWeekTransactions.reduce(
-        (acc, t) => {
-          acc[t.category] = (acc[t.category] || 0) + t.amount;
-          return acc;
-        },
-        {} as Record<string, number>
-      );
-
-      if (partialReceipts > 0 || partialPayments > 0) {
-        weeklyBreakdown.push({
-          weekEnding: endDateStr,
-          receiptsTotal: partialReceipts,
-          paymentsTotal: partialPayments,
-          byCategory: partialByCategory,
-        });
-      }
-    }
-
-    // Mission Tithe breakdown (10% of Offerings + Tithes & First Fruits + Thanksgiving in General Fund only)
-    const missionTitheBreakdown = sundays.map((weekEnding) => {
-      const weekStart = new Date(weekEnding);
-      weekStart.setDate(weekStart.getDate() - 6);
-      const weekStartStr = weekStart.toISOString().split("T")[0];
-
-      const weekDonations = incomeTransactions.filter((t) => {
-        if (t.date < weekStartStr || t.date > weekEnding) return false;
-        const resolved = resolveCategory(t.category);
-        if (!MISSION_TITHE_CATEGORIES.has(resolved)) return false;
-        const fund = fundMap.get(t.fundId);
-        return fund?.type === "Unrestricted";
-      });
-
-      const total = weekDonations.reduce((sum, t) => sum + t.amount, 0);
-
-      return { weekEnding, total };
-    });
-
-    // Add partial-week row for donation days after the last Sunday
-    if (lastSunday && lastSunday < endDateStr) {
-      const dayAfterLastSunday = new Date(lastSunday);
-      dayAfterLastSunday.setDate(dayAfterLastSunday.getDate() + 1);
-      const partialStartStr = dayAfterLastSunday.toISOString().split("T")[0];
-
-      const partialWeekDonations = incomeTransactions.filter((t) => {
-        if (t.date < partialStartStr || t.date > endDateStr) return false;
-        const resolved = resolveCategory(t.category);
-        if (!MISSION_TITHE_CATEGORIES.has(resolved)) return false;
-        const fund = fundMap.get(t.fundId);
-        return fund?.type === "Unrestricted";
-      });
-      const partialTotal = partialWeekDonations.reduce((sum, t) => sum + t.amount, 0);
-
-      if (partialTotal > 0) {
-        missionTitheBreakdown.push({ weekEnding: endDateStr, total: partialTotal });
-      }
-    }
-
-    // Compute total from ALL month's Mission Tithe eligible donations
-    const missionTitheTotal = incomeTransactions
-      .filter((t) => {
-        const resolved = resolveCategory(t.category);
-        if (!MISSION_TITHE_CATEGORIES.has(resolved)) return false;
-        const fund = fundMap.get(t.fundId);
-        return fund?.type === "Unrestricted";
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    // Tithes breakdown (individual donors + anonymous aggregate)
-    const titheTransactions = incomeTransactions.filter(
-      (t) => resolveCategory(t.category) === "Tithes & First Fruits"
+    const weeklyBreakdown = sundays.map((weekEnding) =>
+      weekBreakdown(reportable, addDays(weekEnding, -6), weekEnding, weekEnding)
     );
+    const lastSunday = sundays[sundays.length - 1];
+    if (lastSunday && lastSunday < activity.endDate) {
+      const partial = weekBreakdown(reportable, addDays(lastSunday, 1), activity.endDate, activity.endDate);
+      if (partial.receiptsTotal > 0 || partial.paymentsTotal > 0) weeklyBreakdown.push(partial);
+    }
 
-    const namedTithes = titheTransactions
-      .filter((t) => t.donorName)
-      .map((t) => ({
-        donorName: t.donorName!,
-        amount: t.amount,
-        isGiftAidEligible: t.isGiftAidEligible || false,
+    // Mission Tithe
+    const missionRows = incomeRows.filter((row) => isMissionTitheRow(row, lookup));
+    const missionWeekTotal = (startDate: string, endDate: string) =>
+      sumMoney(rowsIn(missionRows, { startDate, endDate }), (row) => row.amount);
+    const missionTitheBreakdown = sundays.map((weekEnding) => ({
+      weekEnding,
+      total: missionWeekTotal(addDays(weekEnding, -6), weekEnding),
+    }));
+    if (lastSunday && lastSunday < activity.endDate) {
+      const partialTotal = missionWeekTotal(addDays(lastSunday, 1), activity.endDate);
+      if (partialTotal > 0) {
+        missionTitheBreakdown.push({ weekEnding: activity.endDate, total: partialTotal });
+      }
+    }
+    const missionTitheTotal = sumMoney(missionRows, (row) => row.amount);
+
+    // Tithes (individual donors + anonymous aggregate)
+    const titheRows = incomeRows.filter(
+      (row) => resolveCategory(row.category) === "Tithes & First Fruits"
+    );
+    const namedTithes = titheRows
+      .filter((row) => row.donorName)
+      .map((row) => ({
+        donorName: row.donorName!,
+        amount: row.amount,
+        isGiftAidEligible: row.isGiftAidEligible || false,
       }));
-
-    const anonymousTitheTotal = titheTransactions
-      .filter((t) => !t.donorName)
-      .reduce((sum, t) => sum + t.amount, 0);
-
+    const anonymousTitheTotal = sumMoney(
+      titheRows.filter((row) => !row.donorName),
+      (row) => row.amount
+    );
     const tithes = [
       ...namedTithes,
       ...(anonymousTitheTotal > 0
         ? [{ donorName: "Anonymous", amount: anonymousTitheTotal, isGiftAidEligible: false }]
         : []),
     ];
+    const titheGivers = groupGivingByDonor(
+      titheRows.map((row) => ({
+        donorId: row.donorId,
+        donorName: row.donorName,
+        amount: row.amount,
+        isGiftAidEligible: row.isGiftAidEligible,
+      }))
+    );
 
-    // Gift Aid summary
-    const giftAidEligible = incomeTransactions
-      .filter((t) => t.isGiftAidEligible)
-      .reduce((sum, t) => sum + t.amount, 0);
+    // Gift Aid
+    const giftAidEligible = sumMoney(
+      incomeRows.filter((row) => row.isGiftAidEligible),
+      (row) => row.amount
+    );
 
-    // Calculate totals
-    const grossIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
-    const totalExpenditure = expenditureTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const grossIncome = sumMoney(incomeRows, (row) => row.amount);
+    const totalExpenditure = sumMoney(expenditureRows, (row) => row.amount);
+
+    // Comparisons. Month -1 rolls back to the previous December.
+    const previous = monthPeriod(args.year, args.month - 1, args.today);
+    const sameMonthLastYear = monthPeriod(args.year - 1, args.month, args.today);
+
+    // Trend: the twelve calendar months ending with this one.
+    const trendStart = monthPeriod(args.year, args.month - 11, args.today).startDate;
+    const trend = buildTrend(
+      rows,
+      monthBuckets({ startDate: trendStart, endDate: period.endDate }),
+      period.throughDate
+    );
+
+    // Year to date: from the start of the financial year containing the last day
+    // covered, up to that day.
+    const financialYear = financialYearPeriod(
+      financialYearStartFor(period.throughDate, reportingPeriod),
+      reportingPeriod,
+      args.today
+    );
 
     return {
       year: args.year,
       month: args.month,
-      monthName: new Date(args.year, args.month).toLocaleDateString("en-GB", {
-        month: "long",
-        year: "numeric",
-      }),
+      monthName: period.label,
+      period,
       receipts,
       payments,
       weeklyBreakdown,
@@ -684,6 +718,7 @@ export const monthlyReportData = query({
         titheToPay: missionTitheTotal * 0.1,
       },
       tithes,
+      titheGivers,
       giftAidSummary: {
         eligible: giftAidEligible,
         claimable: giftAidEligible * 0.25,
@@ -691,230 +726,163 @@ export const monthlyReportData = query({
       totals: {
         grossIncome,
         totalExpenditure,
-        netBankable: grossIncome - totalExpenditure,
+        netBankable: roundMoney(grossIncome - totalExpenditure),
       },
-      transfers: buildTransferSummary(allTransactions, funds),
-      loans: await loadLoanRows(ctx, user.organizationId, endDateStr),
+      comparison: {
+        previousMonth: comparisonFor(inputs, previous.label, clipToElapsedDays(previous, period)),
+        sameMonthLastYear: comparisonFor(
+          inputs,
+          sameMonthLastYear.label,
+          clipToElapsedDays(sameMonthLastYear, period)
+        ),
+      },
+      trend,
+      yearToDate: {
+        label: financialYear.label,
+        totals: periodTotals(rows, {
+          startDate: financialYear.startDate,
+          endDate: period.throughDate,
+        }),
+      },
+      fundStatement: buildFundStatement(inputs.reportFunds, rows, {
+        startDate: period.startDate,
+        endDate: period.throughDate,
+      }),
+      readiness: buildReadiness(rows, activity),
+      transfers: buildTransferSummary(activityRows, inputs.funds),
+      loans: await loadLoanRows(ctx, user.organizationId, period.throughDate),
     };
   },
 });
 
-// RCI Annual Report Data - structured for RCI Annual Report template
+// RCI Annual Report data for a financial year. year is the START year.
 export const annualReportData = query({
   args: {
     year: v.number(),
+    today: v.string(), // client's yyyy-mm-dd
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<AnnualReportData> => {
     const user = await requireCapability(ctx, "reports.read");
 
-    // Calculate date range for the year
-    const startDate = `${args.year}-01-01`;
-    const endDate = `${args.year}-12-31`;
+    const reportingPeriod = await loadReportingPeriod(ctx, user.organizationId);
+    const period = financialYearPeriod(args.year, reportingPeriod, args.today);
+    const inputs = await loadReportInputs(ctx, user.organizationId, period.endDate);
+    const { rows, lookup } = inputs;
 
-    // Get all transactions for this organization in the year
-    // Use .gte() in index and filter for upper bound (Convex doesn't support both .gte and .lte in same query)
-    const allTransactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_organization_date", (q) =>
-        q
-          .eq("organizationId", user.organizationId)
-          .gte("date", startDate)
-      )
-      .filter((q) =>
-        q.and(
-          q.lte(q.field("date"), endDate),
-          q.neq(q.field("isVoided"), true)
-        )
-      )
-      .collect();
-    const reportableTransactions = filterIncomeAndExpenditure(allTransactions);
+    // Figures cover the elapsed part of the year (up to today, once started).
+    const elapsed: DateRange = { startDate: period.startDate, endDate: period.throughDate };
+    const elapsedRows = rowsIn(rows, elapsed);
+    const reportable = filterIncomeAndExpenditure(elapsedRows);
+    const incomeRows = reportable.filter(isReportableIncomeTransaction);
+    const expenditureRows = reportable.filter((row) => row.type === "Expenditure");
+    const { receipts, payments } = groupReport(reportable, lookup);
 
-    // Get previous year transactions for comparison
-    const prevStartDate = `${args.year - 1}-01-01`;
-    const prevEndDate = `${args.year - 1}-12-31`;
-    const prevYearTransactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_organization_date", (q) =>
-        q
-          .eq("organizationId", user.organizationId)
-          .gte("date", prevStartDate)
-      )
-      .filter((q) =>
-        q.and(
-          q.lte(q.field("date"), prevEndDate),
-          q.neq(q.field("isVoided"), true)
-        )
-      )
-      .collect();
-    const prevYearReportableTransactions =
-      filterIncomeAndExpenditure(prevYearTransactions);
+    // Prior year over the same elapsed months. Null when it has no reportable rows.
+    const priorRange = likeForLikePrior(period);
+    const priorLabel = financialYearPeriod(args.year - 1, reportingPeriod, args.today).label;
+    const prior =
+      filterIncomeAndExpenditure(rowsIn(rows, priorRange)).length === 0
+        ? null
+        : comparisonFor(
+            inputs,
+            `${priorLabel}${period.isComplete ? "" : " (same months)"}`,
+            priorRange
+          );
 
-    // Get categories with mainCategory data
-    const categories = await ctx.db
-      .query("categories")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
+    const monthlyTrend = buildTrend(rows, monthBuckets(period), period.throughDate, rows);
 
-    // Get funds for balance calculation
-    const funds = await ctx.db
-      .query("funds")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .collect();
+    const fundStatement = buildFundStatement(inputs.reportFunds, rows, elapsed);
 
-    const categoryDetails = categories.map((cat) => ({
-      name: cat.name,
-      mainCategory: cat.mainCategory,
-      transactionType: cat.transactionType,
-      displayOrder: cat.displayOrder,
-    }));
-
-    // Separate income and expenditure
-    const incomeTransactions = reportableTransactions.filter(
-      isReportableIncomeTransaction
+    // Reserve cover: unrestricted balance against the average monthly
+    // unrestricted spending over complete months (partial months if none).
+    const unrestrictedFundIds = new Set(
+      inputs.reportFunds.filter((fund) => fund.type === "Unrestricted").map((fund) => fund._id)
     );
-    const expenditureTransactions = reportableTransactions.filter(
-      (t) => t.type === "Expenditure"
+    const unrestrictedRows = rows.filter((row) => unrestrictedFundIds.has(row.fundId));
+    const completeMonths = monthlyTrend.filter((point) => !point.isFuture && !point.isPartial);
+    const basis =
+      completeMonths.length > 0 ? completeMonths : monthlyTrend.filter((point) => !point.isFuture);
+    // A partial month counts only the days up to today, so future spending stays out.
+    const reserve = reserveCover(
+      sumMoney(
+        fundStatement.rows.filter((row) => row.type === "Unrestricted"),
+        (row) => row.closing
+      ),
+      basis.map(
+        (point) =>
+          periodTotals(unrestrictedRows, {
+            startDate: point.startDate,
+            endDate: point.endDate < period.throughDate ? point.endDate : period.throughDate,
+          }).expenditure
+      )
     );
 
-    // Group income by mainCategory
-    const incomeByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }> = {};
-    const incomeSubcategoryMap = new Map<string, Map<string, number>>();
+    // Mission Tithe over the elapsed span.
+    const missionEligible = sumMoney(
+      incomeRows.filter((row) => isMissionTitheRow(row, lookup)),
+      (row) => row.amount
+    );
 
-    for (const t of incomeTransactions) {
-      const mainCategory = resolveReportingMainCategory(
-        t.category,
-        "Income",
-        categoryDetails
+    // Giving: every gift counts; donorCount is named givers only. regularGivers
+    // are the named givers who gave in at least half the elapsed months.
+    const giving = groupGivingByDonor(
+      incomeRows.map((row) => ({
+        donorId: row.donorId,
+        donorName: row.donorName,
+        amount: row.amount,
+        isGiftAidEligible: row.isGiftAidEligible,
+      }))
+    );
+    const givingRows = incomeRows.filter((row) => row.donorId || row.donorName);
+    const elapsedMonths = monthBuckets(elapsed);
+    const regularThreshold = Math.max(1, Math.ceil(period.monthsElapsed / 2));
+    const regularGivers = [
+      ...groupBy(givingRows, (row) => (row.donorId ? `id:${row.donorId}` : `name:${row.donorName}`)).values(),
+    ].filter((giverRows) => {
+      const months = new Set(
+        giverRows.map((row) => elapsedMonths.findIndex((bucket) => isWithinRange(row.date, bucket)))
       );
+      return months.size >= regularThreshold;
+    }).length;
 
-      if (!incomeByMainCategory[mainCategory]) {
-        incomeByMainCategory[mainCategory] = { total: 0, subcategories: [] };
-        incomeSubcategoryMap.set(mainCategory, new Map());
-      }
-      incomeByMainCategory[mainCategory].total += t.amount;
-
-      const subcatMap = incomeSubcategoryMap.get(mainCategory)!;
-      subcatMap.set(t.category, (subcatMap.get(t.category) || 0) + t.amount);
-    }
-
-    // Convert subcategory maps to arrays
-    for (const [mainCategory, subcatMap] of incomeSubcategoryMap.entries()) {
-      incomeByMainCategory[mainCategory].subcategories = Array.from(subcatMap.entries()).map(
-        ([name, total]) => ({ name, total })
-      );
-    }
-
-    // Group expenditure by mainCategory
-    const expenditureByMainCategory: Record<string, { total: number; subcategories: { name: string; total: number }[] }> = {};
-    const expenditureSubcategoryMap = new Map<string, Map<string, number>>();
-
-    for (const t of expenditureTransactions) {
-      const mainCategory = resolveReportingMainCategory(
-        t.category,
-        "Expenditure",
-        categoryDetails
-      );
-
-      if (!expenditureByMainCategory[mainCategory]) {
-        expenditureByMainCategory[mainCategory] = { total: 0, subcategories: [] };
-        expenditureSubcategoryMap.set(mainCategory, new Map());
-      }
-      expenditureByMainCategory[mainCategory].total += t.amount;
-
-      const subcatMap = expenditureSubcategoryMap.get(mainCategory)!;
-      subcatMap.set(t.category, (subcatMap.get(t.category) || 0) + t.amount);
-    }
-
-    // Convert subcategory maps to arrays
-    for (const [mainCategory, subcatMap] of expenditureSubcategoryMap.entries()) {
-      expenditureByMainCategory[mainCategory].subcategories = Array.from(subcatMap.entries()).map(
-        ([name, total]) => ({ name, total })
-      );
-    }
-
-    // Monthly trend
-    const monthlyTrend = Array.from({ length: 12 }, (_, i) => {
-      const monthStr = `${args.year}-${String(i + 1).padStart(2, "0")}`;
-      const monthTransactions = reportableTransactions.filter((t) => t.date.startsWith(monthStr));
-
-      const income = monthTransactions
-        .filter((t) => t.type === "Income")
-        .reduce((sum, t) => sum + t.amount, 0);
-      const expenditure = monthTransactions
-        .filter((t) => t.type === "Expenditure")
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      return {
-        month: new Date(args.year, i).toLocaleDateString("en-GB", { month: "short" }),
-        income,
-        expenditure,
-      };
-    });
-
-    // Calculate totals
-    const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
-    const totalExpenditure = expenditureTransactions.reduce((sum, t) => sum + t.amount, 0);
-
-    // Previous year totals for comparison
-    const prevYearIncome = prevYearReportableTransactions
-      .filter(isReportableIncomeTransaction)
-      .reduce((sum, t) => sum + t.amount, 0);
-    const prevYearExpenditure = prevYearReportableTransactions
-      .filter((t) => t.type === "Expenditure")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    // Year over year comparison
-    const yearOverYear = prevYearReportableTransactions.length > 0
-      ? {
-          current: { income: totalIncome, expenditure: totalExpenditure },
-          previous: { income: prevYearIncome, expenditure: prevYearExpenditure },
-          incomeChange: prevYearIncome > 0 ? ((totalIncome - prevYearIncome) / prevYearIncome) * 100 : 0,
-          expenditureChange: prevYearExpenditure > 0 ? ((totalExpenditure - prevYearExpenditure) / prevYearExpenditure) * 100 : 0,
-        }
-      : undefined;
-
-    // Gift Aid annual summary
-    const giftAidEligible = incomeTransactions
-      .filter((t) => t.isGiftAidEligible)
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    // Fund balances - calculate from all transactions up to end of year
-    const allTimeTransactions = await ctx.db
-      .query("transactions")
-      .withIndex("by_organization_date", (q) =>
-        q.eq("organizationId", user.organizationId).lte("date", endDate)
-      )
-      .filter((q) => q.neq(q.field("isVoided"), true))
-      .collect();
-
-    const fundBalances = funds.map((fund) => ({
-      fund: fund.name,
-      balance: sumFundBalance(allTimeTransactions.filter((t) => t.fundId === fund._id)),
-      type: fund.type,
-    }));
+    const totalIncome = sumMoney(incomeRows, (row) => row.amount);
+    const totalExpenditure = sumMoney(expenditureRows, (row) => row.amount);
+    const giftAidEligible = sumMoney(
+      incomeRows.filter((row) => row.isGiftAidEligible),
+      (row) => row.amount
+    );
 
     return {
       year: args.year,
-      incomeByMainCategory,
-      expenditureByMainCategory,
+      reportingPeriod,
+      period,
+      receipts,
+      payments,
       monthlyTrend,
-      yearOverYear,
+      prior,
       giftAidAnnual: {
         totalEligible: giftAidEligible,
         totalClaimable: giftAidEligible * 0.25,
       },
-      fundBalances,
+      missionTithe: {
+        eligible: missionEligible,
+        due: roundMoney(missionEligible * 0.1),
+      },
+      giving: {
+        donorCount: giving.donorCount,
+        giftCount: giving.giftCount,
+        regularGivers,
+      },
+      fundStatement,
+      reserveCover: reserve,
+      readiness: buildReadiness(rows, elapsed),
       totals: {
         totalIncome,
         totalExpenditure,
-        netMovement: totalIncome - totalExpenditure,
+        netMovement: roundMoney(totalIncome - totalExpenditure),
       },
-      transfers: buildTransferSummary(allTransactions, funds),
-      loans: await loadLoanRows(ctx, user.organizationId, endDate),
+      transfers: buildTransferSummary(elapsedRows, inputs.funds),
+      loans: await loadLoanRows(ctx, user.organizationId, period.throughDate),
     };
   },
 });

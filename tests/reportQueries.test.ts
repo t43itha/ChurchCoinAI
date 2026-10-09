@@ -1,0 +1,321 @@
+import { describe, expect, it, vi } from "vitest";
+import type { QueryCtx } from "../convex/_generated/server";
+import * as reports from "../convex/queries/reports";
+
+type Row = Record<string, any>;
+
+// Minimal indexed db: eq / gte / lte index ranges and the isVoided filter the
+// report queries use. Handlers run unchanged.
+function fixture(records: Record<string, Row[]>) {
+  const get = async (id: string) => Object.values(records).flat().find((row) => row._id === id) ?? null;
+  const filterApi = {
+    field: (name: string) => name,
+    neq: (field: string, value: unknown) => (row: Row) => row[field] !== value,
+    and: (...predicates: Array<(row: Row) => boolean>) => (row: Row) => predicates.every((p) => p(row)),
+  };
+  const db = {
+    get: vi.fn(get),
+    query: vi.fn((table: string) => {
+      let rows = [...(records[table] ?? [])];
+      const index = {
+        eq(field: string, value: unknown) { rows = rows.filter((row) => row[field] === value); return index; },
+        gte(field: string, value: string) { rows = rows.filter((row) => row[field] >= value); return index; },
+        lte(field: string, value: string) { rows = rows.filter((row) => row[field] <= value); return index; },
+      };
+      const chain = {
+        withIndex: (_name: string, configure: (q: typeof index) => unknown) => { configure(index); return chain; },
+        filter: (build: (q: typeof filterApi) => (row: Row) => boolean) => { rows = rows.filter(build(filterApi)); return chain; },
+        collect: async () => rows,
+        first: async () => rows[0] ?? null,
+      };
+      return chain;
+    }),
+  };
+  const ctx = {
+    db,
+    auth: { getUserIdentity: async () => ({ subject: "clerk" }) },
+  } as unknown as QueryCtx;
+  return ctx;
+}
+
+const invoke = (fn: unknown, ctx: QueryCtx, args: Row): Promise<any> =>
+  (fn as { _handler: (ctx: QueryCtx, args: Row) => Promise<any> })._handler(ctx, args);
+
+const transaction = (id: string, extra: Row): Row => ({
+  _id: id,
+  organizationId: "org",
+  fundId: "general",
+  type: "Income",
+  amount: 0,
+  category: "Offerings",
+  description: id,
+  ...extra,
+});
+
+function reportRecords(transactions: Row[]): Record<string, Row[]> {
+  return {
+    users: [{ _id: "user", clerkId: "clerk", organizationId: "org", role: "Admin" }],
+    organizations: [{ _id: "org", accessMode: "legacy", reportingPeriod: "tax_year" }],
+    funds: [
+      { _id: "general", organizationId: "org", name: "General", type: "Unrestricted" },
+      { _id: "building", organizationId: "org", name: "Building", type: "Restricted" },
+    ],
+    categories: [],
+    movements: [],
+    transactions,
+  };
+}
+
+describe("annual report for an in-progress tax year", () => {
+  const ctx = fixture(
+    reportRecords([
+      transaction("prior-in-range", { date: "2025-05-01", amount: 100 }),
+      transaction("prior-after-elapsed", { date: "2025-11-01", amount: 500 }),
+      transaction("current-income", { date: "2026-05-03", amount: 200 }),
+      transaction("current-building", { fundId: "building", date: "2026-06-10", amount: 300, category: "Donation" }),
+      transaction("current-spend", { type: "Expenditure", date: "2026-07-01", amount: 40, category: "Utilities" }),
+    ])
+  );
+
+  it("compares the elapsed months against the same months of the prior year", async () => {
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-10-08" });
+
+    expect(report.period).toMatchObject({ label: "2026/27", throughDate: "2026-10-08", isComplete: false });
+    expect(report.totals).toEqual({ totalIncome: 500, totalExpenditure: 40, netMovement: 460 });
+    expect(report.prior).toMatchObject({
+      label: "2025/26 (same months)",
+      range: { startDate: "2025-04-06", endDate: "2025-10-08" },
+      totals: { income: 100, expenditure: 0, net: 100 },
+    });
+  });
+
+  it("returns a null prior when the prior span has no reportable rows", async () => {
+    const report = await invoke(reports.annualReportData, fixture(reportRecords([])), {
+      year: 2026,
+      today: "2026-10-08",
+    });
+    expect(report.prior).toBeNull();
+  });
+});
+
+describe("annual giving counts", () => {
+  const giving = async (transactions: Row[]) => {
+    const report = await invoke(reports.annualReportData, fixture(reportRecords(transactions)), {
+      year: 2026,
+      today: "2026-10-08",
+    });
+    return report.giving;
+  };
+
+  it("counts anonymous gifts in giftCount but only named givers in donorCount", async () => {
+    const result = await giving([
+      transaction("anonymous", { date: "2026-05-03", amount: 10 }),
+      transaction("named", { date: "2026-05-10", amount: 20, donorId: "donor-1", donorName: "Alex" }),
+    ]);
+    expect(result).toMatchObject({ giftCount: 2, donorCount: 1 });
+  });
+
+  it("counts an anonymous-only year as gifts with no givers", async () => {
+    const result = await giving([transaction("anonymous", { date: "2026-05-03", amount: 10 })]);
+    expect(result).toMatchObject({ giftCount: 1, donorCount: 0, regularGivers: 0 });
+  });
+});
+
+describe("fund statement", () => {
+  it("closes each fund at its balance and totals to the sum of closings", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("before-year", { date: "2025-11-01", amount: 500 }),
+        transaction("current-income", { date: "2026-05-03", amount: 200 }),
+        transaction("current-spend", { type: "Expenditure", date: "2026-07-01", amount: 40, category: "Utilities" }),
+        transaction("building", { fundId: "building", date: "2026-06-10", amount: 300, category: "Donation" }),
+      ])
+    );
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-10-08" });
+    const byFund = Object.fromEntries(report.fundStatement.rows.map((row: any) => [row.fund, row]));
+
+    expect(byFund.General).toMatchObject({ opening: 500, income: 200, expenditure: 40, closing: 660 });
+    expect(byFund.Building).toMatchObject({ opening: 0, income: 300, closing: 300 });
+    const sumOfClosings = report.fundStatement.rows.reduce((sum: number, row: any) => sum + row.closing, 0);
+    expect(report.fundStatement.total.closing).toBe(sumOfClosings);
+    expect(report.fundStatement.total.closing).toBe(960);
+  });
+});
+
+describe("monthly comparison", () => {
+  it("picks December as the previous month when reporting January", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("december", { date: "2025-12-15", amount: 75 }),
+        transaction("january-last-year", { date: "2025-01-10", amount: 30 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 0, today: "2026-02-03" });
+
+    expect(report.monthName).toBe("January 2026");
+    expect(report.comparison.previousMonth).toMatchObject({
+      label: "December 2025",
+      range: { startDate: "2025-12-01", endDate: "2025-12-31" },
+      totals: { income: 75, expenditure: 0, net: 75 },
+    });
+    expect(report.comparison.sameMonthLastYear).toMatchObject({
+      label: "January 2025",
+      range: { startDate: "2025-01-01", endDate: "2025-01-31" },
+      totals: { income: 30 },
+    });
+    expect(report.yearToDate.label).toBe("2025/26");
+  });
+
+  it("compares an in-progress month with the same days of earlier months", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("early-september", { date: "2026-09-05", amount: 100 }),
+        transaction("late-september", { date: "2026-09-25", amount: 900 }),
+        transaction("early-october", { date: "2026-10-04", amount: 120 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-08" });
+
+    expect(report.comparison.previousMonth).toMatchObject({
+      range: { startDate: "2026-09-01", endDate: "2026-09-08" },
+      totals: { income: 100 },
+    });
+    expect(report.comparison.sameMonthLastYear.range).toEqual({
+      startDate: "2025-10-01",
+      endDate: "2025-10-08",
+    });
+  });
+});
+
+describe("monthly year to date", () => {
+  it("totals April from the tax year that contains it, not the one that started before it", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("last-tax-year", { date: "2025-05-01", amount: 10000 }),
+        transaction("april-after-6th", { date: "2026-04-10", amount: 100 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 3, today: "2026-05-10" });
+
+    expect(report.yearToDate.label).toBe("2026/27");
+    expect(report.yearToDate.totals).toMatchObject({ income: 100 });
+  });
+
+  it("leaves out April income dated before 6 April, which belongs to the previous tax year", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("last-tax-year", { date: "2025-05-01", amount: 10000 }),
+        transaction("april-before-6th", { date: "2026-04-03", amount: 50 }),
+        transaction("april-after-6th", { date: "2026-04-10", amount: 100 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 3, today: "2026-05-10" });
+
+    expect(report.yearToDate.totals).toMatchObject({ income: 100 });
+  });
+});
+
+describe("in-progress monthly fund statement", () => {
+  it("values the fund at today, not at the end of the month", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("early-october", { date: "2026-10-01", amount: 100 }),
+        transaction("late-october", { date: "2026-10-20", amount: 900 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-09" });
+    const general = report.fundStatement.rows.find((row: any) => row.fund === "General");
+
+    expect(general).toMatchObject({ income: 100, closing: 100 });
+  });
+});
+
+describe("annual trend", () => {
+  it("sums the non-future trend months to the year's total income when a future-dated row is present", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("may", { date: "2026-05-03", amount: 200 }),
+        transaction("early-october", { date: "2026-10-01", amount: 100 }),
+        transaction("late-october", { date: "2026-10-20", amount: 900 }),
+      ])
+    );
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-10-09" });
+    const settled = report.monthlyTrend.filter((point: any) => !point.isFuture);
+    const trendIncome = settled.reduce((sum: number, point: any) => sum + point.income, 0);
+
+    expect(report.totals.totalIncome).toBe(300);
+    expect(trendIncome).toBe(report.totals.totalIncome);
+  });
+});
+
+describe("in-progress month activity", () => {
+  const ctx = fixture(
+    reportRecords([
+      transaction("previous-month", { date: "2026-09-03", amount: 100 }),
+      transaction("elapsed-october", { date: "2026-10-01", amount: 100 }),
+      transaction("future-october", { date: "2026-10-20", amount: 900, isGiftAidEligible: true }),
+    ])
+  );
+
+  it("leaves transactions dated after today out of the month's figures", async () => {
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-09" });
+
+    expect(report.totals.grossIncome).toBe(100);
+    const receiptsTotal = report.receipts.reduce((sum: number, group: any) => sum + group.total, 0);
+    expect(receiptsTotal).toBe(100);
+    expect(report.missionTithe.total).toBe(100);
+    expect(report.missionTithe.weeklyBreakdown.reduce((sum: number, week: any) => sum + week.total, 0)).toBe(100);
+    expect(report.giftAidSummary.eligible).toBe(0);
+    expect(report.trend.find((point: any) => point.label === "Oct").income).toBe(100);
+    const fundRow = report.fundStatement.rows.find((row: any) => row.fund === "General");
+    expect(fundRow.income).toBe(100);
+    expect(report.comparison.previousMonth.totals.income).toBe(100);
+  });
+
+  it("keeps Sunday weeks after today in the weekly breakdown with zero totals", async () => {
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-09" });
+    const weekEndings = report.weeklyBreakdown.map((week: any) => week.weekEnding);
+
+    expect(weekEndings).toEqual(["2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25"]);
+    expect(report.weeklyBreakdown.find((week: any) => week.weekEnding === "2026-10-25").receiptsTotal).toBe(0);
+  });
+});
+
+describe("partial-month reserve cover", () => {
+  it("values spending only up to today in the tax year", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("opening", { date: "2026-03-01", amount: 1000 }),
+        transaction("spent-so-far", { type: "Expenditure", date: "2026-04-08", amount: 100, category: "Utilities" }),
+        transaction("spent-later", { type: "Expenditure", date: "2026-04-20", amount: 800, category: "Utilities" }),
+      ])
+    );
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-04-09" });
+
+    expect(report.reserveCover.averageMonthlyExpenditure).toBe(100);
+    expect(report.reserveCover.months).toBe(9);
+  });
+
+  it("values spending only up to today in the calendar year", async () => {
+    const records = reportRecords([
+      transaction("opening", { date: "2025-12-01", amount: 1000 }),
+      transaction("spent-so-far", { type: "Expenditure", date: "2026-01-08", amount: 100, category: "Utilities" }),
+      transaction("spent-later", { type: "Expenditure", date: "2026-01-20", amount: 800, category: "Utilities" }),
+    ]);
+    records.organizations = [{ _id: "org", accessMode: "legacy", reportingPeriod: "calendar_year" }];
+    const ctx = fixture(records);
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-01-09" });
+
+    expect(report.reserveCover.averageMonthlyExpenditure).toBe(100);
+    expect(report.reserveCover.months).toBe(9);
+  });
+});

@@ -8,7 +8,6 @@
   "components/ErrorBoundary.tsx": 2,
   "components/FundManager.tsx": 5,
   "components/Loans.tsx": 6,
-  "components/Reports.tsx": 34,
   "components/Settings.tsx": 2,
   "components/SubscriptionRequired.tsx": 8,
   "components/SupportCenter.tsx": 4,

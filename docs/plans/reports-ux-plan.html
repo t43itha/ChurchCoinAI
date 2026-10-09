@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports UX review and plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1c1917; --paper:#faf9f7; --ledger:#e7e5e1; --rule:#efeee9; --tint:#fcfbf9;
+    --grey-dark:#44403c; --grey-mid:#78716c; --grey-light:#f7f6f4;
+    --sage:#557555; --sage-light:#eef3ee; --amber:#a9743f; --amber-light:#faf2e9;
+    --error:#b53d3d; --error-light:#fbeded;
+    /* chart series: validated pair (light surface, all six checks pass) */
+    --s-income:#2e8259; --s-spend:#4f6fb0;
+    --shadow:0 1px 2px rgba(28,25,23,.04),0 4px 14px -6px rgba(28,25,23,.08);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 "DM Sans",system-ui,sans-serif}
+  .mono{font-family:"JetBrains Mono",monospace}
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 28px 80px}
+  h1{font-size:34px;letter-spacing:-.02em;margin:0 0 6px}
+  h2{font-size:22px;letter-spacing:-.01em;margin:56px 0 6px;padding-top:20px;border-top:1px solid var(--ledger)}
+  h3{font-size:15px;margin:0}
+  p.lede{color:var(--grey-dark);font-size:17px;max-width:780px;margin:8px 0 0}
+  .sub{color:var(--grey-mid);font-size:14px;margin:0 0 18px;max-width:780px}
+  .eyebrow{font:600 11px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--grey-mid)}
+  nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 0}
+  nav.toc a{font-size:13px;color:var(--grey-dark);text-decoration:none;border:1px solid var(--ledger);background:#fff;border-radius:999px;padding:4px 12px}
+  nav.toc a:hover{border-color:var(--grey-mid)}
+  .card{background:#fff;border:1px solid var(--ledger);border-radius:14px;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:1fr 1fr} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+  /* verdict */
+  .verdict{padding:22px 24px;display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start;margin-top:26px}
+  .score{font:700 40px/1 "JetBrains Mono",monospace;color:var(--amber)}
+  .score small{font-size:15px;color:var(--grey-mid)}
+
+  /* question scorecard */
+  table.plain{width:100%;border-collapse:collapse;font-size:14px}
+  table.plain th{text-align:left;font:600 11px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--grey-mid);padding:10px 14px;background:var(--tint);border-bottom:1px solid var(--rule)}
+  table.plain td{padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.plain tr:last-child td{border-bottom:0}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+  .pill.no{background:var(--error-light);color:var(--error)}
+  .pill.part{background:var(--amber-light);color:var(--amber)}
+  .pill.yes{background:var(--sage-light);color:var(--sage)}
+  .pill.new{background:#eef1f8;color:#3e5a94}
+
+  /* findings */
+  .finding{padding:16px 18px}
+  .finding h3{display:flex;gap:10px;align-items:baseline}
+  .finding p{margin:6px 0 0;color:var(--grey-dark);font-size:14px}
+  .finding code,.code{font:12px "JetBrains Mono",monospace;background:var(--grey-light);border:1px solid var(--rule);border-radius:5px;padding:1px 5px;color:var(--grey-dark)}
+  .sev{font:600 10.5px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;flex:none}
+  .sev.hi{background:var(--error-light);color:var(--error)}
+  .sev.md{background:var(--amber-light);color:var(--amber)}
+  .sev.lo{background:var(--grey-light);color:var(--grey-mid)}
+
+  /* ===== mockup chrome ===== */
+  .frame{border:1px solid var(--ledger);border-radius:16px;background:#f3f2ef;padding:14px;margin-top:14px}
+  .frame-bar{display:flex;gap:6px;margin:0 0 12px 4px}
+  .frame-bar i{width:10px;height:10px;border-radius:50%;background:#dcd9d4;display:block}
+  .screen{background:var(--paper);border-radius:10px;padding:22px;border:1px solid var(--ledger)}
+  .note{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font:700 11px "JetBrains Mono",monospace;flex:none;vertical-align:middle;margin-left:6px}
+  .legend-notes{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;font-size:13.5px;color:var(--grey-dark)}
+  .legend-notes div{display:flex;gap:10px;align-items:flex-start}
+  .legend-notes .note{margin:1px 0 0}
+  @media(max-width:900px){.legend-notes{grid-template-columns:1fr}}
+
+  /* current-state wireframe */
+  .wf{display:grid;gap:8px}
+  .wf .blk{background:#fff;border:1px solid var(--ledger);border-radius:8px;padding:9px 12px;font-size:12.5px;color:var(--grey-dark);display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .wf .blk b{color:var(--ink)}
+  .wf .muted{color:var(--grey-mid)}
+  .wf .tall{min-height:80px;align-items:flex-start}
+  .wf .row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .wf .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .flag{font:600 10px "JetBrains Mono",monospace;color:var(--error);background:var(--error-light);border-radius:4px;padding:1px 6px;white-space:nowrap}
+
+  /* proposed report UI */
+  .rbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .seg{display:inline-flex;background:#fff;border:1px solid var(--ledger);border-radius:10px;padding:3px}
+  .seg span{font-size:13px;font-weight:600;padding:6px 12px;border-radius:7px;color:var(--grey-mid)}
+  .seg span.on{background:var(--ink);color:#fff}
+  .stepper{display:inline-flex;align-items:center;background:#fff;border:1px solid var(--ledger);border-radius:10px;height:38px;overflow:hidden}
+  .stepper b{padding:0 14px;font-size:14px}
+  .stepper span{width:34px;height:100%;display:grid;place-items:center;color:var(--grey-mid);border-right:1px solid var(--rule)}
+  .stepper span:last-child{border-right:0;border-left:1px solid var(--rule)}
+  .stepper span.dis{opacity:.35}
+  .btn{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--ledger);background:#fff;font-size:13px;font-weight:600}
+  .btn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip{font-size:12px;font-weight:600;color:var(--grey-mid);background:var(--grey-light);border:1px solid var(--rule);border-radius:999px;padding:3px 10px}
+
+  .headline{padding:20px 22px;display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center}
+  .headline .big{font-size:21px;line-height:1.35;letter-spacing:-.01em;font-weight:600;margin:4px 0 0;max-width:720px}
+  .headline .big em{font-style:normal;color:var(--sage)}
+  .status{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:999px;padding:4px 11px}
+  .status.ok{background:var(--sage-light);color:var(--sage)}
+  .status.watch{background:var(--amber-light);color:var(--amber)}
+
+  .kpi{padding:16px 18px 14px}
+  .kpi .v{font:700 25px/1.15 "JetBrains Mono",monospace;letter-spacing:-.02em;margin:8px 0 6px}
+  .kpi .cmp{font-size:12.5px;color:var(--grey-mid);display:flex;flex-direction:column;gap:2px}
+  .up{color:var(--sage);font-weight:600} .down{color:var(--error);font-weight:600} .flat{color:var(--grey-mid);font-weight:600}
+  .kpi svg{display:block;margin-top:10px}
+  .split{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px;margin:10px 0 6px}
+  .split i{display:block;height:100%}
+
+  .sec{padding:0}
+  .sec-h{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--rule)}
+  .sec-h .r{font-size:12.5px;color:var(--grey-mid)}
+  .sec-b{padding:14px 18px}
+
+  .todo{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--rule);font-size:14px}
+  .todo:last-child{border-bottom:0}
+  .todos{display:grid;grid-template-columns:1fr 1fr}.todos .todo:nth-child(odd){border-right:1px solid var(--rule)}.todos .todo:nth-last-child(-n+2){border-bottom:0}
+  @media(max-width:900px){.todos{grid-template-columns:1fr}}
+  .ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font:700 13px "JetBrains Mono",monospace}
+  .ico.pay{background:var(--amber-light);color:var(--amber)}
+  .ico.claim{background:var(--sage-light);color:var(--sage)}
+  .ico.warn{background:var(--error-light);color:var(--error)}
+  .ico.info{background:var(--grey-light);color:var(--grey-mid)}
+  .todo .d{font-size:12.5px;color:var(--grey-mid)}
+  .todo .amt{font:600 14px "JetBrains Mono",monospace;text-align:right}
+  .todo a{font-size:12.5px;color:var(--ink);font-weight:600}
+
+  .rank{display:grid;grid-template-columns:minmax(120px,1.3fr) 2fr 86px 64px;gap:10px;align-items:center;padding:7px 0;font-size:13.5px}
+  .rank .bar{height:10px;background:var(--grey-light);border-radius:4px;overflow:hidden}
+  .rank .bar i{display:block;height:100%;border-radius:0 4px 4px 0}
+  .rank .a{font:500 13px "JetBrains Mono",monospace;text-align:right}
+  .rank .c{font-size:12px;text-align:right}
+  .rank.more{color:var(--grey-mid);font-size:12.5px;padding-top:10px}
+  .rank-h{display:grid;grid-template-columns:minmax(120px,1.3fr) 2fr 86px 64px;gap:10px;font:600 10.5px "JetBrains Mono",monospace;letter-spacing:.07em;text-transform:uppercase;color:var(--grey-mid);padding-bottom:6px;border-bottom:1px solid var(--rule);margin-bottom:4px}
+  .rank-h span:nth-child(n+3){text-align:right}
+
+  table.fund{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.fund th{font:600 10.5px "JetBrains Mono",monospace;letter-spacing:.07em;text-transform:uppercase;color:var(--grey-mid);text-align:right;padding:9px 12px;background:var(--tint);border-bottom:1px solid var(--rule)}
+  table.fund th:first-child,table.fund td:first-child{text-align:left}
+  table.fund td{padding:9px 12px;border-bottom:1px solid var(--rule);text-align:right;font-family:"JetBrains Mono",monospace;font-size:13px}
+  table.fund td:first-child{font-family:"DM Sans",sans-serif;font-size:13.5px}
+  table.fund tr.grp td{background:var(--tint);font:600 10.5px "JetBrains Mono",monospace;letter-spacing:.07em;text-transform:uppercase;color:var(--grey-mid)}
+  table.fund tr.tot td{font-weight:700;border-top:1px solid var(--ledger);background:#fbfaf8}
+  .tag{display:inline-block;font:600 10.5px "DM Sans",sans-serif;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+  .tag.u{background:var(--sage-light);color:var(--sage)} .tag.r{background:var(--amber-light);color:var(--amber)} .tag.d{background:#eef1f8;color:#3e5a94}
+
+  details.more{border-top:1px solid var(--rule)}
+  details.more summary{list-style:none;cursor:pointer;padding:12px 18px;font-size:13.5px;font-weight:600;display:flex;justify-content:space-between}
+  details.more summary::-webkit-details-marker{display:none}
+  details.more summary span{color:var(--grey-mid);font-weight:500}
+
+  .chart-legend{display:flex;gap:16px;font-size:12.5px;color:var(--grey-dark);margin:0 0 6px}
+  .chart-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .chart-legend i.line{height:2px;border-radius:1px;vertical-align:3px;width:14px}
+  .chart-legend i.ghost{height:0;border-top:2px dashed var(--grey-mid);border-radius:0;vertical-align:3px;width:14px;background:none}
+  .toggle{display:inline-flex;border:1px solid var(--ledger);border-radius:8px;overflow:hidden;font-size:12px}
+  .toggle span{padding:4px 10px;color:var(--grey-mid)} .toggle span.on{background:var(--grey-light);color:var(--ink);font-weight:600}
+  .tip{position:fixed;pointer-events:none;background:#fff;border:1px solid var(--ledger);border-radius:10px;box-shadow:0 16px 40px -16px rgba(28,25,23,.28);padding:8px 11px;font-size:12px;display:none;z-index:9;min-width:150px}
+  .tip b{display:block;margin-bottom:3px}
+  .tip div{display:flex;justify-content:space-between;gap:14px;font-family:"JetBrains Mono",monospace}
+
+  /* phone */
+  .phone{width:330px;border:10px solid #1c1917;border-radius:38px;background:var(--paper);overflow:hidden;margin:0 auto}
+  .phone .in{padding:16px 14px 20px;display:grid;gap:10px}
+  .phone .kpi .v{font-size:20px}
+
+  /* plan */
+  .phase{padding:20px 22px}
+  .phase ol{margin:10px 0 0;padding-left:20px;font-size:14px;color:var(--grey-dark)}
+  .phase li{margin:5px 0}
+  .phase .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .q{padding:16px 18px;font-size:14px}
+  .q b{display:block;margin-bottom:4px;font-size:14.5px}
+  .q p{margin:0;color:var(--grey-dark)}
+  .q .rec{margin-top:8px;font-size:13px;color:var(--sage);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">ChurchCoin · Reports · UX review</div>
+<h1>Monthly &amp; annual reports: review and redesign plan</h1>
+<p class="lede">The reports compute the right totals but present them as a stack of equal-weight accordions. A treasurer can answer “how much came in?” but not “is that good?”, “what do we owe?” or “how much do we have?” without leaving the page. This plan reorders the page around those questions and fills the gaps with data we mostly already compute.</p>
+<nav class="toc">
+  <a href="#test">At-a-glance test</a><a href="#findings">Findings</a><a href="#monthly">Monthly mockup</a><a href="#annual">Annual mockup</a><a href="#mobile">Mobile</a><a href="#data">Data changes</a><a href="#plan">Phased plan</a><a href="#questions">Open questions</a>
+</nav>
+
+<div class="card verdict">
+  <div class="score">3<small>/10</small></div>
+  <div>
+    <h3>Verdict: the data is mostly there, the hierarchy is not</h3>
+    <p class="sub" style="margin:6px 0 0">Of the ten questions a treasurer, pastor or trustee brings to these reports, the monthly report answers 3 at a glance and the annual 4. The biggest gaps are context (no comparisons on the monthly, a misleading one on the annual), position (fund balances absent from monthly, collapsed on annual) and obligations (loans are computed by the query but never shown on screen or in the PDF).</p>
+  </div>
+</div>
+
+<!-- ================= TEST ================= -->
+<h2 id="test">The at-a-glance test</h2>
+<p class="sub">Who reads these: the treasurer closing the month, the pastor reading the summary, trustees approving the year. These are the questions they come with, scored against what's visible without scrolling or expanding.</p>
+<div class="card" style="overflow:hidden">
+<table class="plain">
+  <thead><tr><th style="width:34%">Question</th><th>Monthly today</th><th>Annual today</th><th>Proposed answer</th></tr></thead>
+  <tbody>
+    <tr><td>Did we spend more than came in?</td><td><span class="pill yes">Yes</span> “Net Bankable” card (cash-collection jargon)</td><td><span class="pill yes">Yes</span> Net Movement card</td><td>Headline sentence + Surplus/Deficit KPI with status</td></tr>
+    <tr><td>Is that better or worse than usual?</td><td><span class="pill no">No</span> no comparison at all</td><td><span class="pill part">Misleading</span> part-year vs full prior year</td><td>vs last month, vs same month last year, like-for-like YTD</td></tr>
+    <tr><td>How much money do we actually have?</td><td><span class="pill no">No</span></td><td><span class="pill part">Collapsed</span> Fund Balances closed by default</td><td>Fund position KPI + statement of funds (opening → closing)</td></tr>
+    <tr><td>How much is restricted vs free to spend?</td><td><span class="pill no">No</span></td><td><span class="pill part">Partial</span> type badge per fund, no subtotal</td><td>Unrestricted / restricted split bar and grouped subtotals</td></tr>
+    <tr><td>What do we owe or need to pay?</td><td><span class="pill part">Partial</span> Mission tithe, mid-page</td><td><span class="pill no">No</span> loans computed, not shown</td><td>“To action” panel: mission tithe, loans due, Gift Aid to claim</td></tr>
+    <tr><td>Where did the money come from / go?</td><td><span class="pill part">Partial</span> unsorted two-level tables</td><td><span class="pill part">Partial</span> unsorted, no shares</td><td>Ranked bars with % share and change</td></tr>
+    <tr><td>What changed or looks unusual?</td><td><span class="pill no">No</span></td><td><span class="pill no">No</span> YoY only on two totals</td><td>Change column per category; biggest movers called out</td></tr>
+    <tr><td>Can I trust these numbers yet?</td><td><span class="pill no">No</span> (only on Dashboard)</td><td><span class="pill no">No</span></td><td>Reuse Dashboard month-end checks: % categorised / reconciled</td></tr>
+    <tr><td>How many months could we cover? (reserves)</td><td><span class="pill no">No</span></td><td><span class="pill no">No</span> (Dashboard has it)</td><td>Reserve cover KPI on annual</td></tr>
+    <tr><td>Does the period match our financial year?</td><td><span class="pill yes">n/a</span></td><td><span class="pill no">No</span> calendar year only, org default is tax year</td><td>Follows organisation reporting period</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ================= FINDINGS ================= -->
+<h2 id="findings">Findings</h2>
+<p class="sub">Ordered by how much they hurt comprehension. References are to <span class="code">components/Reports.tsx</span> and <span class="code">convex/queries/reports.ts</span>.</p>
+<div class="grid g2">
+  <div class="card finding"><h3><span class="sev hi">High</span>Annual YoY compares a part-year to a full year</h3><p>Viewing 2026 in October compares Jan–Oct 2026 with all of 2025, so income always looks down ~17%. <code>reports.ts:871</code> has no like-for-like window. This is the one number on the page that is actively wrong to read.</p></div>
+  <div class="card finding"><h3><span class="sev hi">High</span>Monthly has no context</h3><p>Four bare totals with no previous month, no same-month-last-year, no trend. “£14,820 income” means nothing without a reference point.</p></div>
+  <div class="card finding"><h3><span class="sev hi">High</span>Loans are computed but never displayed</h3><p>Both queries return <code>loans</code> (<code>reports.ts:697, 917</code>) and Excel exports them, but neither the screen nor the PDF renders them. Trustees can't see outstanding debt.</p></div>
+  <div class="card finding"><h3><span class="sev hi">High</span>Fund position is missing or hidden</h3><p>Monthly shows no balances. Annual's Fund Balances starts collapsed (<code>Reports.tsx:751</code>) and shows only closing balance: no opening, income, spending or transfers per fund, which is what a SORP statement of funds needs.</p></div>
+  <div class="card finding"><h3><span class="sev md">Medium</span>Annual ignores the reporting period setting</h3><p>Organisations default to <code>tax_year</code> (<code>Onboarding.tsx:119</code>) and the AI tab respects it, but the annual report is hard-coded to 1 Jan–31 Dec (<code>reports.ts:711</code>).</p></div>
+  <div class="card finding"><h3><span class="sev md">Medium</span>Everything has the same visual weight</h3><p>Ten accordion cards in a row, each with the same header style. The Tithes list (one row per gift, not per donor) is often the longest block on the page and sits above Gift Aid and Programmes.</p></div>
+  <div class="card finding"><h3><span class="sev md">Medium</span>Category tables are unsorted and proportion-blind</h3><p>Groups follow Map insertion order, so the largest category can appear last. No share-of-total, no bar, no change, and the header repeats the KPI total.</p></div>
+  <div class="card finding"><h3><span class="sev md">Medium</span>Spending is painted red</h3><p>Expenditure totals, bars and weekly figures use <code>text-error</code>. Paying the rent isn't an error; red should be reserved for deficits and overdrawn funds so it keeps its meaning.</p></div>
+  <div class="card finding"><h3><span class="sev md">Medium</span>Duplicated and boilerplate blocks</h3><p>Gift Aid claimable appears as a KPI and again in its own card with static explainer copy. The footer card repeats the church name and period already in the header; it only matters in print.</p></div>
+  <div class="card finding"><h3><span class="sev md">Medium</span>Reports and Dashboard disagree on scope</h3><p>The Dashboard already computes operating position, giving trend, general fund cover and month-end readiness (<code>lib/dashboardKpis.ts</code>, <code>lib/dashboardChecks.ts</code>), but Reports re-derives totals separately and shows none of these. Mission tithe is computed in both places.</p></div>
+  <div class="card finding"><h3><span class="sev lo">Low</span>Small correctness and polish issues</h3><p>“N contributors” counts gifts, not people. Monthly “next” allows future months; annual blocks them. Tab class typo <code>py-3-mb-px</code> (<code>Reports.tsx:1741</code>) drops both padding and the underline offset. Fund and tithe totals use <code>reduce</code> rather than <code>sumMoney</code>.</p></div>
+  <div class="card finding"><h3><span class="sev lo">Low</span>Header controls don't adapt</h3><p>Period stepper and two export buttons sit in one non-wrapping row; on narrow screens they overflow. The page title reads as grey caption text while the generic “Reports” banner takes the hero slot.</p></div>
+</div>
+
+<!-- ================= MONTHLY ================= -->
+<h2 id="monthly">Monthly report</h2>
+<p class="sub">Left: what the page is today, as a wireframe. Below: the proposed page. Numbered markers are explained under the mockup. Sample figures are invented but internally consistent.</p>
+
+<div class="grid g2" style="align-items:start">
+  <div>
+    <div class="eyebrow" style="margin:8px 0 6px">Today</div>
+    <div class="frame" style="margin-top:0"><div class="screen" style="padding:14px">
+      <div class="wf">
+        <div class="blk"><b>Reports</b><span class="muted">Statutory statements, annual accounts…</span></div>
+        <div class="blk"><span class="muted">Monthly · Annual · AI</span></div>
+        <div class="blk"><span class="muted">Grace Church Monthly Accounts – September 2026</span><span class="muted">‹ Sep 2026 › PDF Excel</span></div>
+        <div class="row"><div class="blk"><span>Gross Income<br><b>£14,820</b></span></div><div class="blk"><span>Expenditure<br><b style="color:var(--error)">£12,960</b></span></div><div class="blk"><span>Net Bankable<br><b>£1,860</b></span></div><div class="blk"><span>Gift Aid<br><b>£1,320</b></span></div></div>
+        <div class="row2"><div class="blk tall"><span>▾ Receipts (unsorted)</span><span class="flag">no context</span></div><div class="blk tall"><span>▾ Payments (red)</span></div></div>
+        <div class="blk"><span>▸ Weekly Summary</span></div>
+        <div class="blk"><span>▸ Mission Tithe</span><b>£1,213</b></div>
+        <div class="row2"><div class="blk"><span>▸ Tithes Breakdown · 46 “contributors”</span></div><div class="blk"><span>Gift Aid Summary</span><span class="flag">duplicate</span></div></div>
+        <div class="row2"><div class="blk"><span>▾ Income by programme</span></div><div></div></div>
+        <div class="blk"><span>Transfers between funds</span></div>
+        <div class="blk"><span class="muted">Footer: church name, generated date</span></div>
+        <div class="blk" style="border-style:dashed"><span class="muted">Not shown: fund balances · loans · comparisons · data readiness</span></div>
+      </div>
+    </div></div>
+  </div>
+  <div>
+    <div class="eyebrow" style="margin:8px 0 6px">What changes</div>
+    <div class="card" style="padding:16px 18px;font-size:14px;color:var(--grey-dark)">
+      <p style="margin:0 0 10px"><b style="color:var(--ink)">Order follows the questions.</b> Verdict → numbers with context → what to do → where money went → where it sits → detail on demand.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--ink)">Every number gets a reference point.</b> Previous month and same month last year, plus a 12-month sparkline.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--ink)">Obligations get their own panel.</b> Mission tithe, Gift Aid, loans and data-quality checks become one actionable list instead of four scattered cards.</p>
+      <p style="margin:0 0 10px"><b style="color:var(--ink)">Detail moves down and closes.</b> Weekly rhythm, giving by donor, programmes and transfers live under “More detail”, closed by default but always in the PDF.</p>
+      <p style="margin:0"><b style="color:var(--ink)">Colour means something.</b> Income and spending use two neutral series colours; red is kept for deficits and overdrawn funds.</p>
+    </div>
+  </div>
+</div>
+
+<div class="eyebrow" style="margin:28px 0 0">Proposed · Monthly</div>
+<div class="frame"><div class="frame-bar"><i></i><i></i><i></i></div><div class="screen">
+
+  <div class="rbar">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="seg"><span class="on">Monthly</span><span>Annual</span><span>AI reports</span></div>
+      <div class="stepper"><span>‹</span><b>September 2026</b><span class="dis">›</span></div>
+      <span class="chip">Data 96% categorised · 88% reconciled</span><span class="note">1</span>
+    </div>
+    <div style="display:flex;gap:8px"><span class="btn">Share with pastor</span><span class="btn dark">Export ▾</span><span class="note">2</span></div>
+  </div>
+
+  <div class="card headline">
+    <div>
+      <div class="eyebrow">Grace Church · Monthly accounts · September 2026 <span class="note">3</span></div>
+      <p class="big">A <em>£1,860 surplus</em>. Income was up 10% on August, helped by Harvest Sunday; spending rose 9%, mostly premises. £1,213 mission tithe is due and £1,320 of Gift Aid can be claimed.</p>
+    </div>
+    <span class="status ok">● Surplus</span>
+  </div>
+
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card kpi"><div class="eyebrow">Income</div><div class="v">£14,820</div>
+      <div class="cmp"><span><span class="up">▲ 10.5%</span> vs Aug (£13,410)</span><span><span class="up">▲ 6.2%</span> vs Sep 2025</span></div>
+      <svg class="spark" data-series="income" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"></svg></div>
+    <div class="card kpi"><div class="eyebrow">Spending</div><div class="v">£12,960</div>
+      <div class="cmp"><span><span class="flat">▲ 9.1%</span> vs Aug (£11,880)</span><span><span class="flat">▲ 3.4%</span> vs Sep 2025</span></div>
+      <svg class="spark" data-series="spend" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"></svg></div>
+    <div class="card kpi"><div class="eyebrow">Surplus</div><div class="v" style="color:var(--sage)">+£1,860</div>
+      <div class="cmp"><span>Aug: +£1,530</span><span>Year to date: <b style="color:var(--ink)">+£9,410</b></span></div>
+      <svg class="spark" data-series="net" width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none"></svg></div>
+    <div class="card kpi"><div class="eyebrow">Held across funds <span class="note">4</span></div><div class="v">£65,120</div>
+      <div class="split"><i style="width:28%;background:var(--sage)"></i><i style="width:67%;background:var(--amber)"></i><i style="width:5%;background:#7b93c4"></i></div>
+      <div class="cmp"><span><b style="color:var(--sage)">£18,420</b> free to spend · £46,700 restricted/designated</span></div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr;margin-top:14px">
+    <div class="card sec">
+      <div class="sec-h"><h3>To action this month <span class="note">5</span></h3><span class="r">4 items</span></div>
+      <div class="todos">
+      <div class="todo"><span class="ico pay">£</span><div>Pay mission tithe<div class="d">10% of general fund giving</div></div><div><div class="amt">£1,213</div><a href="#">Record ›</a></div></div>
+      <div class="todo"><span class="ico claim">↺</span><div>Claim Gift Aid<div class="d">£5,280 eligible from 31 givers</div></div><div><div class="amt">£1,320</div><a href="#">Schedule ›</a></div></div>
+      <div class="todo"><span class="ico info">⌛</span><div>Bethel Trust loan<div class="d">£8,000 outstanding · next due 31 Dec</div></div><div><div class="amt">£500</div></div></div>
+      <div class="todo"><span class="ico warn">!</span><div>1 transfer missing its other side<div class="d">£250 out of General, no matching in</div></div><div><a href="#">Fix ›</a></div></div>
+      </div>
+    </div>
+
+    <div class="card sec">
+      <div class="sec-h"><h3>Where it came from and went <span class="note">6</span></h3><div class="toggle"><span class="on">vs August</span><span>vs Sep 2025</span></div></div>
+      <div class="sec-b grid g2" style="gap:26px">
+        <div>
+          <div class="chart-legend"><span><i style="background:var(--s-income)"></i>Income · £14,820</span></div>
+          <div class="rank-h"><span>Category</span><span></span><span>Amount</span><span>Change</span></div>
+          <div class="rank"><span>Tithes &amp; First Fruits</span><span class="bar"><i style="width:100%;background:var(--s-income)"></i></span><span class="a">£7,940</span><span class="c up">+4%</span></div>
+          <div class="rank"><span>Offerings</span><span class="bar"><i style="width:40%;background:var(--s-income)"></i></span><span class="a">£3,210</span><span class="c up">+31%</span></div>
+          <div class="rank"><span>Building Fund</span><span class="bar"><i style="width:23%;background:var(--s-income)"></i></span><span class="a">£1,850</span><span class="c flat">0%</span></div>
+          <div class="rank"><span>Thanksgiving</span><span class="bar"><i style="width:12%;background:var(--s-income)"></i></span><span class="a">£980</span><span class="c up">+18%</span></div>
+          <div class="rank"><span>Events</span><span class="bar"><i style="width:11%;background:var(--s-income)"></i></span><span class="a">£840</span><span class="c down">−12%</span></div>
+        </div>
+        <div>
+          <div class="chart-legend"><span><i style="background:var(--s-spend)"></i>Spending · £12,960</span></div>
+          <div class="rank-h"><span>Category</span><span></span><span>Amount</span><span>Change</span></div>
+          <div class="rank"><span>Staff &amp; love gifts</span><span class="bar"><i style="width:100%;background:var(--s-spend)"></i></span><span class="a">£5,400</span><span class="c flat">0%</span></div>
+          <div class="rank"><span>Premises</span><span class="bar"><i style="width:71%;background:var(--s-spend)"></i></span><span class="a">£3,860</span><span class="c" style="color:var(--amber);font-weight:600">+38%</span></div>
+          <div class="rank"><span>Ministry costs</span><span class="bar"><i style="width:30%;background:var(--s-spend)"></i></span><span class="a">£1,620</span><span class="c flat">−4%</span></div>
+          <div class="rank"><span>Mission tithe paid</span><span class="bar"><i style="width:22%;background:var(--s-spend)"></i></span><span class="a">£1,180</span><span class="c flat">+2%</span></div>
+          <div class="rank"><span>Admin &amp; bank</span><span class="bar"><i style="width:17%;background:var(--s-spend)"></i></span><span class="a">£900</span><span class="c flat">+1%</span></div>
+        </div>
+      </div>
+      <div style="padding:0 18px 12px;font-size:12.5px;color:var(--grey-mid)">Click a row to see its subcategories and transactions. Changes over ±25% are highlighted.</div>
+    </div>
+  </div>
+
+  <div class="card sec" style="margin-top:14px">
+    <div class="sec-h"><h3>Fund position at 30 September <span class="note">7</span></h3><span class="r">Opening + income − spending ± transfers = closing</span></div>
+    <table class="fund">
+      <thead><tr><th>Fund</th><th>1 Sep</th><th>In</th><th>Out</th><th>Transfers</th><th>30 Sep</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td>General<span class="tag u">Unrestricted</span></td><td>£17,300</td><td>£12,130</td><td>£10,760</td><td>−£250</td><td>£18,420</td><td class="up">+£1,120</td></tr>
+        <tr><td>Building Fund<span class="tag r">Restricted</span></td><td>£40,450</td><td>£1,850</td><td>£0</td><td>£0</td><td>£42,300</td><td class="up">+£1,850</td></tr>
+        <tr><td>Missions<span class="tag d">Designated</span></td><td>£3,480</td><td>£0</td><td>£590</td><td>+£250</td><td>£3,140</td><td class="flat">−£340</td></tr>
+        <tr><td>Youth<span class="tag r">Restricted</span></td><td>£2,030</td><td>£840</td><td>£1,610</td><td>£0</td><td>£1,260</td><td class="flat">−£770</td></tr>
+        <tr class="tot"><td>All funds</td><td>£63,260</td><td>£14,820</td><td>£12,960</td><td>£0</td><td>£65,120</td><td class="up">+£1,860</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="sec-h"><h3>More detail <span class="note">8</span></h3><span class="r">Closed by default · always included in PDF</span></div>
+    <details class="more" open><summary>Sunday by Sunday <span>5 weeks · Harvest on 20 Sep</span></summary>
+      <div style="padding:0 18px 14px">
+        <div class="chart-legend"><span><i style="background:var(--s-income)"></i>Income</span><span><i style="background:var(--s-spend)"></i>Spending</span></div>
+        <svg id="chart-weekly" width="100%" height="170" viewBox="0 0 1000 170"></svg>
+      </div>
+    </details>
+    <details class="more"><summary>Giving by donor <span>31 givers · 46 gifts · 24 Gift Aid declared</span></summary></details>
+    <details class="more"><summary>Income by programme <span>3 programmes · £2,140</span></summary></details>
+    <details class="more"><summary>Mission tithe workings <span>£12,130 eligible × 10%</span></summary></details>
+    <details class="more"><summary>Transfers between funds <span>£250 · 1 unmatched</span></summary></details>
+  </div>
+</div>
+<div class="legend-notes">
+  <div><span class="note">1</span><span><b>Trust signal.</b> Reuses <span class="code">readiness.categorizedPercent / reconciledPercent</span> from the dashboard summary. Amber when under 95% so nobody prints half-reconciled accounts unawares.</span></div>
+  <div><span class="note">2</span><span><b>One export menu</b> (PDF, Excel, print). “Share with pastor” is optional: a read-only link or emailed PDF.</span></div>
+  <div><span class="note">3</span><span><b>Headline sentence</b>, built deterministically from the numbers on the page (template, not AI): surplus/deficit, biggest income mover, biggest spending mover, obligations.</span></div>
+  <div><span class="note">4</span><span><b>Fund position KPI</b> replaces the duplicate Gift Aid card. The split bar answers “how much is actually free to spend”.</span></div>
+  <div><span class="note">5</span><span><b>To action</b> pulls mission tithe, Gift Aid, loans (already in the query result) and movement problems into one list. Same rules as <span class="code">buildMonthEndChecks</span>.</span></div>
+  <div><span class="note">6</span><span><b>Ranked bars</b>, largest first, with share shown by length and a change column. Large rises get amber, not red. Subcategories open in place.</span></div>
+  <div><span class="note">7</span><span><b>Statement of funds</b> for the month. Overdrawn funds turn red. This is what trustees actually approve.</span></div>
+  <div><span class="note">8</span><span><b>Detail on demand.</b> Weekly table becomes a chart with a table toggle; tithes list becomes giving grouped by donor (counts people, not gifts).</span></div>
+</div>
+</div>
+
+<!-- ================= ANNUAL ================= -->
+<h2 id="annual">Annual report</h2>
+<p class="sub">Same skeleton as monthly so people learn it once. The annual adds the questions trustees ask at year end: like-for-like comparison, reserves, and a full statement of funds.</p>
+
+<div class="frame"><div class="frame-bar"><i></i><i></i><i></i></div><div class="screen">
+  <div class="rbar">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="seg"><span>Monthly</span><span class="on">Annual</span><span>AI reports</span></div>
+      <div class="stepper"><span>‹</span><b>Tax year 2026/27</b><span class="dis">›</span></div>
+      <span class="chip" style="background:var(--amber-light);color:var(--amber);border-color:#f0e2d0">In progress · 6 Apr – 8 Oct (6 of 12 months)</span><span class="note">1</span>
+    </div>
+    <div style="display:flex;gap:8px"><span class="btn dark">Export ▾</span></div>
+  </div>
+
+  <div class="card headline">
+    <div>
+      <div class="eyebrow">Grace Church · Annual accounts · year to date</div>
+      <p class="big">A <em>£9,410 surplus</em> so far. Income is up 6% on the same six months last year; spending is up 4%. General fund reserves would cover <b>1.6 months</b> of running costs.</p>
+    </div>
+    <span class="status watch">● Reserves low</span>
+  </div>
+
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card kpi"><div class="eyebrow">Income</div><div class="v">£86,400</div><div class="cmp"><span><span class="up">▲ 6.1%</span> vs Apr–Sep 2025</span><span class="muted">Full year 2025/26: £168,900</span></div></div>
+    <div class="card kpi"><div class="eyebrow">Spending</div><div class="v">£76,990</div><div class="cmp"><span><span class="flat">▲ 4.0%</span> vs Apr–Sep 2025</span><span class="muted">Full year 2025/26: £161,200</span></div></div>
+    <div class="card kpi"><div class="eyebrow">Surplus</div><div class="v" style="color:var(--sage)">+£9,410</div><div class="cmp"><span>Same point last year: +£7,400</span></div></div>
+    <div class="card kpi"><div class="eyebrow">Reserve cover <span class="note">2</span></div><div class="v">1.6 mo</div><div class="cmp"><span>£18,420 general fund ÷ £11,200 avg monthly spend</span><span style="color:var(--amber);font-weight:600">Policy target: 3 months</span></div></div>
+  </div>
+
+  <div class="card sec" style="margin-top:14px">
+    <div class="sec-h"><h3>Month by month <span class="note">3</span></h3><div class="toggle"><span class="on">Monthly</span><span>Cumulative</span><span>Table</span></div></div>
+    <div class="sec-b">
+      <div class="chart-legend"><span><i style="background:var(--s-income)"></i>Income</span><span><i style="background:var(--s-spend)"></i>Spending</span><span><i class="ghost"></i>Income last year</span></div>
+      <svg id="chart-annual" width="100%" height="230" viewBox="0 0 900 230"></svg>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-top:14px;align-items:start">
+    <div class="card sec">
+      <div class="sec-h"><h3>Income vs last year <span class="note">4</span></h3><span class="r">Like-for-like · 6 months</span></div>
+      <div class="sec-b">
+        <div class="rank-h"><span>Category</span><span></span><span>2026/27</span><span>Change</span></div>
+        <div class="rank"><span>Tithes &amp; First Fruits</span><span class="bar"><i style="width:100%;background:var(--s-income)"></i></span><span class="a">£46,800</span><span class="c up">+5%</span></div>
+        <div class="rank"><span>Offerings</span><span class="bar"><i style="width:41%;background:var(--s-income)"></i></span><span class="a">£19,300</span><span class="c up">+9%</span></div>
+        <div class="rank"><span>Building Fund</span><span class="bar"><i style="width:24%;background:var(--s-income)"></i></span><span class="a">£11,100</span><span class="c up">+14%</span></div>
+        <div class="rank"><span>Thanksgiving</span><span class="bar"><i style="width:11%;background:var(--s-income)"></i></span><span class="a">£5,200</span><span class="c flat">−2%</span></div>
+        <div class="rank"><span>Events</span><span class="bar"><i style="width:9%;background:var(--s-income)"></i></span><span class="a">£4,000</span><span class="c down">−11%</span></div>
+      </div>
+    </div>
+    <div class="card sec">
+      <div class="sec-h"><h3>Spending vs last year</h3><span class="r">Like-for-like · 6 months</span></div>
+      <div class="sec-b">
+        <div class="rank-h"><span>Category</span><span></span><span>2026/27</span><span>Change</span></div>
+        <div class="rank"><span>Staff &amp; love gifts</span><span class="bar"><i style="width:100%;background:var(--s-spend)"></i></span><span class="a">£32,400</span><span class="c flat">+2%</span></div>
+        <div class="rank"><span>Premises</span><span class="bar"><i style="width:65%;background:var(--s-spend)"></i></span><span class="a">£21,060</span><span class="c" style="color:var(--amber);font-weight:600">+12%</span></div>
+        <div class="rank"><span>Ministry costs</span><span class="bar"><i style="width:31%;background:var(--s-spend)"></i></span><span class="a">£10,030</span><span class="c flat">−3%</span></div>
+        <div class="rank"><span>Mission tithe paid</span><span class="bar"><i style="width:23%;background:var(--s-spend)"></i></span><span class="a">£7,300</span><span class="c flat">+5%</span></div>
+        <div class="rank"><span>Admin &amp; bank</span><span class="bar"><i style="width:19%;background:var(--s-spend)"></i></span><span class="a">£6,200</span><span class="c flat">+1%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card sec" style="margin-top:14px">
+    <div class="sec-h"><h3>Statement of funds <span class="note">5</span></h3><span class="r">Expanded by default</span></div>
+    <table class="fund">
+      <thead><tr><th>Fund</th><th>6 Apr 2026</th><th>Income</th><th>Spending</th><th>Transfers</th><th>8 Oct 2026</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="6">Unrestricted</td></tr>
+        <tr><td>General</td><td>£18,610</td><td>£68,500</td><td>£67,940</td><td>−£750</td><td>£18,420</td></tr>
+        <tr><td>Missions<span class="tag d">Designated</span></td><td>£2,900</td><td>£0</td><td>£510</td><td>+£750</td><td>£3,140</td></tr>
+        <tr class="tot"><td>Unrestricted total</td><td>£21,510</td><td>£68,500</td><td>£68,450</td><td>£0</td><td>£21,560</td></tr>
+        <tr class="grp"><td colspan="6">Restricted</td></tr>
+        <tr><td>Building Fund</td><td>£31,200</td><td>£11,100</td><td>£0</td><td>£0</td><td>£42,300</td></tr>
+        <tr><td>Youth</td><td>£3,000</td><td>£6,800</td><td>£8,540</td><td>£0</td><td>£1,260</td></tr>
+        <tr class="tot"><td>Restricted total</td><td>£34,200</td><td>£17,900</td><td>£8,540</td><td>£0</td><td>£43,560</td></tr>
+        <tr class="tot"><td>All funds</td><td>£55,710</td><td>£86,400</td><td>£76,990</td><td>£0</td><td>£65,120</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card sec"><div class="sec-h"><h3>Gift Aid</h3></div><div class="sec-b" style="font-size:13.5px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Eligible giving</span><b class="mono">£31,200</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Claimable (25%)</span><b class="mono" style="color:var(--amber)">£7,800</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--grey-mid)"><span>Missed: givers without a declaration</span><span class="mono">£4,100</span></div></div></div>
+    <div class="card sec"><div class="sec-h"><h3>Loans at period end <span class="note">6</span></h3></div><div class="sec-b" style="font-size:13.5px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Bethel Trust</span><b class="mono">£8,000</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--grey-mid)"><span>Repaid this year</span><span class="mono">£2,000</span></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--grey-mid)"><span>Next due</span><span>31 Dec 2026</span></div></div></div>
+    <div class="card sec"><div class="sec-h"><h3>Giving</h3></div><div class="sec-b" style="font-size:13.5px">
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Givers</span><b class="mono">58</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Gave in 5+ months</span><b class="mono">37</b></div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;color:var(--grey-mid)"><span>Mission tithe paid</span><span class="mono">£7,300</span></div></div></div>
+  </div>
+</div></div>
+<div class="legend-notes">
+  <div><span class="note">1</span><span><b>Period follows the organisation's setting</b> (tax year or calendar year). An in-progress period says so, and every comparison uses the same months of the prior period.</span></div>
+  <div><span class="note">2</span><span><b>Reserve cover</b> reuses <span class="code">health.generalFundCoverageMonths</span>. Target defaults to 3 months; an org setting later if wanted.</span></div>
+  <div><span class="note">3</span><span><b>Trend chart</b> keeps income and spending bars on one axis, adds last year's income as a dashed reference line, with monthly / cumulative / table views. Hover any month for exact figures.</span></div>
+  <div><span class="note">4</span><span><b>Category comparison</b> replaces the two unsorted tables. Same component as the monthly “where it went”.</span></div>
+  <div><span class="note">5</span><span><b>Statement of funds</b>, grouped unrestricted / restricted with subtotals: the SORP-shaped table trustees sign off.</span></div>
+  <div><span class="note">6</span><span><b>Loans</b> render from data the query already returns.</span></div>
+</div>
+
+<!-- ================= MOBILE ================= -->
+<h2 id="mobile">Mobile</h2>
+<p class="sub">Pastors read these on a phone. The same order collapses to one column; the stepper and export menu share one row; ranked bars keep working at narrow widths where two-column tables don't.</p>
+<div class="grid g2" style="align-items:center">
+  <div class="phone"><div class="in">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div class="stepper" style="height:34px"><span>‹</span><b style="font-size:13px;padding:0 8px">Sep 2026</b><span class="dis">›</span></div><span class="btn dark" style="height:34px">Export</span></div>
+    <div class="card" style="padding:14px"><span class="status ok" style="font-size:11px">● Surplus</span><p style="font-size:15.5px;font-weight:600;line-height:1.35;margin:8px 0 0">A £1,860 surplus. Income up 10% on August; £1,213 mission tithe due.</p></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card kpi" style="padding:12px"><div class="eyebrow">Income</div><div class="v">£14,820</div><div class="cmp"><span class="up">▲ 10.5%</span></div></div>
+      <div class="card kpi" style="padding:12px"><div class="eyebrow">Spending</div><div class="v">£12,960</div><div class="cmp"><span class="flat">▲ 9.1%</span></div></div>
+    </div>
+    <div class="card sec"><div class="sec-h" style="padding:10px 14px"><h3 style="font-size:14px">To action</h3><span class="r">4</span></div>
+      <div class="todo" style="padding:9px 14px"><span class="ico pay">£</span><div>Mission tithe</div><div class="amt">£1,213</div></div>
+      <div class="todo" style="padding:9px 14px"><span class="ico claim">↺</span><div>Gift Aid</div><div class="amt">£1,320</div></div></div>
+    <div class="card sec"><div class="sec-h" style="padding:10px 14px"><h3 style="font-size:14px">Income</h3><span class="r">£14,820</span></div><div class="sec-b" style="padding:8px 14px">
+      <div class="rank" style="grid-template-columns:1fr 70px 44px"><span>Tithes</span><span class="a">£7,940</span><span class="c up">+4%</span></div>
+      <div class="bar" style="height:6px;background:var(--grey-light);border-radius:3px;margin:-2px 0 6px"><i style="display:block;width:100%;height:100%;background:var(--s-income);border-radius:3px"></i></div>
+      <div class="rank" style="grid-template-columns:1fr 70px 44px"><span>Offerings</span><span class="a">£3,210</span><span class="c up">+31%</span></div>
+      <div class="bar" style="height:6px;background:var(--grey-light);border-radius:3px;margin:-2px 0 6px"><i style="display:block;width:40%;height:100%;background:var(--s-income);border-radius:3px"></i></div>
+    </div></div>
+  </div></div>
+  <div class="card" style="padding:18px 20px;font-size:14px;color:var(--grey-dark)">
+    <p style="margin:0 0 10px"><b style="color:var(--ink)">Headline first</b>, so a pastor who reads one thing reads the right thing.</p>
+    <p style="margin:0 0 10px"><b style="color:var(--ink)">KPI grid goes 2×2</b>, not a stack of four full-width cards.</p>
+    <p style="margin:0 0 10px"><b style="color:var(--ink)">Ranked rows stack</b> label/amount/change over the bar.</p>
+    <p style="margin:0"><b style="color:var(--ink)">Statement of funds</b> scrolls horizontally with the fund name column pinned.</p>
+  </div>
+</div>
+
+<!-- ================= DATA ================= -->
+<h2 id="data">Data changes</h2>
+<p class="sub">Most of this reuses logic that exists. The aim is one source of truth per number shared by Dashboard, Reports, PDF and Excel, not a third copy.</p>
+<div class="card" style="overflow:hidden">
+<table class="plain">
+  <thead><tr><th style="width:26%">Need</th><th>Status</th><th>Approach</th></tr></thead>
+  <tbody>
+    <tr><td>Loans on screen and in PDF</td><td><span class="pill yes">Already returned</span></td><td>Render <span class="code">reportData.loans</span>; add to <span class="code">pdfGenerator</span>.</td></tr>
+    <tr><td>Ranked categories, share %</td><td><span class="pill yes">Client only</span></td><td>Sort and compute share from existing <span class="code">receipts</span> / <span class="code">payments</span> using <span class="code">sumMoney</span>.</td></tr>
+    <tr><td>Giving by donor</td><td><span class="pill yes">Client only</span></td><td>Group <span class="code">tithes</span> by donor; better done server-side by <span class="code">donorId</span> so name changes don't split a giver.</td></tr>
+    <tr><td>Previous month and same month last year</td><td><span class="pill new">Query</span></td><td>Extract the body of <span class="code">monthlyReportData</span> into a <span class="code">summarisePeriod(ctx, org, start, end)</span> helper; return <span class="code">comparison.previous</span> and <span class="code">comparison.lastYear</span> (totals + per-category). No second query.</td></tr>
+    <tr><td>12-month sparkline, YTD surplus</td><td><span class="pill new">Reuse</span></td><td><span class="code">trends.monthlyIncomeExpenditure</span> already exists in <span class="code">buildExecutiveDashboardSummary</span>; share it rather than recompute.</td></tr>
+    <tr><td>Statement of funds (opening, in, out, transfers, closing)</td><td><span class="pill new">Query</span></td><td>Generalise annual's <span class="code">sumFundBalance</span> loop to compute opening at period start and closing at period end, plus per-fund in/out from period rows and transfers from <span class="code">buildTransferSummary</span>. Used by both reports.</td></tr>
+    <tr><td>Reporting-period-aware annual</td><td><span class="pill new">Query</span></td><td>Change <span class="code">annualReportData</span> args to <span class="code">{ startDate, endDate }</span> resolved client-side from <span class="code">reportingPeriod</span>; one helper shared with the AI tab's <span class="code">getDatesForTaxYear</span>.</td></tr>
+    <tr><td>Like-for-like YoY</td><td><span class="pill new">Query</span></td><td>Prior window = same span shifted one year, clipped to <span class="code">throughDate</span> (as <span class="code">DashboardPeriod</span> already does).</td></tr>
+    <tr><td>Data readiness chip, reserve cover, mission tithe due</td><td><span class="pill new">Reuse</span></td><td>Make <span class="code">getDashboardPeriod</span> accept an explicit month/range so <span class="code">executiveSummary</span> can serve a historic month; read <span class="code">readiness</span> and <span class="code">health</span> from it. Keeps mission tithe in one place.</td></tr>
+    <tr><td>Givers / regular givers count</td><td><span class="pill new">Query</span></td><td>Distinct <span class="code">donorId</span> counts over the period; gated on <span class="code">donors.read</span> like the rest of donor data.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ================= PLAN ================= -->
+<h2 id="plan">Phased plan</h2>
+<p class="sub">Each phase ships on its own and leaves the page better than it found it. Phase 1 needs no backend change.</p>
+<div class="grid g3" style="align-items:start">
+  <div class="card phase"><div class="eyebrow">Phase 1 · UI only</div><h3 style="margin-top:6px">Hierarchy and honesty</h3>
+    <div class="meta"><span class="chip">~2–3 days</span><span class="chip">Reports.tsx split</span></div>
+    <ol>
+      <li>Split <span class="code">Reports.tsx</span> (1,778 lines) into <span class="code">components/reports/</span>: shared <span class="code">ReportHeader</span>, <span class="code">KpiCard</span>, <span class="code">RankedBreakdown</span>, <span class="code">ReportSection</span>.</li>
+      <li>New order; detail sections closed by default.</li>
+      <li>Ranked category bars with share; subcategories expand in place.</li>
+      <li>Render loans (screen + PDF).</li>
+      <li>Fund balances open by default on annual.</li>
+      <li>Hide the YoY % when the year is incomplete, until phase 2 fixes it.</li>
+      <li>Neutral series colours; red only for deficits/overdrawn.</li>
+      <li>Single Export menu; wrapping header; block future months; fix tab typo; <span class="code">sumMoney</span> for totals.</li>
+    </ol></div>
+  <div class="card phase"><div class="eyebrow">Phase 2 · Queries</div><h3 style="margin-top:6px">Context and position</h3>
+    <div class="meta"><span class="chip">~3–4 days</span><span class="chip">convex/queries/reports.ts</span></div>
+    <ol>
+      <li><span class="code">summarisePeriod</span> helper shared by monthly and annual.</li>
+      <li>Comparisons: previous month, same month last year, like-for-like YoY.</li>
+      <li>Statement of funds for both reports.</li>
+      <li>Annual follows <span class="code">reportingPeriod</span>; in-progress label.</li>
+      <li>Giving grouped by donor id; giver counts.</li>
+      <li>Tests: like-for-like windows, fund statement balances tie to totals, tax-year boundaries (5/6 April).</li>
+    </ol></div>
+  <div class="card phase"><div class="eyebrow">Phase 3 · Polish</div><h3 style="margin-top:6px">Summary, actions, outputs</h3>
+    <div class="meta"><span class="chip">~2–3 days</span><span class="chip">dashboard reuse</span></div>
+    <ol>
+      <li>Deterministic headline sentence (pure function in <span class="code">lib/</span>, unit tested).</li>
+      <li>“To action” panel and readiness chip via a period-aware <span class="code">executiveSummary</span>.</li>
+      <li>Reserve cover KPI.</li>
+      <li>Annual trend: prior-year reference line, cumulative and table views.</li>
+      <li>PDF and Excel follow the new structure (PDF is what trustees actually read).</li>
+      <li>Mobile pass on a real phone.</li>
+    </ol></div>
+</div>
+
+<!-- ================= QUESTIONS ================= -->
+<h2 id="questions">Decisions needed</h2>
+<div class="grid g2">
+  <div class="q card"><b>Should the annual report follow the organisation's reporting period?</b><p>Today it's calendar-only while the org default is tax year. Many charities have a financial year that is neither (e.g. 1 Jan or 1 Sep).</p><div class="rec">Recommend: yes, and add a “financial year starts” month setting rather than a fixed tax/calendar switch.</div></div>
+  <div class="q card"><b>Is Mission Tithe universal or one church's rule?</b><p>It's hard-coded (10% of three categories in unrestricted funds) for every tenant.</p><div class="rec">Recommend: make it an org setting (on/off, rate, categories); hide the row when off.</div></div>
+  <div class="q card"><b>Do you want budgets?</b><p>Budget vs actual is the most common monthly question for trustees, and there is no budget table today. It would slot into the ranked bars as a target marker.</p><div class="rec">Recommend: separate project after phase 2; the layout leaves room for it.</div></div>
+  <div class="q card"><b>Reserves target</b><p>Reserve cover is only useful against a policy. Most small churches aim for 3–6 months of unrestricted spending.</p><div class="rec">Recommend: default 3 months, editable in Settings.</div></div>
+</div>
+
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+// ---- sample data ----
+const months12 = ['Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'];
+const inc12 = [13200,13900,17800,12100,12600,13500,14400,14100,13600,12900,13410,14820];
+const exp12 = [12500,12100,14900,11800,11900,12300,12700,12400,12600,12900,11880,12960];
+const net12 = inc12.map((v,i)=>v-exp12[i]);
+const fmt = n => (n<0?'−':'')+'£'+Math.abs(Math.round(n)).toLocaleString('en-GB');
+const tip = document.getElementById('tip');
+function showTip(e, title, rows){
+  tip.innerHTML = '<b>'+title+'</b>'+rows.map(([k,v])=>'<div><span>'+k+'</span><span>'+v+'</span></div>').join('');
+  tip.style.display='block';
+  const x = Math.min(e.clientX+14, window.innerWidth-180);
+  tip.style.left=x+'px'; tip.style.top=(e.clientY+14)+'px';
+}
+function hideTip(){tip.style.display='none'}
+const NS='http://www.w3.org/2000/svg';
+const el=(t,a)=>{const n=document.createElementNS(NS,t);for(const k in a)n.setAttribute(k,a[k]);return n};
+
+// ---- sparklines (single series each; title names it) ----
+document.querySelectorAll('svg.spark').forEach(svg=>{
+  const key=svg.dataset.series;
+  const data = key==='income'?inc12:key==='spend'?exp12:net12;
+  const color = key==='income'?'#2e8259':key==='spend'?'#4f6fb0':'#44403c';
+  const min=Math.min(...data, key==='net'?0:Infinity), max=Math.max(...data);
+  const W=200,H=34,p=3;
+  const x=i=>p+i*(W-2*p)/(data.length-1), y=v=>H-p-(v-min)/(max-min||1)*(H-2*p);
+  if(key==='net') svg.appendChild(el('line',{x1:0,x2:W,y1:y(0),y2:y(0),stroke:'#e7e5e1','stroke-width':1}));
+  svg.appendChild(el('polyline',{points:data.map((v,i)=>x(i)+','+y(v)).join(' '),fill:'none',stroke:color,'stroke-width':2,'vector-effect':'non-scaling-stroke','stroke-linejoin':'round'}));
+  const last=data.length-1;
+  svg.appendChild(el('circle',{cx:x(last),cy:y(data[last]),r:3,fill:color,stroke:'#fff','stroke-width':1.5}));
+  data.forEach((v,i)=>{const r=el('rect',{x:x(i)-8,y:0,width:16,height:H,fill:'transparent'});
+    r.addEventListener('mousemove',e=>showTip(e,months12[i],[[key==='net'?'Surplus':key==='spend'?'Spending':'Income',fmt(v)]]));
+    r.addEventListener('mouseleave',hideTip); svg.appendChild(r);});
+});
+
+// ---- grouped bar chart helper (one axis) ----
+function groupedBars(svg, labels, a, b, opts={}){
+  const W=+svg.getAttribute('viewBox').split(' ')[2], H=+svg.getAttribute('viewBox').split(' ')[3];
+  const m={l:48,r:8,t:10,b:24};
+  const all=[...a,...b,...(opts.ref||[]).filter(v=>v!=null)];
+  const step=opts.step||1000, max=Math.ceil(Math.max(...all)/step)*step;
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, band=iw/labels.length;
+  const bw=Math.min(18,(band-10)/2);
+  const y=v=>m.t+ih-(v/max)*ih;
+  for(let t=0;t<=max;t+=step){
+    svg.appendChild(el('line',{x1:m.l,x2:W-m.r,y1:y(t),y2:y(t),stroke:t===0?'#d6d3cd':'#efeee9','stroke-width':1}));
+    const tx=el('text',{x:m.l-8,y:y(t)+4,'text-anchor':'end','font-size':10.5,'font-family':'JetBrains Mono',fill:'#78716c'});tx.textContent=t?'£'+(t/1000)+'k':'£0';svg.appendChild(tx);
+  }
+  labels.forEach((lab,i)=>{
+    const cx=m.l+band*i+band/2;
+    const future = opts.futureFrom!=null && i>=opts.futureFrom;
+    [[a[i],'#2e8259',-1],[b[i],'#4f6fb0',1]].forEach(([v,c,s])=>{
+      if(v==null) return;
+      const x0 = s<0? cx-bw-1 : cx+1, top=y(v), h=y(0)-top, r=Math.min(4,h);
+      const d=`M${x0},${y(0)} V${top+r} Q${x0},${top} ${x0+r},${top} H${x0+bw-r} Q${x0+bw},${top} ${x0+bw},${top+r} V${y(0)} Z`;
+      svg.appendChild(el('path',{d,fill:c,'fill-opacity':opts.partial===i?0.4:1}));
+    });
+    const tx=el('text',{x:cx,y:H-6,'text-anchor':'middle','font-size':10.5,'font-family':'JetBrains Mono',fill:future?'#c4c0b9':'#78716c'});tx.textContent=lab;svg.appendChild(tx);
+    if(opts.annot && opts.annot[i]){const t=el('text',{x:cx,y:y(a[i])-6,'text-anchor':'middle','font-size':10.5,fill:'#44403c','font-weight':600});t.textContent=opts.annot[i];svg.appendChild(t);}
+  });
+  if(opts.ref){
+    const pts=opts.ref.map((v,i)=>v==null?null:(m.l+band*i+band/2)+','+y(v)).filter(Boolean);
+    svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:'#78716c','stroke-width':2,'stroke-dasharray':'5 4'}));
+  }
+  labels.forEach((lab,i)=>{
+    const hit=el('rect',{x:m.l+band*i,y:m.t,width:band,height:ih,fill:'transparent'});
+    hit.addEventListener('mousemove',e=>{hit.setAttribute('fill','rgba(28,25,23,.04)');
+      const rows=[];if(a[i]!=null)rows.push(['Income',fmt(a[i])]);if(b[i]!=null)rows.push(['Spending',fmt(b[i])]);
+      if(a[i]!=null&&b[i]!=null)rows.push(['Net',fmt(a[i]-b[i])]);if(opts.ref&&opts.ref[i]!=null)rows.push(['Income last yr',fmt(opts.ref[i])]);
+      if(!rows.length)rows.push(['','Not yet']);showTip(e,(opts.titles||labels)[i],rows);});
+    hit.addEventListener('mouseleave',()=>{hit.setAttribute('fill','transparent');hideTip();});
+    svg.appendChild(hit);
+  });
+}
+
+groupedBars(document.getElementById("chart-weekly"),
+  ['6 Sep','13 Sep','20 Sep','27 Sep','28–30'],
+  [3420,3180,4260,3310,650],[2950,3240,2880,3310,580],
+  {step:1000,partial:4,annot:{2:'Harvest'},titles:['Week ending 6 Sep','Week ending 13 Sep','Week ending 20 Sep','Week ending 27 Sep','28–30 Sep (part week)']});
+
+const fy=['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+groupedBars(document.getElementById("chart-annual"), fy,
+  [14400,14100,13600,12900,13410,14820,3170,null,null,null,null,null],
+  [12700,12400,12600,12900,11880,12960,1550,null,null,null,null,null],
+  {step:5000,partial:6,titles:fy.map((m,i)=>i===6?'Oct (to 8th)':m),ref:[13300,13500,12800,12600,12700,13950,13600,13900,17800,12100,12600,13500],futureFrom:7});
+</script>
+</body>
+</html>
