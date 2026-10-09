@@ -1,4 +1,7 @@
+import { CATEGORY_ALIASES } from "../../constants/rciCategories";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
+import { isGivingCategory } from "../../lib/dashboardKpis";
+import { isPledgeBehind } from "../../lib/pledgeProgress";
 import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
 import type { Donor, Pledge, Transaction } from "../../types";
 
@@ -6,7 +9,7 @@ const DAY_MS = 86_400_000;
 // Gifts older than this count as stopped giving.
 export const LAPSED_DAYS = 60;
 
-export type DonorFilter = "everyone" | "noGiftAid" | "stoppedGiving";
+export type DonorFilter = "everyone" | "noGiftAid" | "pledgesBehind" | "stoppedGiving";
 
 export interface GivingStat {
   // Pounds given this year.
@@ -71,6 +74,38 @@ export function giftAidState(donor: Donor, giftAidEnabled: boolean): "on" | "mis
 // HMRC refunds 25% of an eligible gift to the charity.
 export const giftAidClaimable = (pounds: number) => roundMoney(pounds * 0.25);
 
+const isUncategorised = (category: string) =>
+  !category || (CATEGORY_ALIASES[category] ?? category) === "Uncategorised";
+
+// What a missing declaration would reclaim this year, counted the way the dashboard counts giving
+// (income in the giving categories). `claimable` is null while any gift this year is uncategorised,
+// because that gift may be giving too and the figure would understate it.
+export function undeclaredGiftAid(yearIncome: Transaction[]): { giving: number; claimable: number | null } {
+  const giving = sumMoney(
+    yearIncome.filter((transaction) => isGivingCategory(transaction.category)),
+    (transaction) => transaction.amount
+  );
+  const fullyCategorised = yearIncome.every((transaction) => !isUncategorised(transaction.category));
+  return { giving, claimable: fullyCategorised ? giftAidClaimable(giving) : null };
+}
+
+// Donors with at least one active recurring schedule that has fallen behind, matched by id or
+// name like the schedules. Pass the ledger rows; voided rows and journal legs are dropped here.
+export function donorsWithPledgesBehind(
+  donors: Donor[],
+  pledges: Pledge[],
+  transactions: Transaction[],
+  today: string
+): Set<string> {
+  const payments = filterIncomeAndExpenditure(transactions);
+  const behind = new Set<string>();
+  for (const donor of donors) {
+    const mine = pledges.filter((pledge) => pledge.donorId === donor._id || pledge.donorName === donor.name);
+    if (mine.some((pledge) => isPledgeBehind(pledge, payments, today))) behind.add(donor._id);
+  }
+  return behind;
+}
+
 export function filterDonors(
   donors: Donor[],
   options: {
@@ -79,12 +114,14 @@ export function filterDonors(
     stats: Map<string, GivingStat>;
     giftAidEnabled: boolean;
     now: number;
+    pledgesBehind: Set<string>;
   }
 ): Donor[] {
   const query = options.search.toLowerCase();
   return donors.filter((donor) => {
     if (!donor.name.toLowerCase().includes(query)) return false;
     if (options.filter === "noGiftAid") return giftAidState(donor, options.giftAidEnabled) === "missing";
+    if (options.filter === "pledgesBehind") return options.pledgesBehind.has(donor._id);
     if (options.filter === "stoppedGiving") {
       return isLapsed(statFor(options.stats, donor).lastGift, options.now);
     }
@@ -96,11 +133,13 @@ export function filterCounts(
   donors: Donor[],
   stats: Map<string, GivingStat>,
   giftAidEnabled: boolean,
-  now: number
+  now: number,
+  pledgesBehind: Set<string>
 ): Record<DonorFilter, number> {
   return {
     everyone: donors.length,
     noGiftAid: donors.filter((donor) => giftAidState(donor, giftAidEnabled) === "missing").length,
+    pledgesBehind: donors.filter((donor) => pledgesBehind.has(donor._id)).length,
     stoppedGiving: donors.filter((donor) => isLapsed(statFor(stats, donor).lastGift, now)).length,
   };
 }

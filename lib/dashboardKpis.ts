@@ -477,7 +477,7 @@ function isUnrestrictedTransaction(transaction: DashboardTransaction, unrestrict
   return transaction.fundId ? unrestrictedFundIds.has(transaction.fundId) : false;
 }
 
-function isGivingCategory(category?: string) {
+export function isGivingCategory(category?: string) {
   return GIVING_CATEGORIES.has(category ? CATEGORY_ALIASES[category] ?? category : "");
 }
 

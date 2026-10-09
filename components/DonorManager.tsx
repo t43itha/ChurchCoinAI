@@ -4,6 +4,7 @@ import { Plus, ShieldAlert } from "lucide-react";
 import { api } from "../convex/_generated/api";
 import { Id } from "../convex/_generated/dataModel";
 import { meetsMoneyTarget, sumMoney } from "../convex/lib/money";
+import { formatLocalDateInputValue } from "../lib/dateUtils";
 import { notify } from "../lib/notifications";
 import { filterIncomeAndExpenditure, sumReportableIncome } from "../lib/reportableTransactions";
 import { isGiftAidEnabled } from "../lib/giftAid";
@@ -21,9 +22,11 @@ import ScheduleSheet from "./donors/ScheduleSheet";
 import ThankYouWalkthrough from "./donors/ThankYouWalkthrough";
 import {
   activeScheduleMap,
+  donorsWithPledgesBehind,
   filterDonors,
   givingStats,
   statFor,
+  undeclaredGiftAid,
   whatsappNumber,
   type DonorFilter,
 } from "./donors/donorDirectory";
@@ -95,6 +98,11 @@ const DonorManager: FC<DonorManagerProps> = ({ donors, transactions, pledges, fu
   const now = Date.now();
   const stats = useMemo(() => givingStats(transactions, year), [transactions, year]);
   const schedules = useMemo(() => activeScheduleMap(pledges), [pledges]);
+  const today = formatLocalDateInputValue(new Date(now));
+  const pledgesBehind = useMemo(
+    () => donorsWithPledgesBehind(donors, pledges, transactions, today),
+    [donors, pledges, transactions, today]
+  );
 
   const summary = useMemo(() => {
     let active = 0;
@@ -120,7 +128,7 @@ const DonorManager: FC<DonorManagerProps> = ({ donors, transactions, pledges, fu
     };
   }, [donors, transactions, stats, giftAidEnabled, now, year]);
 
-  const visibleDonors = filterDonors(donors, { search, filter, stats, giftAidEnabled, now });
+  const visibleDonors = filterDonors(donors, { search, filter, stats, giftAidEnabled, now, pledgesBehind });
 
   // After all hooks (Rules of Hooks) — Guests cannot view donor records.
   if (!canView) {
@@ -146,6 +154,7 @@ const DonorManager: FC<DonorManagerProps> = ({ donors, transactions, pledges, fu
     (t) => t.type === "Income" && new Date(t.date).getFullYear() === year
   );
   const yearTotal = sumMoney(yearGifts, (t) => t.amount);
+  const undeclared = undeclaredGiftAid(yearGifts);
   const churchName = churchDetails?.name || "Church";
 
   const closeSheet = () => setSheet(null);
@@ -561,6 +570,7 @@ ${churchName} Finance Team
       year={year}
       yearTotal={yearTotal}
       yearCount={yearGifts.length}
+      undeclared={undeclared}
       lifetimeTotal={sumReportableIncome(gifts)}
       gifts={gifts}
       donorPledges={donorPledges}
@@ -611,7 +621,11 @@ ${churchName} Finance Team
           value={`£${summary.monthTotal.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
           sub={summary.monthLabel}
         />
-        <SummaryCard label="Needs review" value={String(summary.needsReview)} sub="Stopped giving, or no Gift Aid" />
+        <SummaryCard
+          label="Needs review"
+          value={String(summary.needsReview)}
+          sub={giftAidEnabled ? "Stopped giving, or no Gift Aid" : "Stopped giving"}
+        />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
@@ -624,6 +638,7 @@ ${churchName} Finance Team
           onFilter={setFilter}
           stats={stats}
           schedules={schedules}
+          pledgesBehind={pledgesBehind}
           giftAidEnabled={giftAidEnabled}
           now={now}
           selectedId={selectedDonorId}

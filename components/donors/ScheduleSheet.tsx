@@ -21,6 +21,33 @@ type Frequency = Pledge["frequency"];
 const FREQUENCIES: readonly Frequency[] = ["One-off", "Weekly", "Monthly", "Annual"];
 const FORM_ID = "schedule-form";
 
+export interface ScheduleDraft {
+  donorId: string;
+  donorName: string;
+  fundId: string;
+  // Raw input text, so it is parsed here before anything is sent.
+  amount: string;
+  frequency: Frequency;
+  startDate: string;
+  endDate: string;
+}
+
+// Fund and a positive amount are required, as before. A zero or blank amount never reaches onSubmit.
+export function submitSchedule(draft: ScheduleDraft, onSubmit: (pledge: PledgeCreateInput) => void) {
+  const amount = Number(draft.amount);
+  if (!draft.fundId || !Number.isFinite(amount) || amount <= 0) return;
+  onSubmit({
+    donorId: draft.donorId,
+    donorName: draft.donorName,
+    amount,
+    fundId: draft.fundId,
+    frequency: draft.frequency,
+    startDate: draft.startDate || formatLocalDateInputValue(new Date()),
+    endDate: draft.endDate || undefined,
+    status: "Active",
+  });
+}
+
 export interface ScheduleSheetProps {
   donorId: string;
   donorName: string;
@@ -29,7 +56,7 @@ export interface ScheduleSheetProps {
   onClose: () => void;
 }
 
-// A giving schedule for one donor. Fund, amount and start date are required, as before.
+// A giving schedule for one donor.
 export default function ScheduleSheet({ donorId, donorName, funds, onSubmit, onClose }: ScheduleSheetProps) {
   const [fundId, setFundId] = useState("");
   const [amount, setAmount] = useState("");
@@ -57,17 +84,7 @@ export default function ScheduleSheet({ donorId, donorName, funds, onSubmit, onC
         className="mt-2"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!fundId || !amount) return;
-          onSubmit({
-            donorId,
-            donorName,
-            amount: Number(amount),
-            fundId,
-            frequency,
-            startDate: startDate || formatLocalDateInputValue(new Date()),
-            endDate: endDate || undefined,
-            status: "Active",
-          });
+          submitSchedule({ donorId, donorName, fundId, amount, frequency, startDate, endDate }, onSubmit);
         }}
       >
         <label className="block">

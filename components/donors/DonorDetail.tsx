@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { ChevronDown, FileText, Link as LinkIcon, Mail, MapPin, MessageSquare, Phone, Wallet, type LucideIcon } from "lucide-react";
 import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
@@ -19,13 +19,7 @@ import {
   tagSage,
   txtInput,
 } from "../wizard/ui";
-import {
-  formatPounds,
-  giftAidClaimable,
-  giftAidState,
-  shortGiftDate,
-  whatsappNumber,
-} from "./donorDirectory";
+import { formatPounds, giftAidState, shortGiftDate, whatsappNumber } from "./donorDirectory";
 
 const RECENT_COUNT = 5;
 
@@ -38,6 +32,8 @@ export interface DonorDetailProps {
   // Reportable income this year, in pounds, and the number of those gifts.
   yearTotal: number;
   yearCount: number;
+  // What a missing Gift Aid declaration would reclaim this year; see undeclaredGiftAid.
+  undeclared: { giving: number; claimable: number | null };
   lifetimeTotal: number;
   // Every transaction for this donor, newest first.
   gifts: Transaction[];
@@ -63,6 +59,7 @@ export default function DonorDetail({
   year,
   yearTotal,
   yearCount,
+  undeclared,
   lifetimeTotal,
   gifts,
   donorPledges,
@@ -75,12 +72,14 @@ export default function DonorDetail({
   onLinkPledge,
   onUnlinkPledge,
 }: DonorDetailProps) {
+  const moreId = useId();
   const [showAllGifts, setShowAllGifts] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const pill = giftAidState(donor, giftAidEnabled);
   const activePledges = donorPledges.filter((pledge) => pledge.status === "Active");
   const fundName = (fundId: string) => funds.find((fund) => fund._id === fundId)?.name;
-  const needsDeclaration = pill === "missing" && yearTotal > 0;
+  // Only individuals can declare Gift Aid, and only giving income counts towards it.
+  const needsDeclaration = donor.type === "Individual" && pill === "missing" && undeclared.giving > 0;
   const shownGifts = showAllGifts ? gifts : gifts.slice(0, RECENT_COUNT);
 
   return (
@@ -127,7 +126,11 @@ export default function DonorDetail({
               tone="amber"
               icon={FileText}
               title="No Gift Aid declaration"
-              detail={`Would add ${formatPounds(giftAidClaimable(yearTotal))} this year`}
+              detail={
+                undeclared.claimable === null
+                  ? "Amount shows once this year's gifts are categorised"
+                  : `Would add ${formatPounds(undeclared.claimable)} this year`
+              }
               action={canEdit ? "Record" : undefined}
               onClick={canEdit ? onEdit : undefined}
             />
@@ -232,7 +235,7 @@ export default function DonorDetail({
         <button
           type="button"
           aria-expanded={showMore}
-          aria-controls="donor-more"
+          aria-controls={moreId}
           onClick={() => setShowMore((open) => !open)}
           className={`${btnOutline} ${btnMd}`}
         >
@@ -241,7 +244,7 @@ export default function DonorDetail({
         </button>
 
         {showMore && (
-          <div id="donor-more" className="mt-5 space-y-6">
+          <div id={moreId} className="mt-5 space-y-6">
             <div className="space-y-3">
               <div className="flex items-baseline justify-between gap-3">
                 <SectionTitle>Giving schedules</SectionTitle>

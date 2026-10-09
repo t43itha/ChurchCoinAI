@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import type { Donor, Pledge } from "../../types";
-import { btnMd, btnOutline, btnPrimary, chip, eyebrow, giftAidOff, giftAidOn, linkBtn, txtInput } from "../wizard/ui";
+import { btnMd, btnPrimary, chip, eyebrow, giftAidOff, giftAidOn, linkBtn, linkBtnSm, txtInput } from "../wizard/ui";
 import {
   filterCounts,
   formatPounds,
@@ -34,6 +34,7 @@ export interface DonorListProps {
   onFilter: (filter: DonorFilter) => void;
   stats: Map<string, GivingStat>;
   schedules: Map<string, Pledge>;
+  pledgesBehind: Set<string>;
   giftAidEnabled: boolean;
   now: number;
   selectedId: string | null;
@@ -45,6 +46,7 @@ export interface DonorListProps {
 const FILTERS: Array<{ key: DonorFilter; label: string; giftAidOnly?: boolean }> = [
   { key: "everyone", label: "Everyone" },
   { key: "noGiftAid", label: "No Gift Aid", giftAidOnly: true },
+  { key: "pledgesBehind", label: "Pledges behind" },
   { key: "stoppedGiving", label: "Stopped giving" },
 ];
 
@@ -60,13 +62,14 @@ export default function DonorList({
   onFilter,
   stats,
   schedules,
+  pledgesBehind,
   giftAidEnabled,
   now,
   selectedId,
   onSelect,
   merge,
 }: DonorListProps) {
-  const counts = filterCounts(donors, stats, giftAidEnabled, now);
+  const counts = filterCounts(donors, stats, giftAidEnabled, now, pledgesBehind);
   const groups = groupByInitial(visible);
   const merging = merge?.active ?? false;
 
@@ -85,29 +88,30 @@ export default function DonorList({
           />
         </label>
 
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter donors">
-          {FILTERS.filter((option) => !option.giftAidOnly || giftAidEnabled).map((option) => {
-            const on = filter === option.key;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                aria-pressed={on}
-                onClick={() => onFilter(option.key)}
-                className={on ? chipOn : chip}
-              >
-                {option.label}
-                <span className="font-mono text-xs opacity-70">{counts[option.key]}</span>
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter donors">
+            {FILTERS.filter((option) => !option.giftAidOnly || giftAidEnabled).map((option) => {
+              const on = filter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onFilter(option.key)}
+                  className={on ? chipOn : chip}
+                >
+                  {option.label}
+                  <span className="font-mono text-xs opacity-70">{counts[option.key]}</span>
+                </button>
+              );
+            })}
+          </div>
+          {merge && !merge.active && (
+            <button type="button" onClick={merge.onStart} className={`${linkBtnSm} ml-auto`}>
+              Select donors to merge
+            </button>
+          )}
         </div>
-
-        {merge && !merge.active && (
-          <button type="button" onClick={merge.onStart} className={`${btnOutline} ${btnMd} !w-auto self-start px-4`}>
-            Select donors to merge
-          </button>
-        )}
 
         {merging && merge && <MergeBanner merge={merge} />}
       </div>
@@ -209,7 +213,7 @@ function DonorRow({
 
       <button
         type="button"
-        onClick={onSelect}
+        onClick={merge ? () => merge.onToggle(donor._id) : onSelect}
         aria-current={selected ? "true" : undefined}
         className="flex min-h-[64px] min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 text-left"
       >
