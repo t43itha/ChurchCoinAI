@@ -1,5 +1,7 @@
 import React from "react";
+import { eyebrow } from "../wizard/ui";
 import { formatCurrency } from "./format";
+import { sectionCard } from "./classes";
 
 export type KpiValueTone = "default" | "positive" | "negative";
 
@@ -86,6 +88,7 @@ const Sparkline: React.FC<KpiSparkline> = ({ values, color, labels, zeroLine = f
   );
 };
 
+// One headline figure with its comparison lines and an optional 12-month sparkline.
 export const KpiCard: React.FC<KpiCardProps> = ({
   label,
   value,
@@ -94,8 +97,8 @@ export const KpiCard: React.FC<KpiCardProps> = ({
   sparkline,
   children,
 }) => (
-  <div className="swiss-card-static p-4 pb-3.5">
-    <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-grey-mid">{label}</p>
+  <div className={`${sectionCard} p-4 pb-3.5`}>
+    <p className={eyebrow}>{label}</p>
     <p className={`mb-1.5 mt-2 font-mono text-[25px] font-bold leading-tight tracking-[-0.02em] ${VALUE_TONE[valueTone]}`}>
       {value}
     </p>
@@ -125,7 +128,7 @@ const changeTone = (change: number, polarity: ChangeLineProps["polarity"]): stri
   return change > 0 ? "text-sage" : "text-error";
 };
 
-// "▲ 10.5% vs Aug (£13,410)". Spending is never red; large moves are amber.
+// "▲ 10.5% vs Aug". Spending is never red; large moves are amber.
 export const ChangeLine: React.FC<ChangeLineProps> = ({ change, versus, polarity }) => {
   if (change === null) {
     return <span className="text-grey-mid">{versus}</span>;

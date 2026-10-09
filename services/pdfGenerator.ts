@@ -1,9 +1,17 @@
 
-import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup } from "../types";
+import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup, LoanReportRow } from "../types";
 import { filterIncomeAndExpenditure, type TransferSummary } from "../lib/reportableTransactions";
 import type { ProgrammeIncome } from "../lib/programmeIncome";
+import { percentChange } from "../lib/reportSummary";
 import { sumMoney } from "../convex/lib/money";
 import { isGiftAidEnabled } from "../lib/giftAid";
+import {
+  fundCellValues,
+  formatPercentChange,
+  formatUkDate,
+  priorTotalFor,
+  splitFundRows,
+} from "./reportFormatting";
 
 // Escape HTML entities to prevent injection when rendering user-supplied data
 const escapeHtml = (value?: string) =>
@@ -553,6 +561,7 @@ const getReportStyles = () => `
   }
   .summary-card .value.positive { color: #779E7E; }
   .summary-card .value.negative { color: #E57373; }
+  .summary-card .vs { font-size: 9px; color: #78716c; margin-top: 4px; }
   .section-title {
     font-family: 'DM Sans', sans-serif;
     font-size: 12px;
@@ -618,6 +627,106 @@ const getReportStyles = () => `
   .two-column > div { flex: 1; }
 `;
 
+type ComparisonColumn = { label: string; groups: CategoryGroup[]; total: number };
+
+// Receipts or payments by main category, largest first, with subcategories.
+// With a comparison, a Change column shows each category against the same
+// category in that period; the prior value column is added when showPrior is set.
+const categoryTableHTML = (opts: {
+  currentLabel: string;
+  groups: CategoryGroup[];
+  total: number;
+  totalLabel: string;
+  comparison: ComparisonColumn | null;
+  showPrior: boolean;
+}) => {
+  const { comparison, showPrior } = opts;
+  const priorColumn = comparison !== null && showPrior;
+  const blank = `<td></td>`.repeat((priorColumn ? 1 : 0) + (comparison ? 1 : 0));
+  const comparisonCells = (current: number, prior: number) =>
+    comparison
+      ? `${priorColumn ? `<td class="amount">${formatCurrency(prior)}</td>` : ""}<td class="amount">${formatPercentChange(current, prior)}</td>`
+      : "";
+
+  return `
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th class="right">${escapeHtml(opts.currentLabel)}</th>
+            ${priorColumn ? `<th class="right">${escapeHtml(comparison.label)}</th>` : ""}
+            ${comparison ? `<th class="right">Change</th>` : ""}
+          </tr>
+        </thead>
+        <tbody>
+          ${opts.groups.map((group) => {
+            const prior = comparison ? priorTotalFor(comparison.groups, group.mainCategory) : 0;
+            return `
+              <tr class="main-category">
+                <td>${escapeHtml(group.mainCategory)}</td>
+                <td class="amount">${formatCurrency(group.total)}</td>
+                ${comparisonCells(group.total, prior)}
+              </tr>
+              ${group.subcategories.map((sub) => `
+                <tr class="subcategory">
+                  <td>${escapeHtml(sub.name)}</td>
+                  <td class="amount">${formatCurrency(sub.total)}</td>
+                  ${blank}
+                </tr>
+              `).join("")}
+            `;
+          }).join("")}
+          <tr class="total-row">
+            <td>${escapeHtml(opts.totalLabel)}</td>
+            <td class="amount">${formatCurrency(opts.total)}</td>
+            ${comparison ? comparisonCells(opts.total, comparison.total) : ""}
+          </tr>
+        </tbody>
+      </table>
+  `;
+};
+
+// Fund values as right-aligned money cells, after the name cell.
+const fundRowCells = (values: number[]) =>
+  values.map((value) => `<td class="amount">${formatSignedCurrency(value)}</td>`).join("");
+
+// Omitted when the period has no loans.
+export const loansSectionHTML = (loans: LoanReportRow[]) => {
+  if (loans.length === 0) return "";
+  return `
+      <div class="section-title">Loans</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Lender</th>
+            <th class="right">Borrowed</th>
+            <th class="right">Repaid</th>
+            <th class="right">Outstanding</th>
+            <th>Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${loans.map((loan) => `
+            <tr>
+              <td>${escapeHtml(loan.lender)}</td>
+              <td class="amount">${formatCurrency(loan.borrowed)}</td>
+              <td class="amount">${formatCurrency(loan.repaid)}</td>
+              <td class="amount">${formatCurrency(loan.outstanding)}</td>
+              <td>${loan.dueDate ? formatUkDate(loan.dueDate) : "—"}</td>
+            </tr>
+          `).join("")}
+          <tr class="total-row">
+            <td>Total</td>
+            <td class="amount">${formatCurrency(sumMoney(loans, (loan) => loan.borrowed))}</td>
+            <td class="amount">${formatCurrency(sumMoney(loans, (loan) => loan.repaid))}</td>
+            <td class="amount">${formatCurrency(sumMoney(loans, (loan) => loan.outstanding))}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+  `;
+};
+
 // Generate Monthly Report HTML for PDF export
 export const generateMonthlyReportHTML = (
   reportData: MonthlyReportData,
@@ -626,6 +735,14 @@ export const generateMonthlyReportHTML = (
 ) => {
   const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const { previousMonth } = reportData.comparison;
+  const { totals, fundStatement } = reportData;
+  const { showOther } = splitFundRows(fundStatement);
+  const givers = reportData.titheGivers.givers;
+  const vsPrevious = (current: number, previous: number) =>
+    percentChange(current, previous) === null
+      ? ""
+      : `<div class="vs">vs ${escapeHtml(previousMonth.label)}: ${formatPercentChange(current, previous)}</div>`;
 
   const html = `
     <!DOCTYPE html>
@@ -643,7 +760,7 @@ export const generateMonthlyReportHTML = (
         </div>
         <div class="meta">
           <p>Report Date: ${todayFormatted}</p>
-          <p>Period: ${escapeHtml(reportData.monthName)}</p>
+          <p>Period: ${escapeHtml(reportData.period.label)}</p>
           ${churchDetails.charityNumber ? `<p>Charity No: ${escapeHtml(churchDetails.charityNumber)}</p>` : ''}
         </div>
       </div>
@@ -652,86 +769,79 @@ export const generateMonthlyReportHTML = (
 
       <div class="summary-cards">
         <div class="summary-card">
-          <div class="label">Gross Income</div>
-          <div class="value positive">${formatCurrency(reportData.totals.grossIncome)}</div>
+          <div class="label">Income</div>
+          <div class="value positive">${formatCurrency(totals.grossIncome)}</div>
+          ${vsPrevious(totals.grossIncome, previousMonth.totals.income)}
         </div>
         <div class="summary-card">
-          <div class="label">Total Expenditure</div>
-          <div class="value negative">${formatCurrency(reportData.totals.totalExpenditure)}</div>
+          <div class="label">Spending</div>
+          <div class="value">${formatCurrency(totals.totalExpenditure)}</div>
+          ${vsPrevious(totals.totalExpenditure, previousMonth.totals.expenditure)}
         </div>
         <div class="summary-card">
-          <div class="label">Net Bankable</div>
-          <div class="value ${reportData.totals.netBankable >= 0 ? 'positive' : 'negative'}">${formatCurrency(reportData.totals.netBankable)}</div>
+          <div class="label">${totals.netBankable >= 0 ? 'Surplus' : 'Deficit'}</div>
+          <div class="value ${totals.netBankable >= 0 ? 'positive' : 'negative'}">${formatSignedCurrency(totals.netBankable)}</div>
         </div>
-        ${giftAidEnabled ? `
         <div class="summary-card">
-          <div class="label">Gift Aid Claimable</div>
-          <div class="value">${formatCurrency(reportData.giftAidSummary.claimable)}</div>
+          <div class="label">Held across funds</div>
+          <div class="value">${formatSignedCurrency(fundStatement.total.closing)}</div>
         </div>
-        ` : ''}
       </div>
 
       <div class="two-column">
         <div>
           <div class="section-title">Receipts (Income)</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th class="right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportData.receipts.map((group: CategoryGroup) => `
-                <tr class="main-category">
-                  <td>${escapeHtml(group.mainCategory)}</td>
-                  <td class="amount">${formatCurrency(group.total)}</td>
-                </tr>
-                ${group.subcategories.map(sub => `
-                  <tr class="subcategory">
-                    <td>${escapeHtml(sub.name)}</td>
-                    <td class="amount">${formatCurrency(sub.total)}</td>
-                  </tr>
-                `).join('')}
-              `).join('')}
-              <tr class="total-row">
-                <td>Total Receipts</td>
-                <td class="amount">${formatCurrency(reportData.totals.grossIncome)}</td>
-              </tr>
-            </tbody>
-          </table>
+          ${categoryTableHTML({
+            currentLabel: "Amount",
+            groups: reportData.receipts,
+            total: totals.grossIncome,
+            totalLabel: "Total Receipts",
+            comparison: { label: previousMonth.label, groups: previousMonth.receipts, total: previousMonth.totals.income },
+            showPrior: false,
+          })}
         </div>
 
         <div>
           <div class="section-title">Payments (Expenditure)</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th class="right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportData.payments.map((group: CategoryGroup) => `
-                <tr class="main-category">
-                  <td>${escapeHtml(group.mainCategory)}</td>
-                  <td class="amount">${formatCurrency(group.total)}</td>
-                </tr>
-                ${group.subcategories.map(sub => `
-                  <tr class="subcategory">
-                    <td>${escapeHtml(sub.name)}</td>
-                    <td class="amount">${formatCurrency(sub.total)}</td>
-                  </tr>
-                `).join('')}
-              `).join('')}
-              <tr class="total-row">
-                <td>Total Payments</td>
-                <td class="amount">${formatCurrency(reportData.totals.totalExpenditure)}</td>
-              </tr>
-            </tbody>
-          </table>
+          ${categoryTableHTML({
+            currentLabel: "Amount",
+            groups: reportData.payments,
+            total: totals.totalExpenditure,
+            totalLabel: "Total Payments",
+            comparison: { label: previousMonth.label, groups: previousMonth.payments, total: previousMonth.totals.expenditure },
+            showPrior: false,
+          })}
         </div>
       </div>
+
+      <div class="section-title">Fund position</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Fund</th>
+            <th>Type</th>
+            <th class="right">Opening</th>
+            <th class="right">In</th>
+            <th class="right">Out</th>
+            <th class="right">Transfers</th>
+            ${showOther ? '<th class="right">Other</th>' : ''}
+            <th class="right">Closing</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${fundStatement.rows.map((row) => `
+            <tr>
+              <td>${escapeHtml(row.fund)}</td>
+              <td>${escapeHtml(row.type)}</td>
+              ${fundRowCells(fundCellValues(row, showOther))}
+            </tr>
+          `).join('')}
+          <tr class="total-row">
+            <td colspan="2">All funds</td>
+            ${fundRowCells(fundCellValues(fundStatement.total, showOther))}
+          </tr>
+        </tbody>
+      </table>
 
       <div class="section-title">Weekly Summary</div>
       <table>
@@ -749,14 +859,14 @@ export const generateMonthlyReportHTML = (
               <td>${new Date(week.weekEnding).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td>
               <td class="amount">${formatCurrency(week.receiptsTotal)}</td>
               <td class="amount">${formatCurrency(week.paymentsTotal)}</td>
-              <td class="amount">${formatCurrency(week.receiptsTotal - week.paymentsTotal)}</td>
+              <td class="amount">${formatSignedCurrency(week.receiptsTotal - week.paymentsTotal)}</td>
             </tr>
           `).join('')}
           <tr class="total-row">
             <td>Total</td>
-            <td class="amount">${formatCurrency(reportData.totals.grossIncome)}</td>
-            <td class="amount">${formatCurrency(reportData.totals.totalExpenditure)}</td>
-            <td class="amount">${formatCurrency(reportData.totals.netBankable)}</td>
+            <td class="amount">${formatCurrency(totals.grossIncome)}</td>
+            <td class="amount">${formatCurrency(totals.totalExpenditure)}</td>
+            <td class="amount">${formatSignedCurrency(totals.netBankable)}</td>
           </tr>
         </tbody>
       </table>
@@ -787,27 +897,29 @@ export const generateMonthlyReportHTML = (
         </tbody>
       </table>
 
-      ${reportData.tithes.length > 0 ? `
-        <div class="section-title">Tithes Breakdown</div>
+      ${givers.length > 0 ? `
+        <div class="section-title">Tithes by Giver</div>
         <table>
           <thead>
             <tr>
-              <th>Donor</th>
+              <th>Giver</th>
+              <th class="right">Gifts</th>
               ${giftAidEnabled ? '<th>Gift Aid</th>' : ''}
               <th class="right">Amount</th>
             </tr>
           </thead>
           <tbody>
-            ${reportData.tithes.map(tithe => `
+            ${givers.map(giver => `
               <tr>
-                <td>${escapeHtml(tithe.donorName)}</td>
-                ${giftAidEnabled ? `<td>${tithe.isGiftAidEligible ? 'Yes' : '-'}</td>` : ''}
-                <td class="amount">${formatCurrency(tithe.amount)}</td>
+                <td>${escapeHtml(giver.donor)}</td>
+                <td class="amount">${giver.gifts}</td>
+                ${giftAidEnabled ? `<td>${giver.giftAidEligible ? 'Yes' : '-'}</td>` : ''}
+                <td class="amount">${formatCurrency(giver.total)}</td>
               </tr>
             `).join('')}
             <tr class="total-row">
-              <td colspan="${giftAidEnabled ? 2 : 1}">Total Tithes</td>
-              <td class="amount">${formatCurrency(reportData.tithes.reduce((sum, t) => sum + t.amount, 0))}</td>
+              <td colspan="${giftAidEnabled ? 3 : 2}">Total Tithes</td>
+              <td class="amount">${formatCurrency(sumMoney(givers, (giver) => giver.total))}</td>
             </tr>
           </tbody>
         </table>
@@ -831,6 +943,7 @@ export const generateMonthlyReportHTML = (
 
       ${transfersSectionHTML(reportData.transfers)}
       ${programmeIncomeSectionHTML(programmeIncome)}
+      ${loansSectionHTML(reportData.loans)}
 
       <div class="footer">
         <div>
@@ -839,7 +952,7 @@ export const generateMonthlyReportHTML = (
         </div>
         <div style="text-align: right;">
           <p>RCI Missions Monthly Accounts</p>
-          <p>${escapeHtml(reportData.monthName)}</p>
+          <p>${escapeHtml(reportData.period.label)}</p>
         </div>
       </div>
     </body>
@@ -857,12 +970,19 @@ export const generateAnnualReportHTML = (
 ) => {
   const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const todayFormatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const { period, prior, totals, fundStatement, reserveCover: reserve, giving, missionTithe } = reportData;
+  const { showOther, unrestricted, restricted } = splitFundRows(fundStatement);
+  const trend = reportData.monthlyTrend.filter((month) => !month.isFuture);
+  const hasPriorTrend = trend.some((month) => month.priorIncome !== undefined);
+  const fundRow = (name: string, values: number[]) =>
+    `<tr><td>${escapeHtml(name)}</td>${fundRowCells(values)}</tr>`;
+  const fundHeadings = ['Opening', 'Income', 'Spending', 'Transfers', ...(showOther ? ['Other'] : []), 'Closing'];
 
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Annual Report - ${reportData.year}</title>
+      <title>Annual Report - ${escapeHtml(period.label)}</title>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
       <style>${getReportStyles()}</style>
     </head>
@@ -874,7 +994,8 @@ export const generateAnnualReportHTML = (
         </div>
         <div class="meta">
           <p>Report Date: ${todayFormatted}</p>
-          <p>Financial Year: ${reportData.year}</p>
+          <p>Financial year: ${escapeHtml(period.label)}</p>
+          ${period.isComplete ? '' : `<p>In progress: ${formatUkDate(period.startDate)} – ${formatUkDate(period.throughDate)}</p>`}
           ${churchDetails.charityNumber ? `<p>Charity No: ${escapeHtml(churchDetails.charityNumber)}</p>` : ''}
         </div>
       </div>
@@ -883,138 +1004,137 @@ export const generateAnnualReportHTML = (
 
       <div class="summary-cards">
         <div class="summary-card">
-          <div class="label">Total Income</div>
-          <div class="value positive">${formatCurrency(reportData.totals.totalIncome)}</div>
+          <div class="label">Income</div>
+          <div class="value positive">${formatCurrency(totals.totalIncome)}</div>
         </div>
         <div class="summary-card">
-          <div class="label">Total Expenditure</div>
-          <div class="value negative">${formatCurrency(reportData.totals.totalExpenditure)}</div>
+          <div class="label">Spending</div>
+          <div class="value">${formatCurrency(totals.totalExpenditure)}</div>
         </div>
         <div class="summary-card">
-          <div class="label">Net Movement</div>
-          <div class="value ${reportData.totals.netMovement >= 0 ? 'positive' : 'negative'}">${formatCurrency(reportData.totals.netMovement)}</div>
+          <div class="label">${totals.netMovement >= 0 ? 'Surplus' : 'Deficit'}</div>
+          <div class="value ${totals.netMovement >= 0 ? 'positive' : 'negative'}">${formatSignedCurrency(totals.netMovement)}</div>
         </div>
-        ${giftAidEnabled ? `
         <div class="summary-card">
-          <div class="label">Gift Aid Claimable</div>
-          <div class="value">${formatCurrency(reportData.giftAidAnnual.totalClaimable)}</div>
+          <div class="label">Reserve cover</div>
+          <div class="value">${reserve.months === null ? '—' : `${reserve.months.toFixed(1)} months`}</div>
         </div>
-        ` : ''}
       </div>
 
       <div class="two-column">
         <div>
-          <div class="section-title">Income Breakdown</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th class="right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${Object.entries(reportData.incomeByMainCategory).map(([mainCategory, data]) => `
-                <tr class="main-category">
-                  <td>${escapeHtml(mainCategory)}</td>
-                  <td class="amount">${formatCurrency(data.total)}</td>
-                </tr>
-                ${data.subcategories.map(sub => `
-                  <tr class="subcategory">
-                    <td>${escapeHtml(sub.name)}</td>
-                    <td class="amount">${formatCurrency(sub.total)}</td>
-                  </tr>
-                `).join('')}
-              `).join('')}
-              <tr class="total-row">
-                <td>Total Income</td>
-                <td class="amount">${formatCurrency(reportData.totals.totalIncome)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="section-title">Income</div>
+          ${categoryTableHTML({
+            currentLabel: period.label,
+            groups: reportData.receipts,
+            total: totals.totalIncome,
+            totalLabel: "Total Income",
+            comparison: prior ? { label: prior.label, groups: prior.receipts, total: prior.totals.income } : null,
+            showPrior: true,
+          })}
         </div>
 
         <div>
-          <div class="section-title">Expenditure Breakdown</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th class="right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${Object.entries(reportData.expenditureByMainCategory).map(([mainCategory, data]) => `
-                <tr class="main-category">
-                  <td>${escapeHtml(mainCategory)}</td>
-                  <td class="amount">${formatCurrency(data.total)}</td>
-                </tr>
-                ${data.subcategories.map(sub => `
-                  <tr class="subcategory">
-                    <td>${escapeHtml(sub.name)}</td>
-                    <td class="amount">${formatCurrency(sub.total)}</td>
-                  </tr>
-                `).join('')}
-              `).join('')}
-              <tr class="total-row">
-                <td>Total Expenditure</td>
-                <td class="amount">${formatCurrency(reportData.totals.totalExpenditure)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="section-title">Expenditure</div>
+          ${categoryTableHTML({
+            currentLabel: period.label,
+            groups: reportData.payments,
+            total: totals.totalExpenditure,
+            totalLabel: "Total Expenditure",
+            comparison: prior ? { label: prior.label, groups: prior.payments, total: prior.totals.expenditure } : null,
+            showPrior: true,
+          })}
         </div>
       </div>
 
+      ${trend.length > 0 ? `
       <div class="section-title">Monthly Trend</div>
       <table>
         <thead>
           <tr>
             <th>Month</th>
             <th class="right">Income</th>
-            <th class="right">Expenditure</th>
+            <th class="right">Spending</th>
             <th class="right">Net</th>
+            <th class="right">Last year income</th>
           </tr>
         </thead>
         <tbody>
-          ${reportData.monthlyTrend.map(month => `
+          ${trend.map((month) => `
             <tr>
-              <td>${escapeHtml(month.month)}</td>
+              <td>${escapeHtml(month.label)}${month.isPartial ? ' (part)' : ''}</td>
               <td class="amount">${formatCurrency(month.income)}</td>
               <td class="amount">${formatCurrency(month.expenditure)}</td>
-              <td class="amount">${formatCurrency(month.income - month.expenditure)}</td>
+              <td class="amount">${formatSignedCurrency(month.net)}</td>
+              <td class="amount">${month.priorIncome === undefined ? '—' : formatCurrency(month.priorIncome)}</td>
             </tr>
           `).join('')}
           <tr class="total-row">
             <td>Total</td>
-            <td class="amount">${formatCurrency(reportData.totals.totalIncome)}</td>
-            <td class="amount">${formatCurrency(reportData.totals.totalExpenditure)}</td>
-            <td class="amount">${formatCurrency(reportData.totals.netMovement)}</td>
+            <td class="amount">${formatCurrency(totals.totalIncome)}</td>
+            <td class="amount">${formatCurrency(totals.totalExpenditure)}</td>
+            <td class="amount">${formatSignedCurrency(totals.netMovement)}</td>
+            <td class="amount">${hasPriorTrend ? formatCurrency(sumMoney(trend, (month) => month.priorIncome ?? 0)) : '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+      ` : ''}
+
+      <div class="section-title">Statement of Funds</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Fund</th>
+            ${fundHeadings.map((heading) => `<th class="right">${heading}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${unrestricted.map((row) => fundRow(row.fund, fundCellValues(row, showOther))).join('')}
+          <tr class="main-category">
+            <td>Subtotal: unrestricted funds</td>
+            ${fundRowCells(fundCellValues(fundStatement.unrestricted, showOther))}
+          </tr>
+          ${restricted.map((row) => fundRow(row.fund, fundCellValues(row, showOther))).join('')}
+          <tr class="main-category">
+            <td>Subtotal: restricted funds</td>
+            ${fundRowCells(fundCellValues(fundStatement.restricted, showOther))}
+          </tr>
+          <tr class="total-row">
+            <td>All funds</td>
+            ${fundRowCells(fundCellValues(fundStatement.total, showOther))}
           </tr>
         </tbody>
       </table>
 
-      ${reportData.yearOverYear ? `
-        <div class="section-title">Year-over-Year Comparison</div>
+      ${prior ? `
+        <div class="section-title">Comparison with ${escapeHtml(prior.label)}</div>
         <table>
           <thead>
             <tr>
               <th></th>
-              <th class="right">${reportData.year - 1}</th>
-              <th class="right">${reportData.year}</th>
+              <th class="right">${escapeHtml(prior.label)}</th>
+              <th class="right">${escapeHtml(period.label)}</th>
               <th class="right">Change</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Income</td>
-              <td class="amount">${formatCurrency(reportData.yearOverYear.previous.income)}</td>
-              <td class="amount">${formatCurrency(reportData.yearOverYear.current.income)}</td>
-              <td class="amount">${reportData.yearOverYear.incomeChange >= 0 ? '+' : ''}${reportData.yearOverYear.incomeChange.toFixed(1)}%</td>
+              <td class="amount">${formatCurrency(prior.totals.income)}</td>
+              <td class="amount">${formatCurrency(totals.totalIncome)}</td>
+              <td class="amount">${formatPercentChange(totals.totalIncome, prior.totals.income)}</td>
             </tr>
             <tr>
-              <td>Expenditure</td>
-              <td class="amount">${formatCurrency(reportData.yearOverYear.previous.expenditure)}</td>
-              <td class="amount">${formatCurrency(reportData.yearOverYear.current.expenditure)}</td>
-              <td class="amount">${reportData.yearOverYear.expenditureChange >= 0 ? '+' : ''}${reportData.yearOverYear.expenditureChange.toFixed(1)}%</td>
+              <td>Spending</td>
+              <td class="amount">${formatCurrency(prior.totals.expenditure)}</td>
+              <td class="amount">${formatCurrency(totals.totalExpenditure)}</td>
+              <td class="amount">${formatPercentChange(totals.totalExpenditure, prior.totals.expenditure)}</td>
+            </tr>
+            <tr>
+              <td>Surplus / Deficit</td>
+              <td class="amount">${formatSignedCurrency(prior.totals.net)}</td>
+              <td class="amount">${formatSignedCurrency(totals.netMovement)}</td>
+              <td class="amount">—</td>
             </tr>
           </tbody>
         </table>
@@ -1036,32 +1156,35 @@ export const generateAnnualReportHTML = (
       </table>
       ` : ''}
 
-      <div class="section-title">Fund Balances (End of Year)</div>
+      <div class="section-title">Mission Tithe and Giving</div>
       <table>
-        <thead>
-          <tr>
-            <th>Fund</th>
-            <th>Type</th>
-            <th class="right">Balance</th>
-          </tr>
-        </thead>
         <tbody>
-          ${reportData.fundBalances.map(fund => `
-            <tr>
-              <td>${escapeHtml(fund.fund)}</td>
-              <td>${escapeHtml(fund.type)}</td>
-              <td class="amount">${formatCurrency(fund.balance)}</td>
-            </tr>
-          `).join('')}
-          <tr class="total-row">
-            <td colspan="2">Total Funds</td>
-            <td class="amount">${formatCurrency(reportData.fundBalances.reduce((sum, f) => sum + f.balance, 0))}</td>
+          <tr>
+            <td>Income eligible for mission tithe</td>
+            <td class="amount">${formatCurrency(missionTithe.eligible)}</td>
+          </tr>
+          <tr>
+            <td>Mission tithe due (10%)</td>
+            <td class="amount" style="font-weight: 600;">${formatCurrency(missionTithe.due)}</td>
+          </tr>
+          <tr>
+            <td>Givers</td>
+            <td class="amount">${giving.donorCount}</td>
+          </tr>
+          <tr>
+            <td>Regular givers</td>
+            <td class="amount">${giving.regularGivers}</td>
+          </tr>
+          <tr>
+            <td>Gifts</td>
+            <td class="amount">${giving.giftCount}</td>
           </tr>
         </tbody>
       </table>
 
       ${transfersSectionHTML(reportData.transfers)}
       ${programmeIncomeSectionHTML(programmeIncome)}
+      ${loansSectionHTML(reportData.loans)}
 
       <div class="footer">
         <div>
@@ -1070,7 +1193,7 @@ export const generateAnnualReportHTML = (
         </div>
         <div style="text-align: right;">
           <p>RCI Missions Annual Report</p>
-          <p>Financial Year ${reportData.year}</p>
+          <p>Financial Year ${escapeHtml(period.label)}</p>
         </div>
       </div>
     </body>

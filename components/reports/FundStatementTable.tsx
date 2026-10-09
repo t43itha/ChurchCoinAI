@@ -1,6 +1,11 @@
 import React from "react";
 import { roundMoney } from "../../convex/lib/money";
-import type { FundStatement, FundStatementRow, FundStatementTotals } from "../../lib/reportSummary";
+import {
+  isUnrestrictedFund,
+  type FundStatement,
+  type FundStatementRow,
+  type FundStatementTotals,
+} from "../../lib/reportSummary";
 import { formatCurrency } from "./format";
 
 export interface FundStatementTableProps {
@@ -11,9 +16,9 @@ export interface FundStatementTableProps {
   showChange?: boolean;
 }
 
-const HEADER_CELL = "px-3 py-2.5 text-right font-mono text-[10.5px] font-semibold uppercase tracking-[0.07em] text-grey-mid";
+const HEADER_CELL = "px-3 py-2.5 text-right text-xs font-bold text-grey-mid";
 const BODY_CELL = "px-3 py-2.5 text-right font-mono text-[13px] text-ink";
-const GROUP_CELL = "px-3 py-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.07em] text-grey-mid";
+const GROUP_CELL = "px-3 py-2 text-xs font-bold text-grey-mid";
 const STICKY_FUND_CELL = "sticky left-0 z-[1] px-3 py-2.5 text-left text-[13.5px] md:static";
 
 const TYPE_TAG: Record<string, { label: string; className: string }> = {
@@ -21,9 +26,6 @@ const TYPE_TAG: Record<string, { label: string; className: string }> = {
   Restricted: { label: "Restricted", className: "bg-amber-light text-amber" },
   Designated: { label: "Designated", className: "bg-[#eef1f8] text-[#3e5a94]" },
 };
-
-const isUnrestrictedGroup = (row: FundStatementRow): boolean =>
-  row.type === "Unrestricted" || row.type === "Designated";
 
 interface ValueCellsProps {
   totals: FundStatementTotals;
@@ -105,8 +107,8 @@ export const FundStatementTable: React.FC<FundStatementTableProps> = ({
     </tr>
   );
 
-  const unrestrictedRows = statement.rows.filter(isUnrestrictedGroup);
-  const restrictedRows = statement.rows.filter((row) => !isUnrestrictedGroup(row));
+  const unrestrictedRows = statement.rows.filter(isUnrestrictedFund);
+  const restrictedRows = statement.rows.filter((row) => !isUnrestrictedFund(row));
 
   return (
     <div className="overflow-x-auto">
@@ -115,7 +117,7 @@ export const FundStatementTable: React.FC<FundStatementTableProps> = ({
           <tr className="border-b border-[#efeee9] bg-[#fcfbf9]">
             <th
               scope="col"
-              className="sticky left-0 z-[1] bg-[#fcfbf9] px-3 py-2.5 text-left font-mono text-[10.5px] font-semibold uppercase tracking-[0.07em] text-grey-mid md:static"
+              className="sticky left-0 z-[1] bg-[#fcfbf9] px-3 py-2.5 text-left text-xs font-bold text-grey-mid md:static"
             >
               Fund
             </th>

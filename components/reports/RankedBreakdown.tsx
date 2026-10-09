@@ -14,7 +14,7 @@ export interface RankedBreakdownProps {
   changeColumnLabel?: string;
 }
 
-const HEADER_CELL = "font-mono text-[10.5px] font-semibold uppercase tracking-[0.07em] text-grey-mid";
+const HEADER_CELL = "text-xs font-bold text-grey-mid";
 
 // Stacked on phones (label / amount / change, bar full width underneath); one row from sm up.
 const gridClass = (showChange: boolean): string =>

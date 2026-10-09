@@ -1,7 +1,5 @@
 import React from 'react';
 
-
-
 type ReportsErrorBoundaryProps = {
   children: React.ReactNode;
 };
@@ -31,17 +29,18 @@ export class ReportsErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="swiss-card p-12 flex flex-col items-center justify-center min-h-[400px] text-center">
-          <div className="w-12 h-12 bg-error-light rounded-full flex items-center justify-center mb-4">
-            <span className="text-error text-xl font-bold">!</span>
+        <div className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-ledger bg-white p-12 text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-error-light">
+            <span className="text-xl font-bold text-error">!</span>
           </div>
-          <h3 className="text-lg font-bold text-ink mb-2">Something went wrong</h3>
-          <p className="text-sm text-grey-mid mb-6 max-w-md">
+          <h3 className="mb-2 text-lg font-bold text-ink">Something went wrong</h3>
+          <p className="mb-6 max-w-md text-sm text-grey-mid">
             An error occurred while loading the report. This may be due to a data sync issue.
           </p>
           <button
+            type="button"
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-6 py-2.5 bg-ink text-white rounded-[10px] text-sm font-semibold hover:bg-charcoal transition-colors"
+            className="rounded-[10px] bg-ink px-6 py-2.5 text-sm font-semibold text-white hover:bg-charcoal"
           >
             Try Again
           </button>
@@ -51,4 +50,3 @@ export class ReportsErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
-

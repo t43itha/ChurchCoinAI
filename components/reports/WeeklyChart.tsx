@@ -93,7 +93,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({ weeks, monthEnd }) => 
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-label={caption}>
             <thead>
-              <tr className="border-b border-[#efeee9] bg-[#fcfbf9] font-mono text-[10.5px] uppercase tracking-[0.07em] text-grey-mid">
+              <tr className="border-b border-[#efeee9] bg-[#fcfbf9] text-xs font-bold text-grey-mid">
                 <th scope="col" className="px-3 py-2 text-left font-semibold">Week ending</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold">Income</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold">Spending</th>

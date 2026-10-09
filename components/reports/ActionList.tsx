@@ -1,5 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { nextIcon, nextItem } from "../wizard/ui";
+import { btnOutlineSm, sectionCard, sectionHead, sectionTitle } from "./classes";
 
 export type ActionTone = "pay" | "claim" | "info" | "warn";
 
@@ -19,60 +21,52 @@ export interface ActionListProps {
 }
 
 const TILE: Record<ActionTone, { glyph: string; className: string }> = {
-  pay: { glyph: "£", className: "bg-amber-light text-amber" },
+  pay: { glyph: "£", className: "bg-grey-light text-grey-dark" },
   claim: { glyph: "↺", className: "bg-sage-light text-sage" },
-  info: { glyph: "⌛", className: "bg-grey-light text-grey-dark" },
-  warn: { glyph: "!", className: "bg-error-light text-error" },
+  info: { glyph: "⌛", className: "bg-grey-light text-grey-mid" },
+  warn: { glyph: "!", className: "bg-amber-light text-amber" },
 };
 
-const ActionLink: React.FC<{ href: string; label: string }> = ({ href, label }) => {
-  const linkClass = "text-[12.5px] font-semibold text-ink underline-offset-2 hover:underline";
-  if (href.startsWith("/")) {
-    return (
-      <Link to={href} className={linkClass}>
-        {label} ›
-      </Link>
-    );
-  }
-  return (
-    <a href={href} className={linkClass}>
-      {label} ›
+const ActionButton: React.FC<{ href: string; label: string }> = ({ href, label }) =>
+  href.startsWith("/") ? (
+    <Link to={href} className={btnOutlineSm}>
+      {label}
+    </Link>
+  ) : (
+    <a href={href} className={btnOutlineSm}>
+      {label}
     </a>
   );
-};
 
+// "To action": the things that need doing before the numbers are final.
 export const ActionList: React.FC<ActionListProps> = ({ items, title = "To action this month" }) => (
-  <section className="swiss-card-static">
-    <div className="flex items-center justify-between border-b border-[#efeee9] px-[18px] py-3.5">
-      <h3 className="text-[14.5px] font-bold text-ink">{title}</h3>
-      <span className="text-[12.5px] text-grey-mid">
-        {items.length} {items.length === 1 ? "item" : "items"}
-      </span>
+  <section className={sectionCard}>
+    <div className={sectionHead}>
+      <h3 className={sectionTitle}>{title}</h3>
+      {items.length > 0 && (
+        <span className="text-xs text-grey-mid">
+          {items.length} {items.length === 1 ? "item" : "items"}
+        </span>
+      )}
     </div>
     {items.length === 0 ? (
-      <p className="px-[18px] py-4 text-sm text-grey-mid">Nothing to action</p>
+      <p className="px-[18px] pb-4 text-sm font-semibold text-sage">You're up to date</p>
     ) : (
-      <ul className="grid grid-cols-1 md:grid-cols-2">
+      <ul className="space-y-2 p-3">
         {items.map((item) => {
           const tile = TILE[item.tone];
           return (
-            <li
-              key={item.id}
-              className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 border-b border-[#efeee9] px-[18px] py-[11px] text-sm md:odd:border-r"
-            >
-              <span
-                aria-hidden="true"
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-bold ${tile.className}`}
-              >
+            <li key={item.id} className={nextItem}>
+              <span aria-hidden="true" className={`${nextIcon} text-base font-bold ${tile.className}`}>
                 {tile.glyph}
               </span>
-              <div className="min-w-0">
-                <p className="font-medium text-ink">{item.title}</p>
-                {item.detail && <p className="text-[12.5px] text-grey-mid">{item.detail}</p>}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-ink">{item.title}</p>
+                {item.detail && <p className="text-xs text-grey-mid">{item.detail}</p>}
               </div>
-              <div className="flex flex-col items-end gap-0.5 text-right">
+              <div className="flex shrink-0 items-center gap-2.5">
                 {item.amount && <span className="font-mono text-sm font-semibold text-ink">{item.amount}</span>}
-                {item.href && <ActionLink href={item.href} label={item.linkLabel ?? "Open"} />}
+                {item.href && <ActionButton href={item.href} label={item.linkLabel ?? "Open"} />}
               </div>
             </li>
           );

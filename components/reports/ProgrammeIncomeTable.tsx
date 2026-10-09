@@ -10,7 +10,7 @@ export const ProgrammeIncomeTable: React.FC<ProgrammeIncomeTableProps> = ({ rows
   <div className="overflow-x-auto">
     <table className="w-full text-sm">
       <thead>
-        <tr className="border-b border-[#efeee9] bg-[#fcfbf9] font-mono text-[10.5px] uppercase tracking-[0.07em] text-grey-mid">
+        <tr className="border-b border-[#efeee9] bg-[#fcfbf9] text-xs font-bold text-grey-mid">
           <th scope="col" className="px-3 py-2 text-left font-semibold">Programme</th>
           <th scope="col" className="px-3 py-2 text-right font-semibold">Entries</th>
           <th scope="col" className="px-3 py-2 text-right font-semibold">Amount</th>

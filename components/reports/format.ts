@@ -54,3 +54,6 @@ export const formatShortDate = (iso: string): string => {
   const date = new Date(`${iso}T00:00:00Z`);
   return `${date.getUTCDate()} ${SHORT_MONTHS[date.getUTCMonth()]}`;
 };
+
+// Trust signal: readiness below this is flagged amber.
+export const READY_THRESHOLD = 95;

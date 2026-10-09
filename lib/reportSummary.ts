@@ -112,6 +112,10 @@ export type ReserveCover = {
 
 export const RESERVE_TARGET_MONTHS = 3;
 
+// Designated funds are unrestricted money the trustees have set aside.
+export const isUnrestrictedFund = (fund: { type: string }) =>
+  fund.type === "Unrestricted" || fund.type === "Designated";
+
 // Income and expenditure of the reportable rows among `rows`.
 function reportableTotals(rows: ReportTransaction[]): { income: number; expenditure: number } {
   const reportable = filterIncomeAndExpenditure(rows);
@@ -239,13 +243,10 @@ export function buildFundStatement(
     return rank(a.type) - rank(b.type) || a.fund.localeCompare(b.fund);
   });
 
-  const isUnrestricted = (row: FundStatementRow) =>
-    row.type === "Unrestricted" || row.type === "Designated";
-
   return {
     rows: statementRows,
-    unrestricted: fundTotals(statementRows.filter(isUnrestricted)),
-    restricted: fundTotals(statementRows.filter((row) => !isUnrestricted(row))),
+    unrestricted: fundTotals(statementRows.filter(isUnrestrictedFund)),
+    restricted: fundTotals(statementRows.filter((row) => !isUnrestrictedFund(row))),
     total: fundTotals(statementRows),
   };
 }

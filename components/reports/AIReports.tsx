@@ -2,9 +2,23 @@ import React, { useMemo, useState } from 'react';
 import { useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Transaction, Fund, Pledge, ChurchDetails } from '../../types';
+import { sumMoney } from '../../convex/lib/money';
 import { filterIncomeAndExpenditure } from '../../lib/reportableTransactions';
+import { isGiftAidEnabled } from '../../lib/giftAid';
+import {
+  Calendar,
+  FileText,
+  ArrowRight,
+  PoundSterling,
+  TrendingUp,
+  Download,
+  Share2,
+  Sparkles,
+  Megaphone,
+  Target,
+} from 'lucide-react';
 
-
+// ============ AI REPORTS CONTENT ============
 
 interface AIReportsProps {
   transactions: Transaction[];
@@ -13,7 +27,8 @@ interface AIReportsProps {
   churchDetails: ChurchDetails;
 }
 
-const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledges, churchDetails }) => {
+const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, churchDetails }) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const activeTransactions = useMemo(() => filterIncomeAndExpenditure(transactions), [transactions]);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
@@ -61,8 +76,8 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
     setIsGenerating(true);
     setReportTitle("Treasurer's Financial Commentary");
     try {
-      const totalIncome = activeTransactions.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-      const totalExpenditure = activeTransactions.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
+      const totalIncome = sumMoney(activeTransactions.filter(t => t.type === 'Income'), t => t.amount);
+      const totalExpenditure = sumMoney(activeTransactions.filter(t => t.type === 'Expenditure'), t => t.amount);
       const fundsStatus = funds.map(f => ({ name: f.name, balance: f.balance }));
       const recentLargeTransactions = activeTransactions
         .filter(t => t.amount > 500)
@@ -116,8 +131,8 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
         (!start || t.date >= start) &&
         (!end || t.date <= end)
       );
-      const periodIncome = periodTxns.filter(t => t.type === 'Income').reduce((s, t) => s + t.amount, 0);
-      const periodExpense = periodTxns.filter(t => t.type === 'Expenditure').reduce((s, t) => s + t.amount, 0);
+      const periodIncome = sumMoney(periodTxns.filter(t => t.type === 'Income'), t => t.amount);
+      const periodExpense = sumMoney(periodTxns.filter(t => t.type === 'Expenditure'), t => t.amount);
       const recentTransactions = JSON.stringify(periodTxns.slice(0, 15));
       const text = await projectReport({
         fundName: fund.name,
@@ -145,8 +160,8 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
     try {
       const fundTxns = activeTransactions.filter(t => t.fundId === fund._id && t.type === 'Income');
       const fundPledges = pledges.filter(p => p.fundId === fund._id);
-      const totalRaisedCash = fundTxns.reduce((s, t) => s + t.amount, 0);
-      const totalPledged = fundPledges.reduce((s, p) => s + p.amount, 0);
+      const totalRaisedCash = sumMoney(fundTxns, t => t.amount);
+      const totalPledged = sumMoney(fundPledges, p => p.amount);
       const donorSet = new Set(fundTxns.map(t => t.donorName).filter(Boolean));
       const donorCount = donorSet.size || fundTxns.length;
       const avgDonation = fundTxns.length ? totalRaisedCash / fundTxns.length : 0;
@@ -179,23 +194,19 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
       );
       const incomeByCategory: Record<string, number> = {};
       const expenditureByCategory: Record<string, number> = {};
-      let totalIncome = 0;
-      let totalExpenditure = 0;
       periodTxns.forEach(t => {
         if (t.type === 'Income') {
           incomeByCategory[t.category] = (incomeByCategory[t.category] || 0) + t.amount;
-          totalIncome += t.amount;
         } else {
           expenditureByCategory[t.category] = (expenditureByCategory[t.category] || 0) + t.amount;
-          totalExpenditure += t.amount;
         }
       });
       const text = await annualStatement({
         period: `${start || 'Start'} to ${end || 'End'}`,
         incomeByCategory: JSON.stringify(incomeByCategory),
         expenditureByCategory: JSON.stringify(expenditureByCategory),
-        totalIncome,
-        totalExpenditure
+        totalIncome: sumMoney(periodTxns.filter(t => t.type === 'Income'), t => t.amount),
+        totalExpenditure: sumMoney(periodTxns.filter(t => t.type !== 'Income'), t => t.amount)
       });
       setReportText(text || "No transactions found for this period.");
     } catch (e) {
@@ -215,15 +226,17 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
         (!start || t.date >= start) &&
         (!end || t.date <= end)
       );
-      const monthly: Record<string, { income: number; expense: number }> = {};
+      const monthly: Record<string, typeof periodTxns> = {};
       periodTxns.forEach(t => {
         const monthKey = t.date.substring(0, 7);
-        if (!monthly[monthKey]) monthly[monthKey] = { income: 0, expense: 0 };
-        if (t.type === 'Income') monthly[monthKey].income += t.amount;
-        else monthly[monthKey].expense += t.amount;
+        (monthly[monthKey] ??= []).push(t);
       });
       const monthlyData = Object.entries(monthly)
-        .map(([month, data]) => ({ month, income: data.income, expense: data.expense }))
+        .map(([month, rows]) => ({
+          month,
+          income: sumMoney(rows.filter(t => t.type === 'Income'), t => t.amount),
+          expense: sumMoney(rows.filter(t => t.type !== 'Income'), t => t.amount),
+        }))
         .sort((a, b) => a.month.localeCompare(b.month));
       const text = await monthlyBreakdown({ monthlyData: JSON.stringify(monthlyData) });
       setReportText(text || "No transactions found for this period.");
@@ -265,7 +278,7 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="ledger-space-y-4">
           {/* Treasurer Report Card */}
-          <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateTreasurerReport}>
+          <div className="rounded-2xl border border-ledger bg-white p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateTreasurerReport}>
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-sage-light rounded-lg flex items-center justify-center text-sage">
                 <Sparkles size={20} />
@@ -281,7 +294,7 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
           </div>
 
           {/* Financial Performance Card */}
-          <div className="swiss-card p-6 group">
+          <div className="rounded-2xl border border-ledger bg-white p-6 group">
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-grey-light rounded-lg flex items-center justify-center text-slate-600">
                 <TrendingUp size={20} />
@@ -308,7 +321,8 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
           </div>
 
           {/* Gift Aid Card */}
-          <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateGiftAid}>
+          {giftAidEnabled && (
+          <div className="rounded-2xl border border-ledger bg-white p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateGiftAid}>
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-sage-light rounded-lg flex items-center justify-center text-sage">
                 <PoundSterling size={20} />
@@ -322,9 +336,10 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
               {isGenerating && reportTitle.includes("HMRC") ? 'Calculating...' : <span className="flex items-center gap-2">Generate Schedule <ArrowRight size={12}/></span>}
             </div>
           </div>
+          )}
 
           {/* Project Impact Card */}
-          <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateProjectReport}>
+          <div className="rounded-2xl border border-ledger bg-white p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateProjectReport}>
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-amber-light rounded-lg flex items-center justify-center text-amber">
                 <Megaphone size={20} />
@@ -348,7 +363,7 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
           </div>
 
           {/* Campaign Status Card */}
-          <div className="swiss-card p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateCampaignReport}>
+          <div className="rounded-2xl border border-ledger bg-white p-6 cursor-pointer hover:border-grey-mid transition-colors group" onClick={handleGenerateCampaignReport}>
             <div className="flex justify-between items-start mb-4">
               <div className="w-10 h-10 bg-error-light rounded-lg flex items-center justify-center text-error">
                 <Target size={20} />
@@ -375,7 +390,7 @@ const AIReports: React.FC<AIReportsContentProps> = ({ transactions, funds, pledg
         </div>
 
         <div className="lg:col-span-2">
-          <div className="swiss-card min-h-[600px] p-10 relative">
+          <div className="rounded-2xl border border-ledger bg-white min-h-[600px] p-10 relative">
             <div className="absolute top-6 right-6 flex gap-2">
               <button className="p-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded-sm transition-colors" title="Download">
                 <Download size={18} />

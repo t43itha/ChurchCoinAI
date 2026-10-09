@@ -2,7 +2,6 @@
   "components/Campaigns.tsx": 1,
   "components/DonorManager.tsx": 3,
   "components/FundManager.tsx": 1,
-  "components/Reports.tsx": 12,
   "components/Settings.tsx": 2,
   "components/TransactionManager.tsx": 2,
   "convex/actions/ai.ts": 1,
@@ -16,6 +15,5 @@
   "convex/queries/transactions.ts": 3,
   "lib/cashChequeBanking.ts": 6,
   "lib/inPersonGiving.ts": 7,
-  "services/excelGenerator.ts": 2,
-  "services/pdfGenerator.ts": 4
+  "services/pdfGenerator.ts": 2
 }
