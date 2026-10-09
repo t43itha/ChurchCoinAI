@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Every screen in the walkthrough style — plan & mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #1c1917; --paper: #faf9f7; --charcoal: #2a2522; --ledger: #e7e5e1;
+    --grey-dark: #44403c; --grey-mid: #78716c; --grey-light: #f7f6f4; --line: #efeee9; --well: #f4f3f0;
+    --sage: #557555; --sage-light: #eef3ee; --sage-mid: #cfddcf;
+    --amber: #a9743f; --amber-light: #faf2e9; --amber-mid: #ecd9c2;
+    --error: #b53d3d; --error-light: #fbeded;
+    --shadow-soft: 0 1px 2px rgba(28,25,23,.04), 0 8px 24px -12px rgba(28,25,23,.14);
+    --shadow-md: 0 1px 2px rgba(28,25,23,.04), 0 14px 32px -18px rgba(28,25,23,.22);
+    --shadow-lg: 0 2px 4px rgba(28,25,23,.04), 0 24px 48px -20px rgba(28,25,23,.28);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 "DM Sans", system-ui, sans-serif; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; margin: 8px 0 12px; }
+  h2 { font-size: 26px; letter-spacing: -0.015em; margin: 0 0 6px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); }
+  .lede { font-size: 18px; color: var(--grey-dark); max-width: 800px; }
+  .muted { color: var(--grey-mid); }
+  section { margin-top: 72px; }
+  .sec-head { display: flex; gap: 14px; align-items: baseline; margin-bottom: 18px; }
+  .sec-num { font: 700 13px "JetBrains Mono", monospace; color: var(--sage); }
+  .card { background: #fff; border: 1px solid var(--ledger); border-radius: 16px; box-shadow: var(--shadow-soft); padding: 22px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  @media (max-width: 1000px) { .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  nav.toc a { text-decoration: none; color: var(--grey-dark); font-size: 13px; font-weight: 600; border: 1px solid var(--ledger); background: #fff; padding: 7px 12px; border-radius: 999px; }
+  nav.toc a:hover { border-color: #c9c5be; }
+  code, .code { font: 500 12px "JetBrains Mono", monospace; background: var(--grey-light); border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; white-space: nowrap; }
+
+  /* tags */
+  .tag { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+  .t-sage { background: var(--sage-light); color: var(--sage); }
+  .t-amber { background: var(--amber-light); color: var(--amber); }
+  .t-red { background: var(--error-light); color: var(--error); }
+  .t-grey { background: var(--grey-light); color: var(--grey-dark); border: 1px solid var(--ledger); }
+
+  /* plan layout */
+  .step-block { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; margin-top: 18px; }
+  @media (max-width: 1100px) { .step-block { grid-template-columns: 1fr; } }
+  .notes { position: sticky; top: 18px; }
+  .notes ol { margin: 0; padding-left: 0; list-style: none; counter-reset: n; }
+  .notes li { counter-increment: n; position: relative; padding-left: 32px; margin-bottom: 14px; font-size: 14px; color: var(--grey-dark); }
+  .notes li::before { content: counter(n); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); color: #fff; font: 700 11px "JetBrains Mono", monospace; display: flex; align-items: center; justify-content: center; }
+  .notes li b { color: var(--ink); }
+  .reuse { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--sage-light); border: 1px solid var(--sage-mid); font-size: 13px; color: var(--grey-dark); }
+  .reuse code { font-size: 11.5px; background: #fff; }
+  .screen-h { margin-top: 56px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .screen-h .route { font: 600 12px "JetBrains Mono", monospace; color: var(--grey-mid); }
+
+  /* ───── shared mock primitives (mirror components/cashEntry/ui.tsx) ───── */
+  .btn { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 20px; border-radius: 16px; font-weight: 700; font-size: 14px; border: 0; }
+  .btn-primary { background: var(--ink); color: #fff; box-shadow: 0 8px 18px -10px rgba(28,25,23,.6); }
+  .btn-outline { background: #fff; border: 1px solid var(--ledger); color: var(--ink); }
+  .btn-sage { background: var(--sage); color: #fff; }
+  .btn-dashed { background: transparent; border: 1.5px dashed #d6d3cd; color: var(--grey-dark); font-weight: 600; }
+  .btn-ghost { background: transparent; color: var(--grey-dark); font-weight: 600; }
+  .btn-lg { height: 54px; font-size: 16px; }
+  .btn-sm { height: 36px; padding: 0 13px; font-size: 13px; border-radius: 12px; }
+  .btn-block { width: 100%; }
+  .link { color: var(--sage); font-weight: 700; font-size: 13px; }
+  .scr-title { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; margin: 0; }
+  .scr-help { font-size: 13.5px; color: var(--grey-mid); margin: 6px 0 16px; }
+  .sec-t { font-size: 15px; font-weight: 700; margin: 22px 0 10px; display: flex; justify-content: space-between; align-items: baseline; }
+  .sec-t .link { font-size: 12.5px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 13px; border-radius: 12px; border: 1.5px solid var(--ledger); background: #fff; font-size: 13px; font-weight: 600; color: var(--grey-dark); white-space: nowrap; }
+  .chip.on { border-color: var(--ink); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .chip.dash { border-style: dashed; color: var(--grey-mid); }
+  .chip .n { font: 700 11px "JetBrains Mono", monospace; color: var(--amber); }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: #efeee9; border-radius: 12px; padding: 3px; }
+  .seg span { height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 13px; font-weight: 600; color: var(--grey-mid); white-space: nowrap; }
+  .seg span.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .seg .n { font: 700 10.5px "JetBrains Mono", monospace; background: var(--amber-light); color: var(--amber); border-radius: 99px; padding: 1px 6px; }
+  .inp { height: 44px; border: 1.5px solid var(--ledger); border-radius: 13px; padding: 0 13px; font-size: 14px; display: flex; align-items: center; gap: 8px; background: #fff; color: var(--grey-mid); min-width: 0; }
+  .inp.focus { border-color: var(--ink); color: var(--ink); }
+  .amt { height: 48px; border: 1.5px solid var(--ledger); border-radius: 12px; background: var(--paper); display: flex; align-items: center; padding: 0 12px; font: 700 18px "JetBrains Mono", monospace; }
+  .amt::before { content: "£"; font-weight: 500; font-size: 15px; color: var(--grey-mid); margin-right: 4px; }
+  .amt.focus { border-color: var(--ink); background: #fff; }
+  .flabel { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); margin: 18px 0 8px; display: block; }
+
+  .hero { position: relative; overflow: hidden; background: var(--ink); color: #fff; border-radius: 20px; padding: 18px 20px; }
+  .hero .k { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+  .hero .v { font: 700 32px "JetBrains Mono", monospace; letter-spacing: -0.02em; margin: 4px 0 2px; }
+  .hero .s { font-size: 12.5px; color: rgba(255,255,255,.65); }
+  .hero .s u { text-underline-offset: 2px; }
+  .hero .split { display: flex; height: 8px; border-radius: 99px; overflow: hidden; margin: 14px 0 8px; gap: 2px; }
+  .hero .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: rgba(255,255,255,.7); }
+  .hero .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  .hero .legend b { font-family: "JetBrains Mono", monospace; color: #fff; margin-left: 4px; }
+  .hero .up { color: #a9cfa9; font-weight: 700; }
+
+  .nx { display: grid; gap: 8px; }
+  .nxi { display: flex; align-items: center; gap: 13px; background: #fff; border: 1px solid var(--ledger); border-radius: 16px; padding: 11px 14px; }
+  .nxic { width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
+  .ic-sage { background: var(--sage-light); color: var(--sage); }
+  .ic-amber { background: var(--amber-light); color: var(--amber); }
+  .ic-grey { background: var(--grey-light); color: var(--ink); }
+  .ic-red { background: var(--error-light); color: var(--error); }
+  .nxi .tx { flex: 1; min-width: 0; }
+  .nxi .tx b { display: block; font-size: 14px; }
+  .nxi .tx span { font-size: 12px; color: var(--grey-mid); }
+  .nxi .go { color: var(--grey-mid); font-size: 16px; }
+
+  .lst { background: #fff; border: 1px solid var(--ledger); border-radius: 16px; overflow: hidden; }
+  .dayh { display: flex; justify-content: space-between; padding: 8px 14px; background: var(--grey-light); border-top: 1px solid var(--line); font-size: 11.5px; font-weight: 700; color: var(--grey-mid); letter-spacing: .02em; }
+  .dayh:first-child { border-top: 0; }
+  .dayh b { font: 700 11.5px "JetBrains Mono", monospace; color: var(--grey-dark); }
+  .lr { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13px; }
+  .lr .ri { width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+  .lr .d b { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lr .d span { font-size: 12px; color: var(--grey-mid); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .lr .a { font: 700 13.5px "JetBrains Mono", monospace; text-align: right; white-space: nowrap; }
+  .lr .a.in { color: var(--sage); }
+  .lr .a small { display: block; font: 500 11px "DM Sans"; color: var(--grey-mid); }
+  .lr.void .d b, .lr.void .a { text-decoration: line-through; color: var(--grey-mid); }
+  .lr.sel { background: var(--grey-light); box-shadow: inset 3px 0 0 var(--ink); }
+  .pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--ledger); background: var(--paper); font-size: 11.5px; font-weight: 600; color: var(--grey-dark); white-space: nowrap; }
+  .pill.ask { background: var(--amber-light); border-color: var(--amber-mid); color: var(--amber); }
+
+  .tick { display: flex; align-items: center; gap: 12px; min-height: 52px; background: #fff; border: 1.5px solid var(--ledger); border-radius: 16px; padding: 0 14px; margin-bottom: 8px; font-size: 14px; }
+  .tick .bx { width: 22px; height: 22px; flex-shrink: 0; border-radius: 7px; border: 1.5px solid #cfcac2; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; }
+  .tick.on { border-color: var(--ink); }
+  .tick.on .bx { background: var(--ink); border-color: var(--ink); }
+  .tick.done .bx { background: var(--sage); border-color: var(--sage); }
+  .tick b { flex: 1; min-width: 0; font-size: 14px; }
+  .tick b small { display: block; font-weight: 500; font-size: 12px; color: var(--grey-mid); }
+  .tick .r { font: 700 13px "JetBrains Mono", monospace; white-space: nowrap; }
+  .tick .r.dim { font: 500 12.5px "DM Sans"; color: var(--grey-mid); }
+
+  .rcpt { position: relative; background: #fff; border: 1px solid var(--ledger); border-radius: 18px; padding: 14px 14px 8px; box-shadow: var(--shadow-md); }
+  .rcpt::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -7px; height: 7px; background: radial-gradient(circle at 6px 0, transparent 5px, #fff 5.5px); background-size: 12px 7px; background-repeat: repeat-x; }
+  .rcpt .h { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); margin-bottom: 6px; }
+  .rcpt .t { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+  .rline { gap: 8px; display: flex; justify-content: space-between; font-size: 12.5px; padding: 6px 0; border-top: 1px dashed var(--ledger); color: var(--grey-dark); }
+  .rline b { white-space: nowrap; font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--ink); }
+  .rline.sub { padding-left: 10px; color: var(--grey-mid); font-size: 12px; }
+  .rline.sub b { color: var(--grey-dark); font-size: 12px; font-weight: 500; }
+  .rline.pos b { color: var(--sage); } .rline.warn b { color: var(--amber); } .rline.dim { color: var(--grey-mid); }
+  .rline.total { border-top: 1.5px solid var(--ink); margin-top: 4px; font-weight: 700; color: var(--ink); align-items: baseline; }
+  .rline.total b { font-size: 20px; letter-spacing: -0.02em; }
+  .side-note { font-size: 12px; color: var(--grey-mid); margin-top: 18px; }
+  .side-note code { white-space: normal; word-break: break-all; }
+
+  .prog { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .prog i { display: block; height: 100%; border-radius: 99px; background: var(--sage); }
+  .prog.amber i { background: var(--amber); }
+  .av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--grey-light); border: 1px solid var(--ledger); color: var(--grey-dark); flex-shrink: 0; }
+  .ga { white-space: nowrap; border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+  .ga.on { background: var(--sage-light); color: var(--sage); } .ga.off { background: var(--amber-light); color: var(--amber); } .ga.none { background: var(--grey-light); color: var(--grey-mid); }
+
+  .banner { display: flex; gap: 10px; align-items: flex-start; border-radius: 14px; padding: 12px 14px; font-size: 13px; margin-bottom: 14px; }
+  .banner.sage { background: var(--sage-light); border: 1px solid var(--sage-mid); color: var(--grey-dark); }
+  .banner.amber { background: var(--amber-light); border: 1px solid var(--amber-mid); color: var(--grey-dark); }
+  .banner b { color: var(--ink); }
+
+  /* ───── hub frame: app nav · page · receipt column ───── */
+  .app { background: var(--paper); border: 1px solid var(--ledger); border-radius: 22px; box-shadow: var(--shadow-lg); overflow: hidden; display: grid; grid-template-columns: 190px minmax(0, 1fr) 250px; min-height: 640px; }
+  .app.two { grid-template-columns: 190px minmax(0, 1fr); }
+  @media (max-width: 900px) { .app, .app.two { grid-template-columns: 1fr; } .app .nav, .app .side { display: none; } }
+  .nav { background: #fff; border-right: 1px solid var(--ledger); padding: 18px 12px; display: flex; flex-direction: column; }
+  .nav .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; padding: 0 8px 4px; display: flex; align-items: center; gap: 8px; }
+  .nav .brand i { width: 22px; height: 22px; border-radius: 7px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font: 700 12px "JetBrains Mono"; font-style: normal; }
+  .nav .church { font-size: 11.5px; color: var(--grey-mid); padding: 0 8px 14px 38px; }
+  .nav .new { margin: 0 2px 14px; height: 40px; font-size: 13px; border-radius: 13px; }
+  .nav .grp { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); margin: 12px 10px 4px; }
+  .ni { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--grey-dark); }
+  .ni .g { width: 18px; text-align: center; color: var(--grey-mid); font-size: 13px; }
+  .ni .c { margin-left: auto; font: 700 10.5px "JetBrains Mono", monospace; background: var(--amber-light); color: var(--amber); border-radius: 99px; padding: 1px 6px; }
+  .ni.on { background: var(--grey-light); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ledger); }
+  .ni.on .g { color: var(--ink); }
+  .nav .me { margin-top: auto; display: flex; gap: 10px; align-items: center; padding: 12px 8px 0; border-top: 1px solid var(--ledger); font-size: 12px; }
+  .nav .me b { display: block; font-size: 12.5px; }
+  .nav .me span { color: var(--grey-mid); }
+  .pg { padding: 24px 26px 26px; min-width: 0; }
+  .ph { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 18px; }
+  .ph .t .eyebrow { margin-bottom: 4px; }
+  .ph h4 { margin: 0; font-size: 26px; letter-spacing: -0.015em; line-height: 1.15; }
+  .ph p { margin: 6px 0 0; font-size: 13.5px; color: var(--grey-mid); }
+  .ph p .warn { color: var(--amber); font-weight: 600; }
+  .ph .acts { display: flex; gap: 8px; flex-shrink: 0; }
+  .side { background: var(--well); border-left: 1px solid var(--ledger); padding: 22px 16px; }
+  .side .eyebrow { margin-bottom: 10px; }
+
+  /* ───── walkthrough frame: rail · step · receipt (= CashEntryWizard at lg) ───── */
+  .window { background: var(--paper); border: 1px solid var(--ledger); border-radius: 24px; box-shadow: var(--shadow-lg); overflow: hidden; display: grid; grid-template-columns: 186px minmax(0, 1fr) 230px; min-height: 600px; }
+  @media (max-width: 900px) { .window { grid-template-columns: 1fr; } .rail, .receipt-col { display: none; } }
+  .rail { border-right: 1px solid var(--ledger); padding: 20px 12px; background: #fff; }
+  .rail .ttl { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); margin: 0 6px 8px; }
+  .rail .r { white-space: nowrap; display: flex; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 10px; font-size: 13px; color: var(--grey-mid); font-weight: 600; }
+  .rail .r .dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--ledger); display: flex; align-items: center; justify-content: center; font: 700 10.5px "JetBrains Mono"; flex-shrink: 0; background: #fff; }
+  .rail .r em { margin-left: auto; font: 500 11px "JetBrains Mono"; font-style: normal; color: var(--grey-mid); }
+  .rail .r.done { color: var(--grey-dark); }
+  .rail .r.done .dot { background: var(--sage); border-color: var(--sage); color: #fff; }
+  .rail .r.now { background: var(--grey-light); color: var(--ink); }
+  .rail .r.now .dot { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .mhead { display: flex; align-items: center; padding: 16px 20px 0; gap: 8px; }
+  .mhead .back, .mhead .x { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--grey-dark); font-size: 18px; }
+  .mhead .t { flex: 1; text-align: center; font-weight: 700; font-size: 14.5px; }
+  .progress { display: flex; gap: 4px; padding: 10px 20px 0; }
+  .progress span { height: 4px; flex: 1; border-radius: 4px; background: var(--ledger); }
+  .progress .d { background: var(--sage); } .progress .c { background: var(--ink); }
+  .mbody { flex: 1; padding: 18px 26px; }
+  .mfoot { border-top: 1px solid var(--ledger); padding: 12px 20px 16px; background: var(--paper); }
+  .mfoot .sum { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--grey-mid); margin-bottom: 9px; padding: 0 2px; }
+  .mfoot .sum b { font: 700 14px "JetBrains Mono", monospace; color: var(--ink); }
+  .receipt-col { border-left: 1px solid var(--ledger); padding: 20px 16px; background: #fff; }
+  .receipt-col .eyebrow { margin-bottom: 10px; }
+
+  /* ───── single-column sheets (mobile size and small desktop panels) ───── */
+  .sheet { background: var(--paper); border: 1px solid var(--ledger); border-radius: 24px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column; min-height: 520px; }
+  .sheet .mbody { padding: 16px 20px; }
+
+  /* specific */
+  .bars { display: flex; align-items: flex-end; gap: 10px; height: 120px; padding: 6px 4px 0; }
+  .bars .b { flex: 1; display: flex; gap: 3px; align-items: flex-end; height: 100%; }
+  .bars .b i { flex: 1; border-radius: 5px 5px 2px 2px; background: var(--sage); }
+  .bars .b i.o { background: #d6d3cd; }
+  .bars .b.now i { background: var(--ink); } .bars .b.now i.o { background: #a8a29e; }
+  .bars-x { display: flex; gap: 10px; padding: 6px 4px 0; font: 500 10.5px "JetBrains Mono"; color: var(--grey-mid); }
+  .bars-x span { flex: 1; text-align: center; }
+  .panel { background: #fff; border: 1px solid var(--ledger); border-radius: 16px; padding: 14px 16px; }
+  .panel .pt { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+  .panel .pt span { font-size: 12px; font-weight: 500; color: var(--grey-mid); }
+  .frow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .frow:first-of-type { border-top: 0; }
+  .frow b { font-size: 13.5px; } .frow .m { font: 700 13px "JetBrains Mono"; text-align: right; }
+  .frow .prog { grid-column: 1 / -1; }
+  .frow .sub { font-size: 11.5px; color: var(--grey-mid); }
+  .fundgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .fundc { background: #fff; border: 1px solid var(--ledger); border-radius: 16px; padding: 14px; }
+  .fundc .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .fundc .nm { font-weight: 700; font-size: 14px; }
+  .fundc .bal { font: 700 22px "JetBrains Mono"; letter-spacing: -0.02em; margin: 10px 0 2px; }
+  .fundc .mv { font-size: 12px; color: var(--grey-mid); margin-bottom: 10px; }
+  .fundc .mv b { font-family: "JetBrains Mono"; color: var(--sage); }
+  .fundc.warn { border-color: var(--amber-mid); box-shadow: 0 0 0 3px var(--amber-light); }
+  .fundc.warn .bal { color: var(--error); }
+  .stat3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat3 div { background: #fff; border: 1px solid var(--ledger); border-radius: 14px; padding: 10px 12px; }
+  .stat3 b { white-space: nowrap; display: block; font: 700 17px "JetBrains Mono"; }
+  .stat3 span { font-size: 11.5px; color: var(--grey-mid); }
+  .stat3 .s b { color: var(--sage); } .stat3 .w b { color: var(--amber); }
+  .profile .ph2 { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .profile .ph2 .av { width: 44px; height: 44px; font-size: 15px; }
+  .profile .ph2 b { font-size: 17px; display: block; }
+  .profile .ph2 span { font-size: 12px; color: var(--grey-mid); }
+  .hero.sm { padding: 14px 16px; border-radius: 18px; }
+  .hero.sm .v { font-size: 24px; }
+  .bubble { max-width: 82%; border-radius: 18px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 10px; }
+  .bubble.me { margin-left: auto; background: var(--ink); color: #fff; border-bottom-right-radius: 6px; }
+  .bubble.ward { background: #fff; border: 1px solid var(--ledger); border-bottom-left-radius: 6px; }
+  .wardh { display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 700; color: var(--sage); margin-bottom: 6px; }
+  .wardh i { width: 20px; height: 20px; border-radius: 6px; background: var(--sage-light); display: flex; align-items: center; justify-content: center; font-style: normal; }
+  .grouped { background: #fff; border: 1px solid var(--ledger); border-radius: 16px; overflow: hidden; margin-bottom: 14px; }
+  .grouped .gr { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--line); font-size: 13.5px; }
+  .grouped .gr:first-child { border-top: 0; }
+  .grouped .gr .nxic { width: 32px; height: 32px; border-radius: 10px; font-size: 14px; }
+  .grouped .gr b { flex: 1; font-weight: 600; }
+  .grouped .gr span { font-size: 12.5px; color: var(--grey-mid); }
+  .grouped .gr .go { color: var(--grey-mid); }
+  .paper-prev { background: #fff; border: 1px solid var(--ledger); border-radius: 12px; box-shadow: var(--shadow-soft); padding: 16px 18px; font-size: 12px; }
+  .paper-prev h5 { margin: 0 0 2px; font-size: 14px; }
+  .paper-prev .meta { color: var(--grey-mid); font-size: 11px; margin-bottom: 10px; }
+  .paper-prev .row { display: flex; justify-content: space-between; padding: 5px 0; border-top: 1px solid var(--line); }
+  .paper-prev .row b { font-family: "JetBrains Mono"; }
+  .paper-prev .row.t { border-top: 1.5px solid var(--ink); font-weight: 700; }
+
+  /* phone */
+  .phone { width: 300px; border: 10px solid var(--ink); border-radius: 42px; background: var(--paper); overflow: hidden; box-shadow: var(--shadow-lg); margin: 0 auto; position: relative; }
+  .phone .scr { padding: 16px 14px 74px; min-height: 600px; }
+  .phone .notch { width: 90px; height: 20px; background: var(--ink); border-radius: 0 0 14px 14px; margin: -16px auto 12px; }
+  .phone .tabbar { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--ledger); display: grid; grid-template-columns: repeat(5, 1fr); padding: 7px 4px 12px; }
+  .phone .tabbar span { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9.5px; font-weight: 600; color: var(--grey-mid); }
+  .phone .tabbar span i { font-style: normal; font-size: 15px; height: 20px; }
+  .phone .tabbar span.on { color: var(--ink); }
+  .phone .tabbar span.plus i { width: 40px; height: 40px; margin-top: -18px; border-radius: 14px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 8px 18px -8px rgba(28,25,23,.7); }
+  .phone .lr { padding: 9px 11px; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; }
+  .phone .lr .ri { width: 30px; height: 30px; }
+  .phone .hero .v { font-size: 26px; }
+
+  /* kit specimens */
+  .spec { display: grid; gap: 10px; }
+  .spec .lbl { font-size: 11px; font-weight: 700; color: var(--grey-mid); letter-spacing: .06em; text-transform: uppercase; }
+  .from-to { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .from-to th, .from-to td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  .from-to th { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--grey-mid); }
+  .from-to td:first-child { color: var(--grey-mid); }
+  .from-to td:last-child { font-weight: 600; }
+
+  /* inventory, comparison & plan */
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.cmp th, table.cmp td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  table.cmp th { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--grey-mid); position: sticky; top: 0; background: #fff; }
+  table.cmp td.b { color: var(--grey-mid); }
+  table.cmp td.a { font-weight: 600; }
+  table.cmp tr.grp td { background: var(--grey-light); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--grey-mid); }
+  .phase { position: relative; padding-left: 28px; border-left: 2px solid var(--ledger); margin-left: 10px; padding-bottom: 26px; }
+  .phase:last-child { padding-bottom: 0; }
+  .phase::before { content: ""; position: absolute; left: -9px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid var(--ink); }
+  .phase h3 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .phase ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; color: var(--grey-dark); }
+  .phase li { margin-bottom: 5px; }
+  .q { border-left: 3px solid var(--amber); padding: 4px 0 4px 14px; margin-bottom: 18px; }
+  .q h4 { margin: 0 0 4px; font-size: 15px; }
+  .q p { font-size: 14px; color: var(--grey-dark); margin: 0; }
+  .q .rec { margin-top: 6px; font-size: 13px; color: var(--sage); font-weight: 700; }
+  footer { margin-top: 80px; font-size: 12px; color: var(--grey-mid); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">ChurchCoin · Plan · 8 October 2026</div>
+  <h1>Every screen in the walkthrough style</h1>
+  <p class="lede">The cash walkthrough (#55, #56) is the best-feeling part of ChurchCoin: one question per screen, big targets, plain words, a running total that never leaves view, and an ending that says what to do next. The rest of the app still looks like a spreadsheet with uppercase labels. This plan turns the walkthrough's parts into a shared kit, then uses it on every screen. Pages become calm <b>hubs</b> that show the money and what needs doing; every job becomes a <b>walkthrough</b> on the same shell as Record giving.</p>
+  <nav class="toc">
+    <a href="#what">1 · What makes the walkthrough work</a>
+    <a href="#kit">2 · The shared kit</a>
+    <a href="#templates">3 · Two templates</a>
+    <a href="#s-dashboard">4 · Screens</a>
+    <a href="#mobile">5 · On a phone</a>
+    <a href="#inventory">6 · Every screen, mapped</a>
+    <a href="#build">7 · Build plan</a>
+    <a href="#decide">8 · Decisions for you</a>
+  </nav>
+
+  <!-- ───────────── 1 ───────────── -->
+  <section id="what">
+    <div class="sec-head"><span class="sec-num">01</span><h2>What makes the walkthrough work</h2></div>
+    <p class="muted" style="max-width:820px">Read from <code>components/cashEntry/</code> on <code>main</code> (<code>2c03147</code>). Each of these is a choice in the code, so each can be carried to the other screens deliberately.</p>
+    <div class="grid-3">
+      <div class="card"><h3>One question per screen</h3><p class="muted" style="margin:0">“Which services had a collection?” is the screen title, in 23px sentence case, with one line of help under it. Today's pages open with a 12.5px uppercase heading and six buttons.</p></div>
+      <div class="card"><h3>The number that matters, in ink</h3><p class="muted" style="margin:0">The dark <code>darkCard</code> holds the one fact the screen is about (week ending). On hubs it holds the balance or total the treasurer came to see.</p></div>
+      <div class="card"><h3>A running total that stays put</h3><p class="muted" style="margin:0">The <code>Receipt</code> column on desktop and the <code>StepFooter</code> total on a phone. Every hub gets the same column for its period totals.</p></div>
+      <div class="card"><h3>An ending that hands off</h3><p class="muted" style="margin:0"><code>DoneStep</code>'s “What's next” list (Bank it · tithers without Gift Aid · record another week). The same list becomes “Needs you” at the top of each hub.</p></div>
+      <div class="card"><h3>Big, forgiving targets</h3><p class="muted" style="margin:0">46–54px buttons, 52px tick rows, 44px chips, 1.5px input borders, 16px radii, <code>active:scale</code>. Today's pages use 36px buttons with 12px uppercase text.</p></div>
+      <div class="card"><h3>The same thing on a phone</h3><p class="muted" style="margin:0">Full-screen sheet below <code>lg</code>, centred three-column panel above it. Same tree, no separate mobile build.</p></div>
+    </div>
+  </section>
+
+  <!-- ───────────── 2 ───────────── -->
+  <section id="kit">
+    <div class="sec-head"><span class="sec-num">02</span><h2>The shared kit</h2></div>
+    <p class="muted" style="max-width:820px">The class strings in <code>components/cashEntry/ui.tsx</code> move to <code>components/ui/</code> as small components. Nothing new is invented: every part below already ships in the cash walkthrough. Old classes are retired as screens move over.</p>
+
+    <div class="grid-4" style="margin-top:18px">
+      <div class="card spec">
+        <span class="lbl">Button · Lg / Md / Sm</span>
+        <span class="btn btn-primary btn-lg btn-block">Check the week →</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><span class="btn btn-sage">Resume</span><span class="btn btn-outline">Discard</span></div>
+        <span class="btn btn-dashed btn-block">+ Another service this week</span>
+      </div>
+      <div class="card spec">
+        <span class="lbl">TickRow · Segmented · Chip</span>
+        <div class="tick on" style="margin:0"><span class="bx">✓</span><b>Sunday morning</b><span class="r dim">Sun 4 Oct</span></div>
+        <div class="seg"><span class="on">Cash</span><span>Cheque</span><span>Card</span></div>
+        <div class="chips"><span class="chip on">October</span><span class="chip">All funds</span><span class="chip dash">+ Filter</span></div>
+      </div>
+      <div class="card spec">
+        <span class="lbl">HeroCard · NextItem</span>
+        <div class="hero sm"><div class="k">Week ending</div><div style="font-size:19px;font-weight:700;margin-top:3px">Sunday 4 October</div><div class="s">28 Sep – 4 Oct · <u>change week</u></div></div>
+        <div class="nxi"><span class="nxic ic-sage">⌂</span><span class="tx"><b>Bank it</b><span>Pay in £1,127.50 of cash</span></span><span class="go">›</span></div>
+      </div>
+      <div class="card spec">
+        <span class="lbl">Receipt · AmountBox · Tag</span>
+        <div class="rcpt"><div class="h">Live receipt</div><div class="rline"><span>Offering</span><b>£842.50</b></div><div class="rline"><span>Tithes · 14</span><b>£1,060.00</b></div><div class="rline total"><span>Week</span><b>£1,902.50</b></div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><div class="amt focus" style="flex:1">220.00</div><span class="tag t-sage">Gift Aid</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px;padding:8px 14px">
+      <table class="from-to">
+        <thead><tr><th>Today</th><th>Where</th><th>Becomes</th></tr></thead>
+        <tbody>
+          <tr><td><code>btn-primary</code> with <code>text-xs uppercase</code>, 36px</td><td>Every page header</td><td><code>&lt;Button&gt;</code> (ink, 46px, sentence case). One primary per screen; the rest outline or in an “Add” chooser.</td></tr>
+          <tr><td><code>swiss-card</code>, <code>swiss-card-static</code></td><td>Dashboard, Funds, Reports, Settings</td><td><code>&lt;Card&gt;</code> (white, <code>border-ledger</code>, 16px radius, no hover lift).</td></tr>
+          <tr><td>12.5px uppercase <code>h3</code> (“FUND HEALTH”)</td><td>All section headings</td><td>15px bold sentence-case section title, with a sage “See all” link on the right. Uppercase is kept only for 11px eyebrows.</td></tr>
+          <tr><td><code>ledger-table</code> with zebra rows</td><td>Transactions, Donors, Reports, Reconciliation</td><td><code>&lt;ListRow&gt;</code> grouped by day or letter. A compact table view stays available on wide screens (decision 3).</td></tr>
+          <tr><td><code>badge-success</code> / <code>-warning</code> / <code>-error</code></td><td>Status columns</td><td><code>&lt;Tag tone&gt;</code> (sage / amber / red / grey), same as walkthrough tags.</td></tr>
+          <tr><td>Page tabs (Monthly · Annual · AI, settings side tabs)</td><td>Reports, Settings, Transactions</td><td><code>&lt;Segmented&gt;</code> for 2–4 views; a grouped list of rows for anything longer.</td></tr>
+          <tr><td>Centred modals (New Entry, Void, Map CSV, Thank donor…)</td><td>About 20 dialogs</td><td><code>&lt;Walkthrough&gt;</code> for multi-step jobs, <code>&lt;Sheet&gt;</code> (one step, same header and footer) for single forms.</td></tr>
+          <tr><td>Month-End Checks list, Donor Follow-up card</td><td>Dashboard</td><td><code>&lt;NextList&gt;</code> “Needs you”, shared with the Done screens.</td></tr>
+          <tr><td><code>native &lt;select&gt;</code> period pickers</td><td>Dashboard, Transactions, Reports</td><td>Period lives in the hero card (“October · <u>change</u>”), like “change week”.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ───────────── 3 ───────────── -->
+  <section id="templates">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Two templates for the whole app</h2></div>
+    <div class="grid-2">
+      <div class="card">
+        <span class="tag t-grey">Hub</span>
+        <h3 style="margin-top:10px">Pages you look at</h3>
+        <p class="muted">Dashboard, Transactions, Funds, Donors, Campaigns, Loans, Reports, Settings, Ask Ward.</p>
+        <div style="display:grid;grid-template-columns:44px 1fr 70px;gap:6px;height:150px;margin-top:6px">
+          <div style="background:#fff;border:1px solid var(--ledger);border-radius:10px"></div>
+          <div style="display:grid;grid-template-rows:22px 46px 1fr;gap:6px">
+            <div style="background:var(--line);border-radius:6px;width:60%"></div>
+            <div style="background:var(--ink);border-radius:10px"></div>
+            <div style="display:grid;grid-template-rows:repeat(3,1fr);gap:4px"><div style="background:#fff;border:1px solid var(--ledger);border-radius:8px"></div><div style="background:#fff;border:1px solid var(--ledger);border-radius:8px"></div><div style="background:#fff;border:1px solid var(--ledger);border-radius:8px"></div></div>
+          </div>
+          <div style="background:var(--well);border:1px solid var(--ledger);border-radius:10px;padding:6px"><div style="background:#fff;border-radius:7px;height:70px"></div></div>
+        </div>
+        <p class="muted" style="margin:12px 0 0;font-size:13.5px">App nav · page (title, one-line status, hero card, “Needs you”, content) · receipt column with the period's totals. The receipt column folds into the page below <code>xl</code>.</p>
+      </div>
+      <div class="card">
+        <span class="tag t-sage">Walkthrough</span>
+        <h3 style="margin-top:10px">Jobs you do</h3>
+        <p class="muted">Record giving ✓, import a statement (planned), reconcile, bank cash, add a transaction, transfer, add a donor or pledge, record a loan, invite someone, set up the church.</p>
+        <div style="display:grid;grid-template-columns:44px 1fr 70px;gap:6px;height:150px;margin-top:6px">
+          <div style="background:#fff;border:1px solid var(--ledger);border-radius:10px;padding:6px;display:grid;gap:4px;align-content:start"><i style="height:8px;border-radius:4px;background:var(--sage)"></i><i style="height:8px;border-radius:4px;background:var(--ink)"></i><i style="height:8px;border-radius:4px;background:var(--line)"></i></div>
+          <div style="display:grid;grid-template-rows:6px 22px 1fr 30px;gap:6px">
+            <div style="display:flex;gap:3px"><i style="flex:1;background:var(--sage);border-radius:3px"></i><i style="flex:1;background:var(--ink);border-radius:3px"></i><i style="flex:1;background:var(--ledger);border-radius:3px"></i></div>
+            <div style="background:var(--line);border-radius:6px;width:70%"></div>
+            <div style="display:grid;grid-template-rows:repeat(3,1fr);gap:4px"><div style="border:1.5px solid var(--ink);border-radius:8px;background:#fff"></div><div style="border:1.5px solid var(--ledger);border-radius:8px;background:#fff"></div><div style="border:1.5px dashed #d6d3cd;border-radius:8px"></div></div>
+            <div style="background:var(--ink);border-radius:9px"></div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--ledger);border-radius:10px;padding:6px"><div style="background:#fff;border:1px solid var(--ledger);border-radius:7px;height:80px"></div></div>
+        </div>
+        <p class="muted" style="margin:12px 0 0;font-size:13.5px">Exactly <code>CashEntryWizard</code>'s shell: step rail · one question · live receipt, with a sticky footer total and one primary button. Ends on a Done screen with “What's next”.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 4 SCREENS ───────────── -->
+  <section id="s-dashboard">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Screens</h2></div>
+    <p class="muted" style="max-width:820px">Figures are made up but realistic for a 200-member UK church. The new nav groups the pages and puts one <b>+ New</b> button above them; it opens the chooser shown under Transactions.</p>
+
+    <!-- DASHBOARD -->
+    <div class="screen-h"><h3 style="margin:0">Dashboard</h3><span class="route">/dashboard</span><span class="tag t-grey">hub</span></div>
+    <div class="step-block">
+      <div class="app">
+        <aside class="nav">
+          <div class="brand"><i>C</i>ChurchCoin</div>
+          <div class="church">St Barnabas, Leeds</div>
+          <span class="btn btn-primary new">+ New</span>
+          <div class="ni on"><span class="g">◧</span>Dashboard</div>
+          <div class="grp">Money</div>
+          <div class="ni"><span class="g">⇅</span>Transactions<span class="c">7</span></div>
+          <div class="ni"><span class="g">◫</span>Funds</div>
+          <div class="ni"><span class="g">⇄</span>Loans</div>
+          <div class="grp">People</div>
+          <div class="ni"><span class="g">◉</span>Donors<span class="c">4</span></div>
+          <div class="ni"><span class="g">◎</span>Campaigns</div>
+          <div class="grp">Insight</div>
+          <div class="ni"><span class="g">▤</span>Reports</div>
+          <div class="ni"><span class="g">✦</span>Ask Ward</div>
+          <div class="me"><span class="av">RA</span><div><b>R. Adeyemi</b><span>Treasurer · Admin</span></div></div>
+        </aside>
+        <div class="pg">
+          <div class="ph">
+            <div class="t"><div class="eyebrow">Thursday 8 October</div><h4>October so far</h4><p>Bank data synced 6 Oct. <span class="warn">3 things need you before month end.</span></p></div>
+            <div class="acts"><span class="btn btn-outline btn-sm">Sync bank</span><span class="btn btn-primary btn-sm">Record giving</span></div>
+          </div>
+          <div class="hero">
+            <div class="k">Funds held</div>
+            <div class="v">£84,312.40</div>
+            <div class="s"><span class="up">+£2,140.18</span> operating surplus this month · October · <u>change</u></div>
+            <div class="split"><i style="flex:31;background:#a9cfa9"></i><i style="flex:12;background:#d9b98f"></i><i style="flex:41;background:#8f877e"></i></div>
+            <div class="legend"><span><i style="background:#a9cfa9"></i>Unrestricted<b>£31,020</b></span><span><i style="background:#d9b98f"></i>Designated<b>£12,060</b></span><span><i style="background:#8f877e"></i>Restricted<b>£41,232</b></span></div>
+          </div>
+          <div class="sec-t">Needs you <span class="link">All checks</span></div>
+          <div class="nx">
+            <div class="nxi"><span class="nxic ic-amber">?</span><span class="tx"><b>7 bank lines need a category</b><span>From the Barclays sync on 6 Oct</span></span><span class="btn btn-outline btn-sm">Start</span></div>
+            <div class="nxi"><span class="nxic ic-sage">⌂</span><span class="tx"><b>Bank last Sunday's cash</b><span>£1,127.50 counted, not yet paid in</span></span><span class="go">›</span></div>
+            <div class="nxi"><span class="nxic ic-grey">✓</span><span class="tx"><b>Reconcile September</b><span>Barclays Current · statement closes £21,402.18</span></span><span class="go">›</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-top:22px">
+            <div class="panel">
+              <div class="pt">Money in and out <span>last 6 months</span></div>
+              <div class="bars">
+                <div class="b"><i style="height:62%"></i><i class="o" style="height:55%"></i></div>
+                <div class="b"><i style="height:58%"></i><i class="o" style="height:61%"></i></div>
+                <div class="b"><i style="height:70%"></i><i class="o" style="height:52%"></i></div>
+                <div class="b"><i style="height:66%"></i><i class="o" style="height:58%"></i></div>
+                <div class="b"><i style="height:88%"></i><i class="o" style="height:63%"></i></div>
+                <div class="b now"><i style="height:38%"></i><i class="o" style="height:29%"></i></div>
+              </div>
+              <div class="bars-x"><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span></div>
+            </div>
+            <div class="panel">
+              <div class="pt">Funds to watch <span>2</span></div>
+              <div class="frow"><b>Youth</b><span class="m" style="color:var(--error)">−£214.60</span><span class="sub">Overdrawn since 29 Sep</span></div>
+              <div class="frow"><b>Roof appeal</b><span class="m">64%</span><div class="prog"><i style="width:64%"></i></div><span class="sub">£38,200 of £60,000</span></div>
+            </div>
+          </div>
+        </div>
+        <aside class="side">
+          <div class="eyebrow">October receipt</div>
+          <div class="rcpt">
+            <div class="rline"><span>Money in</span><b>£12,480.00</b></div>
+            <div class="rline sub"><span>Tithes & offerings</span><b>£9,842.50</b></div>
+            <div class="rline sub"><span>Gift Aid</span><b>£1,612.50</b></div>
+            <div class="rline sub"><span>Hall lettings</span><b>£1,025.00</b></div>
+            <div class="rline"><span>Money out</span><b>£10,339.82</b></div>
+            <div class="rline total"><span>Surplus</span><b style="color:var(--sage)">£2,140.18</b></div>
+          </div>
+          <div class="rcpt" style="margin-top:22px">
+            <div class="h">Gift Aid</div>
+            <div class="rline"><span>Eligible gifts</span><b>£4,104.00</b></div>
+            <div class="rline pos"><span>≈ to claim</span><b>£1,026.00</b></div>
+            <div class="rline warn"><span>Missing declarations</span><b>4</b></div>
+          </div>
+          <p class="side-note">Figures exclude voided rows and cash banking deposits.</p>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Title is the period, not the page name.</b> “October so far” plus one sentence on how fresh the data is. The stale-sync warning moves into that sentence.</li>
+          <li><b>Funds held is the hero.</b> It replaces the four health cards. The split bar shows restriction at a glance; the surplus line replaces “Operating Position”.</li>
+          <li><b>Month-End Checks and Donor Follow-up become one “Needs you” list</b> with the Done-screen rows. Each opens the job's walkthrough directly. When nothing is due it says “You're up to date” in sage.</li>
+          <li><b>Two panels, not five.</b> The trend chart stays (sage in, stone out). Fund Health shrinks to funds that need attention; healthy funds live on Funds.</li>
+          <li><b>The receipt column carries the month's totals</b> and Gift Aid, the same receipt the cash walkthrough builds live.</li>
+        </ol>
+        <div class="reuse">Reuses <code>darkCard</code>, <code>DoneStep</code>'s next-item, <code>Receipt</code>/<code>ReceiptRow</code>, existing <code>dashboard.summary</code> query and <code>buildMonthEndChecks</code>. No new queries.</div>
+      </div>
+    </div>
+
+    <!-- TRANSACTIONS -->
+    <div class="screen-h" id="s-transactions"><h3 style="margin:0">Transactions</h3><span class="route">/transactions</span><span class="tag t-grey">hub</span></div>
+    <div class="step-block">
+      <div class="app">
+        <aside class="nav">
+          <div class="brand"><i>C</i>ChurchCoin</div>
+          <div class="church">St Barnabas, Leeds</div>
+          <span class="btn btn-primary new">+ New</span>
+          <div class="ni"><span class="g">◧</span>Dashboard</div>
+          <div class="grp">Money</div>
+          <div class="ni on"><span class="g">⇅</span>Transactions<span class="c">7</span></div>
+          <div class="ni"><span class="g">◫</span>Funds</div>
+          <div class="ni"><span class="g">⇄</span>Loans</div>
+          <div class="grp">People</div>
+          <div class="ni"><span class="g">◉</span>Donors<span class="c">4</span></div>
+          <div class="ni"><span class="g">◎</span>Campaigns</div>
+          <div class="grp">Insight</div>
+          <div class="ni"><span class="g">▤</span>Reports</div>
+          <div class="ni"><span class="g">✦</span>Ask Ward</div>
+          <div class="me"><span class="av">RA</span><div><b>R. Adeyemi</b><span>Treasurer · Admin</span></div></div>
+        </aside>
+        <div class="pg">
+          <div class="ph">
+            <div class="t"><h4>Transactions</h4><p>1,284 this year · Barclays synced 6 Oct</p></div>
+            <div class="acts"><span class="btn btn-outline btn-sm">Reconcile</span><span class="btn btn-primary btn-sm">+ Add</span></div>
+          </div>
+          <div class="seg" style="margin-bottom:12px"><span class="on">Everything</span><span>Giving</span><span>Banking</span><span>Needs you <i class="n">7</i></span></div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <div class="inp" style="flex:1">⌕ Search descriptions, donors, amounts</div>
+            <span class="chip on">October</span><span class="chip">All funds</span><span class="chip dash">+ Filter</span>
+          </div>
+          <div class="nxi" style="margin-bottom:14px;border-color:var(--amber-mid);background:var(--amber-light)"><span class="nxic" style="background:#fff;color:var(--amber)">?</span><span class="tx"><b>7 lines need a category</b><span>We've suggested one for 5. It takes about a minute.</span></span><span class="btn btn-primary btn-sm">Start →</span></div>
+          <div class="lst">
+            <div class="dayh"><span>Tuesday 6 October</span><b>−£486.20</b></div>
+            <div class="lr"><span class="ri ic-grey">↗</span><span class="d"><b>British Gas · Direct Debit</b><span><span class="pill">Utilities</span>General Fund</span></span><span class="a">−£212.40</span></div>
+            <div class="lr sel"><span class="ri ic-amber">?</span><span class="d"><b>AMZNMKTPLACE*2K81</b><span><span class="pill ask">Pick a category</span>Suggested: Youth resources</span></span><span class="a">−£73.80</span></div>
+            <div class="lr"><span class="ri ic-grey">⇄</span><span class="d"><b>Transfer to Roof appeal</b><span><span class="tag t-grey">Journal</span>General → Roof appeal</span></span><span class="a">£200.00<small>between funds</small></span></div>
+            <div class="dayh"><span>Sunday 4 October</span><b>+£1,902.50</b></div>
+            <div class="lr"><span class="ri ic-sage">£</span><span class="d"><b>Sunday morning · loose offering</b><span><span class="pill">Offerings</span>General Fund · cash</span></span><span class="a in">+£842.50</span></div>
+            <div class="lr"><span class="ri ic-sage">✉</span><span class="d"><b>Tithe envelopes · 14</b><span><span class="pill">Tithes</span>General Fund · <span class="ga on">GA 11</span></span></span><span class="a in">+£1,060.00</span></div>
+            <div class="lr void"><span class="ri ic-grey">×</span><span class="d"><b>Duplicate · J Okafor standing order</b><span><span class="tag t-grey">Voided</span>Entered twice</span></span><span class="a">+£50.00</span></div>
+          </div>
+        </div>
+        <aside class="side">
+          <div class="eyebrow">October</div>
+          <div class="rcpt">
+            <div class="rline"><span>Money in</span><b style="color:var(--sage)">+£12,480.00</b></div>
+            <div class="rline"><span>Money out</span><b>−£10,339.82</b></div>
+            <div class="rline total"><span>Net</span><b style="color:var(--sage)">+£2,140.18</b></div>
+          </div>
+          <div class="eyebrow" style="margin-top:26px">Selected</div>
+          <div class="panel" style="padding:12px 14px">
+            <div style="font-size:12px;color:var(--grey-mid)">Tue 6 Oct · Barclays</div>
+            <div style="font-weight:700;margin:2px 0 6px">AMZNMKTPLACE*2K81</div>
+            <div class="mono" style="font-weight:700;font-size:18px">−£73.80</div>
+            <span class="flabel" style="margin-top:12px">Category</span>
+            <div class="chips"><span class="chip on" style="height:32px">Youth resources</span><span class="chip" style="height:32px">Office</span></div>
+            <span class="btn btn-primary btn-sm btn-block" style="margin-top:12px">Save · next ›</span>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Six header buttons become two.</b> “Reconcile” and “+ Add”. Smart Link, Sync Bank, Import CSV, New transfer and Record Cash move into the Add chooser (below).</li>
+          <li><b>Three tabs and an 8-option status select become one segmented control.</b> “Needs you” collects uncategorised, unlinked, awaiting-other-side and needs-reclassifying rows.</li>
+          <li><b>Rows grouped by day</b> with the day's net on the header. Category is a pill; an unsure category is an amber pill that says “Pick a category”.</li>
+          <li><b>Click a row, edit it in the side column.</b> The Edit Transaction modal becomes the side panel on desktop and a sheet on a phone. “Save · next” walks the queue.</li>
+          <li><b>The amber card starts the categorise walkthrough</b> from the statement import plan, so bank sync and imports share one review.</li>
+        </ol>
+        <div class="reuse">Reuses the statement-import plan's Categorise step, <code>lib/reportableTransactions</code> for totals, <code>Receipt</code>. Linked / Journal / Voided tags keep today's meaning.</div>
+      </div>
+    </div>
+
+    <!-- ADD chooser + Transaction sheet -->
+    <div class="screen-h"><h3 style="margin:0">Add chooser & single-entry sheet</h3><span class="route">+ New / + Add</span><span class="tag t-sage">walkthrough start</span></div>
+    <div class="grid-2" style="margin-top:18px;align-items:start">
+      <div class="sheet" style="max-width:440px;justify-self:center;width:100%">
+        <div class="mhead"><span class="back"></span><span class="t">Add</span><span class="x">✕</span></div>
+        <div class="mbody">
+          <h4 class="scr-title">What are you adding?</h4>
+          <p class="scr-help">Pick one. Each opens a short walkthrough.</p>
+          <div class="tick"><span class="nxic ic-sage" style="width:34px;height:34px;font-size:14px">£</span><b>Sunday's giving<small>Count cash, cheques and tithe envelopes</small></b><span class="go">›</span></div>
+          <div class="tick"><span class="nxic ic-grey" style="width:34px;height:34px;font-size:14px">⇣</span><b>A bank statement<small>CSV or Excel from your bank</small></b><span class="go">›</span></div>
+          <div class="tick"><span class="nxic ic-grey" style="width:34px;height:34px;font-size:14px">↻</span><b>Sync from the bank<small>Barclays Current · last 6 Oct</small></b><span class="go">›</span></div>
+          <div class="tick"><span class="nxic ic-grey" style="width:34px;height:34px;font-size:14px">✎</span><b>One payment or receipt<small>A bill, a refund, a one-off gift</small></b><span class="go">›</span></div>
+          <div class="tick"><span class="nxic ic-grey" style="width:34px;height:34px;font-size:14px">⇄</span><b>Move money between funds<small>A journal transfer</small></b><span class="go">›</span></div>
+          <div class="tick"><span class="nxic ic-amber" style="width:34px;height:34px;font-size:14px">⌂</span><b>Bank cash and cheques<small>£1,127.50 waiting</small></b><span class="go">›</span></div>
+        </div>
+      </div>
+      <div class="sheet" style="max-width:440px;justify-self:center;width:100%">
+        <div class="mhead"><span class="back">‹</span><span class="t">One payment or receipt</span><span class="x">✕</span></div>
+        <div class="mbody">
+          <div class="seg" style="margin-bottom:6px"><span>Money in</span><span class="on">Money out</span></div>
+          <span class="flabel">How much</span>
+          <div class="amt focus">212.40</div>
+          <span class="flabel">What was it for</span>
+          <div class="inp focus" style="color:var(--ink)">Boiler service, church hall</div>
+          <span class="flabel">Category</span>
+          <div class="chips"><span class="chip on">Repairs & maintenance</span><span class="chip">Utilities</span><span class="chip dash">More…</span></div>
+          <span class="flabel">Fund · Date</span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="inp">General Fund ▾</div><div class="inp">Tue 6 Oct ▾</div></div>
+        </div>
+        <div class="mfoot"><span class="btn btn-primary btn-lg btn-block">Save payment</span></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;font-size:14px;color:var(--grey-dark)">The chooser is the walkthrough Start screen with icons. Single forms (New Entry, Edit, Void, Fund, Category, Donor) use the same <b>sheet</b>: header with back and close, one column of 48px fields, one footer button. Money in/out is a segmented control, not a type dropdown; categories are chips filtered by <code>categoryNamesForTransactionTypes</code>.</div>
+
+    <!-- RECONCILE -->
+    <div class="screen-h" id="s-reconcile"><h3 style="margin:0">Reconcile a month</h3><span class="route">Transactions → Reconcile</span><span class="tag t-sage">walkthrough</span></div>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Barclays Current</div>
+          <div class="r done"><span class="dot">✓</span>Account & month<em>Sep</em></div>
+          <div class="r done"><span class="dot">✓</span>Statement balances</div>
+          <div class="r now"><span class="dot">3</span>Tick off lines<em>86/98</em></div>
+          <div class="r"><span class="dot">4</span>Explain the gap</div>
+          <div class="r"><span class="dot">5</span>Finish</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back">‹</span><span class="t">Reconcile September</span><span class="x">✕</span></div>
+          <div class="progress"><span class="d"></span><span class="d"></span><span class="c"></span><span></span></div>
+          <div class="mbody">
+            <h4 class="scr-title">Tick what's on the statement</h4>
+            <p class="scr-help">Lines that came from the bank feed are already ticked. Tick the rest as you find them on paper.</p>
+            <div class="seg" style="margin-bottom:12px"><span class="on">To tick <i class="n">12</i></span><span>Ticked · 86</span></div>
+            <div class="tick on"><span class="bx">✓</span><b>Sunday collection banked<small>Fri 25 Sep · paying-in slip 004418</small></b><span class="r" style="color:var(--sage)">+£1,284.50</span></div>
+            <div class="tick"><span class="bx"></span><b>Cheque 100231 · Leeds Diocese<small>Mon 28 Sep</small></b><span class="r">−£640.00</span></div>
+            <div class="tick"><span class="bx"></span><b>Hall hire · Brownies<small>Tue 29 Sep · Lettings</small></b><span class="r" style="color:var(--sage)">+£120.00</span></div>
+            <div class="tick"><span class="bx"></span><b>Petty cash<small>Wed 30 Sep</small></b><span class="r">−£50.00</span></div>
+            <span class="btn btn-dashed btn-block" style="margin-top:4px">+ Something on the statement isn't here</span>
+          </div>
+          <div class="mfoot">
+            <div class="sum"><span>Still to explain</span><b style="color:var(--amber)">£570.00</b></div>
+            <span class="btn btn-primary btn-lg btn-block">Next: explain the gap →</span>
+          </div>
+        </div>
+        <aside class="receipt-col">
+          <div class="eyebrow">Balance check</div>
+          <div class="rcpt">
+            <div class="rline"><span>Opening</span><b>£19,906.30</b></div>
+            <div class="rline pos"><span>+ Ticked in</span><b>£11,240.00</b></div>
+            <div class="rline"><span>− Ticked out</span><b>£10,314.12</b></div>
+            <div class="rline"><span>Should close</span><b>£20,832.18</b></div>
+            <div class="rline"><span>Statement says</span><b>£21,402.18</b></div>
+            <div class="rline total warn"><span>Gap</span><b>£570.00</b></div>
+          </div>
+          <p class="side-note">Saves as a draft as you tick. Completing it locks these rows (<code>getCompletedReconciliationLock</code>).</p>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>The reconciliation page becomes five steps.</b> Today it is a list, a “New Reconciliation” form, then a detail page with three balance inputs and a table.</li>
+          <li><b>Tick rows replace checkbox table cells.</b> 52px rows, one tap, the amount in mono on the right.</li>
+          <li><b>The receipt is the bank equation</b>, worked live. When the gap reaches £0.00 the total turns sage and the footer says “Finish →”.</li>
+          <li><b>“Explain the gap” only appears when there is one.</b> It offers: add the missing line, mark a timing difference, or note an adjustment, with reasons in words.</li>
+          <li><b>Done hands off:</b> “Download the reconciliation PDF”, “Start October”.</li>
+        </ol>
+        <div class="reuse">Reuses <code>lib/reconciliation</code>, the existing reconciliation mutations and lock helpers, <code>WizardRail</code>, <code>Receipt</code>. Draft/complete status unchanged.</div>
+      </div>
+    </div>
+
+    <!-- BANK CASH -->
+    <div class="screen-h" id="s-banking"><h3 style="margin:0">Bank cash and cheques</h3><span class="route">Transactions → Banking, or “Bank it” from Record giving</span><span class="tag t-sage">walkthrough</span></div>
+    <div class="step-block">
+      <div class="window">
+        <aside class="rail">
+          <div class="ttl">Paying in</div>
+          <div class="r done"><span class="dot">✓</span>Collections<em>3</em></div>
+          <div class="r now"><span class="dot">2</span>Paying-in slip</div>
+          <div class="r"><span class="dot">3</span>Match the bank</div>
+          <div class="r"><span class="dot">4</span>Done</div>
+        </aside>
+        <div class="main">
+          <div class="mhead"><span class="back">‹</span><span class="t">Bank cash and cheques</span><span class="x">✕</span></div>
+          <div class="progress"><span class="d"></span><span class="c"></span><span></span></div>
+          <div class="mbody">
+            <h4 class="scr-title">What went into the bank?</h4>
+            <p class="scr-help">Copy the totals from the paying-in slip. We'll check them against what was counted.</p>
+            <span class="flabel" style="margin-top:6px">Cash</span>
+            <div class="amt">902.50</div>
+            <span class="flabel">Cheques · 3</span>
+            <div class="amt focus">225.00</div>
+            <span class="flabel">Slip number and date</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="inp" style="color:var(--ink)">004419</div><div class="inp" style="color:var(--ink)">Mon 5 Oct</div></div>
+            <div class="banner sage" style="margin-top:16px">✓ <span><b>Matches the count.</b> £1,127.50 counted across 3 collections.</span></div>
+          </div>
+          <div class="mfoot">
+            <div class="sum"><span>Paying in</span><b>£1,127.50</b></div>
+            <span class="btn btn-primary btn-lg btn-block">Next: match the bank credit →</span>
+          </div>
+        </div>
+        <aside class="receipt-col">
+          <div class="eyebrow">Collections</div>
+          <div class="rcpt">
+            <div class="rline"><span>Sun 4 Oct · morning</span><b>£842.50</b></div>
+            <div class="rline"><span>Sun 4 Oct · evening</span><b>£221.00</b></div>
+            <div class="rline"><span>Wed 30 Sep · midweek</span><b>£64.00</b></div>
+            <div class="rline dim"><span>Counted</span><b>£1,127.50</b></div>
+            <div class="rline dim"><span>On the slip</span><b>£1,127.50</b></div>
+            <div class="rline total pos"><span>Difference</span><b>£0.00</b></div>
+          </div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>The 1,300-line banking screen becomes four steps.</b> Pick collections (tick rows, “awaiting banking” ticked), slip totals, pick the bank credit, done.</li>
+          <li><b>Variance is a sentence, not a column.</b> If counted ≠ slip, an amber banner asks why with three chips: counting error, held back, other.</li>
+          <li><b>Banking history and Reopen</b> stay on the Banking segment of Transactions, as list rows with a “Reopen” sheet that asks for a reason.</li>
+        </ol>
+        <div class="reuse">Reuses <code>lib/cashChequeBanking</code> and its mutations, reconciliation locks, <code>CashEntryWizard</code>'s <code>onBankIt</code> hand-off.</div>
+      </div>
+    </div>
+
+    <!-- FUNDS -->
+    <div class="screen-h" id="s-funds"><h3 style="margin:0">Funds</h3><span class="route">/funds</span><span class="tag t-grey">hub</span></div>
+    <div class="step-block">
+      <div class="app two">
+        <aside class="nav">
+          <div class="brand"><i>C</i>ChurchCoin</div>
+          <div class="church">St Barnabas, Leeds</div>
+          <span class="btn btn-primary new">+ New</span>
+          <div class="ni"><span class="g">◧</span>Dashboard</div>
+          <div class="grp">Money</div>
+          <div class="ni"><span class="g">⇅</span>Transactions<span class="c">7</span></div>
+          <div class="ni on"><span class="g">◫</span>Funds</div>
+          <div class="ni"><span class="g">⇄</span>Loans</div>
+          <div class="grp">People</div>
+          <div class="ni"><span class="g">◉</span>Donors<span class="c">4</span></div>
+          <div class="ni"><span class="g">◎</span>Campaigns</div>
+          <div class="grp">Insight</div>
+          <div class="ni"><span class="g">▤</span>Reports</div>
+          <div class="ni"><span class="g">✦</span>Ask Ward</div>
+          <div class="me"><span class="av">RA</span><div><b>R. Adeyemi</b><span>Treasurer · Admin</span></div></div>
+        </aside>
+        <div class="pg">
+          <div class="ph">
+            <div class="t"><h4>Funds</h4><p>6 funds · balances at 8 October</p></div>
+            <div class="acts"><span class="btn btn-outline btn-sm">Move money</span><span class="btn btn-primary btn-sm">+ New fund</span></div>
+          </div>
+          <div class="hero" style="margin-bottom:16px">
+            <div class="k">Held across 6 funds</div>
+            <div class="v">£84,312.40</div>
+            <div class="s"><span class="up">+£3,904.18</span> since 1 October · <u>change date</u></div>
+            <div class="split"><i style="flex:31;background:#a9cfa9"></i><i style="flex:12;background:#d9b98f"></i><i style="flex:41;background:#8f877e"></i></div>
+            <div class="legend"><span><i style="background:#a9cfa9"></i>Free to spend<b>£31,020</b></span><span><i style="background:#d9b98f"></i>Set aside by trustees<b>£12,060</b></span><span><i style="background:#8f877e"></i>Restricted by givers<b>£41,232</b></span></div>
+          </div>
+          <div class="fundgrid">
+            <div class="fundc"><div class="top"><span class="nm">General Fund</span><span class="tag t-sage">Unrestricted</span></div><div class="bal">£31,020.15</div><div class="mv"><b>+£2,140.18</b> this month · covers 3.4 months</div><div class="prog"><i style="width:68%"></i></div></div>
+            <div class="fundc warn"><div class="top"><span class="nm">Youth</span><span class="tag t-red">Overdrawn</span></div><div class="bal">−£214.60</div><div class="mv">Since 29 Sep · <span class="link">Move money to cover it</span></div><div class="prog amber"><i style="width:4%"></i></div></div>
+            <div class="fundc"><div class="top"><span class="nm">Roof appeal</span><span class="tag t-grey">Restricted</span></div><div class="bal">£38,200.00</div><div class="mv"><b>+£1,580.00</b> this month · 64% of £60,000</div><div class="prog"><i style="width:64%"></i></div></div>
+            <div class="fundc"><div class="top"><span class="nm">Missions</span><span class="tag t-amber">Designated</span></div><div class="bal">£12,060.00</div><div class="mv"><b>+£184.00</b> this month · 10% tithe due £984</div><div class="prog"><i style="width:40%"></i></div></div>
+          </div>
+          <span class="btn btn-dashed btn-block" style="margin-top:10px">+ Show 2 closed funds</span>
+        </div>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Restriction types in plain words</b> in the hero: free to spend, set aside by trustees, restricted by givers. The tags keep the formal names.</li>
+          <li><b>One card per fund</b> with balance, this month's movement and a single helpful fact (months covered, target progress, mission tithe due).</li>
+          <li><b>Problems carry their fix.</b> An overdrawn fund gets an amber ring and a “Move money to cover it” link into the transfer walkthrough.</li>
+          <li><b>A fund card opens a sheet</b> with its transactions, the General Fund expenditure breakdown, and Edit. Capital allocation moves into Reports.</li>
+        </ol>
+        <div class="reuse">Reuses <code>queries.funds.list</code> balances, <code>JournalTransferModal</code>'s mutation behind the transfer walkthrough, <code>meetsMoneyTarget</code> for targets.</div>
+      </div>
+    </div>
+
+    <!-- DONORS -->
+    <div class="screen-h" id="s-donors"><h3 style="margin:0">Donors</h3><span class="route">/donors</span><span class="tag t-grey">hub · list + detail</span></div>
+    <div class="step-block">
+      <div class="app" style="grid-template-columns:190px minmax(0,1fr) 300px">
+        <aside class="nav">
+          <div class="brand"><i>C</i>ChurchCoin</div>
+          <div class="church">St Barnabas, Leeds</div>
+          <span class="btn btn-primary new">+ New</span>
+          <div class="ni"><span class="g">◧</span>Dashboard</div>
+          <div class="grp">Money</div>
+          <div class="ni"><span class="g">⇅</span>Transactions<span class="c">7</span></div>
+          <div class="ni"><span class="g">◫</span>Funds</div>
+          <div class="ni"><span class="g">⇄</span>Loans</div>
+          <div class="grp">People</div>
+          <div class="ni on"><span class="g">◉</span>Donors<span class="c">4</span></div>
+          <div class="ni"><span class="g">◎</span>Campaigns</div>
+          <div class="grp">Insight</div>
+          <div class="ni"><span class="g">▤</span>Reports</div>
+          <div class="ni"><span class="g">✦</span>Ask Ward</div>
+          <div class="me"><span class="av">RA</span><div><b>R. Adeyemi</b><span>Treasurer · Admin</span></div></div>
+        </aside>
+        <div class="pg">
+          <div class="ph">
+            <div class="t"><h4>Donors</h4><p>212 people · 168 have a Gift Aid declaration</p></div>
+            <div class="acts"><span class="btn btn-primary btn-sm">+ Add donor</span></div>
+          </div>
+          <div class="inp" style="margin-bottom:10px">⌕ Search by name, envelope number or email</div>
+          <div class="chips" style="margin-bottom:14px"><span class="chip on">Everyone</span><span class="chip">No Gift Aid <i class="n">23</i></span><span class="chip">Pledges behind <i class="n">4</i></span><span class="chip">Stopped giving</span></div>
+          <div class="lst">
+            <div class="dayh"><span>A</span><b></b></div>
+            <div class="lr"><span class="av">AA</span><span class="d"><b>Abena Asante</b><span>£2,600 this year · last gave 4 Oct</span></span><span class="ga on">Gift Aid</span></div>
+            <div class="lr sel"><span class="av">DA</span><span class="d"><b>David Adekunle</b><span>£1,240 this year · last gave 4 Oct</span></span><span class="ga off">No declaration</span></div>
+            <div class="lr"><span class="av">MA</span><span class="d"><b>Margaret Allen</b><span>£480 this year · standing order</span></span><span class="ga on">Gift Aid</span></div>
+            <div class="dayh"><span>B</span><b></b></div>
+            <div class="lr"><span class="av">JB</span><span class="d"><b>James & Ruth Bailey</b><span>£3,120 this year · pledge on track</span></span><span class="ga on">Gift Aid</span></div>
+            <div class="lr"><span class="av">TB</span><span class="d"><b>Tomi Bello</b><span>£90 this year · last gave 2 Aug</span></span><span class="ga none">Not a taxpayer</span></div>
+          </div>
+        </div>
+        <aside class="side profile" style="background:#fff">
+          <div class="ph2"><span class="av">DA</span><div><b>David Adekunle</b><span>Envelope 114 · since 2019</span></div></div>
+          <div class="hero sm">
+            <div class="k">Given in 2026</div>
+            <div class="v">£1,240.00</div>
+            <div class="s">31 gifts · mostly tithe envelopes</div>
+          </div>
+          <div class="nxi" style="margin-top:12px;border-color:var(--amber-mid)"><span class="nxic ic-amber">✎</span><span class="tx"><b>No Gift Aid declaration</b><span>Would add £310.00 this year</span></span></div>
+          <span class="btn btn-outline btn-sm btn-block" style="margin-top:8px">Record a declaration</span>
+          <div class="sec-t" style="margin-top:18px">Recent gifts <span class="link">All 31</span></div>
+          <div class="rline"><span>Sun 4 Oct · tithe</span><b>£40.00</b></div>
+          <div class="rline"><span>Sun 27 Sep · tithe</span><b>£40.00</b></div>
+          <div class="rline"><span>Sun 20 Sep · roof appeal</span><b>£100.00</b></div>
+          <div class="sec-t" style="margin-top:18px">Contact</div>
+          <div style="font-size:12.5px;color:var(--grey-dark)">07700 900114 · d.adekunle@example.com<br />12 Harehills Lane, LS8</div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>The directory table becomes a list with a detail column.</b> Clicking a name fills the right column (desktop) or opens a sheet (phone), instead of replacing the page.</li>
+          <li><b>Gift Aid is a pill on every row</b> in the walkthrough's colours: sage on, amber missing, grey not a taxpayer.</li>
+          <li><b>Profile leads with “Given in 2026”</b> in the hero, then the one thing that needs doing. Giving schedules, notes and the thank-you message move behind “More”.</li>
+          <li><b>Pastorate sees the same screen without edit buttons</b>; Guest doesn't see Donors at all (<code>can(role, "donors.read")</code> unchanged).</li>
+        </ol>
+        <div class="reuse">Reuses the donor queries and <code>DonorSearchInput</code>, <code>giftAidOn/Off/None</code> from the walkthrough, <code>redactDonorFields</code> rules unchanged.</div>
+      </div>
+    </div>
+
+    <!-- CAMPAIGNS -->
+    <div class="screen-h" id="s-campaigns"><h3 style="margin:0">Campaigns</h3><span class="route">/campaigns</span><span class="tag t-grey">hub</span></div>
+    <div class="step-block">
+      <div class="app" style="grid-template-columns:minmax(0,1fr) 250px;min-height:0">
+        <div class="pg">
+          <div class="ph">
+            <div class="t"><div class="eyebrow">Campaign · 2 open</div><h4>Roof appeal</h4><p>Ends 31 January · 115 days left</p></div>
+            <div class="acts"><span class="btn btn-outline btn-sm">Switch campaign</span><span class="btn btn-primary btn-sm">+ Add pledge</span></div>
+          </div>
+          <div class="hero">
+            <div class="k">Raised so far</div>
+            <div class="v">£38,200 <span style="font-size:16px;color:rgba(255,255,255,.55)">of £60,000</span></div>
+            <div class="split" style="height:10px"><i style="flex:64;background:#a9cfa9"></i><i style="flex:14;background:#d9b98f"></i><i style="flex:22;background:rgba(255,255,255,.15)"></i></div>
+            <div class="legend"><span><i style="background:#a9cfa9"></i>Received<b>£38,200</b></span><span><i style="background:#d9b98f"></i>Pledged, still to come<b>£8,400</b></span><span><i style="background:rgba(255,255,255,.3)"></i>To find<b>£13,400</b></span></div>
+          </div>
+          <div class="sec-t">Pledges <span class="link">48 · see all</span></div>
+          <div class="lst">
+            <div class="lr"><span class="av">JB</span><span class="d"><b>James & Ruth Bailey</b><span>£1,200 of £2,400 · monthly</span></span><span class="tag t-sage">On track</span></div>
+            <div class="lr"><span class="av">GO</span><span class="d"><b>Grace Okafor</b><span>£150 of £1,000 · last paid July</span></span><span class="tag t-amber">Behind</span></div>
+            <div class="lr"><span class="av">HM</span><span class="d"><b>Harrison family</b><span>£500 of £500</span></span><span class="tag t-grey">Paid ✓</span></div>
+          </div>
+        </div>
+        <aside class="side">
+          <div class="eyebrow">This campaign</div>
+          <div class="rcpt">
+            <div class="rline"><span>Gifts received</span><b>£38,200.00</b></div>
+            <div class="rline"><span>Gift Aid claimed</span><b>£4,120.00</b></div>
+            <div class="rline"><span>Pledged, to come</span><b>£8,400.00</b></div>
+            <div class="rline total"><span>Still to find</span><b>£13,400</b></div>
+          </div>
+          <div class="nxi" style="margin-top:22px"><span class="nxic ic-amber">✉</span><span class="tx"><b>Thank 6 new givers</b><span>Since 1 October</span></span></div>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>One campaign at a time, chosen with “Switch campaign”</b> (a sheet of tick rows), so the hero can show the target properly.</li>
+          <li><b>Received, pledged and still to find</b> share one bar. That's the question a church meeting asks.</li>
+          <li><b>“Add pledge” and “Thank” are walkthroughs:</b> pick donor → amount and schedule → done; thank-you is pick message → preview → send/copy.</li>
+          <li><b>Empty state</b> (“No Campaigns Yet”) becomes the walkthrough Start: name, target, end date, which fund.</li>
+        </ol>
+        <div class="reuse">Reuses <code>lib/pledgeProgress</code>, the donor/pledge action hooks in <code>components/app/actions/</code>, <code>meetsMoneyTarget</code>.</div>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="screen-h" id="s-reports"><h3 style="margin:0">Reports</h3><span class="route">/reports</span><span class="tag t-grey">hub · static</span></div>
+    <p class="muted" style="max-width:860px;margin-top:8px">Reports stay a page you read, not a walkthrough. Content and order come from <code>docs/reports-ux-plan.html</code> (feat/reports-redesign): verdict → numbers with context → to action → where money went → where it sits → detail on demand. This mockup only shows that content in the hub hierarchy so it matches every other page.</p>
+    <div class="step-block">
+      <div class="app" style="grid-template-columns:minmax(0,1fr) 250px">
+        <div class="pg">
+          <div class="ph">
+            <div class="t"><div class="eyebrow">Grace Church · Monthly accounts</div><h4>September 2026</h4><p>96% categorised · <span class="warn">88% reconciled</span></p></div>
+            <div class="acts"><span class="btn btn-outline btn-sm">‹ ›</span><span class="btn btn-primary btn-sm">Export ▾</span></div>
+          </div>
+          <div class="seg" style="margin-bottom:14px;max-width:360px"><span class="on">Monthly</span><span>Annual</span><span>AI reports</span></div>
+          <div class="hero">
+            <div class="k">Surplus</div>
+            <div class="v">+£1,860.00</div>
+            <div class="s" style="font-size:13.5px;color:rgba(255,255,255,.8);max-width:560px">Income was up 10% on August, helped by Harvest Sunday; spending rose 9%, mostly premises. £1,213 mission tithe is due and £1,320 of Gift Aid can be claimed.</div>
+          </div>
+          <div class="stat3" style="margin-top:12px">
+            <div><span>Income</span><b>£14,820</b><span>▲ 10.5% vs Aug · ▲ 6.2% vs Sep 2025</span></div>
+            <div><span>Spending</span><b>£12,960</b><span>▲ 9.1% vs Aug · ▲ 3.4% vs Sep 2025</span></div>
+            <div class="s"><span>Surplus</span><b>+£1,860</b><span>Aug +£1,530 · YTD +£9,410</span></div>
+          </div>
+          <div class="sec-t">To action this month <span class="link">4 items</span></div>
+          <div class="nx">
+            <div class="nxi"><span class="nxic ic-grey">£</span><span class="tx"><b>Pay mission tithe · £1,213</b><span>10% of general fund giving</span></span><span class="btn btn-outline btn-sm">Record</span></div>
+            <div class="nxi"><span class="nxic ic-sage">↺</span><span class="tx"><b>Claim Gift Aid · £1,320</b><span>£5,280 eligible from 31 givers</span></span><span class="go">›</span></div>
+            <div class="nxi"><span class="nxic ic-amber">!</span><span class="tx"><b>1 transfer missing its other side</b><span>£250 out of General, no matching in</span></span><span class="btn btn-outline btn-sm">Fix</span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px">
+            <div class="panel">
+              <div class="pt">Income <span>£14,820 · vs Aug</span></div>
+              <div class="frow"><b>Tithes &amp; First Fruits</b><span class="m">£7,940</span><div class="prog"><i style="width:100%;background:#8f877e"></i></div><span class="sub">+4%</span></div>
+              <div class="frow"><b>Offerings</b><span class="m">£3,210</span><div class="prog"><i style="width:40%;background:#8f877e"></i></div><span class="sub" style="color:var(--amber)">+31%</span></div>
+              <div class="frow"><b>Building Fund</b><span class="m">£1,850</span><div class="prog"><i style="width:23%;background:#8f877e"></i></div><span class="sub">0%</span></div>
+            </div>
+            <div class="panel">
+              <div class="pt">Spending <span>£12,960 · vs Aug</span></div>
+              <div class="frow"><b>Staff &amp; love gifts</b><span class="m">£5,400</span><div class="prog"><i style="width:100%;background:#c9c5be"></i></div><span class="sub">0%</span></div>
+              <div class="frow"><b>Premises</b><span class="m">£3,860</span><div class="prog"><i style="width:71%;background:#c9c5be"></i></div><span class="sub" style="color:var(--amber)">+38%</span></div>
+              <div class="frow"><b>Ministry costs</b><span class="m">£1,620</span><div class="prog"><i style="width:30%;background:#c9c5be"></i></div><span class="sub">−4%</span></div>
+            </div>
+          </div>
+          <div class="sec-t">Fund position at 30 September</div>
+          <div class="lst">
+            <div class="lr" style="grid-template-columns:minmax(0,1fr) repeat(4,72px);font-size:12px;color:var(--grey-mid);font-weight:700"><span>Fund</span><span class="a" style="font:inherit">1 Sep</span><span class="a" style="font:inherit">In</span><span class="a" style="font:inherit">Out</span><span class="a" style="font:inherit">30 Sep</span></div>
+            <div class="lr" style="grid-template-columns:minmax(0,1fr) repeat(4,72px)"><span class="d"><b>General</b><span>Unrestricted</span></span><span class="a">£17,300</span><span class="a">£12,130</span><span class="a">£10,760</span><span class="a">£18,420</span></div>
+            <div class="lr" style="grid-template-columns:minmax(0,1fr) repeat(4,72px)"><span class="d"><b>Youth</b><span>Restricted</span></span><span class="a">£2,030</span><span class="a">£840</span><span class="a">£1,610</span><span class="a">£1,260</span></div>
+          </div>
+          <span class="btn btn-dashed btn-block" style="margin-top:14px">More detail · Sunday by Sunday, giving by donor, programmes, transfers ▾</span>
+        </div>
+        <aside class="side">
+          <div class="eyebrow">Held across funds</div>
+          <div class="rcpt">
+            <div class="rline"><span>Free to spend</span><b>£18,420</b></div>
+            <div class="rline"><span>Restricted / designated</span><b>£46,700</b></div>
+            <div class="rline total"><span>Total</span><b>£65,120</b></div>
+          </div>
+          <div class="rcpt" style="margin-top:22px">
+            <div class="h">Can I trust these?</div>
+            <div class="rline pos"><span>Categorised</span><b>96%</b></div>
+            <div class="rline warn"><span>Reconciled</span><b>88%</b></div>
+          </div>
+          <p class="side-note">The PDF always includes every “More detail” section.</p>
+        </aside>
+      </div>
+      <div class="notes">
+        <ol>
+          <li><b>Static, not guided.</b> Monthly · Annual · AI stay as a segmented control; the period stepper and one Export menu sit in the header.</li>
+          <li><b>The verdict is the hero</b>: surplus or deficit with the template headline sentence from the reports plan (not AI).</li>
+          <li><b>Every number has context</b>: vs last month and same month last year (annual: like-for-like year to date).</li>
+          <li><b>“To action” is the Needs-you list</b>: mission tithe, Gift Aid, loans and movement problems, same rules as <code>buildMonthEndChecks</code>.</li>
+          <li><b>The receipt column</b> carries the fund position and the trust signal (categorised / reconciled).</li>
+        </ol>
+        <div class="reuse">Built on <code>feat/reports-redesign</code> per <code>docs/reports-ux-plan.html</code>; this plan only aligns its layout with the kit (<code>nextItem</code>, <code>darkCard</code>, <code>ReceiptCard</code>, <code>Segmented</code>).</div>
+      </div>
+    </div>
+
+    <!-- SMALLER SCREENS -->
+    <div class="screen-h" id="s-small"><h3 style="margin:0">Loans, Settings, Ask Ward, first-run setup</h3></div>
+    <div class="grid-4" style="margin-top:18px;align-items:start">
+      <div class="sheet" style="min-height:540px">
+        <div class="mbody">
+          <div class="eyebrow">/loans</div>
+          <h4 class="scr-title" style="margin-top:4px">Loans</h4>
+          <p class="scr-help">2 open · £14,600 still owed</p>
+          <div class="hero sm"><div class="k">Owed by the church</div><div class="v">£12,000.00</div><div class="s">Diocese loan · £400 a month</div></div>
+          <div class="panel" style="margin-top:12px">
+            <div class="frow"><b>Diocese roof loan</b><span class="m">£12,000</span><div class="prog"><i style="width:40%"></i></div><span class="sub">£8,000 repaid of £20,000</span></div>
+            <div class="frow"><b>To Youth from General</b><span class="m">£2,600</span><div class="prog amber"><i style="width:13%"></i></div><span class="sub">Internal · no repayment since June</span></div>
+          </div>
+          <span class="btn btn-primary btn-block" style="margin-top:12px">+ Record a loan</span>
+        </div>
+      </div>
+      <div class="sheet" style="min-height:540px">
+        <div class="mbody">
+          <div class="eyebrow">/settings</div>
+          <h4 class="scr-title" style="margin-top:4px">Settings</h4>
+          <p class="scr-help">St Barnabas, Leeds · Growing plan</p>
+          <div class="grouped">
+            <div class="gr"><span class="nxic ic-grey">⌂</span><b>Church details</b><span class="go">›</span></div>
+            <div class="gr"><span class="nxic ic-grey">◫</span><b>Funds & categories</b><span>6 · 41</span></div>
+            <div class="gr"><span class="nxic ic-grey">✦</span><b>Programmes</b><span>4</span></div>
+          </div>
+          <div class="grouped">
+            <div class="gr"><span class="nxic ic-grey">◉</span><b>People & roles</b><span>5</span></div>
+            <div class="gr"><span class="nxic ic-amber">↻</span><b>Bank connections</b><span style="color:var(--amber)">Renew</span></div>
+          </div>
+          <div class="grouped">
+            <div class="gr"><span class="nxic ic-grey">£</span><b>Plan & billing</b><span class="go">›</span></div>
+            <div class="gr"><span class="nxic ic-grey">⛨</span><b>Data & privacy</b><span class="go">›</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="sheet" style="min-height:540px">
+        <div class="mbody" style="display:flex;flex-direction:column">
+          <div class="eyebrow">/copilot</div>
+          <h4 class="scr-title" style="margin-top:4px">Ask Ward</h4>
+          <p class="scr-help">Questions about your church's money, answered from your books.</p>
+          <div class="bubble me">How much did we spend on the hall this year?</div>
+          <div class="bubble ward"><div class="wardh"><i>✦</i>Ward</div>£6,318.40 across 22 payments. The boiler (£2,140) was the biggest.
+            <div class="rcpt" style="margin-top:10px;box-shadow:none"><div class="rline"><span>Repairs</span><b>£3,402.00</b></div><div class="rline"><span>Utilities</span><b>£2,186.40</b></div><div class="rline"><span>Cleaning</span><b>£730.00</b></div></div>
+          </div>
+          <div class="chips" style="margin-top:auto"><span class="chip">Who stopped giving?</span><span class="chip">Can we afford…</span></div>
+          <div class="inp" style="margin-top:10px">Ask anything…</div>
+        </div>
+      </div>
+      <div class="sheet" style="min-height:540px">
+        <div class="mhead"><span class="back">‹</span><span class="t">Set up your church</span><span class="x"></span></div>
+        <div class="progress" style="padding-left:20px;padding-right:20px"><span class="d"></span><span class="c"></span><span></span><span></span></div>
+        <div class="mbody">
+          <h4 class="scr-title">Which funds do you keep?</h4>
+          <p class="scr-help">General Fund is always there. Tick the others; you can add more later.</p>
+          <div class="tick done"><span class="bx">✓</span><b>General Fund</b><span class="r dim">Always</span></div>
+          <div class="tick on"><span class="bx">✓</span><b>Building / fabric</b><span class="r dim">Restricted</span></div>
+          <div class="tick on"><span class="bx">✓</span><b>Missions</b><span class="r dim">Designated</span></div>
+          <div class="tick"><span class="bx"></span><b>Youth & children</b></div>
+          <span class="btn btn-dashed btn-block">+ Another fund</span>
+        </div>
+        <div class="mfoot"><span class="btn btn-primary btn-lg btn-block">Next: your bank →</span></div>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-top:12px;font-size:13.5px;color:var(--grey-dark)">
+      <p><b>Loans:</b> owed-by vs owed-to in the hero, progress rows, and a “Record a loan” walkthrough (who · amount · repayments · done). Linking repayments reuses <code>lib/movementMatching</code>.</p>
+      <p><b>Settings:</b> seven side tabs become grouped rows; each opens a sheet. Invite someone is a 3-step walkthrough (email → role, explained in words → copy invite). Admin-only rows hide for other roles.</p>
+      <p><b>Ask Ward:</b> chat bubbles, figures in a receipt, suggestion chips over the input. Answers link to the transactions behind them.</p>
+      <p><b>Onboarding:</b> church → funds → bank → team → done, with a receipt of the setup. Join-by-invite stays a single sheet.</p>
+    </div>
+  </section>
+
+  <!-- ───────────── 5 MOBILE ───────────── -->
+  <section id="mobile">
+    <div class="sec-head"><span class="sec-num">05</span><h2>On a phone</h2></div>
+    <p class="muted" style="max-width:820px">The hamburger drawer becomes a bottom bar with the + New button in the middle (decision 1). Receipt columns fold into the page under the hero; walkthroughs are full-screen sheets, as Record giving is today.</p>
+    <div class="grid-3" style="margin-top:22px">
+      <div class="phone"><div class="scr">
+        <div class="notch"></div>
+        <div class="eyebrow">Thursday 8 October</div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:-0.01em;margin:2px 0 10px">October so far</div>
+        <div class="hero"><div class="k">Funds held</div><div class="v">£84,312.40</div><div class="s"><span class="up">+£2,140</span> surplus this month</div><div class="split"><i style="flex:31;background:#a9cfa9"></i><i style="flex:12;background:#d9b98f"></i><i style="flex:41;background:#8f877e"></i></div></div>
+        <div class="sec-t">Needs you</div>
+        <div class="nx">
+          <div class="nxi"><span class="nxic ic-amber">?</span><span class="tx"><b>7 lines need a category</b><span>Barclays · 6 Oct</span></span></div>
+          <div class="nxi"><span class="nxic ic-sage">⌂</span><span class="tx"><b>Bank last Sunday's cash</b><span>£1,127.50 waiting</span></span></div>
+        </div>
+        <div class="sec-t">October</div>
+        <div class="rcpt"><div class="rline"><span>Money in</span><b>£12,480.00</b></div><div class="rline"><span>Money out</span><b>£10,339.82</b></div></div>
+      </div>
+      <div class="tabbar"><span class="on"><i>◧</i>Home</span><span><i>⇅</i>Money</span><span class="plus"><i>+</i>New</span><span><i>◉</i>People</span><span><i>▤</i>Reports</span></div>
+      </div>
+
+      <div class="phone"><div class="scr">
+        <div class="notch"></div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:-0.01em;margin:2px 0 10px">Transactions</div>
+        <div class="seg" style="margin-bottom:10px"><span class="on">All</span><span>Giving</span><span>Needs <i class="n">7</i></span></div>
+        <div class="inp" style="margin-bottom:12px;height:40px">⌕ Search</div>
+        <div class="lst">
+          <div class="dayh"><span>Tue 6 Oct</span><b>−£486.20</b></div>
+          <div class="lr"><span class="ri ic-grey">↗</span><span class="d"><b>British Gas</b><span>Utilities</span></span><span class="a">−£212.40</span></div>
+          <div class="lr"><span class="ri ic-amber">?</span><span class="d"><b>AMZNMKTPLACE</b><span><span class="pill ask">Pick category</span></span></span><span class="a">−£73.80</span></div>
+          <div class="dayh"><span>Sun 4 Oct</span><b>+£1,902.50</b></div>
+          <div class="lr"><span class="ri ic-sage">£</span><span class="d"><b>Morning offering</b><span>Offerings · cash</span></span><span class="a in">+£842.50</span></div>
+          <div class="lr"><span class="ri ic-sage">✉</span><span class="d"><b>Tithe envelopes · 14</b><span>Tithes</span></span><span class="a in">+£1,060.00</span></div>
+          <div class="lr"><span class="ri ic-sage">£</span><span class="d"><b>Evening offering</b><span>Offerings · cash</span></span><span class="a in">+£221.00</span></div>
+        </div>
+      </div>
+      <div class="tabbar"><span><i>◧</i>Home</span><span class="on"><i>⇅</i>Money</span><span class="plus"><i>+</i>New</span><span><i>◉</i>People</span><span><i>▤</i>Reports</span></div>
+      </div>
+
+      <div class="phone"><div class="scr" style="padding-bottom:18px">
+        <div class="notch"></div>
+        <div class="mhead" style="padding:0 0 6px"><span class="back">‹</span><span class="t">Reconcile September</span><span class="x">✕</span></div>
+        <div class="progress" style="padding:0 0 12px"><span class="d"></span><span class="d"></span><span class="c"></span><span></span></div>
+        <div style="font-size:21px;font-weight:700;line-height:1.2">Tick what's on the statement</div>
+        <p class="scr-help" style="margin-bottom:12px">Bank-feed lines are already ticked.</p>
+        <div class="tick on"><span class="bx">✓</span><b>Banked<small>Fri 25 Sep</small></b><span class="r" style="color:var(--sage)">+£1,284.50</span></div>
+        <div class="tick"><span class="bx"></span><b>Cheque 100231<small>Mon 28 Sep</small></b><span class="r">−£640.00</span></div>
+        <div class="tick"><span class="bx"></span><b>Hall hire<small>Tue 29 Sep</small></b><span class="r">+£120.00</span></div>
+        <div class="tick"><span class="bx"></span><b>Petty cash<small>Wed 30 Sep</small></b><span class="r">−£50.00</span></div>
+        <div style="margin:14px -14px 0;border-top:1px solid var(--ledger);padding:12px 14px 0">
+          <div class="sum" style="display:flex;justify-content:space-between;font-size:12px;color:var(--grey-mid);margin-bottom:9px"><span>Still to explain</span><b class="mono" style="color:var(--amber)">£570.00</b></div>
+          <span class="btn btn-primary btn-lg btn-block">Next: explain the gap →</span>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ───────────── 6 INVENTORY ───────────── -->
+  <section id="inventory">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Every screen, mapped</h2></div>
+    <div class="card" style="padding:4px 10px">
+      <table class="cmp">
+        <thead><tr><th>Screen</th><th>File today</th><th>Today</th><th>Becomes</th><th>Phase</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="5">Shell</td></tr>
+          <tr><td>Sidebar / mobile drawer</td><td><code>Sidebar.tsx</code></td><td class="b">9 flat items, amber active pill, hamburger on mobile</td><td class="a">Grouped nav + “+ New”, attention counts; bottom bar on phones</td><td>1</td></tr>
+          <tr><td>Auth, subscription required, support</td><td><code>AuthPage</code>, <code>SubscriptionRequired</code>, <code>SupportCenter</code></td><td class="b">Own card styles</td><td class="a">Sheet template, kit buttons and fields</td><td>4</td></tr>
+          <tr class="grp"><td colspan="5">Hubs</td></tr>
+          <tr><td>Dashboard</td><td><code>Dashboard.tsx</code> + <code>dashboard/*</code></td><td class="b">4 health cards, checks, chart, follow-up, fund health</td><td class="a">Hero · Needs you · 2 panels · receipt</td><td>1</td></tr>
+          <tr><td>Transactions (all / in-person / banking)</td><td><code>TransactionManager.tsx</code> (2,839 lines)</td><td class="b">6 header buttons, 3 tabs, status select, table</td><td class="a">Segmented, day-grouped rows, side edit panel</td><td>3</td></tr>
+          <tr><td>Funds & balances</td><td><code>FundManager.tsx</code></td><td class="b">Fund cards, GF expenditure, capital allocation</td><td class="a">Hero split + fund cards with fixes</td><td>3</td></tr>
+          <tr><td>Donors directory & profile</td><td><code>DonorManager.tsx</code> (1,626)</td><td class="b">Table → full-page profile, 5 modals</td><td class="a">List + detail column / sheet</td><td>3</td></tr>
+          <tr><td>Campaigns</td><td><code>Campaigns.tsx</code> (1,152)</td><td class="b">Fund picker, pledges table, timeline, 4 modals</td><td class="a">One-campaign hero, pledge rows</td><td>3</td></tr>
+          <tr><td>Loans</td><td><code>Loans.tsx</code></td><td class="b">Table + dialog</td><td class="a">Hero + progress rows</td><td>3</td></tr>
+          <tr><td>Reports</td><td><code>Reports.tsx</code> (1,778)</td><td class="b">3 tabs, ~15 sections</td><td class="a">Static hub per <code>docs/reports-ux-plan.html</code></td><td>4</td></tr>
+          <tr><td>Settings</td><td><code>Settings.tsx</code> + 3 settings files</td><td class="b">7 side tabs, dense forms</td><td class="a">Grouped rows → sheets</td><td>4</td></tr>
+          <tr><td>Ask Ward</td><td><code>AICoPilot.tsx</code></td><td class="b">Chat panel</td><td class="a">Bubbles, receipt answers, chips</td><td>4</td></tr>
+          <tr class="grp"><td colspan="5">Walkthroughs and sheets</td></tr>
+          <tr><td>Record giving</td><td><code>cashEntry/*</code></td><td class="b">Walkthrough ✓</td><td class="a">Moves onto the shared shell, no visual change</td><td>0</td></tr>
+          <tr><td>Import statement / sync review</td><td><code>TransactionManager</code> modals</td><td class="b">Map CSV + Review modals</td><td class="a">As in <code>statement-import-walkthrough.html</code></td><td>2</td></tr>
+          <tr><td>Reconcile</td><td><code>Reconciliation.tsx</code></td><td class="b">List → form → detail page</td><td class="a">5-step walkthrough</td><td>2</td></tr>
+          <tr><td>Bank cash & cheques</td><td><code>CashChequeBanking.tsx</code> (1,319)</td><td class="b">One long screen</td><td class="a">4-step walkthrough + history rows</td><td>2</td></tr>
+          <tr><td>New / edit / void transaction</td><td><code>TransactionManager</code>, <code>TransactionDialog</code></td><td class="b">Modals with uppercase labels</td><td class="a">Sheet (side panel on desktop)</td><td>2</td></tr>
+          <tr><td>Transfer between funds, link movement</td><td><code>JournalTransferModal</code>, <code>LinkMovementModal</code></td><td class="b">Modals</td><td class="a">3-step walkthroughs (from · to · done)</td><td>2</td></tr>
+          <tr><td>Add / edit donor, schedule, thank-you</td><td><code>DonorManager</code> modals</td><td class="b">5 modals</td><td class="a">Sheets; thank-you is a walkthrough</td><td>3</td></tr>
+          <tr><td>New campaign, add pledge, merge</td><td><code>Campaigns</code> modals</td><td class="b">4 modals</td><td class="a">Walkthroughs</td><td>3</td></tr>
+          <tr><td>Record a loan</td><td><code>Loans</code> dialog</td><td class="b">Dialog</td><td class="a">Walkthrough</td><td>3</td></tr>
+                    <tr><td>Invite user, bank connection, billing</td><td><code>Settings</code>, <code>BankConnectionsSettings</code>, <code>BillingSettings</code></td><td class="b">Inline forms, modals</td><td class="a">Walkthroughs / sheets</td><td>4</td></tr>
+          <tr><td>Onboarding</td><td><code>Onboarding.tsx</code></td><td class="b">Create org form</td><td class="a">Church → funds → bank → team → done</td><td>4</td></tr>
+          <tr class="grp"><td colspan="5">Out of scope</td></tr>
+          <tr><td>Landing site, privacy, terms</td><td><code>landing/</code>, <code>legal/</code></td><td class="b">Marketing style</td><td class="a">Unchanged; could adopt the kit later</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ───────────── 7 BUILD ───────────── -->
+  <section id="build">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Build plan</h2></div>
+    <p class="muted" style="max-width:820px">One PR per phase (bigger phases split per screen). Each screen keeps its queries and mutations; only the presentation and the flow change. No schema changes are needed for any of it.</p>
+    <div class="grid-2" style="margin-top:18px">
+      <div class="card">
+        <div class="phase">
+          <h3>Phase 0 · Extract the kit <span class="tag t-grey">no visual change</span></h3>
+          <ul>
+            <li>Move <code>cashEntry/ui.tsx</code> class strings into <code>components/ui/</code>: <code>Button</code>, <code>Card</code>, <code>HeroCard</code>, <code>TickRow</code>, <code>Segmented</code>, <code>Chip</code>, <code>Tag</code>, <code>AmountInput</code>, <code>NextList</code>, <code>Receipt</code>.</li>
+            <li>Pull the shell out of <code>CashEntryWizard</code> into <code>&lt;Walkthrough&gt;</code>: portal, rail, header, progress, footer, receipt slot, Escape, close-confirm, save lock.</li>
+            <li>Record giving uses both. Its existing tests stay green; the wizard looks identical.</li>
+            <li>An ESLint rule (or ratchet test, like money arithmetic) flags new uses of <code>swiss-card</code>, <code>btn-primary</code> and uppercase <code>h3</code>.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 1 · Shell and Dashboard <span class="tag t-sage">first thing people see</span></h3>
+          <ul>
+            <li>Grouped nav, “+ New” chooser, attention counts, bottom bar under <code>md</code>.</li>
+            <li><code>&lt;Hub&gt;</code> template: header, hero, Needs you, content, receipt column.</li>
+            <li>Dashboard on the hub template, reusing <code>buildMonthEndChecks</code>.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 2 · Jobs become walkthroughs <span class="tag t-sage">biggest usability gain</span></h3>
+          <ul>
+            <li>Reconcile, Bank cash & cheques, transfer, link movement, the transaction sheet.</li>
+            <li>Statement import continues on its own plan and lands on the same shell.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card">
+        <div class="phase">
+          <h3>Phase 3 · Money and people hubs</h3>
+          <ul>
+            <li>Transactions (split <code>TransactionManager.tsx</code> into the hub, the side panel and the existing modals' replacements as it goes).</li>
+            <li>Funds, Donors, Campaigns, Loans and their sheets and walkthroughs.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 4 · Reports, Settings, Ward, onboarding</h3>
+          <ul>
+            <li>Reports: the static page from <code>docs/reports-ux-plan.html</code>, built on <code>feat/reports-redesign</code> with the kit's hero, Needs-you and receipt parts.</li>
+            <li>Settings grouped rows and sheets; invite walkthrough; Ask Ward; onboarding; auth and support screens.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 5 · Clean up</h3>
+          <ul>
+            <li>Delete <code>swiss-card</code>, <code>ledger-table</code>, <code>badge-*</code>, hard shadows and the old v3 palette aliases from <code>styles.css</code> once nothing uses them.</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:16px;box-shadow:none;background:var(--grey-light)"><h3>Verification per PR</h3><p class="muted" style="margin:0">Typecheck, lint, Vitest. Drive the changed screens in the real app on a local Convex backend (the run skill), at 1440px and 390px, for Admin, Finance Team, Pastorate and Guest. Physical iPhone check for anything with dates or amounts. Before/after screenshots in the PR.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 8 DECIDE ───────────── -->
+  <section id="decide">
+    <div class="sec-head"><span class="sec-num">08</span><h2>Decisions for you</h2></div>
+    <div class="grid-2">
+      <div>
+        <div class="q"><h4>1 · Phone navigation: bottom bar or keep the drawer?</h4><p>A bottom bar (Home · Money · + New · People · Reports) puts Record giving one tap away on Sunday. The drawer keeps all nine items visible but hides them.</p><div class="rec">Recommend: bottom bar, with Settings and Ward under the avatar.</div></div>
+        <div class="q"><h4>2 · Active nav colour</h4><p>Today the active page is an amber pill. In the walkthrough amber means “needs attention”, so the plan uses grey with ink text for “you are here” and keeps amber for counts.</p><div class="rec">Recommend: grey active, amber only for attention.</div></div>
+        <div class="q"><h4>3 · Keep a dense table view anywhere?</h4><p>Day-grouped rows are friendlier, but an accountant scanning 300 rows may want columns.</p><div class="rec">Recommend: a “Compact” toggle on Transactions and Reconcile on desktop only.</div></div>
+      </div>
+      <div>
+        <div class="q"><h4>4 · Where should edits happen on desktop?</h4><p>Side column (as mocked on Transactions and Donors) keeps the list in view. A centred sheet is simpler to build and matches the phone.</p><div class="rec">Recommend: side column on Transactions and Donors, sheets elsewhere.</div></div>
+        <div class="q"><h4>5 · Order of work</h4><p>Phase 1 is the most visible; phase 2 removes the most friction (reconcile and banking are the screens volunteers struggle with).</p><div class="rec">Recommend: 0 → 2 → 1 → 3 → 4, so the hard jobs improve first.</div></div>
+        <div class="q"><h4>6 · Ship behind a switch?</h4><p>Each hub could sit behind a per-organisation flag so you can try it on your own church before everyone gets it.</p><div class="rec">Recommend: no flag for walkthroughs (they replace modals); a short-lived flag for the Transactions hub only.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Plan file: <span class="mono">docs/plans/app-redesign-walkthrough-style.html</span> · Built on the tokens in <span class="mono">styles.css</span> and the classes in <span class="mono">components/cashEntry/ui.tsx</span>. Companion plan: <span class="mono">docs/plans/statement-import-walkthrough.html</span>.</footer>
+</div>
+</body>
+</html>
