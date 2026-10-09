@@ -140,6 +140,15 @@ describe("donor directory logic", () => {
     });
   });
 
+  it("counts Donation and the legacy Donations name as giving, and sums them with Offerings", () => {
+    expect(undeclaredGiftAid([gift({ amount: 100, category: "Donation" })])).toEqual({ giving: 100, claimable: 25 });
+    expect(undeclaredGiftAid([gift({ amount: 100, category: "Donations" })])).toEqual({ giving: 100, claimable: 25 });
+    expect(undeclaredGiftAid([gift({ amount: 100, category: "Offerings" }), gift({ amount: 100, category: "Donation" })])).toEqual({
+      giving: 200,
+      claimable: 50,
+    });
+  });
+
   it("groups names under their first letter, with non-letters under #", () => {
     const groups = groupByInitial([
       donor({ _id: "1", name: "Abena" }),

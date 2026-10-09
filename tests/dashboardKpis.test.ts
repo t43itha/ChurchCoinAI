@@ -9,6 +9,7 @@ import {
   type DashboardPledge,
   type BuildExecutiveDashboardSummaryInput,
   type DashboardTransaction,
+  isGivingCategory,
 } from "../lib/dashboardKpis";
 
 const funds: DashboardFund[] = [
@@ -1205,5 +1206,15 @@ describe("possible double counted cash", () => {
         }
       )
     ).toEqual(["2025-12", "2026-02"]);
+  });
+});
+
+describe("giving categories", () => {
+  it("counts the canonical Donation leaf and its legacy Donations name as giving", () => {
+    expect(isGivingCategory("Donation")).toBe(true);
+    expect(isGivingCategory("Donations")).toBe(true);
+    expect(isGivingCategory("Offerings")).toBe(true);
+    expect(isGivingCategory("Merchandise")).toBe(false);
+    expect(isGivingCategory(undefined)).toBe(false);
   });
 });

@@ -173,7 +173,9 @@ export type BuildExecutiveDashboardSummaryInput = {
   giftAidEnabled?: boolean;
 };
 
-const GIVING_CATEGORIES = new Set(RCI_INCOME_CATEGORIES["Donations"] ?? []);
+// The Donations group's own leaf is the canonical "Donation" (the migration files it there), which the
+// legacy "Donations" name resolves to through CATEGORY_ALIASES.
+const GIVING_CATEGORIES = new Set([...(RCI_INCOME_CATEGORIES["Donations"] ?? []), CATEGORY_ALIASES["Donations"]]);
 const UNCATEGORIZED = "Uncategorized";
 const LOW_BALANCE_THRESHOLD = 1000;
 const MAX_CAMPAIGNS = 3;
