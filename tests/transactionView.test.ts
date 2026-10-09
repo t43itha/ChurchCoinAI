@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  editDraftProblem,
   errorMessage,
   filterTransactions,
   formatSignedAmount,
@@ -97,9 +98,37 @@ describe("needsYou", () => {
     expect(needsYou(row({ movementKind: "transfer", type: "Expenditure" }), retired)).toBe(true);
   });
 
-  it("is false for voided rows and for ordinary categorised rows", () => {
+  it("includes income with no pledge, the same test as the Unlinked income filter", () => {
+    expect(needsYou(row({ category: "Offerings" }), retired)).toBe(true);
+    expect(needsYou(row({ category: "Offerings", pledgeId: "p1" }), retired)).toBe(false);
+    expect(needsYou(row({ category: "Repairs", type: "Expenditure" }), retired)).toBe(false);
+  });
+
+  it("is false for voided rows", () => {
     expect(needsYou(row({ category: "", isVoided: true }), retired)).toBe(false);
-    expect(needsYou(row({ category: "Offerings" }), retired)).toBe(false);
+  });
+});
+
+describe("editDraftProblem", () => {
+  const draft = { date: "2026-10-06", description: "Sunday collection", amount: 100 };
+
+  it("accepts a complete draft", () => {
+    expect(editDraftProblem(draft)).toBeNull();
+  });
+
+  it("refuses a blank or whitespace-only description", () => {
+    expect(editDraftProblem({ ...draft, description: "" })).toBe("Add a description before saving.");
+    expect(editDraftProblem({ ...draft, description: "   " })).toBe("Add a description before saving.");
+  });
+
+  it("refuses a missing date", () => {
+    expect(editDraftProblem({ ...draft, date: "" })).toBe("Add a date before saving.");
+  });
+
+  it("refuses a cleared, zero or negative amount, as the server does", () => {
+    expect(editDraftProblem({ ...draft, amount: NaN })).toBe("Enter an amount greater than 0.");
+    expect(editDraftProblem({ ...draft, amount: 0 })).toBe("Enter an amount greater than 0.");
+    expect(editDraftProblem({ ...draft, amount: -5 })).toBe("Enter an amount greater than 0.");
   });
 });
 

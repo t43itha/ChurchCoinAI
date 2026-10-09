@@ -72,9 +72,8 @@ export function filterTransactions(
           return t.isReconciled;
         case "unreconciled":
           return !t.isReconciled;
-        // Income with no pledge, for manual linking.
         case "unlinked":
-          return t.type === "Income" && !t.pledgeId;
+          return isUnlinkedIncome(t);
         case "awaiting-link":
           return isUnlinkedMovementLeg(t);
         case "needs-reclassifying":
@@ -84,13 +83,18 @@ export function filterTransactions(
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
-// The "Needs you" view: live rows that are uncategorised, waiting for their other
-// side, or sitting in a retired category.
+// Income with no pledge, for manual linking. Shared by the "Unlinked income" status
+// filter and the "Needs you" view.
+const isUnlinkedIncome = (transaction: Transaction) => transaction.type === "Income" && !transaction.pledgeId;
+
+// The "Needs you" view: live rows that are uncategorised, unlinked income, waiting for
+// their other side, or sitting in a retired category.
 export function needsYou(transaction: Transaction, retiredCategoryNames: Set<string>): boolean {
   if (isVoidedTransaction(transaction)) return false;
   return (
     !transaction.category ||
     retiredCategoryNames.has(transaction.category) ||
+    isUnlinkedIncome(transaction) ||
     isUnlinkedMovementLeg(transaction)
   );
 }
@@ -134,6 +138,15 @@ export function formatSignedAmount(transaction: Pick<Transaction, "type" | "amou
 
 export function formatSignedNet(value: number): string {
   return `${value < 0 ? "−" : "+"}${gbp(Math.abs(value))}`;
+}
+
+// Checked before any save, whichever button submitted the edit form. The native
+// `required` rules catch empty fields, but not whitespace or a cleared amount.
+export function editDraftProblem(draft: Pick<Transaction, "date" | "description" | "amount">): string | null {
+  if (!draft.description.trim()) return "Add a description before saving.";
+  if (!draft.date) return "Add a date before saving.";
+  if (!Number.isFinite(draft.amount) || draft.amount <= 0) return "Enter an amount greater than 0.";
+  return null;
 }
 
 // Convex wraps server errors in its own prefix; show the message the server wrote.

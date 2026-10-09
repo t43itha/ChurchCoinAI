@@ -83,7 +83,8 @@ describe("transactions hub header and segments", () => {
     expect(html).toContain("Everything");
     expect(html).toContain("Giving");
     expect(html).toContain(">Banking<");
-    expect(html).toMatch(/Needs you<span[^>]*>0<\/span>/);
+    // The unpledged income row needs a look, as "Unlinked income" does.
+    expect(html).toMatch(/Needs you<span[^>]*>1<\/span>/);
     expect(html).toContain(">Add<");
     expect(html).toContain(">Reconcile<");
   });
@@ -122,7 +123,7 @@ describe("needs you", () => {
     const html = renderHub("Finance Team", [
       row({ _id: "a", category: "" }),
       row({ _id: "b", category: "" }),
-      row({ _id: "c" }),
+      row({ _id: "c", pledgeId: "p1" }),
     ]);
     expect(html).toContain("2 lines need a category");
     expect(html).toContain(">Start<");
