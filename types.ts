@@ -319,6 +319,8 @@ export interface CategoryGroup {
 // A loan as it stood at a report period end. Reports need reports.read, which
 // leadership holds with donors.read, so the lender name is shown unredacted.
 export interface LoanReportRow {
+  // The loan movement's id. Two loans from the same lender need distinct keys.
+  movementId: string;
   lender: string;
   dueDate?: string;
   borrowed: number;

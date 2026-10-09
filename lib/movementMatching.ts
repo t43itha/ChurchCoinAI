@@ -129,7 +129,7 @@ export function summarizeLoan(legs: MovementLeg[]): LoanSummary {
 
 // Each loan as it stood on throughDate. Legs after it, and voided legs, don't count.
 export function loanReportRows(
-  loans: Array<{ lender?: string; dueDate?: string; legs: MovementLeg[] }>,
+  loans: Array<{ movementId: string; lender?: string; dueDate?: string; legs: MovementLeg[] }>,
   throughDate: string
 ): LoanReportRow[] {
   return loans
@@ -137,7 +137,7 @@ export function loanReportRows(
       const legs = loan.legs.filter((leg) => !isVoidedTransaction(leg) && leg.date <= throughDate);
       if (legs.length === 0) return [];
       const { borrowed, repaid, outstanding } = summarizeLoan(legs);
-      return [{ lender: loan.lender ?? "", dueDate: loan.dueDate, borrowed, repaid, outstanding }];
+      return [{ movementId: loan.movementId, lender: loan.lender ?? "", dueDate: loan.dueDate, borrowed, repaid, outstanding }];
     })
     .sort((a, b) => a.lender.localeCompare(b.lender));
 }

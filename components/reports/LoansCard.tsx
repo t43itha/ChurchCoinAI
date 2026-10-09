@@ -15,8 +15,8 @@ export const LoansCard: React.FC<LoansCardProps> = ({ loans, title = "Loans at p
   if (loans.length === 0) return null;
   const list = (
     <ul className="divide-y divide-[#efeee9]">
-      {loans.map((loan) => (
-        <li key={loan.lender} className="px-[18px] py-3">
+      {loans.map(({ movementId, ...loan }) => (
+        <li key={movementId} className="px-[18px] py-3">
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm font-medium text-ink">{loan.lender}</span>
             <span className="font-mono text-sm font-bold text-ink">{formatCurrency(loan.outstanding)}</span>

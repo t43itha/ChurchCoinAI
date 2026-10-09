@@ -168,8 +168,9 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
   }
   for (const loan of loans) {
     if (loan.outstanding <= 0) continue;
+    const { movementId } = loan;
     actions.push({
-      id: `loan-${loan.lender}`,
+      id: `loan-${movementId}`,
       tone: "pay",
       title: `${loan.lender} loan`,
       detail: `${formatCurrency(loan.outstanding)} outstanding${loan.dueDate ? ` · due ${formatShortDate(loan.dueDate)}` : ""}`,

@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
 import { buildTransferSummary } from "../lib/reportableTransactions";
 import { transfersSectionHTML } from "../services/pdfGenerator";
 import { loansSheetRows, transfersSheetRows } from "../services/excelGenerator";
 import { loanReportRows, type MovementLeg } from "../lib/movementMatching";
+import { LoansCard } from "../components/reports/LoansCard";
 
 const funds = [
   { _id: "general", name: "General Fund" },
@@ -77,8 +80,8 @@ describe("loans sheet", () => {
   it("lists each loan with a total", () => {
     expect(
       loansSheetRows([
-        { lender: "Alex Sackey", dueDate: "2026-12-31", borrowed: 1852, repaid: 500, outstanding: 1352 },
-        { lender: "Bank", borrowed: 1000, repaid: 1000, outstanding: 0 },
+        { movementId: "loan-1", lender: "Alex Sackey", dueDate: "2026-12-31", borrowed: 1852, repaid: 500, outstanding: 1352 },
+        { movementId: "loan-2", lender: "Bank", borrowed: 1000, repaid: 1000, outstanding: 0 },
       ])
     ).toEqual([
       ["Lender", "Borrowed", "Repaid", "Outstanding", "Due"],
@@ -102,6 +105,7 @@ describe("loan rows on reports", () => {
     const rows = loanReportRows(
       [
         {
+          movementId: "loan-1",
           lender: "Alex Sackey",
           dueDate: "2026-12-31",
           legs: [loanLeg("in", "Income", 1000, "2026-08-03"), loanLeg("late", "Expenditure", 400, "2026-10-20")],
@@ -110,13 +114,16 @@ describe("loan rows on reports", () => {
       "2026-09-30"
     );
     expect(rows).toEqual([
-      { lender: "Alex Sackey", dueDate: "2026-12-31", borrowed: 1000, repaid: 0, outstanding: 1000 },
+      { movementId: "loan-1", lender: "Alex Sackey", dueDate: "2026-12-31", borrowed: 1000, repaid: 0, outstanding: 1000 },
     ]);
   });
 
   it("drops a loan whose only leg is after the period end", () => {
     expect(
-      loanReportRows([{ lender: "Alex", legs: [loanLeg("in", "Income", 1000, "2026-10-02")] }], "2026-09-30")
+      loanReportRows(
+        [{ movementId: "loan-1", lender: "Alex", legs: [loanLeg("in", "Income", 1000, "2026-10-02")] }],
+        "2026-09-30"
+      )
     ).toEqual([]);
   });
 
@@ -124,27 +131,69 @@ describe("loan rows on reports", () => {
     const rows = loanReportRows(
       [
         {
+          movementId: "loan-1",
           lender: "Alex",
           legs: [
             loanLeg("in", "Income", 1000, "2026-08-03"),
             loanLeg("void", "Expenditure", 400, "2026-08-10", { isVoided: true }),
           ],
         },
-        { lender: "Voided", legs: [loanLeg("gone", "Income", 50, "2026-08-03", { isVoided: true })] },
+        { movementId: "loan-2", lender: "Voided", legs: [loanLeg("gone", "Income", 50, "2026-08-03", { isVoided: true })] },
       ],
       "2026-09-30"
     );
-    expect(rows).toEqual([{ lender: "Alex", borrowed: 1000, repaid: 0, outstanding: 1000 }]);
+    expect(rows).toEqual([{ movementId: "loan-1", lender: "Alex", borrowed: 1000, repaid: 0, outstanding: 1000 }]);
   });
 
   it("sorts by lender, with a missing lender as an empty name", () => {
     const rows = loanReportRows(
       [
-        { lender: "Bank", legs: [loanLeg("b", "Income", 10, "2026-08-03")] },
-        { legs: [loanLeg("n", "Income", 20, "2026-08-03")] },
+        { movementId: "loan-1", lender: "Bank", legs: [loanLeg("b", "Income", 10, "2026-08-03")] },
+        { movementId: "loan-2", legs: [loanLeg("n", "Income", 20, "2026-08-03")] },
       ],
       "2026-09-30"
     );
     expect(rows.map((row) => row.lender)).toEqual(["", "Bank"]);
+  });
+
+  it("keeps two loans from the same lender as separate rows with distinct movement ids", () => {
+    const rows = loanReportRows(
+      [
+        { movementId: "loan-a", lender: "Alex Sackey", legs: [loanLeg("a-in", "Income", 1000, "2026-08-03")] },
+        { movementId: "loan-b", lender: "Alex Sackey", legs: [loanLeg("b-in", "Income", 500, "2026-08-05")] },
+      ],
+      "2026-09-30"
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.lender)).toEqual(["Alex Sackey", "Alex Sackey"]);
+    expect(new Set(rows.map((row) => row.movementId))).toEqual(new Set(["loan-a", "loan-b"]));
+    expect(rows.map((row) => row.borrowed)).toEqual([1000, 500]);
+  });
+
+  it("renders a row for each of two loans from the same lender without key collisions", () => {
+    const errors: unknown[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args);
+    });
+    try {
+      const markup = renderToStaticMarkup(
+        createElement(LoansCard, {
+          loans: loanReportRows(
+            [
+              { movementId: "loan-a", lender: "Alex Sackey", legs: [loanLeg("a-in", "Income", 1000, "2026-08-03")] },
+              { movementId: "loan-b", lender: "Alex Sackey", legs: [loanLeg("b-in", "Income", 500, "2026-08-05")] },
+            ],
+            "2026-09-30"
+          ),
+        })
+      );
+      expect(markup.match(/Alex Sackey/g)).toHaveLength(2);
+      expect(markup.match(/<li/g)).toHaveLength(2);
+      expect(markup).toContain("£1,000.00");
+      expect(markup).toContain("£500.00");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(errors).toEqual([]);
   });
 });

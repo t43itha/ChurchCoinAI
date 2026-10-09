@@ -146,7 +146,7 @@ const monthlyReport = (overrides: Partial<MonthlyReportData> = {}): MonthlyRepor
 
 describe("loansSectionHTML", () => {
   const loans: LoanReportRow[] = [
-    { lender: "Bank <Ltd> & Co", dueDate: "2026-12-31", borrowed: 1852, repaid: 500, outstanding: 1352 },
+    { movementId: "loan-1", lender: "Bank <Ltd> & Co", dueDate: "2026-12-31", borrowed: 1852, repaid: 500, outstanding: 1352 },
   ];
 
   it("renders nothing when there are no loans", () => {
@@ -235,7 +235,7 @@ describe("monthly report PDF", () => {
 
   it("includes the loans section when there are loans", () => {
     const html = generateMonthlyReportHTML(
-      monthlyReport({ loans: [{ lender: "Alex", borrowed: 1000, repaid: 0, outstanding: 1000 }] }),
+      monthlyReport({ loans: [{ movementId: "loan-2", lender: "Alex", borrowed: 1000, repaid: 0, outstanding: 1000 }] }),
       churchDetails(true)
     );
     expect(html).toContain("<div class=\"section-title\">Loans</div>");

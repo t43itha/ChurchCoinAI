@@ -64,6 +64,7 @@ async function loadLoanRows(ctx: QueryCtx, organizationId: Id<"organizations">, 
     movements
       .filter((movement) => movement.kind === "loan")
       .map(async (movement) => ({
+        movementId: String(movement._id),
         lender: movement.lender,
         dueDate: movement.dueDate,
         legs: await ctx.db
