@@ -1,24 +1,19 @@
 import { can } from "../lib/permissions";
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Id } from '../convex/_generated/dataModel';
 import { Fund, AppUser } from '../types';
-import {
-  Plus,
-  RefreshCw,
-  AlertTriangle,
-  Trash2,
-  Link2,
-  Landmark,
-  ChevronRight,
-  X
-} from 'lucide-react';
+import { ChevronRight, Landmark, Link2, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import WizardFrame from './wizard/WizardFrame';
+import StepFooter from './wizard/StepFooter';
+import { btnLg, btnPrimary, card, eyebrow, screenHelp, screenTitle, tagAmber, tagBase, tagSage, txtInput } from './wizard/ui';
 
 interface BankConnectionsSettingsProps {
   funds: Fund[];
   currentUser: AppUser;
+  onClose: () => void;
 }
 
 type AvailableInstitution = {
@@ -56,7 +51,11 @@ const clearBankCallbackParams = () => {
   window.history.replaceState(window.history.state, '', nextUrl);
 };
 
-const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds, currentUser }) => {
+const tagError = `${tagBase} bg-error-light text-error`;
+
+// Lists the church's bank connections. Connecting, renewing and removing happen here; the account-to-fund
+// mapping opens under each connection.
+const BankConnectionsSettings: FC<BankConnectionsSettingsProps> = ({ funds, currentUser, onClose }) => {
   const bankConnections = useQuery(api.queries.bankConnections.list) || [];
   const itemsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention) || [];
   const [callbackAttemptState, setCallbackAttemptState] = useState<string | null>(getCallbackAttemptState);
@@ -246,37 +245,19 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
     }
   };
 
-  // Refined Ledger pill badge with status dot
-  const pillBadge = (tone: 'sage' | 'amber' | 'error', label: string) => {
-    const styles = {
-      sage: { wash: '#eef3ee', line: '#d7e3d7', fg: '#557555', dot: '#6b8e6b' },
-      amber: { wash: '#faf2e9', line: '#ecd8bd', fg: '#a9743f', dot: '#c79a5f' },
-      error: { wash: '#fbeded', line: '#eccaca', fg: '#b53d3d', dot: '#c64545' },
-    }[tone];
-    return (
-      <span
-        className="inline-flex items-center gap-1.5 px-[11px] py-[5px] rounded-full text-[11px] font-bold uppercase tracking-[0.05em] whitespace-nowrap"
-        style={{ color: styles.fg, background: styles.wash, border: `1px solid ${styles.line}` }}
-      >
-        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: styles.dot }} />
-        {label}
-      </span>
-    );
-  };
-
   const getStatusBadge = (status: string, daysUntilReview?: number | null) => {
     switch (status) {
       case 'active':
         if (daysUntilReview !== null && daysUntilReview !== undefined && daysUntilReview <= 7) {
-          return pillBadge('amber', `Review in ${daysUntilReview}d`);
+          return <span className={tagAmber}>Review in {daysUntilReview}d</span>;
         }
-        return pillBadge('sage', 'Connected');
+        return <span className={tagSage}>Connected</span>;
       case 'error':
-        return pillBadge('error', 'Error');
+        return <span className={tagError}>Error</span>;
       case 'consent_expired':
-        return pillBadge('error', 'Expired');
+        return <span className={tagError}>Expired</span>;
       case 'pending_reauth':
-        return pillBadge('amber', 'Needs Re-auth');
+        return <span className={tagAmber}>Needs renewal</span>;
       default:
         return null;
     }
@@ -306,341 +287,287 @@ const BankConnectionsSettings: React.FC<BankConnectionsSettingsProps> = ({ funds
       )
     : availableInstitutions;
 
+  const picker = isBankPickerOpen ? (
+    <div className="absolute inset-0 z-10 flex flex-col bg-paper" role="dialog" aria-modal="true" aria-labelledby="bank-picker-title">
+      <div className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
+        <div className="min-w-0 flex-1 px-2">
+          <h3 id="bank-picker-title" className={screenTitle}>
+            {reauthConnection ? `Renew ${reauthConnection.institutionName}` : 'Choose a UK bank'}
+          </h3>
+        </div>
+        <button
+          type="button"
+          onClick={closeBankPicker}
+          disabled={isConnecting}
+          aria-label="Close bank picker"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[11px] text-grey-dark hover:bg-white disabled:opacity-50"
+        >
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 lg:px-8">
+        <p className={screenHelp}>UK banks are loaded live from Yapily.</p>
+        {isLoadingInstitutions ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-grey-mid">
+            <RefreshCw size={16} className="animate-spin" aria-hidden="true" />
+            Checking supported banks…
+          </div>
+        ) : connectionError ? (
+          <div className="rounded-2xl border border-error/30 bg-error-light p-4 text-sm text-error">{connectionError}</div>
+        ) : selectableInstitutions.length === 0 ? (
+          <div className="rounded-2xl border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-sm text-[#7a5a30]">
+            {reauthConnection
+              ? `${reauthConnection.institutionName} is not currently available under its saved name. Use Connect to create a fresh link if the bank has been renamed.`
+              : 'No compatible UK banks are currently available for this Yapily application.'}
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            {selectableInstitutions.map((institution) => {
+              const consentDays = institution.maximumConsentValiditySeconds == null
+                ? null
+                : Math.max(1, Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60)));
+
+              return (
+                <button
+                  type="button"
+                  key={`${institution.provider}:${institution.institutionId}`}
+                  onClick={() => handleConnectBank(institution)}
+                  disabled={isConnecting}
+                  className={`${card} flex w-full items-center gap-3.5 text-left transition-colors hover:bg-grey-light disabled:cursor-wait disabled:opacity-50`}
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-grey-light bg-paper">
+                    {institution.logoUrl ? (
+                      <img
+                        src={institution.logoUrl}
+                        alt=""
+                        className="h-full w-full object-contain p-1.5"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Landmark size={17} className="text-grey-dark" aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <b className="block text-[14.5px] text-ink">{institution.name}</b>
+                    <span className="block text-xs text-grey-mid">
+                      Yapily
+                      {consentDays ? ` · up to ${consentDays} days` : ' · bank-managed consent'}
+                      {institution.environmentType === 'SANDBOX' ? ' · sandbox' : ''}
+                      {institution.beta && institution.environmentType !== 'SANDBOX' ? ' · beta' : ''}
+                    </span>
+                  </span>
+                  {isConnecting ? (
+                    <RefreshCw size={14} className="shrink-0 animate-spin text-grey-mid" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight size={18} className="shrink-0 text-grey-mid" aria-hidden="true" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <p className="mt-5 text-xs leading-relaxed text-grey-mid">
+          ChurchCoin requests read-only access to accounts and transactions through Yapily. Your bank credentials are
+          entered with your bank, not ChurchCoin.
+        </p>
+      </div>
+    </div>
+  ) : undefined;
+
   return (
-    <div className="ledger-space-y-6">
+    <WizardFrame
+      ariaLabel="Bank connections"
+      title="Bank connections"
+      onClose={onClose}
+      overlay={picker}
+      footer={
+        <StepFooter>
+          <button
+            type="button"
+            onClick={() => openBankPicker()}
+            disabled={isConnecting || isLoadingInstitutions}
+            className={`${btnPrimary} ${btnLg}`}
+          >
+            {isLoadingInstitutions ? <RefreshCw size={15} className="animate-spin" aria-hidden="true" /> : <Plus size={15} aria-hidden="true" />}
+            Connect a bank
+          </button>
+        </StepFooter>
+      }
+    >
+      <h2 className={screenTitle}>Bank connections</h2>
+      <p className={screenHelp}>Connected accounts sync transactions. Only mapped accounts sync.</p>
+
       {isAwaitingCompletion && (
-        <div className="flex items-center gap-3 rounded-[10px] border border-[#cbd9e8] bg-[#f3f7fb] p-4 text-xs text-[#385a7a]">
-          <RefreshCw size={16} className="animate-spin shrink-0" />
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-[#cbd9e8] bg-[#f3f7fb] p-4 text-xs text-[#385a7a]">
+          <RefreshCw size={16} className="shrink-0 animate-spin" aria-hidden="true" />
           Yapily authorisation received. Securely exchanging the one-time token and loading your accounts…
         </div>
       )}
+
       {itemsNeedingAttention.length > 0 && (
-        <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="text-[#a9743f] mt-0.5 shrink-0" size={18} strokeWidth={1.9} />
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-[#7a5a30]">Bank Connections Need Attention</h4>
-              <ul className="mt-2 ledger-space-y-1">
-                {itemsNeedingAttention.map((item) => (
-                  <li key={item._id} className="text-xs text-[#7a5a30] leading-relaxed">
-                    <strong>{item.institutionName}</strong>: {' '}
-                    {item.provider !== 'yapily' ? (
-                      'This legacy connection is no longer supported. Disconnect it and reconnect with Yapily.'
-                    ) : (
-                      <>
-                        {item.status === 'consent_expired' && 'Consent has expired. Please re-authenticate.'}
-                        {item.status === 'pending_reauth' && 'Consent requires renewal. Please re-authenticate.'}
-                        {item.status === 'error' && `Error: ${item.errorMessage || 'Unknown error'}`}
-                        {item.daysUntilExpiry !== null && item.daysUntilExpiry <= 7 && item.status === 'active' &&
-                          `Consent expires in ${item.daysUntilExpiry} days.`}
-                        {item.daysUntilReconfirmation !== null && item.daysUntilReconfirmation <= 7 && item.status === 'active' &&
-                          ` Please reconfirm access within ${item.daysUntilReconfirmation} days.`}
-                      </>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="swiss-card-static overflow-hidden">
-        <div className="flex items-center justify-between gap-4 px-6 py-[18px] border-b border-grey-light bg-[#fcfbf9]">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-[9px] bg-white border border-ledger text-grey-dark shrink-0">
-              <Landmark size={16} strokeWidth={1.9} />
-            </span>
-            <div>
-              <h3 className="text-[13.5px] font-bold text-ink uppercase tracking-[0.02em]">Bank connections</h3>
-              <p className="text-[11.5px] text-grey-mid mt-0.5">Connected accounts used for transaction sync.</p>
-            </div>
-          </div>
-          <button
-            onClick={() => openBankPicker()}
-            disabled={isConnecting || isLoadingInstitutions}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
-          >
-            {isLoadingInstitutions ? (
-              <RefreshCw size={14} className="animate-spin" strokeWidth={2} />
-            ) : (
-              <Plus size={14} strokeWidth={2} />
-            )}
-            Connect
-          </button>
-        </div>
-
-        {connectionError && (
-          <div className="p-4 bg-error-light border-b border-error/30">
-            <p className="text-xs text-error">{connectionError}</p>
-          </div>
-        )}
-
-        {bankConnections.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-16 h-16 bg-paper border border-ledger rounded-2xl flex items-center justify-center mx-auto mb-4 text-grey-mid">
-              <Link2 size={28} strokeWidth={1.5} />
-            </div>
-            <h4 className="font-bold text-ink text-sm mb-2">No Banks Connected</h4>
-            <p className="text-xs text-grey-mid max-w-sm mx-auto mb-6 leading-relaxed">
-              Connect your UK bank accounts to sync transactions directly. This uses secure Open Banking technology.
-            </p>
-            <button
-              onClick={() => openBankPicker()}
-              disabled={isConnecting || isLoadingInstitutions}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-[9px] bg-ink text-white text-xs font-bold uppercase tracking-[0.04em] hover:bg-charcoal transition-colors disabled:opacity-50"
-            >
-              {isLoadingInstitutions ? (
-                <RefreshCw size={14} className="animate-spin" />
-              ) : (
-                <Plus size={14} />
-              )}
-              Connect Your First Bank
-            </button>
-          </div>
-        ) : (
-          <div className="ledger-divide-y ledger-divide-grey-light">
-            {bankConnections.map((connection) => (
-              <div key={connection._id} className="px-6 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <span className="inline-flex items-center justify-center w-10 h-10 rounded-[10px] bg-paper border border-ledger text-grey-dark shrink-0">
-                      <Landmark size={18} strokeWidth={1.7} />
-                    </span>
-                    <div className="min-w-0">
-                      <h4 className="text-[14.5px] font-semibold text-ink truncate">{connection.institutionName}</h4>
-                      <p className="mt-0.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-grey-mid">
-                        {connection.provider === 'yapily' ? 'Yapily' : 'Legacy provider'}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(
-                          connection.status,
-                          [connection.consentExpiresAt, connection.consentReconfirmBy]
-                            .filter((value): value is number => typeof value === 'number')
-                            .map((value) => Math.ceil((value - Date.now()) / (24 * 60 * 60 * 1000)))
-                            .sort((a, b) => a - b)[0] ?? null
-                        )}
-                        {connection.lastSyncAt && (
-                          <span className="text-[12.5px] text-grey-mid whitespace-nowrap">
-                            · Synced {new Date(connection.lastSyncAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {connection.provider === 'yapily' &&
-                      (connection.status === 'consent_expired' ||
-                        connection.status === 'pending_reauth' ||
-                        connection.status === 'error' ||
-                        Boolean(connection.consentReconfirmBy && connection.consentReconfirmBy < Date.now() + 7 * 24 * 60 * 60 * 1000) ||
-                        Boolean(connection.consentExpiresAt && connection.consentExpiresAt < Date.now() + 7 * 24 * 60 * 60 * 1000)) && (
-                      <ReauthButton
-                        disabled={isConnecting || isLoadingInstitutions}
-                        onClick={() => openBankPicker(connection)}
-                      />
-                    )}
-                    <button
-                      onClick={() => setEditingItem(editingItem === connection._id ? null : connection._id)}
-                      className="p-2 text-grey-mid hover:text-ink hover:bg-paper rounded-sm transition-colors"
-                    >
-                      <ChevronRight
-                        size={16}
-                        className={`transform transition-transform ${editingItem === connection._id ? 'rotate-90' : ''}`}
-                      />
-                    </button>
-                    {can(currentUser.role, "bank.remove") && (
-                        <button
-                          aria-label={`Remove ${connection.institutionName} connection`}
-                          onClick={() => handleRemoveConnection(connection._id)}
-                          disabled={isRemoving === connection._id}
-                          className="p-2 text-grey-mid hover:text-error hover:bg-error-light rounded-sm transition-colors disabled:opacity-50"
-                        >
-                          {isRemoving === connection._id ? (
-                            <RefreshCw size={14} className="animate-spin" />
-                          ) : (
-                            <Trash2 size={14} />
-                          )}
-                        </button>
-                    )}
-                  </div>
-                </div>
-
-                {editingItem === connection._id && (
-                  <div className="mt-4 pt-4 border-t border-grey-light">
-                    <h5 className="text-[10.5px] font-bold text-grey-mid uppercase tracking-[0.08em] mb-3">Account Mappings</h5>
-                    <div className="ledger-space-y-2.5">
-                      {connection.accounts.map((account) => (
-                        <div key={account.accountId} className="flex items-center justify-between gap-3 px-3.5 py-3 bg-[#fbfaf8] border border-[#efeee9] rounded-[10px]">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-ink truncate">{account.name}</p>
-                            <p className="text-[12px] text-grey-mid mt-0.5">
-                              {renderAccountDetails(account)}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-grey-mid">Map to</span>
-                            <select
-                              value={account.fundId || ''}
-                              onChange={(e) => handleUpdateFundMapping(
-                                connection._id,
-                                account.accountId,
-                                e.target.value ? e.target.value as Id<"funds"> : undefined
-                              )}
-                              className="text-xs p-2 bg-white border border-ledger rounded-[9px] outline-hidden focus:ring-1 focus:ring-ink min-w-[150px] cursor-pointer"
-                            >
-                              <option value="">-- Not mapped --</option>
-                              {funds.map((fund) => (
-                                <option key={fund._id} value={fund._id}>
-                                  {fund.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="mt-3 text-[12px] text-grey-mid">
-                      Only mapped accounts will sync transactions. Each account can map to one fund.
-                    </p>
-                  </div>
+        <div className="mb-4 rounded-2xl border border-[#ecd8bd] bg-[#fcf7f0] p-4">
+          <h4 className="text-sm font-bold text-[#7a5a30]">Needs your attention</h4>
+          <ul className="mt-2 grid gap-1">
+            {itemsNeedingAttention.map((item) => (
+              <li key={item._id} className="text-xs leading-relaxed text-[#7a5a30]">
+                <strong>{item.institutionName}</strong>:{' '}
+                {item.provider !== 'yapily' ? (
+                  'This legacy connection is no longer supported. Disconnect it and reconnect with Yapily.'
+                ) : (
+                  <>
+                    {item.status === 'consent_expired' && 'Consent has expired. Please re-authenticate.'}
+                    {item.status === 'pending_reauth' && 'Consent requires renewal. Please re-authenticate.'}
+                    {item.status === 'error' && `Error: ${item.errorMessage || 'Unknown error'}`}
+                    {item.daysUntilExpiry !== null && item.daysUntilExpiry <= 7 && item.status === 'active' &&
+                      `Consent expires in ${item.daysUntilExpiry} days.`}
+                    {item.daysUntilReconfirmation !== null && item.daysUntilReconfirmation <= 7 && item.status === 'active' &&
+                      ` Please reconfirm access within ${item.daysUntilReconfirmation} days.`}
+                  </>
                 )}
-              </div>
+              </li>
             ))}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-[#fcf7f0] border border-[#ecd8bd] rounded-[10px] px-3.5 py-[11px]">
-        <p className="text-xs text-[#7a5a30] leading-relaxed">
-          <strong className="font-bold">UK Open Banking:</strong> Connections are read-only and provider-specific.
-          You'll be notified before access needs reconfirmation or re-authorisation, without losing imported history or fund mappings.
-        </p>
-      </div>
-
-      {isBankPickerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="bank-picker-title"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) closeBankPicker();
-          }}
-        >
-          <div className="w-full max-w-xl overflow-hidden rounded-[14px] border border-ledger bg-white shadow-xl">
-            <div className="flex items-start justify-between gap-4 border-b border-grey-light bg-[#fcfbf9] px-6 py-5">
-              <div>
-                <h3 id="bank-picker-title" className="text-base font-bold text-ink">
-                  {reauthConnection
-                    ? `Reconnect ${reauthConnection.institutionName}`
-                    : 'Choose a UK bank'}
-                </h3>
-                <p className="mt-1 text-xs leading-relaxed text-grey-mid">
-                  UK institutions are loaded live from Yapily.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeBankPicker}
-                disabled={isConnecting}
-                aria-label="Close bank picker"
-                className="rounded-[8px] p-2 text-grey-mid transition-colors hover:bg-paper hover:text-ink disabled:opacity-50"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="max-h-[60vh] overflow-y-auto p-5">
-              {isLoadingInstitutions ? (
-                <div className="flex items-center justify-center gap-2 py-12 text-sm text-grey-mid">
-                  <RefreshCw size={16} className="animate-spin" />
-                  Checking supported banks...
-                </div>
-              ) : connectionError ? (
-                <div className="rounded-[10px] border border-error/30 bg-error-light p-4 text-sm text-error">
-                  {connectionError}
-                </div>
-              ) : selectableInstitutions.length === 0 ? (
-                <div className="rounded-[10px] border border-[#ecd8bd] bg-[#fcf7f0] p-4 text-sm text-[#7a5a30]">
-                  {reauthConnection
-                    ? `${reauthConnection.institutionName} is not currently available under its saved name. Use Connect to create a fresh link if the bank has been renamed.`
-                    : 'No compatible UK banks are currently available for this Yapily application.'}
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {selectableInstitutions.map((institution) => {
-                    const consentDays = institution.maximumConsentValiditySeconds == null
-                      ? null
-                      : Math.max(
-                          1,
-                          Math.floor(institution.maximumConsentValiditySeconds / (24 * 60 * 60))
-                        );
-
-                    return (
-                      <button
-                        type="button"
-                        key={`${institution.provider}:${institution.institutionId}`}
-                        onClick={() => handleConnectBank(institution)}
-                        disabled={isConnecting}
-                        className="group flex min-h-[112px] flex-col items-start rounded-[11px] border border-ledger bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-ink hover:shadow-[3px_3px_0_#1c1c1c] disabled:translate-y-0 disabled:cursor-wait disabled:opacity-50 disabled:shadow-none"
-                      >
-                        <div className="flex w-full items-start justify-between gap-3">
-                          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[9px] border border-grey-light bg-paper">
-                            {institution.logoUrl ? (
-                              <img
-                                src={institution.logoUrl}
-                                alt=""
-                                className="h-full w-full object-contain p-1.5"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <Landmark size={17} className="text-grey-dark" />
-                            )}
-                          </span>
-                          {isConnecting && (
-                            <RefreshCw size={14} className="animate-spin text-grey-mid" />
-                          )}
-                        </div>
-                        <span className="mt-3 text-sm font-bold text-ink">{institution.name}</span>
-                        <span className="mt-1 text-[11.5px] text-grey-mid">
-                          Yapily
-                          {consentDays ? ` · up to ${consentDays} days` : ' · bank-managed consent'}
-                          {institution.environmentType === 'SANDBOX' ? ' · sandbox' : ''}
-                          {institution.beta && institution.environmentType !== 'SANDBOX' ? ' · beta' : ''}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-grey-light bg-[#fcfbf9] px-6 py-4">
-              <p className="text-[11.5px] leading-relaxed text-grey-mid">
-                ChurchCoin requests read-only access to accounts and transactions through Yapily. Your bank credentials are entered with your bank, not ChurchCoin.
-              </p>
-            </div>
-          </div>
+          </ul>
         </div>
       )}
-    </div>
-  );
-};
 
-const ReauthButton: React.FC<{
-  disabled: boolean;
-  onClick: () => void;
-}> = ({ disabled, onClick }) => {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.05em] border border-[#ecd8bd] text-[#a9743f] rounded-[8px] bg-white hover:bg-[#fcf7f0] transition-colors disabled:opacity-50"
-    >
-      <RefreshCw size={10} />
-      Re-auth
-    </button>
+      {connectionError && !isBankPickerOpen && (
+        <p role="alert" className="mb-4 rounded-2xl bg-error-light px-3.5 py-2.5 text-sm text-error">
+          {connectionError}
+        </p>
+      )}
+
+      {bankConnections.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-ledger p-8 text-center">
+          <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-ledger bg-paper text-grey-mid">
+            <Link2 size={22} aria-hidden="true" />
+          </span>
+          <h3 className="text-sm font-bold text-ink">No bank connected yet</h3>
+          <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-grey-mid">
+            Connect a UK bank to sync transactions through secure Open Banking.
+          </p>
+        </div>
+      ) : (
+        <ul className="grid gap-2">
+          {bankConnections.map((connection) => (
+            <li key={connection._id} className={card}>
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-ledger bg-paper text-grey-dark">
+                  <Landmark size={18} aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-[14.5px] font-semibold text-ink">{connection.institutionName}</h4>
+                  <p className={`${eyebrow} mt-0.5`}>{connection.provider === 'yapily' ? 'Yapily' : 'Legacy provider'}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {getStatusBadge(
+                      connection.status,
+                      [connection.consentExpiresAt, connection.consentReconfirmBy]
+                        .filter((value): value is number => typeof value === 'number')
+                        .map((value) => Math.ceil((value - Date.now()) / (24 * 60 * 60 * 1000)))
+                        .sort((a, b) => a - b)[0] ?? null
+                    )}
+                    {connection.lastSyncAt && (
+                      <span className="whitespace-nowrap text-xs text-grey-mid">
+                        Synced {new Date(connection.lastSyncAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(editingItem === connection._id ? null : connection._id)}
+                    aria-expanded={editingItem === connection._id}
+                    aria-label={`${editingItem === connection._id ? 'Hide' : 'Show'} accounts for ${connection.institutionName}`}
+                    className="flex h-11 w-11 items-center justify-center rounded-[11px] text-grey-mid hover:bg-grey-light hover:text-ink"
+                  >
+                    <ChevronRight
+                      size={18}
+                      aria-hidden="true"
+                      className={`transition-transform ${editingItem === connection._id ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+                  {can(currentUser.role, "bank.remove") && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${connection.institutionName} connection`}
+                      onClick={() => handleRemoveConnection(connection._id)}
+                      disabled={isRemoving === connection._id}
+                      className="flex h-11 w-11 items-center justify-center rounded-[11px] text-grey-mid hover:text-error disabled:opacity-50"
+                    >
+                      {isRemoving === connection._id ? (
+                        <RefreshCw size={16} className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <Trash2 size={16} aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {connection.provider === 'yapily' &&
+                (connection.status === 'consent_expired' ||
+                  connection.status === 'pending_reauth' ||
+                  connection.status === 'error' ||
+                  Boolean(connection.consentReconfirmBy && connection.consentReconfirmBy < Date.now() + 7 * 24 * 60 * 60 * 1000) ||
+                  Boolean(connection.consentExpiresAt && connection.consentExpiresAt < Date.now() + 7 * 24 * 60 * 60 * 1000)) && (
+                  <button
+                    type="button"
+                    onClick={() => openBankPicker(connection)}
+                    disabled={isConnecting || isLoadingInstitutions}
+                    className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-[11px] border border-[#ecd8bd] bg-white px-3.5 text-sm font-bold text-[#a9743f] hover:bg-[#fcf7f0] disabled:opacity-50"
+                  >
+                    <RefreshCw size={13} aria-hidden="true" />
+                    Renew access
+                  </button>
+                )}
+
+              {editingItem === connection._id && (
+                <div className="mt-3 border-t border-ledger pt-3">
+                  <p className={`${eyebrow} mb-2`}>Account mapping</p>
+                  <ul className="grid gap-2">
+                    {connection.accounts.map((account) => (
+                      <li key={account.accountId} className="flex flex-col gap-2 rounded-[13px] border border-ledger bg-paper p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-ink">{account.name}</p>
+                          <p className="mt-0.5 text-xs text-grey-mid">{renderAccountDetails(account)}</p>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-grey-mid">
+                          <span className="shrink-0">Goes to</span>
+                          <select
+                            aria-label={`Fund for ${account.name}`}
+                            value={account.fundId || ''}
+                            onChange={(e) => handleUpdateFundMapping(
+                              connection._id,
+                              account.accountId,
+                              e.target.value ? e.target.value as Id<"funds"> : undefined
+                            )}
+                            className={`${txtInput} h-11 w-full min-w-0 sm:w-48`}
+                          >
+                            <option value="">Not mapped</option>
+                            {funds.map((fund) => (
+                              <option key={fund._id} value={fund._id}>
+                                {fund.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-xs text-grey-mid">Each account can map to one fund. Unmapped accounts don't sync.</p>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-5 rounded-2xl border border-[#ecd8bd] bg-[#fcf7f0] px-3.5 py-3 text-xs leading-relaxed text-[#7a5a30]">
+        <strong className="font-bold">UK Open Banking:</strong> Connections are read-only and provider-specific.
+        You'll be told before access needs reconfirming or renewing, without losing imported history or fund mappings.
+      </p>
+    </WizardFrame>
   );
 };
 

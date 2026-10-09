@@ -1,12 +1,4 @@
 {
-  "components/AICoPilot.tsx": 3,
-  "components/BankConnectionsSettings.tsx": 1,
-  "components/BillingSettings.tsx": 4,
-  "components/DataPrivacySettings.tsx": 2,
-  "components/ErrorBoundary.tsx": 2,
-  "components/Settings.tsx": 2,
-  "components/SubscriptionRequired.tsx": 8,
-  "components/SupportCenter.tsx": 4,
   "components/TransactionManager.tsx": 9,
   "components/intelligence/SmartSuggestionsPanel.tsx": 1,
   "components/landing/LandingPage.tsx": 6,

@@ -1,5 +1,5 @@
 import { can, type UserRole } from "../lib/permissions";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { useAction, useQuery } from "convex/react";
 import { UserButton } from "@clerk/clerk-react";
 import {
@@ -22,6 +22,12 @@ import {
 import type { PlanTier } from "../lib/onboardingIntent";
 import { createClientAttemptId } from "../lib/clientId";
 import { PLANS } from "../lib/plans";
+import { btnLg, btnMd, btnOutline, btnPrimary, screenTitle } from "./wizard/ui";
+
+// Sheet-style panels for the blocking states, built from the walkthrough kit.
+const sheetCard = "mx-auto max-w-lg rounded-2xl border border-ledger bg-white p-8 text-center";
+const actionBtn = `${btnPrimary} ${btnMd} !w-auto px-5`;
+const secondaryBtn = `${btnOutline} ${btnMd} !w-auto px-5`;
 
 interface SubscriptionRequiredProps {
   organizationName: string;
@@ -32,7 +38,7 @@ interface SubscriptionRequiredProps {
   onOpenSupport: () => void;
 }
 
-const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
+const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
   organizationName,
   userRole,
   selectedPlan,
@@ -135,7 +141,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
           <button
             type="button"
             onClick={onOpenSupport}
-            className="btn-outline inline-flex min-h-9 items-center gap-2 px-3 text-[11px] font-bold"
+            className={`${btnOutline} h-11 !w-auto gap-2 px-3 text-xs`}
           >
             <LifeBuoy size={14} />
             <span className="hidden sm:inline">Help & feedback</span>
@@ -155,14 +161,14 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
     return (
       <div className="min-h-screen bg-paper flex flex-col">
         {header}
-        <main className="flex-1 grid place-items-center p-6">
-          <div className="swiss-card-static max-w-lg p-8 text-center">
+        <main className="grid flex-1 place-items-center p-6">
+          <div className={sheetCard}>
             {expired ? (
               <Clock3 size={34} className="mx-auto text-amber mb-5" />
             ) : (
               <Loader2 size={34} className="mx-auto text-sage animate-spin mb-5" />
             )}
-            <h1 className="text-2xl font-bold text-ink">
+            <h1 className={screenTitle}>
               {expired ? "This demo has expired" : "Preparing your demo church"}
             </h1>
             <p className="mt-3 text-sm text-grey-mid leading-relaxed">
@@ -180,23 +186,23 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
     return (
       <div className="min-h-screen bg-paper flex flex-col">
         {header}
-        <main className="flex-1 grid place-items-center p-6">
-          <div className="swiss-card-static max-w-lg p-8 text-center">
+        <main className="grid flex-1 place-items-center p-6">
+          <div className={sheetCard}>
             <Loader2 size={36} className="mx-auto text-sage animate-spin mb-5" />
-            <h1 className="text-2xl font-bold text-ink">Confirming your subscription</h1>
+            <h1 className={screenTitle}>Confirming your subscription</h1>
             <p className="mt-3 text-sm text-grey-mid leading-relaxed">
               Stripe has returned you to ChurchCoin. Access will open after the signed billing event is verified.
             </p>
             {processingTimedOut && (
-              <div className="mt-6 ledger-space-y-3">
+              <div className="mt-6 space-y-3">
                 <p className="text-xs text-amber-dark">
                   This is taking longer than expected. Your payment has not been charged again.
                 </p>
-                <div className="flex gap-3 justify-center">
-                  <button onClick={() => window.location.reload()} className="btn-primary inline-flex items-center gap-2">
-                    <RefreshCw size={14} /> Check again
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button type="button" onClick={() => window.location.reload()} className={actionBtn}>
+                    <RefreshCw size={14} aria-hidden="true" /> Check again
                   </button>
-                  <button onClick={clearCheckoutResult} className="btn-secondary">Return to plans</button>
+                  <button type="button" onClick={clearCheckoutResult} className={secondaryBtn}>Return to plans</button>
                 </div>
               </div>
             )}
@@ -210,10 +216,10 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
     return (
       <div className="min-h-screen bg-paper flex flex-col">
         {header}
-        <main className="flex-1 grid place-items-center p-6">
-          <div className="swiss-card-static max-w-lg p-8 text-center">
+        <main className="grid flex-1 place-items-center p-6">
+          <div className={sheetCard}>
             <AlertTriangle size={34} className="mx-auto text-amber mb-5" />
-            <h1 className="text-2xl font-bold text-ink">Billing action required</h1>
+            <h1 className={screenTitle}>Billing action required</h1>
             <p className="mt-3 text-sm text-grey-mid leading-relaxed">
               {trialExpired
                 ? <>The free trial for <strong>{organizationName}</strong> has ended. Ask an organisation administrator to choose a plan.</>
@@ -232,17 +238,18 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
     return (
       <div className="min-h-screen bg-paper flex flex-col">
         {header}
-        <main className="flex-1 grid place-items-center p-6">
-          <div className="swiss-card-static max-w-lg p-8 text-center">
+        <main className="grid flex-1 place-items-center p-6">
+          <div className={sheetCard}>
             <AlertTriangle size={36} className="mx-auto text-amber mb-5" />
-            <h1 className="text-2xl font-bold text-ink">Restore your subscription</h1>
+            <h1 className={screenTitle}>Restore your subscription</h1>
             <p className="mt-3 text-sm text-grey-mid leading-relaxed">
               The subscription for <strong>{organizationName}</strong> is {subscription.status.replace("_", " ")}. Open Stripe to update the payment method or settle the outstanding invoice.
             </p>
             <button
+              type="button"
               onClick={handleManageBilling}
               disabled={isPortalLoading}
-              className="btn-primary mt-6 inline-flex items-center gap-2"
+              className={`${actionBtn} mt-6`}
             >
               {isPortalLoading ? <Loader2 size={15} className="animate-spin" /> : <Crown size={15} />}
               Manage billing
@@ -265,7 +272,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
               {trialExpired ? <Clock3 size={16} /> : <Crown size={16} />}
               {trialExpired ? "Your 14-day trial is complete" : "Your church ledger is ready"}
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-ink tracking-tight mb-4">
+            <h1 className="mb-4 text-3xl font-bold tracking-tight text-ink md:text-4xl">
               {trialExpired ? "Keep ChurchCoin working for your church" : "Choose a plan to continue"}
             </h1>
             <p className="text-grey-dark max-w-2xl mx-auto">
@@ -302,7 +309,7 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
                     <span className="text-4xl font-bold text-ink font-mono">£{plan.price}</span>
                     <span className="text-grey-mid text-sm">/month</span>
                   </div>
-                  <ul className="ledger-space-y-3 mb-6 min-h-28">
+                  <ul className="space-y-3 mb-6 min-h-28">
                     {plan.features.map((feature) => (
                       <li key={feature} className="flex items-start gap-2 text-sm">
                         <Check size={16} className="text-sage-dark shrink-0 mt-0.5" />
@@ -311,15 +318,12 @@ const SubscriptionRequired: React.FC<SubscriptionRequiredProps> = ({
                     ))}
                   </ul>
                   <button
+                    type="button"
                     onClick={() => handleSubscribe(plan.id)}
                     disabled={loading !== null}
-                    className={`w-full py-3 rounded-sm text-sm font-bold uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
-                      preferred
-                        ? "bg-ink text-white hover:bg-charcoal"
-                        : "bg-white border border-ledger text-grey-dark hover:border-ink"
-                    } disabled:opacity-50`}
+                    className={`${preferred ? btnPrimary : btnOutline} ${btnLg}`}
                   >
-                    {isLoading ? <Loader2 className="animate-spin" size={16} /> : <>Continue <ArrowRight size={14} /></>}
+                    {isLoading ? <Loader2 className="animate-spin" size={16} aria-hidden="true" /> : <>Continue <ArrowRight size={14} aria-hidden="true" /></>}
                   </button>
                 </div>
               );

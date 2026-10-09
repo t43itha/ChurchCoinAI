@@ -1,14 +1,50 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Sparkles, RotateCcw, MessageSquare } from 'lucide-react';
+import { useState, useRef, useEffect, type FC } from 'react';
+import { Send, RotateCcw } from 'lucide-react';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
+import HubHeader from './hub/HubHeader';
+import { btnMd, btnOutline, chip, eyebrow, txtInput } from './wizard/ui';
 
 interface Message {
     id: string;
     sender: 'user' | 'ai';
     text: string;
     timestamp: Date;
+}
+
+export type AnswerBlock = { kind: 'paragraph'; text: string } | { kind: 'list'; items: string[] };
+
+const BULLET = /^([-*•]|\d+[.)])\s+/;
+
+// Ward answers as plain text. A blank line ends a block, a run of "- " or "1. " lines becomes a list,
+// and other consecutive lines join into one paragraph.
+export function answerBlocks(text: string): AnswerBlock[] {
+    const blocks: AnswerBlock[] = [];
+    let paragraph: string[] = [];
+    let items: string[] = [];
+    const flush = () => {
+        if (paragraph.length > 0) blocks.push({ kind: 'paragraph', text: paragraph.join(' ') });
+        if (items.length > 0) blocks.push({ kind: 'list', items });
+        paragraph = [];
+        items = [];
+    };
+    for (const raw of text.split('\n')) {
+        const line = raw.trim();
+        if (!line) {
+            flush();
+        } else if (BULLET.test(line)) {
+            if (paragraph.length > 0) blocks.push({ kind: 'paragraph', text: paragraph.join(' ') });
+            paragraph = [];
+            items.push(line.replace(BULLET, ''));
+        } else {
+            if (items.length > 0) blocks.push({ kind: 'list', items });
+            items = [];
+            paragraph.push(line);
+        }
+    }
+    flush();
+    return blocks;
 }
 
 const welcomeMessage: Message = {
@@ -26,7 +62,7 @@ const starterPrompts = [
     'Which donors need follow-up?'
 ];
 
-const AICoPilot: React.FC = () => {
+const AICoPilot: FC = () => {
     const giftAidEnabled = useGiftAidEnabled();
     const visibleStarterPrompts = giftAidEnabled
         ? [...starterPrompts.slice(0, 3), 'What Gift Aid can we claim?', ...starterPrompts.slice(3)]
@@ -98,7 +134,7 @@ const AICoPilot: React.FC = () => {
             });
             const responseText = await chatWithTreasurer({ message: userMsg.text, contextData: contextSummary });
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: responseText || "I couldn't process that.", timestamp: new Date() }]);
-        } catch (error) {
+        } catch {
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: "Connection error.", timestamp: new Date() }]);
         } finally {
             setIsThinking(false);
@@ -108,103 +144,96 @@ const AICoPilot: React.FC = () => {
     const showStarterPrompts = messages.length === 1 && messages[0].id === 'welcome' && !isThinking;
 
     return (
-        <div className="ledger-space-y-[22px] max-w-7xl mx-auto pb-10 animate-enter">
-            <header className="swiss-card-static p-6 md:p-[26px] flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0">
-                        <Sparkles size={19} />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-grey-mid mb-2">Gemini 2.5 Flash Connected</p>
-                        <h2 className="font-heading text-[32px] md:text-[40px] leading-none text-ink tracking-normal">Ask Ward</h2>
-                        <p className="mt-3 text-[15px] text-grey-mid max-w-2xl">Your AI finance copilot — grounded in the full ledger.</p>
-                    </div>
-                </div>
-                <button
-                    type="button"
-                    onClick={resetChat}
-                    className="btn-secondary h-11 px-4 inline-flex items-center justify-center gap-2 self-start md:self-auto"
-                >
-                    <RotateCcw size={16} />
-                    <span>New chat</span>
-                </button>
-            </header>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 pb-4">
+            <HubHeader
+                title="Ask Ward"
+                status="Questions about your church's money, answered from your books."
+                actions={
+                    <button type="button" onClick={resetChat} className={`${btnOutline} ${btnMd} !w-auto px-4`}>
+                        <RotateCcw size={15} aria-hidden="true" />
+                        New chat
+                    </button>
+                }
+            />
 
-            <section className="swiss-card bg-white overflow-hidden flex flex-col min-h-[540px] h-[calc(100vh-13rem)]">
-                <div className="flex-1 overflow-y-auto bg-[#fcfbf9] p-5 md:p-6 ledger-space-y-5">
+            <section className="flex h-[calc(100dvh-16rem)] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-ledger bg-white">
+                <div className="flex-1 space-y-3 overflow-y-auto bg-paper p-4" aria-live="polite">
                     {messages.map((msg) => (
-                        <div key={msg.id} className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            {msg.sender === 'ai' && (
-                                <div className="w-9 h-9 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0 mt-1">
-                                    <Sparkles size={15} />
-                                </div>
-                            )}
-                            <div className={`max-w-[86%] md:max-w-[74%] p-4 md:p-[18px] text-sm md:text-[15px] leading-relaxed ${
-                                msg.sender === 'user'
-                                    ? 'bg-ink text-white rounded-2xl rounded-br-md'
-                                    : 'bg-white text-grey-dark border border-ledger rounded-2xl rounded-tl-md'
-                            }`}>
+                        msg.sender === 'user' ? (
+                            <div key={msg.id} className="ml-auto max-w-[82%] rounded-2xl rounded-br-md bg-ink px-4 py-3 text-[15px] leading-relaxed text-white">
                                 <p className="whitespace-pre-wrap">{msg.text}</p>
                             </div>
-                        </div>
+                        ) : (
+                            <div key={msg.id} className="mr-auto max-w-[88%] rounded-2xl rounded-tl-md border border-ledger bg-white px-4 py-3 text-[15px] leading-relaxed text-ink">
+                                <p className={eyebrow}>Ward</p>
+                                <div className="mt-1.5 space-y-2">
+                                    {answerBlocks(msg.text).map((block, index) =>
+                                        block.kind === 'list' ? (
+                                            <ul key={index} className="list-disc space-y-1 pl-5">
+                                                {block.items.map((item, itemIndex) => (
+                                                    <li key={itemIndex}>{item}</li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p key={index}>{block.text}</p>
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                        )
                     ))}
 
-                    {showStarterPrompts && (
-                        <div className="md:ml-12 max-w-3xl">
-                            <p className="text-[11px] font-mono uppercase tracking-[0.08em] text-grey-mid mb-3">Try asking</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {visibleStarterPrompts.map((prompt) => (
-                                    <button
-                                        key={prompt}
-                                        type="button"
-                                        onClick={() => handleSend(prompt)}
-                                        className="group min-h-[54px] text-left bg-white border border-ledger rounded-xl px-4 py-3 text-[13px] font-semibold text-grey-dark hover:border-amber hover:bg-[#fffdf9] transition-colors flex items-center gap-3"
-                                    >
-                                        <MessageSquare size={15} className="text-grey-mid group-hover:text-amber shrink-0" />
-                                        <span>{prompt}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {isThinking && (
-                        <div className="flex justify-start gap-3">
-                            <div className="w-9 h-9 bg-ink rounded-xl flex items-center justify-center text-white shadow-soft-sm shrink-0 mt-1">
-                                <Loader2 size={15} className="animate-spin" />
-                            </div>
-                            <div className="bg-white border border-ledger rounded-2xl rounded-tl-md p-4 flex items-center gap-2">
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse" />
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse [animation-delay:120ms]" />
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse [animation-delay:240ms]" />
-                                <span className="ml-2 text-xs text-grey-mid font-medium">Analysing your ledger…</span>
-                            </div>
+                        <div className="mr-auto flex items-center gap-2 rounded-2xl rounded-tl-md border border-ledger bg-white px-4 py-3">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber" />
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber [animation-delay:120ms]" />
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber [animation-delay:240ms]" />
+                            <span className="ml-2 text-xs font-medium text-grey-mid">Checking the books…</span>
                         </div>
                     )}
                     <div ref={messagesEndRef} />
                 </div>
 
-                <div className="p-4 bg-white border-t border-ledger">
-                    <div className="flex gap-3">
+                <div className="border-t border-ledger bg-white p-3">
+                    {showStarterPrompts && (
+                        <div className="mb-3 flex gap-2 overflow-x-auto pb-1" aria-label="Suggested questions">
+                            {visibleStarterPrompts.map((prompt) => (
+                                <button key={prompt} type="button" onClick={() => handleSend(prompt)} className={`${chip} shrink-0`}>
+                                    {prompt}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <form
+                        className="flex gap-2.5"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleSend();
+                        }}
+                    >
+                        <label htmlFor="ward-question" className="sr-only">
+                            Ask Ward a question
+                        </label>
                         <input
+                            id="ward-question"
                             type="text"
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            placeholder="Ask Ward about your finances…"
-                            className="flex-1 h-12 bg-paper border border-ledger rounded-xl px-4 text-sm focus:outline-hidden focus:ring-[3px] focus:ring-ink/10 focus:border-ink transition-all"
+                            placeholder="Ask about your money…"
+                            className={`${txtInput} h-12`}
                         />
                         <button
-                            type="button"
+                            type="submit"
                             aria-label="Send message"
-                            onClick={() => handleSend()}
                             disabled={!inputValue.trim() || isThinking}
-                            className="h-12 w-12 shrink-0 flex items-center justify-center rounded-xl bg-sage text-white transition-colors enabled:hover:opacity-90 disabled:bg-[#dcd9d3] disabled:cursor-default"
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[13px] bg-ink text-white transition-colors hover:bg-charcoal disabled:opacity-35"
                         >
-                            <Send size={18} />
+                            <Send size={18} aria-hidden="true" />
                         </button>
-                    </div>
-                    <p className="mt-3 text-[11px] text-grey-mid text-center">Ward references your live financial data. Always review figures before filing or sharing.</p>
+                    </form>
+                    <p className="mt-2.5 text-center text-[11px] text-grey-mid">
+                        Ward reads your live books. Check figures before you file or share them.
+                    </p>
                 </div>
             </section>
         </div>

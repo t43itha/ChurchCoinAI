@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { ArrowLeft } from "lucide-react";
 import { clerkAuthAppearance } from "@/lib/clerkAppearance";
+import { linkBtn } from "./wizard/ui";
 
 interface AuthPageProps {
   onBack?: () => void;
@@ -33,8 +34,8 @@ const BrandPanel: React.FC = () => (
     </div>
 
     <div className="relative z-10 mt-auto">
-      <div className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-[#c79a5f] mb-[18px]">
-        Church Finance Platform
+      <div className="font-mono text-[12px] tracking-[0.04em] text-[#c79a5f] mb-[18px]">
+        Church finance, kept in order
       </div>
       <h2 className="text-[28px] leading-[1.18] font-bold tracking-tight m-0">
         Faithful stewardship,
@@ -70,11 +71,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode = "signi
       >
         {/* Back to landing page button */}
         {onBack && (
-          <button
-            onClick={onBack}
-            className="absolute top-6 left-6 flex items-center gap-2 text-sm text-grey-mid hover:text-ink transition-colors"
-          >
-            <ArrowLeft size={16} />
+          <button type="button" onClick={onBack} className={`${linkBtn} absolute left-4 top-4 gap-1.5`}>
+            <ArrowLeft size={16} aria-hidden="true" />
             Back to home
           </button>
         )}
@@ -103,8 +101,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onBack, initialMode = "signi
 
           <div className="mt-4 text-center">
             <button
+              type="button"
               onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-              className="text-sm text-grey-mid hover:text-ink transition-colors"
+              className={linkBtn}
             >
               {mode === "signin"
                 ? "Don't have an account? Sign up"
