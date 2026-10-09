@@ -8,7 +8,6 @@ import { incomeByProgramme } from "../../lib/programmeIncome";
 import { buildHeadline, pickMover } from "../../lib/reportHeadline";
 import { financialYearPeriod, financialYearStartFor, isWithinRange } from "../../lib/reportPeriods";
 import { percentChange, rankCategoryGroups } from "../../lib/reportSummary";
-import { ReceiptRow } from "../wizard/Receipt";
 import { sectionCard, sectionHead, sectionTitle } from "./classes";
 import { DetailGroup, DetailSection } from "./DetailSection";
 import { exportAnnualExcel, exportAnnualPdf, useReportExport } from "./exportReport";
@@ -140,8 +139,6 @@ const AnnualReport: React.FC<AnnualReportProps> = ({
       fundStatement={fundStatement}
       asAt={fundClosing}
       readiness={readiness}
-      extraTitle="Reserves"
-      extra={<ReceiptRow label="Reserve cover" value={monthsLabel(reserveCover.months)} />}
     />
   );
 

@@ -13,7 +13,7 @@ import {
 import { roundMoney, sumMoney } from "../../convex/lib/money";
 import type { TrendPoint } from "../../lib/reportSummary";
 import { ComparisonToggle } from "./ComparisonToggle";
-import { formatCompactCurrency, formatCurrency } from "./format";
+import { formatCompactCurrency, formatCurrency, niceAxisTicks } from "./format";
 import { AXIS_TEXT, GRID_LINE, INCOME_SERIES, PRIOR_YEAR_LINE, SPENDING_SERIES } from "./palette";
 
 export interface AnnualTrendChartProps {
@@ -149,6 +149,7 @@ export const AnnualTrendChart: React.FC<AnnualTrendChartProps> = ({ points }) =>
 
   const isMonthly = view === "monthly";
   const data = isMonthly ? monthlyData : cumulativeData;
+  const axisTicks = niceAxisTicks(data.flatMap((d) => [d.income ?? 0, d.spending ?? 0, d.priorIncome ?? 0]));
   const ariaLabel = isMonthly ? "Income and spending by month" : "Cumulative income and spending by month";
 
   return (
@@ -159,7 +160,10 @@ export const AnnualTrendChart: React.FC<AnnualTrendChartProps> = ({ points }) =>
           <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barGap={2}>
             <CartesianGrid vertical={false} stroke={GRID_LINE} />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tick={TICK_STYLE} />
-            <YAxis tickFormatter={formatCompactCurrency} tickLine={false} axisLine={false} width={52} tick={TICK_STYLE} />
+            <YAxis
+              ticks={axisTicks}
+              domain={[0, axisTicks[axisTicks.length - 1]]}
+              tickFormatter={formatCompactCurrency} tickLine={false} axisLine={false} width={52} tick={TICK_STYLE} />
             <Tooltip formatter={(value) => formatCurrency(Number(value))} cursor={{ fill: "#f7f6f4" }} />
             {isMonthly ? (
               <>

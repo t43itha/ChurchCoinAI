@@ -19,8 +19,8 @@ const HEADER_CELL = "text-xs font-bold text-grey-mid";
 // Stacked on phones (label / amount / change, bar full width underneath); one row from sm up.
 const gridClass = (showChange: boolean): string =>
   showChange
-    ? "grid grid-cols-[1fr_auto_auto] sm:grid-cols-[minmax(120px,1.3fr)_minmax(80px,2fr)_96px_64px]"
-    : "grid grid-cols-[1fr_auto] sm:grid-cols-[minmax(120px,1.3fr)_minmax(80px,2fr)_96px]";
+    ? "grid grid-cols-[1fr_auto_auto] sm:grid-cols-[minmax(150px,1.7fr)_minmax(60px,1.3fr)_96px_64px]"
+    : "grid grid-cols-[1fr_auto] sm:grid-cols-[minmax(150px,1.7fr)_minmax(60px,1.3fr)_96px]";
 
 const changeClass = (side: RankedBreakdownProps["side"], change: number | null): string => {
   if (change === null || change === 0) return "text-grey-mid";
@@ -91,7 +91,7 @@ export const RankedBreakdown: React.FC<RankedBreakdownProps> = ({
                         className={`shrink-0 text-grey-mid transition-transform ${isOpen ? "rotate-90" : ""}`}
                       />
                     )}
-                    <span className="truncate">{row.mainCategory}</span>
+                    <span className="truncate" title={row.mainCategory}>{row.mainCategory}</span>
                   </span>
                   <span className="order-last col-span-full block h-2.5 overflow-hidden rounded bg-grey-light sm:order-none sm:col-span-1">
                     <span className="block h-full rounded-r" style={{ width: `${widthPct}%`, backgroundColor: seriesColour }} />

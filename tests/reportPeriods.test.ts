@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  clipToElapsedDays,
   financialYearPeriod,
   financialYearStartFor,
   likeForLikePrior,
@@ -170,6 +171,33 @@ describe("likeForLikePrior", () => {
     expect(likeForLikePrior(period)).toEqual({
       startDate: "2024-04-06",
       endDate: "2025-04-05",
+    });
+  });
+});
+
+describe("clipToElapsedDays", () => {
+  it("cuts a comparison month to the days an in-progress month has run", () => {
+    const october = monthPeriod(2026, 9, "2026-10-08");
+    expect(clipToElapsedDays(monthPeriod(2026, 8, "2026-10-08"), october)).toEqual({
+      startDate: "2026-09-01",
+      endDate: "2026-09-08",
+    });
+  });
+
+  it("never runs past a shorter comparison month", () => {
+    const march = monthPeriod(2026, 2, "2026-03-31");
+    const elapsedMarch = { ...march, isComplete: false, throughDate: "2026-03-30" };
+    expect(clipToElapsedDays(monthPeriod(2026, 1, "2026-03-31"), elapsedMarch)).toEqual({
+      startDate: "2026-02-01",
+      endDate: "2026-02-28",
+    });
+  });
+
+  it("leaves a finished period's comparison whole", () => {
+    const september = monthPeriod(2026, 8, "2026-10-08");
+    expect(clipToElapsedDays(monthPeriod(2026, 7, "2026-10-08"), september)).toEqual({
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
     });
   });
 });

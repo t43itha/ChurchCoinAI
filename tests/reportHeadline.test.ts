@@ -114,6 +114,21 @@ describe("buildHeadline", () => {
   });
 });
 
+describe("mover wording", () => {
+  it("only names a mover that moved the same way as the total", () => {
+    const base = { ...month, net: 100, expenditureChange: null };
+    expect(
+      buildHeadline({ ...base, incomeChange: 10, incomeMover: { name: "Offerings", change: 31 } }).rest
+    ).toBe(". Income was up 10% on August, mostly Offerings.");
+    expect(
+      buildHeadline({ ...base, incomeChange: 10, incomeMover: { name: "Events", change: -40 } }).rest
+    ).toBe(". Income was up 10% on August.");
+    expect(
+      buildHeadline({ ...base, incomeChange: 0.4, incomeMover: { name: "Building Fund", change: -20 } }).rest
+    ).toBe(". Income was level with August.");
+  });
+});
+
 describe("pickMover", () => {
   it("picks the largest move in pounds among categories moving 10% or more", () => {
     expect(

@@ -51,6 +51,12 @@ const wholePercent = (percent: number) => Math.round(Math.abs(percent));
 
 const capitalise = (sentence: string) => sentence.charAt(0).toUpperCase() + sentence.slice(1);
 
+// "mostly X" only explains a real move in the same direction as the total.
+function moverPhrase(change: number, mover?: HeadlineMover): string {
+  if (!mover || mover.change === null || Math.abs(change) < 1) return "";
+  return Math.sign(mover.change) === Math.sign(change) ? `, mostly ${mover.name}` : "";
+}
+
 function incomeSentence(input: HeadlineInput, hasExpenditureSentence: boolean): string | null {
   const change = input.incomeChange;
   if (change === null) return null;
@@ -61,7 +67,7 @@ function incomeSentence(input: HeadlineInput, hasExpenditureSentence: boolean): 
     const direction = change > 0 ? "up" : "down";
     phrase = `${direction} ${wholePercent(change)}% on ${input.comparisonLabel}`;
   }
-  const mover = input.incomeMover ? `, mostly ${input.incomeMover.name}` : "";
+  const mover = moverPhrase(change, input.incomeMover);
   return `Income ${verb} ${phrase}${mover}${hasExpenditureSentence ? ";" : "."}`;
 }
 
@@ -72,7 +78,7 @@ function expenditureSentence(input: HeadlineInput): string | null {
   let phrase: string;
   if (Math.abs(change) < 1) phrase = "held steady";
   else phrase = `${change > 0 ? "rose" : "fell"} ${wholePercent(change)}%`;
-  const mover = input.expenditureMover ? `, mostly ${input.expenditureMover.name}` : "";
+  const mover = moverPhrase(change, input.expenditureMover);
   return `spending ${phrase}${mover}.`;
 }
 

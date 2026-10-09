@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from "recharts";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
 import { AXIS_TEXT, GRID_LINE, INCOME_SERIES, SPENDING_SERIES } from "./palette";
-import { formatCompactCurrency, formatCurrency, formatShortDate } from "./format";
+import { formatCompactCurrency, formatCurrency, formatShortDate, niceAxisTicks } from "./format";
 
 export interface WeeklyChartWeek {
   weekEnding: string;
@@ -65,6 +65,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({ weeks, monthEnd }) => 
     spending: week.paymentsTotal,
     net: roundMoney(week.receiptsTotal - week.paymentsTotal),
   }));
+  const axisTicks = niceAxisTicks(data.flatMap((d) => [d.income, d.spending]));
 
   const incomeTotal = sumMoney(weeks, (week) => week.receiptsTotal);
   const spendingTotal = sumMoney(weeks, (week) => week.paymentsTotal);
@@ -125,6 +126,8 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({ weeks, monthEnd }) => 
               <CartesianGrid vertical={false} stroke={GRID_LINE} />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: AXIS_TEXT }} />
               <YAxis
+                ticks={axisTicks}
+                domain={[0, axisTicks[axisTicks.length - 1]]}
                 tickFormatter={formatCompactCurrency}
                 tickLine={false}
                 axisLine={false}

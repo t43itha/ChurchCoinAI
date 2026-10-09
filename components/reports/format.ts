@@ -34,8 +34,19 @@ export const formatSignedCurrency = (amount: number): string => {
 export const formatCompactCurrency = (amount: number): string => {
   const abs = Math.abs(amount);
   if (abs < 1000) return GBP_WHOLE.format(Math.round(amount) || 0);
-  const thousands = Math.round(amount / 1000);
-  return `£${thousands.toLocaleString("en-GB")}k`;
+  const thousands = Math.round(amount / 100) / 10;
+  return `£${thousands.toLocaleString("en-GB", { maximumFractionDigits: 1 })}k`;
+};
+
+// Evenly spaced y-axis ticks from 0 on a 1 / 2 / 2.5 / 5 x 10^n step, about four
+// intervals, so the axis reads £5k, £10k, £15k rather than £8k, £15k, £23k.
+export const niceAxisTicks = (values: number[]): number[] => {
+  const max = Math.max(0, ...values);
+  if (max === 0) return [0];
+  const rough = max / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const step = [1, 2, 2.5, 5, 10].map((factor) => factor * magnitude).find((candidate) => candidate >= rough)!;
+  return Array.from({ length: Math.ceil(max / step) + 1 }, (_, index) => index * step);
 };
 
 // "+4%" / "−12%" / "0%"; "—" when there is no comparison.

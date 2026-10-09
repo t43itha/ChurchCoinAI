@@ -12,6 +12,7 @@ import {
 import { resolveReportingMainCategory } from "../intelligence/categorization/categoryResolver";
 import { loanReportRows } from "../../lib/movementMatching";
 import {
+  clipToElapsedDays,
   financialYearPeriod,
   financialYearStartFor,
   isWithinRange,
@@ -478,9 +479,6 @@ function rowsIn(rows: ReportTransaction[], range: DateRange): ReportTransaction[
   return rows.filter((row) => isWithinRange(row.date, range));
 }
 
-function rangeOf(period: DateRange): DateRange {
-  return { startDate: period.startDate, endDate: period.endDate };
-}
 
 function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
@@ -725,8 +723,12 @@ export const monthlyReportData = query({
         netBankable: roundMoney(grossIncome - totalExpenditure),
       },
       comparison: {
-        previousMonth: comparisonFor(inputs, previous.label, rangeOf(previous)),
-        sameMonthLastYear: comparisonFor(inputs, sameMonthLastYear.label, rangeOf(sameMonthLastYear)),
+        previousMonth: comparisonFor(inputs, previous.label, clipToElapsedDays(previous, period)),
+        sameMonthLastYear: comparisonFor(
+          inputs,
+          sameMonthLastYear.label,
+          clipToElapsedDays(sameMonthLastYear, period)
+        ),
       },
       trend,
       yearToDate: {

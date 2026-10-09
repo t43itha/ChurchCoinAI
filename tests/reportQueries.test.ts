@@ -129,7 +129,7 @@ describe("monthly comparison", () => {
       ])
     );
 
-    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 0, today: "2026-01-20" });
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 0, today: "2026-02-03" });
 
     expect(report.monthName).toBe("January 2026");
     expect(report.comparison.previousMonth).toMatchObject({
@@ -143,5 +143,26 @@ describe("monthly comparison", () => {
       totals: { income: 30 },
     });
     expect(report.yearToDate.label).toBe("2025/26");
+  });
+
+  it("compares an in-progress month with the same days of earlier months", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("early-september", { date: "2026-09-05", amount: 100 }),
+        transaction("late-september", { date: "2026-09-25", amount: 900 }),
+        transaction("early-october", { date: "2026-10-04", amount: 120 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-08" });
+
+    expect(report.comparison.previousMonth).toMatchObject({
+      range: { startDate: "2026-09-01", endDate: "2026-09-08" },
+      totals: { income: 100 },
+    });
+    expect(report.comparison.sameMonthLastYear.range).toEqual({
+      startDate: "2025-10-01",
+      endDate: "2025-10-08",
+    });
   });
 });

@@ -53,10 +53,14 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
 }) => {
   const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const [today] = useState(() => formatLocalDateInputValue(new Date()));
-  const [selected, setSelected] = useState(() => ({
-    year: Number(today.slice(0, 4)),
-    month: Number(today.slice(5, 7)) - 1,
-  }));
+  // Opens on the last complete month, the one being closed, as the dashboard does.
+  const [selected, setSelected] = useState(() => {
+    const currentMonth = Number(today.slice(5, 7)) - 1;
+    const currentYear = Number(today.slice(0, 4));
+    return currentMonth === 0
+      ? { year: currentYear - 1, month: 11 }
+      : { year: currentYear, month: currentMonth - 1 };
+  });
   const [compareWith, setCompareWith] = useState<CompareWith>("previous");
   const { busy, run } = useReportExport();
   const { year, month } = selected;
@@ -119,6 +123,7 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
   const previousShort = previous.label.slice(0, 3);
   const previousName = previous.label.split(" ")[0];
   const lastYearShort = shortLabel(lastYear.label);
+  const sameDays = reportData.period.isComplete ? "" : " (same days)";
   const incomeVsPrevious = percentChange(totals.grossIncome, previous.totals.income);
   const incomeVsLastYear = percentChange(totals.grossIncome, lastYear.totals.income);
   const spendingVsPrevious = percentChange(totals.totalExpenditure, previous.totals.expenditure);
@@ -130,7 +135,7 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
     net: totals.netBankable,
     incomeChange: incomeVsPrevious,
     expenditureChange: spendingVsPrevious,
-    comparisonLabel: previousName,
+    comparisonLabel: reportData.period.isComplete ? previousName : `the same days of ${previousName}`,
     incomeMover: pickMover(rankCategoryGroups(receipts, previous.receipts)),
     expenditureMover: pickMover(rankCategoryGroups(payments, previous.payments)),
     missionTitheDue: missionTithe.titheToPay,
@@ -219,8 +224,8 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
               value={formatCurrencyWhole(totals.grossIncome)}
               sparkline={{ values: trend.map((point) => point.income), color: INCOME_SERIES, labels: trendLabels }}
               lines={[
-                <ChangeLine change={incomeVsPrevious} versus={`vs ${previousShort}`} polarity="income" />,
-                <ChangeLine change={incomeVsLastYear} versus={`vs ${lastYearShort}`} polarity="income" />,
+                <ChangeLine change={incomeVsPrevious} versus={`vs ${previousShort}${sameDays}`} polarity="income" />,
+                <ChangeLine change={incomeVsLastYear} versus={`vs ${lastYearShort}${sameDays}`} polarity="income" />,
               ]}
             />
             <KpiCard
@@ -228,8 +233,8 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
               value={formatCurrencyWhole(totals.totalExpenditure)}
               sparkline={{ values: trend.map((point) => point.expenditure), color: SPENDING_SERIES, labels: trendLabels }}
               lines={[
-                <ChangeLine change={spendingVsPrevious} versus={`vs ${previousShort}`} polarity="spending" />,
-                <ChangeLine change={spendingVsLastYear} versus={`vs ${lastYearShort}`} polarity="spending" />,
+                <ChangeLine change={spendingVsPrevious} versus={`vs ${previousShort}${sameDays}`} polarity="spending" />,
+                <ChangeLine change={spendingVsLastYear} versus={`vs ${lastYearShort}${sameDays}`} polarity="spending" />,
               ]}
             />
             <KpiCard
@@ -265,7 +270,7 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
                 side="income"
                 total={totals.grossIncome}
                 rows={receiptRows}
-                comparisonLabel={`vs ${compared.label}`}
+                comparisonLabel={`vs ${compared.label}${reportData.period.isComplete ? "" : " (same days)"}`}
                 emptyText="No income recorded for this month."
               />
               <RankedBreakdown
@@ -273,7 +278,7 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
                 side="spending"
                 total={totals.totalExpenditure}
                 rows={paymentRows}
-                comparisonLabel={`vs ${compared.label}`}
+                comparisonLabel={`vs ${compared.label}${reportData.period.isComplete ? "" : " (same days)"}`}
                 emptyText="No spending recorded for this month."
               />
             </div>

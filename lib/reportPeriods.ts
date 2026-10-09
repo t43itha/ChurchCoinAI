@@ -150,6 +150,16 @@ export function monthBuckets(range: DateRange): MonthBucket[] {
   });
 }
 
+// A comparison period cut to as many days as `period` has run, so an
+// in-progress month is compared with the same days of another month. Finished
+// periods compare in full.
+export function clipToElapsedDays(range: DateRange, period: ReportPeriod): DateRange {
+  if (period.isComplete) return { startDate: range.startDate, endDate: range.endDate };
+  const elapsedDays = Math.round((fromIso(period.throughDate) - fromIso(period.startDate)) / 86_400_000);
+  const clippedEnd = toIso(fromIso(range.startDate) + elapsedDays * 86_400_000);
+  return { startDate: range.startDate, endDate: clippedEnd < range.endDate ? clippedEnd : range.endDate };
+}
+
 export function isWithinRange(date: string, range: DateRange): boolean {
   return date >= range.startDate && date <= range.endDate;
 }

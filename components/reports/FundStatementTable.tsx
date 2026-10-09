@@ -17,7 +17,7 @@ export interface FundStatementTableProps {
 }
 
 const HEADER_CELL = "px-3 py-2.5 text-right text-xs font-bold text-grey-mid";
-const BODY_CELL = "px-3 py-2.5 text-right font-mono text-[13px] text-ink";
+const BODY_CELL = "px-3 py-2.5 text-right font-mono text-[13px]";
 const GROUP_CELL = "px-3 py-2 text-xs font-bold text-grey-mid";
 const STICKY_FUND_CELL = "sticky left-0 z-[1] px-3 py-2.5 text-left text-[13.5px] md:static";
 
@@ -40,12 +40,12 @@ const ValueCells: React.FC<ValueCellsProps> = ({ totals, bold, showOther, showCh
   const weight = bold ? "font-bold" : "";
   return (
     <>
-      <td className={BODY_CELL}>{formatCurrency(totals.opening)}</td>
-      <td className={BODY_CELL}>{formatCurrency(totals.income)}</td>
-      <td className={BODY_CELL}>{formatCurrency(totals.expenditure)}</td>
-      <td className={BODY_CELL}>{formatCurrency(totals.transfers)}</td>
-      {showOther && <td className={BODY_CELL}>{formatCurrency(totals.other)}</td>}
-      <td className={`${BODY_CELL} ${weight} ${totals.closing < 0 ? "text-error" : ""}`}>
+      <td className={`${BODY_CELL} text-ink`}>{formatCurrency(totals.opening)}</td>
+      <td className={`${BODY_CELL} text-ink`}>{formatCurrency(totals.income)}</td>
+      <td className={`${BODY_CELL} text-ink`}>{formatCurrency(totals.expenditure)}</td>
+      <td className={`${BODY_CELL} text-ink`}>{formatCurrency(totals.transfers)}</td>
+      {showOther && <td className={`${BODY_CELL} text-ink`}>{formatCurrency(totals.other)}</td>}
+      <td className={`${BODY_CELL} ${weight} ${totals.closing < 0 ? "text-error" : "text-ink"}`}>
         {formatCurrency(totals.closing)}
       </td>
       {showChange && (
