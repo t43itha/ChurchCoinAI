@@ -153,6 +153,7 @@ const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
   const transactions = useQuery(api.queries.transactions.list, {});
   const donors = useQuery(api.queries.donors.list, canViewDonors ? {} : "skip");
   const actions = useDonorPledgeActions({ showNotification: notify });
+  const fundActions = useFundCategoryActions({ showNotification: notify });
 
   if (
     pledges === undefined ||
@@ -173,6 +174,7 @@ const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
       onBulkAddPledges={actions.handleBulkAddPledges}
       onBulkAddDonors={actions.handleBulkAddDonors}
       onUpdateTransaction={actions.handleUpdateTransaction}
+      onAddFund={fundActions.handleAddFund}
       currentUser={currentUser}
       onPledgeCompleted={handlePledgeCompleted}
     />

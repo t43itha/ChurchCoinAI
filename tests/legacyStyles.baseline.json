@@ -2,7 +2,6 @@
   "components/AICoPilot.tsx": 3,
   "components/BankConnectionsSettings.tsx": 1,
   "components/BillingSettings.tsx": 4,
-  "components/Campaigns.tsx": 9,
   "components/DataPrivacySettings.tsx": 2,
   "components/ErrorBoundary.tsx": 2,
   "components/Settings.tsx": 2,
