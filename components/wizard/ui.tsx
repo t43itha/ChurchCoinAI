@@ -32,9 +32,9 @@ export const amtInput =
   "min-w-0 w-full appearance-none border-0 bg-transparent p-0 font-mono text-[18px] font-bold text-ink !shadow-none outline-none focus:ring-0 focus:outline-none placeholder:text-[#d0ccc5]";
 export const amtSymbol = "mr-1 font-mono text-base text-grey-mid";
 
-// A 52px row that ticks on and off. Add the border colour for its state.
+// A row of at least 52px that ticks on and off. It grows if its text wraps. Add the border colour for its state.
 export const tickRow =
-  "flex h-[52px] w-full items-center gap-3 rounded-2xl border-[1.5px] bg-white px-3.5 text-left text-ink disabled:cursor-default";
+  "flex min-h-[52px] w-full items-center gap-3 rounded-2xl border-[1.5px] bg-white px-3.5 py-2 text-left text-ink disabled:cursor-default";
 export const tickBox = "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border-[1.5px]";
 
 // A full-width row that opens the next thing to do, with an icon tile.
