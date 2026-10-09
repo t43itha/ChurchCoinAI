@@ -2,7 +2,7 @@ import { Check, Landmark, PenLine, Plus } from "lucide-react";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
 import { gbp, shortDate } from "./format";
 import { useGiftAidEnabled } from "../app/useGiftAidEnabled";
-import { fieldLabel, screenTitle } from "../wizard/ui";
+import { fieldLabel, nextIcon, nextItem, screenTitle } from "../wizard/ui";
 import type { SavedResult, WizardModel } from "./useCollectionDraft";
 
 const GIFT_AID_RATE = 0.25;
@@ -15,10 +15,6 @@ interface DoneStepProps {
   // Omitted in edit mode: starting another week there would not create a new collection.
   onRecordAnother?: () => void;
 }
-
-const NEXT_ITEM =
-  "flex w-full items-center gap-3.5 rounded-2xl border border-ledger bg-white p-3.5 text-left transition-colors hover:bg-grey-light";
-const NEXT_ICON = "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl";
 
 export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: DoneStepProps) {
   const giftAidEnabled = useGiftAidEnabled();
@@ -49,8 +45,8 @@ export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: Do
         <span className={fieldLabel}>What's next</span>
 
         {!isDraft && onBankIt && (
-          <button type="button" onClick={onBankIt} className={`${NEXT_ITEM} mb-2`}>
-            <span className={`${NEXT_ICON} bg-sage-light text-sage`}>
+          <button type="button" onClick={onBankIt} className={`${nextItem} mb-2`}>
+            <span className={`${nextIcon} bg-sage-light text-sage`}>
               <Landmark size={17} aria-hidden="true" />
             </span>
             <span className="min-w-0">
@@ -61,8 +57,8 @@ export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: Do
         )}
 
         {giftAidEnabled && totals.noDeclaration.length > 0 && (
-          <div className={`${NEXT_ITEM} mb-2 cursor-default hover:bg-white`}>
-            <span className={`${NEXT_ICON} bg-amber-light text-amber`}>
+          <div className={`${nextItem} mb-2 cursor-default hover:bg-white`}>
+            <span className={`${nextIcon} bg-amber-light text-amber`}>
               <PenLine size={17} aria-hidden="true" />
             </span>
             <span className="min-w-0">
@@ -78,8 +74,8 @@ export default function DoneStep({ model, saved, onBankIt, onRecordAnother }: Do
         )}
 
         {onRecordAnother && (
-          <button type="button" onClick={onRecordAnother} className={NEXT_ITEM}>
-            <span className={`${NEXT_ICON} bg-grey-light text-ink`}>
+          <button type="button" onClick={onRecordAnother} className={nextItem}>
+            <span className={`${nextIcon} bg-grey-light text-ink`}>
               <Plus size={17} aria-hidden="true" />
             </span>
             <span className="min-w-0">

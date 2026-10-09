@@ -92,6 +92,18 @@ export const updateBalances = mutation({
     if (newEnd < newStart) {
       throw new Error("Period end must be on or after period start");
     }
+    if (args.periodEnd !== undefined) {
+      // A ticked line after the new end would be locked by completion outside the period.
+      const cleared = await ctx.db
+        .query("transactions")
+        .withIndex("by_reconciliationSession", (q) =>
+          q.eq("reconciliationSessionId", args.sessionId)
+        )
+        .collect();
+      if (cleared.some((t) => t.date > newEnd)) {
+        throw new Error(`Untick the lines dated after ${newEnd} before shortening the period.`);
+      }
+    }
     const updates: Record<string, any> = {};
     if (args.statementOpeningBalance !== undefined)
       updates.statementOpeningBalance = args.statementOpeningBalance;
@@ -187,6 +199,13 @@ export const complete = mutation({
       throw new Error(
         "Some cleared transactions were voided or moved to another fund since being matched. " +
           "Untick them and try again."
+      );
+    }
+
+    // Lines before periodStart are allowed: they are stragglers from earlier periods.
+    if (cleared.some((t) => t.date > session.periodEnd)) {
+      throw new Error(
+        `Some ticked lines are dated after the period end (${session.periodEnd}). Untick them and try again.`
       );
     }
 

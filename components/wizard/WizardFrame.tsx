@@ -1,6 +1,7 @@
-import type { ReactNode, Ref } from "react";
+import { useEffect, useRef, type FocusEvent, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, X } from "lucide-react";
+import { useDialogFocus } from "./useDialogFocus";
 
 export interface WizardFrameProps {
   ariaLabel: string;
@@ -21,7 +22,8 @@ export interface WizardFrameProps {
   // Rendered between the body and the footer, e.g. a save warning.
   notice?: ReactNode;
   footer?: ReactNode;
-  // Rendered last inside the main column, covering the header and footer.
+  // Rendered last inside the main column, covering the header and footer. While it is set,
+  // everything it covers is inert, and focus returns to the control that was focused before it opened.
   overlay?: ReactNode;
   // Disables every control inside the frame, e.g. while a save is in flight.
   locked?: boolean;
@@ -54,19 +56,43 @@ export default function WizardFrame({
   overlay,
   locked = false,
 }: WizardFrameProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef);
+
+  const overlayOpen = Boolean(overlay);
+  // The last focus that landed outside the overlay. Recorded as focus moves, because the controls
+  // the overlay covers go inert when it opens, and by then the browser may already have dropped focus.
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
+  const recordFocus = (event: FocusEvent<HTMLDivElement>) => {
+    if (!overlayOpen && event.target instanceof HTMLElement) lastFocusedRef.current = event.target;
+  };
+
+  useEffect(() => {
+    if (!overlayOpen) return;
+    return () => {
+      const opener = lastFocusedRef.current;
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [overlayOpen]);
+
   const panel = (
     <div className="fixed inset-0 z-50 bg-paper lg:flex lg:items-center lg:justify-center lg:bg-ink/45 lg:p-6">
       <fieldset disabled={locked} className="contents">
         <div
+          ref={dialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label={ariaLabel}
-          className={`flex h-full w-full flex-col bg-paper lg:grid lg:h-[min(820px,100%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg ${layoutClasses(Boolean(rail), Boolean(receipt))}`}
+          onFocus={recordFocus}
+          className={`flex h-full w-full flex-col bg-paper outline-none lg:grid lg:h-[min(820px,100%)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:rounded-3xl lg:border lg:border-ledger lg:shadow-soft-lg ${layoutClasses(Boolean(rail), Boolean(receipt))}`}
         >
-          {rail}
+          <div inert={overlayOpen} className="contents">
+            {rail}
+          </div>
 
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <header className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
+            <header inert={overlayOpen} className="flex shrink-0 items-center gap-2 px-3 pt-3 lg:px-6 lg:pt-5">
               {onBack ? (
                 <button
                   type="button"
@@ -91,7 +117,7 @@ export default function WizardFrame({
             </header>
 
             {progress && (
-              <div className="flex shrink-0 gap-1 px-4 pb-1 pt-2.5 lg:px-6" aria-hidden="true">
+              <div inert={overlayOpen} className="flex shrink-0 gap-1 px-4 pb-1 pt-2.5 lg:px-6" aria-hidden="true">
                 {Array.from({ length: progress.total }, (_, index) => {
                   const tone =
                     index < progress.current ? "bg-sage" : index === progress.current ? "bg-ink" : "bg-ledger";
@@ -100,16 +126,24 @@ export default function WizardFrame({
               </div>
             )}
 
-            <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 lg:px-8">
+            <div
+              ref={bodyRef}
+              inert={overlayOpen}
+              className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-4 lg:px-8"
+            >
               {children}
             </div>
 
-            {notice}
-            {footer}
+            <div inert={overlayOpen} className="contents">
+              {notice}
+              {footer}
+            </div>
             {overlay}
           </div>
 
-          {receipt}
+          <div inert={overlayOpen} className="contents">
+            {receipt}
+          </div>
         </div>
       </fieldset>
     </div>

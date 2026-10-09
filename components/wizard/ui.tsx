@@ -32,6 +32,16 @@ export const amtInput =
   "min-w-0 w-full appearance-none border-0 bg-transparent p-0 font-mono text-[18px] font-bold text-ink !shadow-none outline-none focus:ring-0 focus:outline-none placeholder:text-[#d0ccc5]";
 export const amtSymbol = "mr-1 font-mono text-base text-grey-mid";
 
+// A 52px row that ticks on and off. Add the border colour for its state.
+export const tickRow =
+  "flex h-[52px] w-full items-center gap-3 rounded-2xl border-[1.5px] bg-white px-3.5 text-left text-ink disabled:cursor-default";
+export const tickBox = "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border-[1.5px]";
+
+// A full-width row that opens the next thing to do, with an icon tile.
+export const nextItem =
+  "flex w-full items-center gap-3.5 rounded-2xl border border-ledger bg-white p-3.5 text-left transition-colors hover:bg-grey-light";
+export const nextIcon = "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl";
+
 export const card = "rounded-2xl border border-ledger bg-white p-3.5";
 export const eyebrow = "text-[11px] font-bold uppercase tracking-[0.08em] text-grey-mid";
 export const fieldLabel = `${eyebrow} mb-2 mt-5 block`;
