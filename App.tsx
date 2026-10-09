@@ -18,6 +18,8 @@ import LandingPage from "./components/landing/LandingPage";
 import LegalPage from "./components/legal/LegalPage";
 import SubscriptionRequired from "./components/SubscriptionRequired";
 import AppContentRoutes from "./components/app/AppContentRoutes";
+import MobileTabBar from "./components/app/MobileTabBar";
+import NewChooser from "./components/app/NewChooser";
 import AppNotificationToast, {
   AppNotification,
 } from "./components/app/AppNotificationToast";
@@ -109,6 +111,7 @@ function App() {
 
   // UI State (local only)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNewChooserOpen, setIsNewChooserOpen] = useState(false);
   const [notification, setNotification] = useState<AppNotification>({
     visible: false,
     title: "",
@@ -308,8 +311,15 @@ function App() {
         access={access}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        onNew={() => setIsNewChooserOpen(true)}
         onOpenSupport={() => setIsSupportOpen(true)}
       />
+
+      {isNewChooserOpen && (
+        <NewChooser role={currentUser.role} onClose={() => setIsNewChooserOpen(false)} />
+      )}
+
+      <MobileTabBar role={currentUser.role} onNew={() => setIsNewChooserOpen(true)} />
 
       <SupportCenter open={isSupportOpen} onClose={closeSupport} />
 
@@ -335,7 +345,8 @@ function App() {
             </button>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-4 md:p-[30px]">
+        {/* Bottom padding keeps the last row clear of the phone tab bar. */}
+        <div className="flex-1 overflow-y-auto px-4 pb-28 pt-4 md:p-[30px]">
           {access.state === "active_demo" && (
             <div className="mb-4 border border-amber/50 bg-amber-light/40 text-amber-dark px-4 py-3 rounded-lg text-sm font-medium">
               Synthetic demo data — this church is fictional. Live bank connections and Stripe billing are disabled.

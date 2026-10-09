@@ -1,5 +1,5 @@
 import { can } from "../lib/permissions";
-import React, { useState, useMemo, useEffect, startTransition } from 'react';
+import React, { useState, useMemo, useEffect, useRef, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useAction, useQuery } from 'convex/react';
@@ -25,6 +25,8 @@ import ImportCategorizationProgress from './ImportCategorizationProgress';
 import LinkMovementModal from './transactions/LinkMovementModal';
 import JournalTransferModal from './transactions/JournalTransferModal';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
+import { linkParamsToRemove, planNewKind } from './app/newChooserRows';
+import { tabBarClearance } from './app/MobileTabBar';
 
 interface Category {
   _id: string;
@@ -94,7 +96,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
 
   // Bank sync
-  const bankConnections = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts) || [];
+  const bankConnectionsResult = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts);
+  const bankConnections = bankConnectionsResult || [];
 
   // Extract category names for backwards compatibility
   const categoryNames = categories.map(c => c.name);
@@ -154,7 +157,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [importCategories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>(() =>
     searchParams.get('view') === 'cash-banking' && can(currentUser.role, "reconciliation.manage") ? 'cashChequeBanking' : 'all'
   );
@@ -558,9 +561,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
+  // The sync button is disabled while a sync runs, but a "+ New" request can arrive at any time.
+  const bankSyncInFlight = useRef(false);
   const startBankSync = (bankConnectionId: Id<"bankConnections">) => {
     setShowBankSelector(false);
-    void syncFromBank(bankConnectionId);
+    if (bankSyncInFlight.current) return;
+    bankSyncInFlight.current = true;
+    void syncFromBank(bankConnectionId).finally(() => {
+      bankSyncInFlight.current = false;
+    });
   };
 
   // Bank sync: show selector if multiple banks, otherwise sync directly
@@ -618,6 +627,55 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         }
     }
   };
+
+  // "+ New" in the app shell opens one of these with ?new=<kind>. The param is removed once
+  // handled, so a refresh does not repeat it; the ref stops Strict Mode's effect replay doing so.
+  // "+ New" in the shell opens one of these with ?new=<kind>, and cash banking is linked with
+  // ?view=cash-banking; either can arrive while this page is mounted. Both params are removed in
+  // one replacement once applied (two updaters would each restore the other's param), so the same
+  // link works again and a refresh does not repeat it. The ref ignores Strict Mode's effect replay.
+  const newKindParam = searchParams.get('new');
+  const viewParam = searchParams.get('view');
+  const handledNewKind = useRef<string | null>(null);
+  const bankConnectionsLoaded = bankConnectionsResult !== undefined;
+  useEffect(() => {
+    if (!newKindParam) handledNewKind.current = null;
+    const step = planNewKind({ param: newKindParam, handled: handledNewKind.current, canEdit, bankConnectionsLoaded });
+    const remove = linkParamsToRemove(step, viewParam, newKindParam, handledNewKind.current);
+    if (remove.length === 0) return;
+    const takeNew = step.type === 'handled';
+    const takeView = remove.includes('view');
+    if (takeNew) handledNewKind.current = newKindParam;
+    setSearchParams((params) => {
+      remove.forEach((key) => params.delete(key));
+      return params;
+    }, { replace: true });
+    if (takeView && can(currentUser.role, 'reconciliation.manage')) {
+      setShowReconciliation(false);
+      setActiveTransactionTab('cashChequeBanking');
+    }
+    if (!takeNew || !step.modal) return;
+    if (step.leaveReconciliation) setShowReconciliation(false);
+    switch (step.modal) {
+      case 'cashTakings':
+        startTransition(() => setShowCashTakingsModal(true));
+        break;
+      case 'statementImport':
+        setShowStatementImport(true);
+        break;
+      case 'bankSync':
+        handleSyncBank();
+        break;
+      case 'singleEntry':
+        setShowAddModal(true);
+        break;
+      case 'journalTransfer':
+        setShowJournalTransfer(true);
+        break;
+    }
+    // Runs once per arrival of a param; the handlers are current for that render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newKindParam, viewParam, bankConnectionsLoaded, currentUser.role]);
 
   const formatDateUK = (dateString: string) => {
       try {
@@ -1264,7 +1322,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       {/* Floating Bulk Actions - Fixed to bottom of viewport */}
       {activeTransactionTab === 'all' && selectedIds.size > 0 && canEdit && createPortal(
           <div
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)] bg-ink text-white rounded-[14px] py-3 pl-5 pr-4 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.55)] flex items-center gap-4 mb-[env(safe-area-inset-bottom)]"
+            className={`fixed ${tabBarClearance} md:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)] bg-ink text-white rounded-[14px] py-3 pl-5 pr-4 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.55)] flex items-center gap-4 md:mb-[env(safe-area-inset-bottom)]`}
             style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
           >
               <span className="font-mono text-[12.5px] font-bold tracking-[0.06em] text-[#6b8e6b] pr-4 border-r border-white/[0.18] shrink-0 whitespace-nowrap">{selectedIds.size} SELECTED</span>

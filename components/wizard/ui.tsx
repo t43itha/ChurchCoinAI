@@ -19,6 +19,10 @@ export const linkBtnSm = "inline-flex min-h-11 items-center text-xs font-bold te
 export const chip =
   "inline-flex h-11 items-center gap-1.5 rounded-[13px] border-[1.5px] border-ledger bg-white px-4 text-sm font-semibold text-grey-dark";
 export const chipDashed = `${chip} border-dashed text-grey-mid`;
+// Chips on a dark card (HeroCard): the selected one inverts.
+export const chipDark =
+  "inline-flex h-11 items-center rounded-[13px] border-[1.5px] border-white/25 px-4 text-sm font-semibold text-white/80";
+export const chipDarkOn = `${chipDark} border-white bg-white text-ink`;
 
 export const txtInput =
   "h-12 w-full min-w-0 rounded-[13px] border-[1.5px] border-ledger bg-white px-3.5 text-base text-ink outline-none focus:border-ink";
@@ -47,6 +51,10 @@ export const eyebrow = "text-[11px] font-bold uppercase tracking-[0.08em] text-g
 export const fieldLabel = `${eyebrow} mb-2 mt-5 block`;
 export const screenTitle = "text-[23px] font-bold leading-tight tracking-tight text-ink";
 export const screenHelp = "mb-4 mt-1.5 text-[13.5px] text-grey-mid";
+
+// Hub pages: a 26px sentence-case page title, and 15px bold section titles.
+export const hubTitle = "text-[26px] font-bold leading-tight tracking-tight text-ink";
+export const sectionTitle = "text-[15px] font-bold text-ink";
 
 export const tagBase =
   "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-[3px] text-[11px] font-bold uppercase tracking-wide";

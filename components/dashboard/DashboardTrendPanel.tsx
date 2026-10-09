@@ -1,4 +1,3 @@
-import { BarChart3 } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
@@ -12,6 +11,11 @@ import {
 } from "recharts";
 import { formatCompactCurrency, formatCurrency } from "./formatters";
 import type { DashboardSummaryProps } from "./types";
+import { sectionTitle } from "../wizard/ui";
+
+// Money in is sage and money out is stone; the net line is ink so it reads apart from the bars.
+const IN_COLOUR = "#6b8e6b";
+const OUT_COLOUR = "#a8a29e";
 
 export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) {
   const chartData = summary.trends.monthlyIncomeExpenditure.map((entry) => ({
@@ -23,22 +27,15 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
   }));
 
   return (
-    <section className="swiss-card bg-white overflow-hidden min-w-0" aria-label="Six-month financial trend">
-      <div className="px-6 py-[18px] border-b border-[#efeee9]">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <BarChart3 size={18} strokeWidth={1.9} className="text-grey-mid shrink-0" aria-hidden="true" />
-            <h3 className="font-bold text-ink text-[12.5px] uppercase tracking-[0.08em] break-words">
-              Income and Expenditure Trend
-            </h3>
-          </div>
-          <p className="text-[13.5px] text-grey-mid font-medium mt-1 break-words">
-            Six-month unrestricted movement ending {summary.period.label}
-          </p>
-        </div>
+    <section className="min-w-0 rounded-2xl border border-ledger bg-white p-4 md:p-5" aria-label="Six-month income and expenditure">
+      <div className="min-w-0">
+        <h2 className={sectionTitle}>Income and expenditure</h2>
+        <p className="mt-1 break-words text-[13px] font-medium text-grey-mid">
+          Six months of unrestricted movement to {summary.period.label}
+        </p>
       </div>
 
-      <div className="h-72 min-w-0 p-3 md:p-5">
+      <div className="mt-3 h-72 min-w-0">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e5e5e5" />
@@ -69,15 +66,15 @@ export default function DashboardTrendPanel({ summary }: DashboardSummaryProps) 
                 fontSize: "12px",
               }}
             />
-            <Legend wrapperStyle={{ fontSize: "11px", fontWeight: 700 }} />
-            <Bar dataKey="Income" barSize={24} fill="#1c1917" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Expenditure" barSize={24} fill="#a9743f" radius={[4, 4, 0, 0]} />
+            <Legend wrapperStyle={{ fontSize: "12px", fontWeight: 600 }} />
+            <Bar dataKey="Income" barSize={22} fill={IN_COLOUR} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Expenditure" barSize={22} fill={OUT_COLOUR} radius={[4, 4, 0, 0]} />
             <Line
               type="monotone"
               dataKey="Net"
-              stroke="#557555"
-              strokeWidth={3}
-              dot={{ r: 3, fill: "#557555", strokeWidth: 2, stroke: "#ffffff" }}
+              stroke="#1c1917"
+              strokeWidth={2.5}
+              dot={{ r: 3, fill: "#1c1917", strokeWidth: 2, stroke: "#ffffff" }}
             />
           </ComposedChart>
         </ResponsiveContainer>

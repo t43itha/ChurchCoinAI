@@ -1,19 +1,24 @@
 import { can } from "../lib/permissions";
 import React, { useState } from "react";
-import { createPortal } from "react-dom";
 import { useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
-import { Banknote, CalendarRange, ChevronDown } from "lucide-react";
+import { Banknote } from "lucide-react";
 import { api } from "../convex/_generated/api";
+import { roundMoney, sumMoney } from "../convex/lib/money";
 import { AppUser, Category, Fund } from "../types";
 import CashEntryWizard from "./cashEntry/CashEntryWizard";
-import DashboardDonorFollowUp from "./dashboard/DashboardDonorFollowUp";
-import DashboardFundHealth from "./dashboard/DashboardFundHealth";
-import DashboardHealthCards from "./dashboard/DashboardHealthCards";
-import DashboardMonthEndChecks from "./dashboard/DashboardMonthEndChecks";
+import DashboardFundsToWatch from "./dashboard/DashboardFundsToWatch";
 import DashboardTrendPanel from "./dashboard/DashboardTrendPanel";
-import { buildMonthEndChecks } from "../lib/dashboardChecks";
+import { formatCurrency } from "./dashboard/formatters";
+import { buildDashboardNeedsYou } from "./dashboard/needsYou";
 import type { DashboardPeriodKey } from "./dashboard/types";
+import HeroCard from "./hub/HeroCard";
+import HubHeader from "./hub/HubHeader";
+import HubLayout from "./hub/HubLayout";
+import { NeedsYou, NeedsYouItem } from "./hub/NeedsYou";
+import SectionTitle from "./hub/SectionTitle";
+import { ReceiptCard, ReceiptRow } from "./wizard/Receipt";
+import { btnMd, btnPrimary, chipDark, chipDarkOn, eyebrow } from "./wizard/ui";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import LoadingSpinner from "./LoadingSpinner";
 
@@ -30,10 +35,14 @@ const PERIOD_OPTIONS: Array<{ key: DashboardPeriodKey; label: string }> = [
   { key: "ytd", label: "Year to date" },
 ];
 
+const penceFormatter = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" });
+
 const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser }) => {
   const [periodKey, setPeriodKey] = useState<DashboardPeriodKey>("previousMonth");
+  const [isChoosingPeriod, setIsChoosingPeriod] = useState(false);
   const [showCashTakingsModal, setShowCashTakingsModal] = useState(false);
   const canEdit = can(currentUser.role, "cashCollections.write");
+  const canOpenDonors = can(currentUser.role, "donors.read");
   const navigate = useNavigate();
   const summary = useQuery(api.queries.dashboard.executiveSummary, {
     periodKey,
@@ -41,96 +50,179 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
   });
   const bankConnections = useQuery(api.queries.bankConnections.list);
   const bankFeedsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention);
-  const selectedPeriodLabel =
-    summary?.period.label ?? PERIOD_OPTIONS.find((period) => period.key === periodKey)?.label;
+
+  if (summary === undefined) {
+    return <LoadingSpinner message="Loading leadership dashboard..." />;
+  }
+
+  const { period, health, funds: fundFigures, readiness, donorFollowUp } = summary;
+  const needsYou = buildDashboardNeedsYou(summary, {
+    role: currentUser.role,
+    bankFeedIssues: bankFeedsNeedingAttention?.length ?? 0,
+    canOpenDonors,
+  });
+  const generalFund = fundFigures.generalFundBalance;
+  const restrictedFund = fundFigures.restrictedBalance;
+  const fundsHeld = sumMoney([generalFund, restrictedFund], (balance) => balance);
+  const title = period.key === "currentMonth" ? `${monthName(period.startDate)} so far` : period.label;
+  const needsYouCount = needsYou.length === 1 ? "1 thing needs you." : `${needsYou.length} things need you.`;
+
+  const openNewCash = () => setShowCashTakingsModal(true);
 
   return (
-    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
-      <header className="swiss-card-static p-6 md:p-[26px] flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-        <div className="min-w-0 max-w-3xl">
-          <h2 className="text-[32px] md:text-4xl leading-tight font-bold text-ink tracking-tight">
-            Leadership Dashboard
-          </h2>
-          <DataFreshness connections={bankConnections} />
-        </div>
+    <div className="animate-enter pb-12">
+      <HubLayout
+        receipt={
+          <>
+            <ReceiptCard>
+              <p className={eyebrow}>{period.label}</p>
+              <div className="mt-2">
+                <ReceiptRow label="Net movement" value={signedPence(health.netMovement)} />
+                <ReceiptRow label="General fund" value={penceFormatter.format(generalFund)} sub />
+                <ReceiptRow label="Restricted funds" value={penceFormatter.format(restrictedFund)} sub />
+                <ReceiptRow
+                  label="Giving trend"
+                  value={health.givingTrendPercent === null ? "No baseline" : signedPercent(health.givingTrendPercent)}
+                  muted={health.givingTrendPercent === null}
+                />
+                <ReceiptRow
+                  label="General fund cover"
+                  value={
+                    health.generalFundCoverageMonths === null
+                      ? "No spend"
+                      : `${health.generalFundCoverageMonths.toFixed(1)} months`
+                  }
+                  muted={health.generalFundCoverageMonths === null}
+                />
+              </div>
+            </ReceiptCard>
 
-        <div className="w-full lg:w-auto lg:min-w-[360px] bg-[#fcfbf9] border border-ledger rounded-xl p-3">
-          <div className="flex items-center justify-between gap-3 mb-2 px-0.5">
-            <span className="font-mono text-[10.5px] font-semibold text-grey-mid uppercase tracking-[0.1em]">
-              Period
-            </span>
-            <span className="font-mono text-[10.5px] font-medium text-grey-mid">
-              {summary ? formatDisplayDate(summary.period.endDate) : selectedPeriodLabel}
-            </span>
-          </div>
+            {readiness.giftAidClaimable !== null && (
+              <ReceiptCard>
+                <p className={eyebrow}>Gift Aid</p>
+                <div className="mt-2">
+                  <ReceiptRow label="To claim (25%)" value={penceFormatter.format(readiness.giftAidClaimable)} />
+                  {donorFollowUp.missedGiftAidCount !== null && (
+                    <ReceiptRow
+                      label="Gifts missing Gift Aid"
+                      value={
+                        <span className={donorFollowUp.missedGiftAidCount > 0 ? "text-[#a9743f]" : undefined}>
+                          {donorFollowUp.missedGiftAidCount.toLocaleString("en-GB")}
+                        </span>
+                      }
+                    />
+                  )}
+                </div>
+              </ReceiptCard>
+            )}
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <label className="relative flex-1 min-w-0">
-              <span className="sr-only">Period</span>
-              <CalendarRange
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none"
-                aria-hidden="true"
-              />
-              <select
-                value={periodKey}
-                onChange={(event) => setPeriodKey(event.target.value as DashboardPeriodKey)}
-                className="w-full appearance-none bg-white border border-ledger rounded-lg pl-9 pr-9 py-2 text-sm font-semibold text-ink normal-case tracking-normal focus:outline-hidden focus:ring-[3px] focus:ring-ink/10 focus:border-ink"
-              >
-                {PERIOD_OPTIONS.map((period) => (
-                  <option key={period.key} value={period.key}>
-                    {period.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={16}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink pointer-events-none"
-                aria-hidden="true"
-              />
-            </label>
+            <p className="px-1 text-xs leading-snug text-grey-mid">
+              Figures exclude voided rows and cash banking deposits.
+            </p>
+          </>
+        }
+      >
+        <HubHeader
+          eyebrow={todayLabel()}
+          title={title}
+          status={
+            <>
+              <DataFreshness connections={bankConnections} />
+              {needsYou.length > 0 && (
+                <>
+                  {" "}
+                  <span className="font-semibold text-amber">{needsYouCount}</span>
+                </>
+              )}
+            </>
+          }
+          actions={
+            canEdit ? (
+              <button type="button" onClick={openNewCash} className={`${btnPrimary} ${btnMd} !w-auto px-5`}>
+                <Banknote size={16} aria-hidden="true" />
+                Record giving
+              </button>
+            ) : null
+          }
+        />
 
-            {canEdit ? (
+        <HeroCard
+          label="Funds held"
+          value={formatCurrency(fundsHeld)}
+          sub={
+            <p>
+              <NetMovement amount={health.netMovement} /> · {period.label} ·{" "}
               <button
                 type="button"
-                onClick={() => setShowCashTakingsModal(true)}
-                className="btn-primary hidden md:inline-flex items-center justify-center gap-2 px-4 py-2 min-w-36 text-xs font-bold uppercase whitespace-nowrap"
+                aria-expanded={isChoosingPeriod}
+                aria-controls="dashboard-period"
+                onClick={() => setIsChoosingPeriod((open) => !open)}
+                className="font-semibold text-white underline underline-offset-4"
               >
-                <Banknote size={16} aria-hidden="true" />
-                Record Cash
+                change
               </button>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
-      {summary === undefined ? (
-        <LoadingSpinner message="Loading leadership dashboard..." />
-      ) : (
-        <>
-          <DashboardHealthCards summary={summary} />
-
-          <DashboardMonthEndChecks
-            periodLabel={summary.period.label}
-            checks={buildMonthEndChecks(summary, {
-              role: currentUser.role,
-              bankFeedIssues: bankFeedsNeedingAttention?.length ?? 0,
-            })}
-          />
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 xl:gap-5">
-            <div className="xl:col-span-2 min-w-0">
-              <DashboardTrendPanel summary={summary} />
+            </p>
+          }
+          segments={[
+            {
+              label: "Unrestricted",
+              value: formatCurrency(generalFund),
+              amount: generalFund,
+              colour: "#a9cfa9",
+            },
+            {
+              label: "Restricted",
+              value: formatCurrency(restrictedFund),
+              amount: restrictedFund,
+              colour: "#8f877e",
+            },
+          ]}
+        >
+          {isChoosingPeriod && (
+            <div id="dashboard-period" role="group" aria-label="Period" className="mt-4 flex flex-wrap gap-2">
+              {PERIOD_OPTIONS.map((option) => {
+                const on = option.key === periodKey;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      setPeriodKey(option.key);
+                      setIsChoosingPeriod(false);
+                    }}
+                    className={on ? chipDarkOn : chipDark}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
-            <DashboardDonorFollowUp
-              summary={summary}
-              canOpenDonors={can(currentUser.role, "donors.read")}
-            />
-          </div>
+          )}
+        </HeroCard>
 
-          <DashboardFundHealth summary={summary} />
-        </>
-      )}
+        <div className="space-y-3">
+          <SectionTitle>Needs you</SectionTitle>
+          <NeedsYou>
+            {needsYou.map((row) => (
+              <NeedsYouItem
+                key={row.id}
+                tone={row.tone}
+                icon={row.icon}
+                title={row.title}
+                detail={row.detail}
+                action={row.action}
+                href={row.href}
+              />
+            ))}
+          </NeedsYou>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <DashboardTrendPanel summary={summary} />
+          <DashboardFundsToWatch summary={summary} />
+        </div>
+      </HubLayout>
 
       {showCashTakingsModal && canEdit ? (
         <CashEntryWizard
@@ -145,20 +237,6 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
           }
         />
       ) : null}
-
-      {canEdit
-        ? createPortal(
-            <button
-              type="button"
-              onClick={() => setShowCashTakingsModal(true)}
-              className="fixed bottom-6 right-6 w-14 h-14 bg-sage text-white rounded-full shadow-soft-lg flex items-center justify-center z-30 md:hidden hover:bg-sage-dark transition-colors"
-              aria-label="Record Cash Collection"
-            >
-              <Banknote size={24} />
-            </button>,
-            document.body
-          )
-        : null}
     </div>
   );
 };
@@ -169,13 +247,13 @@ type BankConnectionSummary = {
 
 const STALE_SYNC_DAYS = 7;
 
+// The oldest feed bounds how current the figures are, so one fresh feed
+// cannot vouch for the others.
 function DataFreshness({ connections }: { connections: BankConnectionSummary[] | undefined }) {
   if (connections === undefined) {
-    return <p className="mt-2 h-[22px]" aria-hidden="true" />;
+    return null;
   }
 
-  // The oldest feed bounds how current the figures are, so one fresh feed
-  // cannot vouch for the others.
   const oldestSyncAt = Math.min(...connections.map((connection) => connection.lastSyncAt ?? 0));
   const message =
     connections.length === 0
@@ -189,14 +267,38 @@ function DataFreshness({ connections }: { connections: BankConnectionSummary[] |
     connections.length > 0 && Date.now() - oldestSyncAt > STALE_SYNC_DAYS * 24 * 60 * 60 * 1000;
 
   return (
-    <p
-      className={`mt-2 text-[15px] font-medium max-w-2xl ${
-        isStale ? "text-[#a9743f]" : "text-grey-mid"
-      }`}
-    >
+    <span className={isStale ? "text-[#a9743f]" : undefined}>
       {message}
       {isStale ? " Sync before relying on these figures." : null}
-    </p>
+    </span>
+  );
+}
+
+function NetMovement({ amount }: { amount: number }) {
+  if (amount === 0) return <span>Breaking even</span>;
+  if (amount > 0) {
+    return <span className="font-semibold text-[#a9cfa9]">+{formatCurrency(amount)} surplus</span>;
+  }
+  return <span className="font-semibold text-[#f4a6a6]">−{formatCurrency(Math.abs(amount))} deficit</span>;
+}
+
+function signedPence(amount: number) {
+  const prefix = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${prefix}${penceFormatter.format(roundMoney(Math.abs(amount)))}`;
+}
+
+function signedPercent(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value}%`;
+}
+
+function todayLabel() {
+  return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+}
+
+function monthName(date: string) {
+  return new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(
+    new Date(`${date}T00:00:00Z`)
   );
 }
 
@@ -206,20 +308,6 @@ function formatSyncDate(timestamp: number) {
     month: "short",
     year: "numeric",
   }).format(new Date(timestamp));
-}
-
-function formatDisplayDate(date: string) {
-  const parsed = new Date(`${date}T00:00:00Z`);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return date;
-  }
-
-  return new Intl.DateTimeFormat("en-GB", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(parsed);
 }
 
 export default Dashboard;

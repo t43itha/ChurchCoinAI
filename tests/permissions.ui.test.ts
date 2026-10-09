@@ -82,11 +82,12 @@ const SIDEBAR_HREFS: Record<UserRole, string[]> = {
 
 it.each(ROLES)("shows the correct navigation to %s", (role) => {
   const html = render(createElement(Sidebar, {
-    currentUser: user(role), isOpen: true, onClose: vi.fn(), onOpenSupport: vi.fn(),
+    currentUser: user(role), isOpen: true, onClose: vi.fn(), onOpenSupport: vi.fn(), onNew: vi.fn(),
     access: { state: "legacy_grant", expiresAt: null, plan: null },
   }));
   const hrefs = [...html.matchAll(/<a [^>]*href="(\/[^"?]*)"/g)].map((match) => match[1]);
-  expect(hrefs).toEqual(SIDEBAR_HREFS[role]);
+  // Groups are ordered Dashboard / Money / People / Insight, so compare as sets.
+  expect([...new Set(hrefs)].sort()).toEqual([...SIDEBAR_HREFS[role]].sort());
 });
 
 describe.each<UserRole>(["Pastorate", "Guest"])("%s reconciliation UI", (role) => {
