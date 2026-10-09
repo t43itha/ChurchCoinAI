@@ -5,6 +5,7 @@ import {
   linkCandidates,
   linkState,
   movementProblem,
+  openLoansFor,
   suggestImportPairs,
   summarizeLoan,
   type MovementLeg,
@@ -212,6 +213,31 @@ describe("isLoanOverdue", () => {
 
   it("is false on the due date itself", () => {
     expect(isLoanOverdue({ dueDate: "2026-10-07", outstanding: 1 }, "2026-10-07")).toBe(false);
+  });
+});
+
+describe("openLoansFor", () => {
+  const open = (lender: string, outstanding: number) => ({ lender, outstanding, isRepaid: false });
+  const loans = [
+    open("Alex Sackey", 852),
+    open("Church Bank", 4000),
+    { lender: "Diocese Fund", outstanding: 0, isRepaid: true },
+  ];
+  const lenders = (amount: number) => openLoansFor(loans, amount).map((loan) => loan.lender);
+
+  it("offers only open loans that owe at least the repayment", () => {
+    expect(lenders(300)).toEqual(["Alex Sackey", "Church Bank"]);
+    expect(lenders(900)).toEqual(["Church Bank"]);
+    expect(lenders(5000)).toEqual([]);
+  });
+
+  it("accepts a repayment equal to the outstanding amount despite float drift", () => {
+    expect(lenders(852)).toEqual(["Alex Sackey", "Church Bank"]);
+    expect(openLoansFor([open("Penny", 0.3)], 0.1 + 0.2)).toHaveLength(1);
+  });
+
+  it("never offers a repaid loan, even one with a stale outstanding amount", () => {
+    expect(openLoansFor([{ lender: "Repaid", outstanding: 50, isRepaid: true }], 10)).toEqual([]);
   });
 });
 
