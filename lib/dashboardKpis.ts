@@ -173,9 +173,12 @@ export type BuildExecutiveDashboardSummaryInput = {
   giftAidEnabled?: boolean;
 };
 
-// The Donations group's own leaf is the canonical "Donation" (the migration files it there), which the
-// legacy "Donations" name resolves to through CATEGORY_ALIASES.
-const GIVING_CATEGORIES = new Set([...(RCI_INCOME_CATEGORIES["Donations"] ?? []), CATEGORY_ALIASES["Donations"]]);
+// Tithes, offerings and thanksgiving: the giving that mission tithe and the giving trend are measured
+// on, matching Reports.
+const GIVING_CATEGORIES = new Set(RCI_INCOME_CATEGORIES["Donations"] ?? []);
+// Gift Aid applies to general donations too: the Donations group's own leaf is the canonical
+// "Donation", which the legacy "Donations" name resolves to through CATEGORY_ALIASES.
+const GIFT_AID_GIVING_CATEGORIES = new Set([...GIVING_CATEGORIES, CATEGORY_ALIASES["Donations"]]);
 const UNCATEGORIZED = "Uncategorized";
 const LOW_BALANCE_THRESHOLD = 1000;
 const MAX_CAMPAIGNS = 3;
@@ -479,8 +482,14 @@ function isUnrestrictedTransaction(transaction: DashboardTransaction, unrestrict
   return transaction.fundId ? unrestrictedFundIds.has(transaction.fundId) : false;
 }
 
+const canonicalCategory = (category?: string) => (category ? CATEGORY_ALIASES[category] ?? category : "");
+
 export function isGivingCategory(category?: string) {
-  return GIVING_CATEGORIES.has(category ? CATEGORY_ALIASES[category] ?? category : "");
+  return GIVING_CATEGORIES.has(canonicalCategory(category));
+}
+
+export function isGiftAidGivingCategory(category?: string) {
+  return GIFT_AID_GIVING_CATEGORIES.has(canonicalCategory(category));
 }
 
 function isCashOrCheque(transaction: DashboardTransaction) {
@@ -655,7 +664,7 @@ function buildDonorFollowUp(
       transaction.type === "Income" &&
       transaction.donorId !== undefined &&
       declaredDonorIds.has(transaction.donorId) &&
-      isGivingCategory(transaction.category) &&
+      isGiftAidGivingCategory(transaction.category) &&
       transaction.isGiftAidEligible !== true
   );
   const pledgesBehind = pledges.filter((pledge) => isPledgeBehind(pledge, transactions, period.throughDate));

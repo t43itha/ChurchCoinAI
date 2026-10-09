@@ -9,6 +9,7 @@ import {
   type DashboardPledge,
   type BuildExecutiveDashboardSummaryInput,
   type DashboardTransaction,
+  isGiftAidGivingCategory,
   isGivingCategory,
 } from "../lib/dashboardKpis";
 
@@ -1210,11 +1211,18 @@ describe("possible double counted cash", () => {
 });
 
 describe("giving categories", () => {
-  it("counts the canonical Donation leaf and its legacy Donations name as giving", () => {
-    expect(isGivingCategory("Donation")).toBe(true);
-    expect(isGivingCategory("Donations")).toBe(true);
+  it("measures mission tithe and the giving trend on tithes, offerings and thanksgiving only, as Reports does", () => {
     expect(isGivingCategory("Offerings")).toBe(true);
-    expect(isGivingCategory("Merchandise")).toBe(false);
+    expect(isGivingCategory("Donation")).toBe(false);
+    expect(isGivingCategory("Donations")).toBe(false);
     expect(isGivingCategory(undefined)).toBe(false);
+  });
+
+  it("counts general donations, under their canonical and legacy names, as Gift Aid giving", () => {
+    expect(isGiftAidGivingCategory("Donation")).toBe(true);
+    expect(isGiftAidGivingCategory("Donations")).toBe(true);
+    expect(isGiftAidGivingCategory("Offerings")).toBe(true);
+    expect(isGiftAidGivingCategory("Merchandise")).toBe(false);
+    expect(isGiftAidGivingCategory(undefined)).toBe(false);
   });
 });

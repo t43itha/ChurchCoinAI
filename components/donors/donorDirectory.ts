@@ -1,6 +1,6 @@
 import { CATEGORY_ALIASES } from "../../constants/rciCategories";
 import { roundMoney, sumMoney } from "../../convex/lib/money";
-import { isGivingCategory } from "../../lib/dashboardKpis";
+import { isGiftAidGivingCategory } from "../../lib/dashboardKpis";
 import { isPledgeBehind } from "../../lib/pledgeProgress";
 import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
 import type { Donor, Pledge, Transaction } from "../../types";
@@ -82,7 +82,7 @@ const isUncategorised = (category: string) =>
 // because that gift may be giving too and the figure would understate it.
 export function undeclaredGiftAid(yearIncome: Transaction[]): { giving: number; claimable: number | null } {
   const giving = sumMoney(
-    yearIncome.filter((transaction) => isGivingCategory(transaction.category)),
+    yearIncome.filter((transaction) => isGiftAidGivingCategory(transaction.category)),
     (transaction) => transaction.amount
   );
   const fullyCategorised = yearIncome.every((transaction) => !isUncategorised(transaction.category));
