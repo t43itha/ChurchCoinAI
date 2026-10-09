@@ -76,9 +76,13 @@ const TransactionsRoute: React.FC<RouteContext> = ({
   );
 };
 
-const FundsRoute: React.FC<RouteContext> = ({ funds }) => {
+const FundsRoute: React.FC<RouteContext> = ({ funds, categories, currentUser }) => {
   const navigate = useNavigate();
   const transactions = useQuery(api.queries.transactions.list, {});
+  const fundActions = useFundCategoryActions({
+    categories,
+    showNotification: notify,
+  });
 
   if (transactions === undefined) return financialDataLoader;
 
@@ -86,9 +90,14 @@ const FundsRoute: React.FC<RouteContext> = ({ funds }) => {
     <FundManager
       funds={funds}
       transactions={transactions}
+      categories={categories}
+      currentUser={currentUser}
       onViewLedger={(fundId) =>
         navigate(`/transactions?fundId=${encodeURIComponent(fundId)}`)
       }
+      onAddFund={fundActions.handleAddFund}
+      onUpdateFund={fundActions.handleUpdateFund}
+      onRemoveFund={fundActions.handleRemoveFund}
     />
   );
 };
