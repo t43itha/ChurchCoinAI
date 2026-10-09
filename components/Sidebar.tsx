@@ -1,8 +1,8 @@
-import { can, type UserRole } from "../lib/permissions";
+import { can, type UserRole } from '../lib/permissions';
 import React, { useEffect, useState } from 'react';
 import { UserButton } from '@clerk/clerk-react';
 import { Link, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wallet, PieChart, Upload, HeartHandshake, HandCoins, Users, X, Sparkles, Settings as SettingsIcon, Hourglass, LifeBuoy } from 'lucide-react';
+import { ArrowLeftRight, HandCoins, HeartHandshake, Hourglass, LayoutDashboard, LifeBuoy, PieChart, Plus, Settings as SettingsIcon, Sparkles, Users, Wallet, X, type LucideIcon } from 'lucide-react';
 import {
   clerkUserButtonAppearance,
   clerkUserProfileAppearance,
@@ -10,6 +10,7 @@ import {
 import type { PlanTier } from '@/lib/onboardingIntent';
 import { getPlanName } from '@/lib/plans';
 import { getTrialProgress } from '@/lib/trial';
+import { btnMd, btnPrimary, eyebrow } from './wizard/ui';
 
 // Type for Convex user from database
 interface ConvexUser {
@@ -24,6 +25,7 @@ interface SidebarProps {
   currentUser: ConvexUser;
   isOpen: boolean;
   onClose: () => void;
+  onNew: () => void;
   onOpenSupport: () => void;
   access: {
     state: string;
@@ -32,7 +34,19 @@ interface SidebarProps {
   };
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenSupport, access }) => {
+interface NavItem {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+  hidden?: boolean;
+}
+
+interface NavGroup {
+  label?: string;
+  items: NavItem[];
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onNew, onOpenSupport, access }) => {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -41,21 +55,38 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
     return () => window.clearInterval(timer);
   }, [access.state]);
 
-  // Permission Logic
-  const canViewDonors = can(currentUser.role, "donors.read");
-  const canViewSettings = can(currentUser.role, "settings.view");
+  const role = currentUser.role;
+  const canViewDonors = can(role, "donors.read");
+  const canViewSettings = can(role, "settings.view");
 
-  const menuItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/transactions', label: 'Transactions', icon: Upload },
-    { path: '/funds', label: 'Funds & Balances', icon: Wallet },
-    { path: '/donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
-    { path: '/campaigns', label: 'Campaigns', icon: HeartHandshake },
-    { path: '/loans', label: 'Loans', icon: HandCoins, hidden: !can(currentUser.role, "ledger.read") },
-    { path: '/reports', label: 'Reports', icon: PieChart, hidden: !can(currentUser.role, "reports.read") },
-    { path: '/settings', label: 'Settings', icon: SettingsIcon, hidden: !canViewSettings },
-    { path: '/copilot', label: 'Ask Ward', icon: Sparkles },
+  const groups: NavGroup[] = [
+    {
+      items: [{ path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }],
+    },
+    {
+      label: 'Money',
+      items: [
+        { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
+        { path: '/funds', label: 'Funds', icon: Wallet },
+        { path: '/loans', label: 'Loans', icon: HandCoins, hidden: !can(role, "ledger.read") },
+      ],
+    },
+    {
+      label: 'People',
+      items: [
+        { path: '/donors', label: 'Donors', icon: Users, hidden: !canViewDonors },
+        { path: '/campaigns', label: 'Campaigns', icon: HeartHandshake },
+      ],
+    },
+    {
+      label: 'Insight',
+      items: [
+        { path: '/reports', label: 'Reports', icon: PieChart, hidden: !can(role, "reports.read") },
+        { path: '/copilot', label: 'Ask Ward', icon: Sparkles },
+      ],
+    },
   ];
+
   const trialProgress =
     access.state === 'active_trial' && access.expiresAt
       ? getTrialProgress(access.expiresAt, now)
@@ -80,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
         md:translate-x-0
       `}>
         {/* Brand Header */}
-        <div className="px-[18px] pt-[30px] pb-[26px] flex flex-col items-center">
+        <div className="relative px-[18px] pt-[26px] pb-4 flex flex-col items-center">
           <img
             src="/churchcoin-logo.png"
             alt="ChurchCoin Finance Platform"
@@ -94,51 +125,41 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
             <X size={20} />
           </button>
         </div>
-        
-        {/* Navigation */}
-        <nav className="min-h-0 flex-1 px-[18px] ledger-space-y-[3px] overflow-y-auto">
-          {menuItems.filter(item => !item.hidden).map((item) => {
-            const Icon = item.icon;
-            const isWard = item.path === '/copilot';
 
+        <div className="px-[18px]">
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onNew();
+            }}
+            className={`${btnPrimary} ${btnMd}`}
+          >
+            <Plus size={16} strokeWidth={2.2} aria-hidden="true" />
+            New
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-2">
+          {groups.map((group) => {
+            const items = group.items.filter((item) => !item.hidden);
+            if (items.length === 0) return null;
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  `w-full flex items-center gap-[13px] px-3.5 py-[11px] rounded-[11px] text-[14.5px] font-medium transition-all duration-200 group relative ${
-                    isActive
-                      ? 'bg-amber-light text-amber border border-transparent'
-                      : 'text-stone-600 hover:text-ink hover:bg-grey-light'
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <div className="relative">
-                      <Icon
-                        size={18}
-                        className={`transition-colors ${isActive ? 'text-amber' : isWard ? 'text-sage' : 'text-grey-mid group-hover:text-ink'}`}
-                        strokeWidth={isActive ? 2.5 : 2}
-                      />
-                      {isWard && !isActive && (
-                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sage opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-sage border-2 border-white"></span>
-                        </span>
-                      )}
-                    </div>
-                    <span className={isActive ? 'font-semibold' : 'font-medium'}>{item.label}</span>
-                  </>
-                )}
-              </NavLink>
+              <div key={group.label ?? 'main'} className="mt-2 first:mt-4">
+                {group.label && <p className={`${eyebrow} px-3 pb-1.5 pt-3`}>{group.label}</p>}
+                <div className="space-y-0.5">
+                  {items.map((item) => (
+                    <SidebarLink key={item.path} item={item} onClose={onClose} />
+                  ))}
+                </div>
+              </div>
             );
           })}
         </nav>
 
-        {/* User Section */}
-        <div className="px-[18px] pt-[18px] pb-5 border-t border-ledger mt-auto ledger-space-y-4">
+        {/* Footer: settings and help, then the user */}
+        <div className="px-[18px] pt-[14px] pb-5 border-t border-ledger ledger-space-y-4">
           {trialProgress && (
             <section
               className="rounded-[12px] border border-[#dfd3c5] bg-[#fffdf9] p-3.5 shadow-hard-sm"
@@ -173,7 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
                 </span>
               </div>
 
-              {can(currentUser.role, "billing.manage") ? (
+              {can(role, "billing.manage") ? (
                 <Link
                   to="/settings?tab=billing"
                   onClick={onClose}
@@ -189,20 +210,34 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
             </section>
           )}
 
+          {canViewSettings && (
+            <NavLink
+              to="/settings"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors ${
+                  isActive ? 'bg-grey-light font-semibold text-ink' : 'font-medium text-grey-dark hover:bg-grey-light hover:text-ink'
+                }`
+              }
+            >
+              <SettingsIcon size={18} strokeWidth={2} className="text-grey-mid" aria-hidden="true" />
+              Settings
+            </NavLink>
+          )}
+
           <button
             type="button"
             onClick={() => {
               onOpenSupport();
               onClose();
             }}
-            className="flex min-h-10 w-full items-center gap-3 rounded-[10px] border border-ledger bg-[#fcfbf9] px-3 text-left text-[12px] font-semibold text-grey-dark transition-colors hover:border-grey-mid hover:bg-white hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
+            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-grey-dark transition-colors hover:bg-grey-light hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
           >
-            <LifeBuoy size={16} className="text-amber-dark" strokeWidth={2} />
+            <LifeBuoy size={18} strokeWidth={2} className="text-grey-mid" aria-hidden="true" />
             <span className="flex-1">Help & feedback</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.08em] text-grey-mid">Support</span>
           </button>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 px-1">
             <UserButton
               afterSignOutUrl="/"
               appearance={clerkUserButtonAppearance}
@@ -210,7 +245,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
             />
             <div className="flex-1 min-w-0 text-left">
               <p className="text-sm font-semibold text-ink truncate">{currentUser.name}</p>
-              <p className="text-xs text-grey-mid truncate">{currentUser.role}</p>
+              <p className="text-xs text-grey-mid truncate">{role}</p>
             </div>
           </div>
         </div>
@@ -218,5 +253,23 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onOpenS
     </>
   );
 };
+
+function SidebarLink({ item, onClose }: { item: NavItem; onClose: () => void }) {
+  const Icon = item.icon;
+  return (
+    <NavLink
+      to={item.path}
+      onClick={onClose}
+      className={({ isActive }) =>
+        `flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm transition-colors ${
+          isActive ? 'bg-grey-light font-semibold text-ink' : 'font-medium text-grey-dark hover:bg-grey-light hover:text-ink'
+        }`
+      }
+    >
+      <Icon size={18} strokeWidth={2} className="shrink-0 text-grey-mid" aria-hidden="true" />
+      <span>{item.label}</span>
+    </NavLink>
+  );
+}
 
 export default Sidebar;

@@ -1,4 +1,4 @@
-import { can } from "../lib/permissions";
+﻿import { can } from "../lib/permissions";
 import React, { useState, useMemo, useEffect, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
@@ -25,6 +25,7 @@ import ImportCategorizationProgress from './ImportCategorizationProgress';
 import LinkMovementModal from './transactions/LinkMovementModal';
 import JournalTransferModal from './transactions/JournalTransferModal';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
+import { newKindModal, parseNewKind } from './app/newChooserRows';
 
 interface Category {
   _id: string;
@@ -154,7 +155,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   }, [importCategories, selectedIds, transactions]);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [showReconciliation, setShowReconciliation] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTransactionTab, setActiveTransactionTab] = useState<'all' | 'inPerson' | 'cashChequeBanking'>(() =>
     searchParams.get('view') === 'cash-banking' && can(currentUser.role, "reconciliation.manage") ? 'cashChequeBanking' : 'all'
   );
@@ -619,6 +620,47 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
   };
 
+  // "+ New" in the app shell opens one of these with ?new=<kind>. The param is removed
+  // at once, so a refresh or a second visit does not repeat the action.
+  const newKindParam = searchParams.get('new');
+  useEffect(() => {
+    if (!newKindParam) return;
+    setSearchParams((params) => {
+      params.delete('new');
+      return params;
+    }, { replace: true });
+    const kind = parseNewKind(newKindParam);
+    if (!kind || !canEdit) return;
+    switch (newKindModal(kind)) {
+      case 'cashTakings':
+        startTransition(() => setShowCashTakingsModal(true));
+        break;
+      case 'statementImport':
+        setShowStatementImport(true);
+        break;
+      case 'bankSync':
+        handleSyncBank();
+        break;
+      case 'singleEntry':
+        setShowAddModal(true);
+        break;
+      case 'journalTransfer':
+        setShowJournalTransfer(true);
+        break;
+    }
+    // Runs once per arrival of the param; the handlers are current for that render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newKindParam]);
+
+  // Cash banking is reached by a link from the shell or the dashboard, so it can
+  // arrive while this page is already mounted.
+  const viewParam = searchParams.get('view');
+  useEffect(() => {
+    if (viewParam === 'cash-banking' && can(currentUser.role, 'reconciliation.manage')) {
+      setActiveTransactionTab('cashChequeBanking');
+    }
+  }, [viewParam, currentUser.role]);
+
   const formatDateUK = (dateString: string) => {
       try {
           return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -706,12 +748,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         </div>
       </header>
 
-      {/* Summary strip — one panel with internal dividers */}
+      {/* Summary strip â€” one panel with internal dividers */}
       <div className="swiss-card-static grid grid-cols-2 lg:grid-cols-4 overflow-hidden">
         {([
-          { label: 'Money in', value: `+£${stripTotals.totalIn.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: stripPeriodLabel, bar: '#6b8e6b', valueColor: '#557555' },
-          { label: 'Money out', value: `−£${stripTotals.totalOut.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: stripPeriodLabel, bar: null, valueColor: '#1c1917' },
-          { label: 'Net movement', value: `${stripTotals.net < 0 ? '−' : '+'}£${Math.abs(stripTotals.net).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'This period', bar: stripTotals.net >= 0 ? '#6b8e6b' : '#c64545', valueColor: stripTotals.net >= 0 ? '#557555' : '#b53d3d' },
+          { label: 'Money in', value: `+Â£${stripTotals.totalIn.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: stripPeriodLabel, bar: '#6b8e6b', valueColor: '#557555' },
+          { label: 'Money out', value: `âˆ’Â£${stripTotals.totalOut.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: stripPeriodLabel, bar: null, valueColor: '#1c1917' },
+          { label: 'Net movement', value: `${stripTotals.net < 0 ? 'âˆ’' : '+'}Â£${Math.abs(stripTotals.net).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'This period', bar: stripTotals.net >= 0 ? '#6b8e6b' : '#c64545', valueColor: stripTotals.net >= 0 ? '#557555' : '#b53d3d' },
           { label: 'Needs review', value: String(stripTotals.needsReview), sub: 'Unreconciled or uncategorized', bar: '#c79a5f', valueColor: '#a9743f' },
         ] as const).map((s, i, arr) => (
           <div key={s.label} className={`relative px-6 py-5 ${i < arr.length - 1 ? 'lg:border-r border-[#efeee9]' : ''}`}>
@@ -772,7 +814,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
              <Search size={16} strokeWidth={1.9} className="absolute left-[13px] top-1/2 -translate-y-1/2 text-grey-mid" />
              <input
                 type="text"
-                placeholder="Search transactions, donors, or categories…"
+                placeholder="Search transactions, donors, or categoriesâ€¦"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
                 className="w-full h-10 pl-[38px] pr-3.5 text-sm text-ink border border-[#e3e1dc] rounded-[10px] bg-white outline-hidden focus:border-[#c79a5f] transition-colors"
@@ -842,7 +884,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
            {/* Category Filter */}
           <div className="relative h-10">
               <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className={`h-full w-[130px] pl-[13px] pr-8 border border-[#e3e1dc] text-[13px] font-medium bg-white rounded-[10px] outline-hidden appearance-none cursor-pointer ${filterCategory ? 'text-ink' : 'text-grey-dark'}`}>
-                  <option value="">Category…</option>
+                  <option value="">Categoryâ€¦</option>
                   {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <Tag size={13} strokeWidth={1.9} className="absolute right-[11px] top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
@@ -937,7 +979,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       </td>
                       <td className="px-4 py-3.5 text-grey-dark text-[13px] font-medium whitespace-nowrap">{fund?.name}</td>
                       <td className={`px-4 py-3.5 text-right font-mono text-[15px] font-bold whitespace-nowrap ${t.type === 'Income' ? 'text-sage-dark' : 'text-ink'}`}>
-                        {t.type === 'Income' ? '+' : '−'}£{t.amount.toFixed(2)}
+                        {t.type === 'Income' ? '+' : 'âˆ’'}Â£{t.amount.toFixed(2)}
                       </td>
                       <td className="px-4 py-3.5 text-center">
                           {t.isReconciled ? <Check size={16} strokeWidth={2} className="mx-auto text-[#6b8e6b]" /> : <div className="w-2 h-2 rounded-full bg-[#d6d3cd] mx-auto"></div>}
@@ -1114,7 +1156,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 ledger.fundTotals.map((fundTotal) => (
                                   <div key={fundTotal.fundId} className="flex items-center justify-between gap-4 text-sm text-ink font-medium">
                                     <span>{fundTotal.fundName}</span>
-                                    <span className="font-mono">£{fundTotal.total.toFixed(2)}</span>
+                                    <span className="font-mono">Â£{fundTotal.total.toFixed(2)}</span>
                                   </div>
                                 ))
                               ) : (
@@ -1123,7 +1165,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                             </div>
                           </td>
                           <td className="px-6 py-4 border-b border-[#efeee9] text-right font-mono text-sm font-bold text-sage">
-                            £{ledger.total.toFixed(2)}
+                            Â£{ledger.total.toFixed(2)}
                           </td>
                           <td className="px-6 py-4 border-b border-[#efeee9] text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1176,18 +1218,18 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         <td className="border border-ledger px-3 py-2 font-mono text-grey-mid">{row.day}</td>
                                         <td className="border border-ledger px-3 py-2 font-mono">{formatDateUK(row.serviceDate)}</td>
                                         <td className="border border-ledger px-3 py-2 font-medium text-ink">{row.serviceNote}</td>
-                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.cash.toFixed(2)}</td>
-                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.pdq.toFixed(2)}</td>
-                                        <td className="border border-ledger px-3 py-2 text-right font-mono">£{row.cheque.toFixed(2)}</td>
-                                        <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{row.total.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{row.cash.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{row.pdq.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{row.cheque.toFixed(2)}</td>
+                                        <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">Â£{row.total.toFixed(2)}</td>
                                       </tr>
                                     ))}
                                     <tr className="bg-grey-light font-bold">
                                       <td colSpan={3} className="border border-ledger px-3 py-2">TOTAL</td>
-                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{cashTotal.toFixed(2)}</td>
-                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{pdqTotal.toFixed(2)}</td>
-                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{chequeTotal.toFixed(2)}</td>
-                                      <td className="border border-ledger px-3 py-2 text-right font-mono">£{serviceTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{cashTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{pdqTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{chequeTotal.toFixed(2)}</td>
+                                      <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{serviceTotal.toFixed(2)}</td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -1219,12 +1261,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                               <td className="border border-ledger px-3 py-2">{donation.fundName}</td>
                                               <td className="border border-ledger px-3 py-2">{donation.paymentMethod ?? "-"}</td>
                                               {giftAidEnabled && <td className="border border-ledger px-3 py-2 text-center">{donation.isGiftAidEligible ? "Yes" : "No"}</td>}
-                                              <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">£{donation.amount.toFixed(2)}</td>
+                                              <td className="border border-ledger px-3 py-2 text-right font-mono font-bold">Â£{donation.amount.toFixed(2)}</td>
                                             </tr>
                                           ))}
                                           <tr className="bg-grey-light font-bold">
                                             <td colSpan={giftAidEnabled ? 5 : 4} className="border border-ledger px-3 py-2">TOTAL</td>
-                                            <td className="border border-ledger px-3 py-2 text-right font-mono">£{namedDonationTotal.toFixed(2)}</td>
+                                            <td className="border border-ledger px-3 py-2 text-right font-mono">Â£{namedDonationTotal.toFixed(2)}</td>
                                           </tr>
                                         </tbody>
                                       </table>
@@ -1233,7 +1275,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                 )}
                                 <div className="flex items-center justify-between border border-ledger bg-white px-3 py-2 text-xs font-bold">
                                   <span>COLLECTION TOTAL</span>
-                                  <span className="font-mono">£{ledger.total.toFixed(2)}</span>
+                                  <span className="font-mono">Â£{ledger.total.toFixed(2)}</span>
                                 </div>
                               </div>
                             </td>
@@ -1281,7 +1323,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       title={bulkCategoryNames.length === 0 ? "Select income or expenditure on its own to change category" : undefined}
                       onChange={(e) => e.target.value && executeBulkUpdate({ category: e.target.value })}
                   >
-                      <option value="" className="text-ink">Category…</option>
+                      <option value="" className="text-ink">Categoryâ€¦</option>
                       {bulkCategoryNames.map(c => <option key={c} value={c} className="text-ink">{c}</option>)}
                   </select>
                   {/* Inline Fund Dropdown */}
@@ -1290,7 +1332,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       value=""
                       onChange={(e) => e.target.value && executeBulkUpdate({ fundId: e.target.value as Id<"funds"> })}
                   >
-                      <option value="" className="text-ink">Fund…</option>
+                      <option value="" className="text-ink">Fundâ€¦</option>
                       {funds.map(f => <option key={f._id} value={f._id} className="text-ink">{f.name}</option>)}
                   </select>
               </div>
@@ -1326,7 +1368,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                         <div className="flex items-baseline gap-2">
                                             <span className="font-mono text-xs text-grey-mid">{txn.date}</span>
                                             <span className="font-medium text-ink text-sm">{txn.description}</span>
-                                            <span className="font-mono text-xs font-bold text-sage">£{txn.amount}</span>
+                                            <span className="font-mono text-xs font-bold text-sage">Â£{txn.amount}</span>
                                         </div>
                                         <div className="flex gap-2 text-[10px] items-center">
                                             <span className="text-sage-dark font-bold uppercase">Match Reason:</span>
@@ -1379,7 +1421,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <div>
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label>
                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">Â£</span>
                                 <input 
                                     type="number" 
                                     step="0.01"
@@ -1473,7 +1515,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     const fundName = funds.find(f => f._id === p.fundId)?.name || 'Unknown Fund';
                                     return (
                                         <option key={p._id} value={p._id}>
-                                            {fundName}: £{p.amount} ({p.frequency}) - {p.status}
+                                            {fundName}: Â£{p.amount} ({p.frequency}) - {p.status}
                                         </option>
                                     );
                                 })}
@@ -1564,7 +1606,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                         <div>
                              <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label>
                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">Â£</span>
                                 <input 
                                     type="number" 
                                     step="0.01"
@@ -1675,7 +1717,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                                     const fundName = funds.find(f => f._id === p.fundId)?.name || 'Unknown Fund';
                                     return (
                                         <option key={p._id} value={p._id}>
-                                            {fundName}: £{p.amount} ({p.frequency}) - {p.status}
+                                            {fundName}: Â£{p.amount} ({p.frequency}) - {p.status}
                                         </option>
                                     );
                                 })}
@@ -1757,7 +1799,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
               <div className="rounded-sm border border-ledger bg-paper p-3">
                 <div className="text-xs font-bold text-ink truncate">{voidTarget.description}</div>
                 <div className="text-xs text-grey-mid font-mono mt-1">
-                  {formatDateUK(voidTarget.date)} - {voidTarget.type === 'Income' ? '+' : '-'}£{voidTarget.amount.toFixed(2)}
+                  {formatDateUK(voidTarget.date)} - {voidTarget.type === 'Income' ? '+' : '-'}Â£{voidTarget.amount.toFixed(2)}
                 </div>
               </div>
               <div>
@@ -1902,7 +1944,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                       aria-busy={isProcessingAI}
                       className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide disabled:cursor-wait disabled:opacity-60"
                     >
-                      {isProcessingAI ? 'Categorising…' : 'Confirm Import'}
+                      {isProcessingAI ? 'Categorisingâ€¦' : 'Confirm Import'}
                     </button>
                     </div>
                 </div>
@@ -1938,7 +1980,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                     <p className="font-bold text-ink text-sm">{item.institutionName}</p>
                     <p className="text-[10px] text-grey-mid mt-0.5">
                       {item.accounts.length} account{item.accounts.length > 1 ? 's' : ''} mapped
-                      {item.lastSyncAt && ` • Last sync: ${new Date(item.lastSyncAt).toLocaleDateString()}`}
+                      {item.lastSyncAt && ` â€¢ Last sync: ${new Date(item.lastSyncAt).toLocaleDateString()}`}
                     </p>
                   </div>
                   <RefreshCw size={16} className="text-grey-mid group-hover:text-sage-dark" />
