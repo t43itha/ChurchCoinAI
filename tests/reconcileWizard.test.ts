@@ -162,6 +162,15 @@ describe("completed and reopened reconciliations", () => {
     expect(markup).toContain('aria-label="Back"');
   });
 
+  it("offers the ticked lines from the summary as an enabled, read-only next step", () => {
+    completed();
+    const markup = render({ sessionId: sessionId("rs-draft") });
+    const row = buttonWith(markup, "View the ticked lines");
+    expect(row).toBeDefined();
+    expect(row).not.toContain('disabled=""');
+    expect(markup).toContain("Read-only. Reopen to change anything.");
+  });
+
   it("keeps the balances and tick rail items open, but not the locked account step", () => {
     completed();
     const markup = render({ sessionId: sessionId("rs-draft"), initialStep: "tick" });

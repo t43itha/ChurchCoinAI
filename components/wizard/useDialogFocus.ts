@@ -1,23 +1,10 @@
 import { useEffect, type RefObject } from "react";
 
-const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
-// Where Tab goes inside a dialog with `count` focusable controls. `current` is the index of the
-// focused control, or -1 when focus is on the dialog itself. Returns the index to focus next.
-export function nextFocusIndex(count: number, current: number, shift: boolean): number {
-  if (count === 0) return -1;
-  if (shift) return current <= 0 ? count - 1 : current - 1;
-  return current < 0 || current >= count - 1 ? 0 : current + 1;
-}
-
-// Enabled controls in document order. Controls inside a disabled fieldset report :disabled too.
-function focusables(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((element) => !element.matches(":disabled"));
-}
-
-// Keeps keyboard focus inside a modal walkthrough while it is open. Focus moves in on mount,
-// Tab cycles within the dialog, every other child of body is made inert, and on unmount the
-// inert attributes and focus are restored. Nothing is touched when there is no document.
+// Keeps keyboard focus in a modal walkthrough while it is open. The dialog takes focus on mount so
+// screen readers announce its label. Every other child of body is made inert, so the browser's own
+// Tab order stays inside the dialog and skips hidden or disabled controls. Children marked
+// data-dialog-exempt (the toast host) are left alone. On unmount the inert attributes and focus
+// are restored. Nothing is touched when there is no document.
 export function useDialogFocus(dialog: RefObject<HTMLElement | null>): void {
   useEffect(() => {
     const root = dialog.current;
@@ -32,27 +19,14 @@ export function useDialogFocus(dialog: RefObject<HTMLElement | null>): void {
       portalRoot = portalRoot.parentElement;
     }
     const madeInert = Array.from(document.body.children).filter(
-      (child) => child !== portalRoot && !child.hasAttribute("inert")
+      (child) =>
+        child !== portalRoot && !child.hasAttribute("inert") && !child.hasAttribute("data-dialog-exempt")
     );
     for (const child of madeInert) child.setAttribute("inert", "");
 
-    (focusables(root)[0] ?? root).focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const items = focusables(root);
-      event.preventDefault();
-      if (items.length === 0) {
-        root.focus();
-        return;
-      }
-      const current = items.indexOf(document.activeElement as HTMLElement);
-      items[nextFocusIndex(items.length, current, event.shiftKey)]?.focus();
-    };
-    document.addEventListener("keydown", onKeyDown);
+    root.focus();
 
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
       for (const child of madeInert) child.removeAttribute("inert");
       if (opener?.isConnected) opener.focus();
     };

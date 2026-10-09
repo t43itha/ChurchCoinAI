@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle2, X } from "lucide-react";
 
 export type AppNotification = {
@@ -16,11 +17,24 @@ const AppNotificationToast: React.FC<AppNotificationToastProps> = ({
   notification,
   onClose,
 }) => {
-  if (!notification.visible) {
+  // The toast gets its own body child, so a walkthrough dialog can make the app root inert without
+  // silencing this live region or its close button. useDialogFocus leaves that child alone.
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const element = document.createElement("div");
+    element.setAttribute("data-dialog-exempt", "");
+    document.body.appendChild(element);
+    setHost(element);
+    return () => {
+      element.remove();
+    };
+  }, []);
+
+  if (!notification.visible || !host) {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed top-4 right-4 z-[100] bg-charcoal text-white shadow-soft-lg rounded-xl p-4 flex items-start gap-3 animate-enter max-w-sm border border-ink"
       role="status"
@@ -44,7 +58,8 @@ const AppNotificationToast: React.FC<AppNotificationToastProps> = ({
       >
         <X size={14} />
       </button>
-    </div>
+    </div>,
+    host
   );
 };
 

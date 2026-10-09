@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, LayoutList, Unlock } from "lucide-react";
+import { Check, LayoutList, ListChecks, Unlock } from "lucide-react";
 import { gbp } from "../cashEntry/format";
 import {
   btnMd,
@@ -21,6 +21,7 @@ interface ReconcileDoneProps {
   periodEnd: string;
   lineCount: number;
   closing: number;
+  onViewTicks: () => void;
   onReopen: (reason: string) => void;
   onClose: () => void;
 }
@@ -32,6 +33,7 @@ export default function ReconcileDone({
   periodEnd,
   lineCount,
   closing,
+  onViewTicks,
   onReopen,
   onClose,
 }: ReconcileDoneProps) {
@@ -51,6 +53,15 @@ export default function ReconcileDone({
 
       <div className="mt-6 text-left">
         <span className={fieldLabel}>What's next</span>
+        <button type="button" onClick={onViewTicks} className={`${nextItem} mb-2`}>
+          <span className={`${nextIcon} bg-grey-light text-ink`}>
+            <ListChecks size={17} aria-hidden="true" />
+          </span>
+          <span className="min-w-0">
+            <b className="block text-[14.5px] text-ink">View the ticked lines</b>
+            <span className="text-xs text-grey-mid">Read-only. Reopen to change anything.</span>
+          </span>
+        </button>
         <button type="button" onClick={onClose} className={nextItem}>
           <span className={`${nextIcon} bg-grey-light text-ink`}>
             <LayoutList size={17} aria-hidden="true" />

@@ -2,12 +2,46 @@ import { describe, expect, it } from "vitest";
 import { gapPounds, monthName, periodLabel } from "../components/reconcile/format";
 import {
   RAIL_ORDER,
+  hasPendingEdits,
+  holdsUnsavedEdits,
   previousMonthRange,
   previousStepFor,
   railStateFor,
   resolveStep,
   startStepFor,
 } from "../components/reconcile/steps";
+
+describe("hasPendingEdits", () => {
+  const saved = { fundId: "fund-general", periodStart: "2026-03-01", periodEnd: "2026-03-31", opening: "1000", closing: "1300" };
+
+  it("has nothing pending when no value has been typed", () => {
+    expect(hasPendingEdits({}, saved)).toBe(false);
+  });
+
+  it("treats a value typed back to the saved one as not pending", () => {
+    expect(hasPendingEdits({ closing: "1300" }, saved)).toBe(false);
+    expect(hasPendingEdits({ closing: undefined }, saved)).toBe(false);
+  });
+
+  it("reports a changed closing balance or period as pending", () => {
+    expect(hasPendingEdits({ closing: "1450" }, saved)).toBe(true);
+    expect(hasPendingEdits({ periodEnd: "2026-03-30" }, saved)).toBe(true);
+  });
+
+  it("reports a pending edit alongside values that match the saved session", () => {
+    expect(hasPendingEdits({ opening: "1000", closing: "1450" }, saved)).toBe(true);
+  });
+});
+
+describe("holdsUnsavedEdits", () => {
+  it("is true only for the account and balances steps, whose edits are saved by their Next button", () => {
+    expect(holdsUnsavedEdits("account")).toBe(true);
+    expect(holdsUnsavedEdits("balances")).toBe(true);
+    expect(holdsUnsavedEdits("tick")).toBe(false);
+    expect(holdsUnsavedEdits("finish")).toBe(false);
+    expect(holdsUnsavedEdits("done")).toBe(false);
+  });
+});
 
 describe("railStateFor", () => {
   it("marks steps before the current one as done, the current one as now, and later ones as to do", () => {

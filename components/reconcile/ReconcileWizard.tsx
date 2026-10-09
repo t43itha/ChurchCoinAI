@@ -24,6 +24,8 @@ import TickStep from "./TickStep";
 import { gapPounds, monthName } from "./format";
 import {
   RAIL_ORDER,
+  hasPendingEdits,
+  holdsUnsavedEdits,
   previousMonthRange,
   previousStepFor,
   railStateFor,
@@ -123,7 +125,19 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
     bodyRef.current?.scrollTo({ top: 0 });
   };
 
+  // Leaving the account or balances step by any route but its Next button discards the unsaved
+  // edits, so completing never runs against stale saved values. Ask first; cancelling stays put.
+  const pendingEdits = hasPendingEdits(edits, base);
+  const confirmDiscard = () =>
+    !(holdsUnsavedEdits(step) && pendingEdits) || window.confirm("Discard your changes to the statement?");
+  const leave = (target: ReconcileStepKind) => {
+    if (target === step || saving || !confirmDiscard()) return;
+    setEdits({});
+    go(target);
+  };
+
   const continueSession = (id: Id<"reconciliationSessions">) => {
+    if (!confirmDiscard()) return;
     setSessionId(id);
     setEdits({});
     setError(null);
@@ -288,7 +302,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
       </StepFooter>
     );
   } else if (step === "finish" && differencePence !== null) {
-    body = <FinishStep differencePence={differencePence} completed={isCompleted} onGo={go} />;
+    body = <FinishStep differencePence={differencePence} completed={isCompleted} onGo={leave} />;
     footer = isCompleted ? (
       <StepFooter>
         <button type="button" onClick={() => go("done")} className={`${btnPrimary} ${btnLg}`}>
@@ -300,7 +314,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
         <div className="space-y-1.5">
           <button
             type="button"
-            disabled={saving || !canCompleteSession(differencePence)}
+            disabled={saving || pendingEdits || !canCompleteSession(differencePence)}
             onClick={() => void completeReconciliation()}
             className={`${btnPrimary} ${btnLg}`}
           >
@@ -321,6 +335,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
         periodEnd={workspace.session.periodEnd}
         lineCount={workspace.cleared.length}
         closing={workspace.session.statementClosingBalance}
+        onViewTicks={() => leave("tick")}
         onReopen={(reason) => void reopen(reason)}
         onClose={onClose}
       />
@@ -341,7 +356,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
             state={state}
             // A completed session can be read from balances onward, but its account is locked.
             disabled={isCompleted ? kind === "account" : state === "todo"}
-            onClick={() => go(kind)}
+            onClick={() => leave(kind)}
           />
         );
       })}
@@ -370,7 +385,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
       // Locks every control while a save is in flight, so a change can't be repeated or overtaken.
       locked={saving}
       onClose={onClose}
-      onBack={previous ? () => go(previous) : undefined}
+      onBack={previous ? () => leave(previous) : undefined}
       progress={{ total: RAIL_ORDER.length, current: stepPosition }}
       rail={rail}
       receipt={receipt}

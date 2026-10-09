@@ -41,6 +41,16 @@ export function previousStepFor(step: ReconcileStepKind, completed: boolean): Re
   return RAIL_ORDER[index - 1];
 }
 
+// The account and balances steps hold edits that only their Next button saves.
+export function holdsUnsavedEdits(step: ReconcileStepKind): boolean {
+  return step === "account" || step === "balances";
+}
+
+// True when an edit differs from the saved value. Typing a value back to the saved one is not pending.
+export function hasPendingEdits<T extends object>(edits: Partial<T>, saved: T): boolean {
+  return (Object.keys(edits) as Array<keyof T>).some((key) => edits[key] !== undefined && edits[key] !== saved[key]);
+}
+
 const pad = (value: number) => String(value).padStart(2, "0");
 
 // The calendar month before `today` (YYYY-MM-DD), as the statement period.

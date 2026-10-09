@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import {
   COIN_KEYS,
@@ -26,6 +26,12 @@ export default function CountSheet({ label, where, initial, onUse, onCancel }: C
     initial ? { notes: { ...initial.notes }, coins: { ...initial.coins } } : emptyCount()
   );
   const total = countTotal(count);
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  // Opening the sheet is for counting, so focus goes straight to the first count input.
+  useEffect(() => {
+    sheetRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+  }, []);
 
   const setNotes = (value: NoteValue, quantity: number) =>
     setCount((current) => ({ ...current, notes: { ...current.notes, [value]: Math.max(0, quantity) } }));
@@ -33,7 +39,7 @@ export default function CountSheet({ label, where, initial, onUse, onCancel }: C
     setCount((current) => ({ ...current, coins: { ...current.coins, [key]: amount } }));
 
   return (
-    <div className="absolute inset-0 z-10 flex items-end bg-ink/45">
+    <div ref={sheetRef} className="absolute inset-0 z-10 flex items-end bg-ink/45">
       <div className="flex max-h-[91%] w-full flex-col rounded-t-[26px] bg-paper shadow-soft-lg lg:mx-auto lg:mb-6 lg:max-w-md lg:rounded-[26px]">
         <div className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-[#d6d3cd]" />
         <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-2 pt-1">
