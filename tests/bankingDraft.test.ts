@@ -11,11 +11,12 @@ import {
   mediumOf,
   parseAmountInput,
   seedFromBanking,
+  settleSelection,
   type BankCredit,
   type OpenCollection,
   type SavedBanking,
 } from "../components/banking/draft";
-import { countLabel, differenceText } from "../components/banking/format";
+import { countLabel, differenceText, historyDate } from "../components/banking/format";
 import { gbp } from "../components/cashEntry/format";
 import { signedGbp } from "../components/statementImport/format";
 
@@ -326,5 +327,41 @@ describe("difference and count wording", () => {
   it("pluralises a count", () => {
     expect(countLabel(1, "collection")).toBe("1 collection");
     expect(countLabel(2, "collection")).toBe("2 collections");
+  });
+
+  it("writes a history date short, with September as Sep", () => {
+    expect(historyDate("2026-09-14")).toBe("Mon 14 Sep 2026");
+  });
+});
+
+describe("collections that arrive after the first load", () => {
+  // What the walkthrough sends to updateDraft: the picked collections' splits, built the same way the component does.
+  const splitsFor = (selection: Set<string>, available: OpenCollection[]) =>
+    buildBankingView({
+      collections: available.filter((collection) => selection.has(collection._id)),
+      overrides: {},
+      credits: [],
+      creditDrafts: {},
+    }).collectionSplits.map((split) => split.cashCollectionId);
+
+  const late: OpenCollection = { ...collection, _id: "col-2", weekEndingDate: "2026-03-15" };
+
+  it("ticks every open collection the first time they load", () => {
+    const selection = settleSelection(null, [collection]);
+    expect([...selection]).toEqual(["col-1"]);
+  });
+
+  it("leaves a collection that arrives later unticked, so it is not sent to updateDraft", () => {
+    let selection = settleSelection(null, [collection]);
+    // The live query now also returns a collection that was recorded after the walkthrough opened.
+    selection = settleSelection(selection, [collection, late]);
+    expect(splitsFor(selection, [collection, late])).toEqual(["col-1"]);
+  });
+
+  it("keeps the user's own ticks when the query changes again", () => {
+    let selection = settleSelection(null, [collection, late]);
+    selection = new Set([...selection].filter((id) => id !== "col-2"));
+    selection = settleSelection(selection, [collection, late]);
+    expect(splitsFor(selection, [collection, late])).toEqual(["col-1"]);
   });
 });

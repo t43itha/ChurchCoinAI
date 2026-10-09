@@ -88,7 +88,7 @@ export default function BankStep({
                     {ticked && <Check size={14} aria-hidden="true" />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <b className="block truncate text-[14.5px] font-semibold">{credit.description}</b>
+                    <b className="block break-words text-[14.5px] font-semibold">{credit.description}</b>
                     <span className="block truncate text-[12.5px] text-grey-mid">
                       {shortDate(credit.date)}
                       {fund ? ` · ${fund.name}` : ""}

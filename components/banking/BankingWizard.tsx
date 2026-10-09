@@ -24,6 +24,7 @@ import {
   defaultCreditDraft,
   mediumOf,
   seedFromBanking,
+  settleSelection,
   type AmountDraft,
   type BankCredit,
   type CreditDraft,
@@ -78,7 +79,7 @@ export default function BankingWizard({ funds, reconciliation, initialStep, onCl
   const [seed] = useState(() => (reconciliation ? seedFromBanking(reconciliation) : EMPTY_SEED));
   const [editingId, setEditingId] = useState<Id<"cashBankingReconciliations"> | null>(reconciliation?._id ?? null);
   const [position, setPosition] = useState<BankingStepKind | null>(initialStep ?? null);
-  // Null means nothing has been touched yet, so every open collection starts ticked.
+  // Null until the collections first load; settleSelection then ticks them all, once.
   const [selection, setSelection] = useState<Set<string> | null>(() =>
     seed.collectionSelection ? new Set(seed.collectionSelection) : null
   );
@@ -103,6 +104,11 @@ export default function BankingWizard({ funds, reconciliation, initialStep, onCl
   const createDraft = useMutation(api.mutations.cashBankingReconciliations.createDraft);
   const updateDraft = useMutation(api.mutations.cashBankingReconciliations.updateDraft);
   const completeBanking = useMutation(api.mutations.cashBankingReconciliations.complete);
+
+  // Freezes the ticks at the first load, so a collection that arrives later does not get picked up unseen.
+  useEffect(() => {
+    if (awaiting !== undefined) setSelection((current) => settleSelection(current, awaiting));
+  }, [awaiting]);
 
   const loading = awaiting === undefined;
   const collections = awaiting ?? [];
@@ -161,9 +167,7 @@ export default function BankingWizard({ funds, reconciliation, initialStep, onCl
     edited();
     // Unticking a collection drops any part-amounts typed for it.
     if (isTicked(collectionId)) setOverrides((current) => without(current, collectionId));
-    setSelection((current) =>
-      toggled(current ?? new Set(collections.map((collection) => collection._id)), collectionId)
-    );
+    setSelection((current) => toggled(settleSelection(current, collections), collectionId));
   };
 
   const startPartial = (collection: OpenCollection) => {
@@ -368,6 +372,8 @@ export default function BankingWizard({ funds, reconciliation, initialStep, onCl
       <CheckStep
         counted={view.counted}
         collectionCount={pickedCollections.length}
+        banked={view.banked}
+        bankCount={pickedCredits.length}
         variance={view.variance}
         varianceType={varianceType}
         note={varianceNote}

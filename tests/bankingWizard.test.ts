@@ -210,6 +210,15 @@ describe("banking walkthrough", () => {
     expect(buttonWith(markup, "Complete banking")).toContain('disabled=""');
   });
 
+  it("shows the two totals on Check for phones, where the receipt is hidden", () => {
+    fixtures.awaiting = [collection];
+    fixtures.candidates = [credit()];
+    const markup = renderWizard({ initialStep: "check" });
+    expect(markup).toMatch(/<dl[^>]*lg:hidden/);
+    expect(markup).toContain("1 collection");
+    expect(markup).toContain("0 bank credits");
+  });
+
   it("confirms a reopened banking that already matches, and preloads its reason", () => {
     fixtures.awaiting = [collection];
     fixtures.candidates = [credit()];

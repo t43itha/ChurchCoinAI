@@ -10,8 +10,7 @@ import type { AppUser, Fund } from "../types";
 import { gbp } from "./cashEntry/format";
 import BankingWizard from "./banking/BankingWizard";
 import ReopenSheet from "./banking/ReopenSheet";
-import { countLabel } from "./banking/format";
-import { fullDate } from "./statementImport/format";
+import { countLabel, historyDate } from "./banking/format";
 import {
   btnMd,
   btnOutline,
@@ -36,7 +35,7 @@ interface CashChequeBankingProps {
 const HISTORY_LIMIT = 8;
 
 // The date a banking was completed, or last changed if it has not been completed.
-const dateOf = (record: BankingRecord) => fullDate(formatLocalDateInputValue(new Date(record.completedAt ?? record.updatedAt)));
+const dateOf = (record: BankingRecord) => historyDate(formatLocalDateInputValue(new Date(record.completedAt ?? record.updatedAt)));
 
 // The hub for cash and cheque banking: what is waiting, the reopened bankings that need finishing,
 // and the recent history. The walkthrough and the reopen sheet open from here.
@@ -143,23 +142,26 @@ export default function CashChequeBanking({ funds, currentUser }: CashChequeBank
               const reopenedRecord = record.status === "reopened";
               return (
                 <li key={record._id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-                  <span className="min-w-[140px] flex-1">
-                    <b className="block text-[14.5px] text-ink">{dateOf(record)}</b>
+                  {/* Full width on phones so the date never wraps; the amount, tag and Reopen then sit on the line below. */}
+                  <span className="w-full min-w-0 sm:w-auto sm:min-w-[140px] sm:flex-1">
+                    <b className="block whitespace-nowrap text-[14.5px] text-ink">{dateOf(record)}</b>
                     <span className="text-[12.5px] text-grey-mid">
                       {countLabel(record.cashCollectionIds.length, "collection")}
                     </span>
                   </span>
-                  <span className="whitespace-nowrap font-mono text-sm text-ink">{gbp(record.bankedTotal)}</span>
-                  <span className={reopenedRecord ? tagAmber : tagSage}>{reopenedRecord ? "Reopened" : "Completed"}</span>
-                  {record.status === "completed" && (
-                    <button
-                      type="button"
-                      onClick={() => setReopening(record)}
-                      className={`${btnOutline} ${btnMd} !w-auto px-4`}
-                    >
-                      Reopen
-                    </button>
-                  )}
+                  <span className="flex items-center gap-3">
+                    <span className="whitespace-nowrap font-mono text-sm text-ink">{gbp(record.bankedTotal)}</span>
+                    <span className={reopenedRecord ? tagAmber : tagSage}>{reopenedRecord ? "Reopened" : "Completed"}</span>
+                    {record.status === "completed" && (
+                      <button
+                        type="button"
+                        onClick={() => setReopening(record)}
+                        className={`${btnOutline} ${btnMd} !w-auto px-4`}
+                      >
+                        Reopen
+                      </button>
+                    )}
+                  </span>
                 </li>
               );
             })}

@@ -9,3 +9,12 @@ export const differenceText = (variance: number | null) => {
 
 // "1 collection", "3 collections".
 export const countLabel = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "Mon 14 Sep 2026". Written out, because en-GB abbreviates September as "Sept".
+export function historyDate(iso: string) {
+  const date = new Date(`${iso}T00:00:00`);
+  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}

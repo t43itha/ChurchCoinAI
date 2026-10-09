@@ -228,6 +228,12 @@ function creditSplitFor(input: BankTransactionSplitInput): CreditResult {
   }
 }
 
+// The ticked collections. Null means none have been touched yet, so the first load ticks every open collection
+// and freezes that choice: a collection that arrives later starts unticked.
+export function settleSelection(selection: Set<string> | null, collections: readonly OpenCollection[]): Set<string> {
+  return selection ?? new Set(collections.map((collection) => collection._id));
+}
+
 export interface BankingView {
   collectionSplits: CollectionSplit[];
   collectionErrors: Record<string, string>;
