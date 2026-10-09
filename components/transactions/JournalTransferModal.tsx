@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -14,8 +14,12 @@ import {
   TRANSFER_STEPS,
   amountPence,
   balanceAfterPence,
+  mayCloseTransfer,
   previousStepFor,
   railStateFor,
+  startTransfer,
+  transferReducer,
+  type TransferDraft,
   type TransferStep,
 } from "../movements/transferSteps";
 import RailStep from "../wizard/RailStep";
@@ -37,12 +41,6 @@ export interface JournalTransferModalProps {
   onClose: () => void;
 }
 
-interface MovedSummary {
-  fromName: string;
-  toName: string;
-  amountPence: number;
-}
-
 // Walkthrough for moving money between two funds: pick both funds, then how much and when.
 // Nothing is saved until Move money is pressed.
 export default function JournalTransferModal({
@@ -54,20 +52,26 @@ export default function JournalTransferModal({
   onClose,
 }: JournalTransferModalProps) {
   const createJournalTransfer = useMutation(api.mutations.movements.createJournalTransfer);
-  const initialAmountText = initialAmount === undefined ? "" : initialAmount.toFixed(2);
+  const today = formatLocalDateInputValue(new Date());
 
-  const [position, setPosition] = useState<TransferStep>(initialStep ?? "funds");
-  const [fromFundId, setFromFundId] = useState(initialFromFundId);
-  const [toFundId, setToFundId] = useState(initialToFundId);
-  const [amountText, setAmountText] = useState(initialAmountText);
-  const [date, setDate] = useState(() => formatLocalDateInputValue(new Date()));
-  const [note, setNote] = useState("");
+  const [state, dispatch] = useReducer(transferReducer, undefined, () =>
+    startTransfer({
+      today,
+      fromFundId: initialFromFundId,
+      toFundId: initialToFundId,
+      amount: initialAmount,
+      step: initialStep,
+    })
+  );
+  const { draft, moved } = state;
+  const { fromFundId, toFundId, amountText, date, note } = draft;
   const [saving, setSaving] = useState(false);
-  const [moved, setMoved] = useState<MovedSummary | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  const setDraft = (patch: Partial<TransferDraft>) => dispatch({ type: "edit", patch });
+
   // The confirmation only exists once a transfer is saved, so a stale "done" position opens on funds.
-  const step: TransferStep = moved ? "done" : position === "done" ? "funds" : position;
+  const step: TransferStep = moved ? "done" : state.position === "done" ? "funds" : state.position;
   const fromFund = funds.find((fund) => fund._id === fromFundId);
   const toFund = funds.find((fund) => fund._id === toFundId);
   const pence = amountPence(amountText);
@@ -77,19 +81,10 @@ export default function JournalTransferModal({
     fromFund !== undefined && toFund !== undefined && fromFundId !== toFundId && pence !== null && date !== "";
   const overdraftPence =
     fromFund && pence !== null ? Math.max(0, -balanceAfterPence(fromFund.balance, -pence)) : 0;
-  // Anything picked or typed since the walkthrough opened, which closing would throw away.
-  const dirty =
-    !moved &&
-    (fromFundId !== initialFromFundId ||
-      toFundId !== initialToFundId ||
-      amountText !== initialAmountText ||
-      note.trim() !== "");
 
   const requestClose = useCallback(() => {
-    if (saving) return;
-    if (dirty && !window.confirm("Discard this transfer?")) return;
-    onClose();
-  }, [saving, dirty, onClose]);
+    if (mayCloseTransfer(state, today, saving, () => window.confirm("Discard this transfer?"))) onClose();
+  }, [state, today, saving, onClose]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -101,7 +96,7 @@ export default function JournalTransferModal({
 
   const go = (target: TransferStep) => {
     if (saving) return;
-    setPosition(target);
+    dispatch({ type: "go", step: target });
     bodyRef.current?.scrollTo({ top: 0 });
   };
 
@@ -116,8 +111,7 @@ export default function JournalTransferModal({
         date,
         note: note.trim() || undefined,
       });
-      setMoved({ fromName: fromFund.name, toName: toFund.name, amountPence: pence });
-      setPosition("done");
+      dispatch({ type: "moved", summary: { fromName: fromFund.name, toName: toFund.name, amountPence: pence } });
       notify("Transfer recorded", "The money has moved between the two funds.");
     } catch (error) {
       notify("Error", error instanceof Error ? error.message : "Failed to record the transfer.");
@@ -127,12 +121,8 @@ export default function JournalTransferModal({
   };
 
   const moveMore = () => {
-    setMoved(null);
-    setFromFundId("");
-    setToFundId("");
-    setAmountText("");
-    setNote("");
-    go("funds");
+    dispatch({ type: "moreMoney", today });
+    bodyRef.current?.scrollTo({ top: 0 });
   };
 
   const previous = previousStepFor(step);
@@ -141,15 +131,15 @@ export default function JournalTransferModal({
     <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-ledger bg-white p-4 lg:flex">
       <div className={`${eyebrow} mx-2.5 mb-1`}>Between funds</div>
       {TRANSFER_STEPS.map((kind, index) => {
-        const state = railStateFor(kind, step);
+        const railState = railStateFor(kind, step);
         return (
           <RailStep
             key={kind}
             marker={String(index + 1)}
             label={LABELS[kind]}
-            state={state}
+            state={railState}
             // Once moved, the only way on is the buttons on the done screen.
-            disabled={state === "todo" || (step === "done" && kind !== "done")}
+            disabled={railState === "todo" || (step === "done" && kind !== "done")}
             onClick={() => go(kind)}
           />
         );
@@ -193,8 +183,8 @@ export default function JournalTransferModal({
         funds={funds}
         fromFundId={fromFundId}
         toFundId={toFundId}
-        onFrom={setFromFundId}
-        onTo={setToFundId}
+        onFrom={(value) => setDraft({ fromFundId: value })}
+        onTo={(value) => setDraft({ toFundId: value })}
       />
     );
   } else if (step === "amount") {
@@ -203,12 +193,12 @@ export default function JournalTransferModal({
         fromName={fromFund?.name ?? "the fund"}
         toName={toFund?.name ?? "the fund"}
         amountText={amountText}
-        onAmountChange={setAmountText}
+        onAmountChange={(value) => setDraft({ amountText: value })}
         amountError={amountError}
         date={date}
-        onDateChange={setDate}
+        onDateChange={(value) => setDraft({ date: value })}
         note={note}
-        onNoteChange={setNote}
+        onNoteChange={(value) => setDraft({ note: value })}
         overdraftPence={overdraftPence}
       />
     );

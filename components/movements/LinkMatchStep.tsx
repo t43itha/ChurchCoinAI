@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 import type { Id } from "../../convex/_generated/dataModel";
 import type { MovementKind } from "../../lib/movementCategories";
 import { formatUkDate } from "../../lib/dateUtils";
-import { linkCandidates, MOVEMENT_LABELS } from "../../lib/movementMatching";
+import { linkCandidates, MOVEMENT_LABELS, openLoansFor } from "../../lib/movementMatching";
 import type { Fund, Transaction } from "../../types";
 import DateInput from "../cashEntry/DateInput";
 import { shortDate } from "../cashEntry/format";
@@ -21,7 +21,7 @@ import {
   tickRow,
   txtInput,
 } from "../wizard/ui";
-import { money, openLoansFor, type LinkArgs, type LinkedWith, type Loan } from "./linkSteps";
+import { money, type LinkArgs, type LinkedWith, type Loan } from "./linkSteps";
 
 export interface LinkFormProps {
   transaction: Transaction;

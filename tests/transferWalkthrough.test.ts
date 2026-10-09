@@ -5,8 +5,12 @@ import JournalTransferModal, { type JournalTransferModalProps } from "../compone
 import {
   amountPence,
   balanceAfterPence,
+  hasUnsavedTransfer,
+  mayCloseTransfer,
   previousStepFor,
   railStateFor,
+  startTransfer,
+  transferReducer,
 } from "../components/movements/transferSteps";
 import type { Fund } from "../types";
 
@@ -146,5 +150,100 @@ describe("JournalTransferModal done step", () => {
     const markup = render({ initialStep: "done" });
     expect(markup).toContain("Which funds?");
     expect(markup).not.toContain("Move more money");
+  });
+});
+
+describe("transfer draft", () => {
+  const today = "2026-10-09";
+  const moved = { fromName: "General Fund", toName: "Building Fund", amountPence: 30000 };
+
+  it("opens on today's date with nothing unsaved", () => {
+    const state = startTransfer({ today });
+    expect(state.draft.date).toBe(today);
+    expect(hasUnsavedTransfer(state, today)).toBe(false);
+  });
+
+  it("counts a changed date as unsaved work", () => {
+    const state = transferReducer(startTransfer({ today }), { type: "edit", patch: { date: "2026-01-15" } });
+    expect(hasUnsavedTransfer(state, today)).toBe(true);
+  });
+
+  it("counts a prefilled fund or amount as unsaved work, not as a clean starting point", () => {
+    expect(hasUnsavedTransfer(startTransfer({ today, fromFundId: "general" }), today)).toBe(true);
+    expect(hasUnsavedTransfer(startTransfer({ today, toFundId: "building" }), today)).toBe(true);
+    expect(hasUnsavedTransfer(startTransfer({ today, amount: 300 }), today)).toBe(true);
+  });
+
+  it("counts a typed note as unsaved work", () => {
+    const state = transferReducer(startTransfer({ today }), { type: "edit", patch: { note: "Youth camp" } });
+    expect(hasUnsavedTransfer(state, today)).toBe(true);
+  });
+
+  it("is clean once the transfer is saved", () => {
+    const state = transferReducer(startTransfer({ today, fromFundId: "general", toFundId: "building", amount: 300 }), {
+      type: "moved",
+      summary: moved,
+    });
+    expect(hasUnsavedTransfer(state, today)).toBe(false);
+  });
+
+  it("clears a backdated date on Move more money, so the next transfer is dated today", () => {
+    let state = startTransfer({ today: "2026-10-01", fromFundId: "general", toFundId: "building", amount: 300 });
+    state = transferReducer(state, { type: "edit", patch: { date: "2026-01-15" } });
+    state = transferReducer(state, { type: "moved", summary: moved });
+    expect(state.position).toBe("done");
+
+    state = transferReducer(state, { type: "moreMoney", today });
+    expect(state.moved).toBeNull();
+    expect(state.position).toBe("funds");
+    expect(state.draft).toEqual({ fromFundId: "", toFundId: "", amountText: "", date: today, note: "" });
+    expect(hasUnsavedTransfer(state, today)).toBe(false);
+  });
+});
+
+describe("closing the transfer", () => {
+  const today = "2026-10-09";
+
+  it("closes straight away when nothing has been entered", () => {
+    const askToDiscard = vi.fn(() => true);
+    expect(mayCloseTransfer(startTransfer({ today }), today, false, askToDiscard)).toBe(true);
+    expect(askToDiscard).not.toHaveBeenCalled();
+  });
+
+  it("asks before discarding a prefilled transfer, and closes once the discard is confirmed", () => {
+    const askToDiscard = vi.fn(() => true);
+    expect(mayCloseTransfer(startTransfer({ today, fromFundId: "general", amount: 300 }), today, false, askToDiscard)).toBe(
+      true
+    );
+    expect(askToDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays open when the discard prompt is cancelled", () => {
+    const askToDiscard = vi.fn(() => false);
+    expect(mayCloseTransfer(startTransfer({ today, toFundId: "building" }), today, false, askToDiscard)).toBe(false);
+    expect(askToDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks when only the date has been changed", () => {
+    const state = transferReducer(startTransfer({ today }), { type: "edit", patch: { date: "2026-01-15" } });
+    const askToDiscard = vi.fn(() => false);
+    expect(mayCloseTransfer(state, today, false, askToDiscard)).toBe(false);
+    expect(askToDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it("never closes while the transfer is being saved, and does not ask", () => {
+    const askToDiscard = vi.fn(() => true);
+    expect(mayCloseTransfer(startTransfer({ today, fromFundId: "general" }), today, true, askToDiscard)).toBe(false);
+    expect(askToDiscard).not.toHaveBeenCalled();
+  });
+
+  it("closes without asking once the transfer is saved", () => {
+    const state = transferReducer(startTransfer({ today, fromFundId: "general", toFundId: "building", amount: 300 }), {
+      type: "moved",
+      summary: { fromName: "General Fund", toName: "Building Fund", amountPence: 30000 },
+    });
+    const askToDiscard = vi.fn(() => false);
+    expect(mayCloseTransfer(state, today, false, askToDiscard)).toBe(true);
+    expect(askToDiscard).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,5 @@
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "../../convex/_generated/api";
-import { meetsMoneyTarget } from "../../convex/lib/money";
 import type { RailStepState } from "../wizard/RailStep";
 
 // The rail, in order. Done is the confirmation.
@@ -17,11 +16,6 @@ export type LinkArgs = FunctionArgs<typeof api.mutations.movements.link>;
 export type Loan = FunctionReturnType<typeof api.queries.movements.listLoans>[number];
 
 export const money = (amount: number) => `£${amount.toFixed(2)}`;
-
-// The loans a repayment of this amount can go to: still open, and owing at least the amount.
-export function openLoansFor(loans: Loan[], amount: number): Loan[] {
-  return loans.filter((loan) => !loan.isRepaid && meetsMoneyTarget(loan.outstanding, amount));
-}
 
 // What the link was made to, as the done step describes it. Each form reports the one it chose.
 export type LinkedWith =

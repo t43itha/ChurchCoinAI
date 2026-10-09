@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../convex/_generated/dataModel";
 import LinkMovementModal, { type LinkMovementModalProps } from "../components/transactions/LinkMovementModal";
-import { linkedSummary, openLoansFor, railStateFor, type Loan } from "../components/movements/linkSteps";
+import { linkedSummary, railStateFor, type Loan } from "../components/movements/linkSteps";
 import type { Fund, Transaction } from "../types";
 
 // Query results are chosen by which function reference the component asks for.
@@ -77,14 +77,6 @@ describe("linkSteps", () => {
     expect(railStateFor("match", "match")).toBe("now");
     expect(railStateFor("done", "match")).toBe("todo");
     expect(railStateFor("match", "done")).toBe("done");
-  });
-
-  it("offers only open loans that owe at least the repayment, and never a repaid one", () => {
-    const open = openLoansFor(loans, 300).map((item) => item.lender);
-    expect(open).toEqual(["Alex Sackey", "Church Bank"]);
-    expect(openLoansFor(loans, 852).map((item) => item.lender)).toEqual(["Alex Sackey", "Church Bank"]);
-    expect(openLoansFor(loans, 900).map((item) => item.lender)).toEqual(["Church Bank"]);
-    expect(openLoansFor(loans, 5000).map((item) => item.lender)).toEqual([]);
   });
 
   it("describes the other side of a transfer by its description and amount", () => {

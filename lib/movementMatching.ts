@@ -1,6 +1,6 @@
 import { resolveCategoryForTransaction } from "../convex/intelligence/categorization/categoryResolver";
 import type { CategoryLike } from "../convex/intelligence/categorization/types";
-import { roundMoney, sumMoney } from "../convex/lib/money";
+import { meetsMoneyTarget, roundMoney, sumMoney } from "../convex/lib/money";
 import type { LoanReportRow } from "../types";
 import type { MovementKind } from "./movementCategories";
 import { isUnlinkedMovementLeg, isVoidedTransaction, type LedgerRow } from "./reportableTransactions";
@@ -145,6 +145,11 @@ export function loanReportRows(
 export function isLoanOverdue(loan: { dueDate?: string; outstanding: number }, today: string) {
   if (!loan.dueDate) return false;
   return loan.outstanding > 0 && loan.dueDate < today;
+}
+
+// The loans a repayment of this amount can go to: still open, and owing at least the amount.
+export function openLoansFor<T extends { isRepaid: boolean; outstanding: number }>(loans: T[], amount: number): T[] {
+  return loans.filter((loan) => !loan.isRepaid && meetsMoneyTarget(loan.outstanding, amount));
 }
 
 export type PairSuggestion = { source: "import" | "ledger"; id: string };
