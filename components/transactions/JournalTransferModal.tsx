@@ -1,130 +1,234 @@
-import { useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
-import type { FunctionArgs } from "convex/server";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { formatLocalDateInputValue } from "../../lib/dateUtils";
 import { notify } from "../../lib/notifications";
 import type { Fund } from "../../types";
-import TransactionDialog, { DialogFooter } from "./TransactionDialog";
+import { gbp } from "../cashEntry/format";
+import TransferAmountStep from "../movements/TransferAmountStep";
+import TransferDoneStep from "../movements/TransferDoneStep";
+import TransferFundsStep from "../movements/TransferFundsStep";
+import TransferReceipt from "../movements/TransferReceipt";
+import {
+  TRANSFER_STEPS,
+  amountPence,
+  balanceAfterPence,
+  mayCloseTransfer,
+  previousStepFor,
+  railStateFor,
+  startTransfer,
+  transferReducer,
+  type TransferDraft,
+  type TransferStep,
+} from "../movements/transferSteps";
+import RailStep from "../wizard/RailStep";
+import StepFooter from "../wizard/StepFooter";
+import WizardFrame from "../wizard/WizardFrame";
+import { btnLg, btnPrimary, eyebrow } from "../wizard/ui";
 
-type TransferArgs = FunctionArgs<typeof api.mutations.movements.createJournalTransfer>;
+const LABELS: Record<TransferStep, string> = { funds: "Funds", amount: "Amount", done: "Done" };
 
-const LABEL_CLASS = "block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1";
-const INPUT_CLASS =
-  "w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-slate-900 outline-hidden transition-colors";
-
-type JournalTransferPanelProps = {
+export interface JournalTransferModalProps {
   funds: Fund[];
-  isSaving: boolean;
-  onSubmit: (args: TransferArgs) => void;
+  // Opens with a fund and amount already picked, e.g. from an overdrawn fund's "Move money to cover it".
+  // The walkthrough still opens on the funds step.
+  initialFromFundId?: string;
+  initialToFundId?: string;
+  initialAmount?: number;
+  // Test-only: opens at a later step. The product always opens on the funds step.
+  initialStep?: TransferStep;
   onClose: () => void;
-};
-
-export function JournalTransferPanel({ funds, isSaving, onSubmit, onClose }: JournalTransferPanelProps) {
-  const [fromFundId, setFromFundId] = useState("");
-  const [toFundId, setToFundId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(() => formatLocalDateInputValue(new Date()));
-  const [note, setNote] = useState("");
-
-  const parsedAmount = Number(amount);
-  const canSubmit = fromFundId !== "" && toFundId !== "" && fromFundId !== toFundId && parsedAmount > 0;
-
-  return (
-    <form
-      className="p-5 flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!canSubmit) return;
-        onSubmit({
-          fromFundId: fromFundId as Id<"funds">,
-          toFundId: toFundId as Id<"funds">,
-          amount: parsedAmount,
-          date,
-          note: note.trim() || undefined,
-        });
-      }}
-    >
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="transfer-from" className={LABEL_CLASS}>From fund</label>
-          <select id="transfer-from" required value={fromFundId} onChange={(e) => setFromFundId(e.target.value)} className={INPUT_CLASS}>
-            <option value="">Choose a fund…</option>
-            {funds.map((fund) => (
-              <option key={fund._id} value={fund._id}>{fund.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="transfer-to" className={LABEL_CLASS}>To fund</label>
-          <select id="transfer-to" required value={toFundId} onChange={(e) => setToFundId(e.target.value)} className={INPUT_CLASS}>
-            <option value="">Choose a fund…</option>
-            {funds.map((fund) => (
-              <option key={fund._id} value={fund._id}>{fund.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      {fromFundId !== "" && fromFundId === toFundId && (
-        <p className="text-xs text-error">Choose two different funds.</p>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="transfer-amount" className={LABEL_CLASS}>Amount</label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span>
-            <input
-              id="transfer-amount"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className={`${INPUT_CLASS} pl-6 font-mono`}
-            />
-          </div>
-        </div>
-        <div>
-          <label htmlFor="transfer-date" className={LABEL_CLASS}>Date</label>
-          <input id="transfer-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT_CLASS} font-mono`} />
-        </div>
-      </div>
-      <div>
-        <label htmlFor="transfer-note" className={LABEL_CLASS}>Note (optional)</label>
-        <input id="transfer-note" type="text" value={note} onChange={(e) => setNote(e.target.value)} className={INPUT_CLASS} />
-      </div>
-      <DialogFooter submitLabel="Record transfer" submitDisabled={!canSubmit} isSaving={isSaving} onClose={onClose} />
-    </form>
-  );
 }
 
-type JournalTransferModalProps = {
-  funds: Fund[];
-  onClose: () => void;
-};
-
-export default function JournalTransferModal({ funds, onClose }: JournalTransferModalProps) {
+// Walkthrough for moving money between two funds: pick both funds, then how much and when.
+// Nothing is saved until Move money is pressed.
+export default function JournalTransferModal({
+  funds,
+  initialFromFundId = "",
+  initialToFundId = "",
+  initialAmount,
+  initialStep,
+  onClose,
+}: JournalTransferModalProps) {
   const createJournalTransfer = useMutation(api.mutations.movements.createJournalTransfer);
-  const [isSaving, setIsSaving] = useState(false);
+  const today = formatLocalDateInputValue(new Date());
 
-  const handleSubmit = async (args: TransferArgs) => {
-    setIsSaving(true);
+  const [state, dispatch] = useReducer(transferReducer, undefined, () =>
+    startTransfer({
+      today,
+      fromFundId: initialFromFundId,
+      toFundId: initialToFundId,
+      amount: initialAmount,
+      step: initialStep,
+    })
+  );
+  const { draft, moved } = state;
+  const { fromFundId, toFundId, amountText, date, note } = draft;
+  const [saving, setSaving] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  const setDraft = (patch: Partial<TransferDraft>) => dispatch({ type: "edit", patch });
+
+  // The confirmation only exists once a transfer is saved, so a stale "done" position opens on funds.
+  const step: TransferStep = moved ? "done" : state.position === "done" ? "funds" : state.position;
+  const fromFund = funds.find((fund) => fund._id === fromFundId);
+  const toFund = funds.find((fund) => fund._id === toFundId);
+  const pence = amountPence(amountText);
+  const amountError =
+    amountText.trim() !== "" && pence === null ? "Enter an amount above £0, with at most 2 decimals." : null;
+  const ready =
+    fromFund !== undefined && toFund !== undefined && fromFundId !== toFundId && pence !== null && date !== "";
+  const overdraftPence =
+    fromFund && pence !== null ? Math.max(0, -balanceAfterPence(fromFund.balance, -pence)) : 0;
+
+  const requestClose = useCallback(() => {
+    if (mayCloseTransfer(state, today, saving, () => window.confirm("Discard this transfer?"))) onClose();
+  }, [state, today, saving, onClose]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [requestClose]);
+
+  const go = (target: TransferStep) => {
+    if (saving) return;
+    dispatch({ type: "go", step: target });
+    bodyRef.current?.scrollTo({ top: 0 });
+  };
+
+  const moveMoney = async () => {
+    if (!ready || !fromFund || !toFund || pence === null) return;
+    setSaving(true);
     try {
-      await createJournalTransfer(args);
+      await createJournalTransfer({
+        fromFundId: fromFund._id as Id<"funds">,
+        toFundId: toFund._id as Id<"funds">,
+        amount: pence / 100,
+        date,
+        note: note.trim() || undefined,
+      });
+      dispatch({ type: "moved", summary: { fromName: fromFund.name, toName: toFund.name, amountPence: pence } });
       notify("Transfer recorded", "The money has moved between the two funds.");
-      onClose();
     } catch (error) {
       notify("Error", error instanceof Error ? error.message : "Failed to record the transfer.");
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
+  const moveMore = () => {
+    dispatch({ type: "moreMoney", today });
+    bodyRef.current?.scrollTo({ top: 0 });
+  };
+
+  const previous = previousStepFor(step);
+
+  const rail = (
+    <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-ledger bg-white p-4 lg:flex">
+      <div className={`${eyebrow} mx-2.5 mb-1`}>Between funds</div>
+      {TRANSFER_STEPS.map((kind, index) => {
+        const railState = railStateFor(kind, step);
+        return (
+          <RailStep
+            key={kind}
+            marker={String(index + 1)}
+            label={LABELS[kind]}
+            state={railState}
+            // Once moved, the only way on is the buttons on the done screen.
+            disabled={railState === "todo" || (step === "done" && kind !== "done")}
+            onClick={() => go(kind)}
+          />
+        );
+      })}
+    </aside>
+  );
+
+  let footer: ReactNode = null;
+  if (step === "funds") {
+    footer = (
+      <StepFooter>
+        <button
+          type="button"
+          disabled={fromFund === undefined || toFund === undefined || fromFundId === toFundId}
+          onClick={() => go("amount")}
+          className={`${btnPrimary} ${btnLg}`}
+        >
+          Next: amount
+        </button>
+      </StepFooter>
+    );
+  } else if (step === "amount") {
+    footer = (
+      <StepFooter label="Moving" value={gbp((pence ?? 0) / 100)}>
+        <button
+          type="button"
+          disabled={!ready || saving}
+          onClick={() => void moveMoney()}
+          className={`${btnPrimary} ${btnLg}`}
+        >
+          Move money
+        </button>
+      </StepFooter>
+    );
+  }
+
+  let body: ReactNode = null;
+  if (step === "funds") {
+    body = (
+      <TransferFundsStep
+        funds={funds}
+        fromFundId={fromFundId}
+        toFundId={toFundId}
+        onFrom={(value) => setDraft({ fromFundId: value })}
+        onTo={(value) => setDraft({ toFundId: value })}
+      />
+    );
+  } else if (step === "amount") {
+    body = (
+      <TransferAmountStep
+        fromName={fromFund?.name ?? "the fund"}
+        toName={toFund?.name ?? "the fund"}
+        amountText={amountText}
+        onAmountChange={(value) => setDraft({ amountText: value })}
+        amountError={amountError}
+        date={date}
+        onDateChange={(value) => setDraft({ date: value })}
+        note={note}
+        onNoteChange={(value) => setDraft({ note: value })}
+        overdraftPence={overdraftPence}
+      />
+    );
+  } else if (moved) {
+    body = (
+      <TransferDoneStep
+        fromName={moved.fromName}
+        toName={moved.toName}
+        amountPence={moved.amountPence}
+        onMoreMoney={moveMore}
+        onDone={onClose}
+      />
+    );
+  }
+
   return (
-    <TransactionDialog title="New transfer between funds" onClose={onClose}>
-      <JournalTransferPanel funds={funds} isSaving={isSaving} onSubmit={handleSubmit} onClose={onClose} />
-    </TransactionDialog>
+    <WizardFrame
+      ariaLabel="New transfer between funds"
+      title="New transfer between funds"
+      // Locks every control while the transfer is being saved, so it can't be repeated.
+      locked={saving}
+      onClose={requestClose}
+      onBack={previous ? () => go(previous) : undefined}
+      progress={{ total: TRANSFER_STEPS.length, current: TRANSFER_STEPS.indexOf(step) }}
+      rail={rail}
+      receipt={step === "done" ? undefined : <TransferReceipt from={fromFund} to={toFund} amountPence={pence} />}
+      bodyRef={bodyRef}
+      footer={footer}
+    >
+      {body}
+    </WizardFrame>
   );
 }
