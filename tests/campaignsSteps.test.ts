@@ -14,6 +14,7 @@ import {
   pledgeStartReady,
   pledgeTag,
   railState,
+  selectedCampaign,
   whatsAppUrl,
 } from "../components/campaigns/logic";
 import type { Fund, Pledge, Transaction } from "../types";
@@ -216,6 +217,24 @@ describe("new campaign steps", () => {
     const created = buildCampaignFund({ ...form, name: "Hall" });
     expect(created.targetAmount).toBeUndefined();
     expect(created.deadline).toBeUndefined();
+  });
+});
+
+describe("selecting a campaign", () => {
+  const roof: Fund = { _id: "fund-roof", name: "Roof appeal", type: "Restricted", balance: 0 };
+  const hall: Fund = { _id: "fund-hall", name: "Hall refit", type: "Restricted", balance: 0 };
+  const pledgeForm = { donorName: "Grace Okafor", amount: "20", frequency: "Monthly" as const, startDate: TODAY, endDate: "" };
+
+  it("shows the campaign just started, so the next pledge is recorded against it", () => {
+    const selected = selectedCampaign([roof, hall], hall._id);
+    expect(selected._id).toBe("fund-hall");
+
+    const input = buildPledgeInput(pledgeForm, { fundId: selected._id, donors: [] });
+    expect(input.fundId).toBe("fund-hall");
+  });
+
+  it("falls back to the first campaign when the chosen one is no longer listed", () => {
+    expect(selectedCampaign([roof, hall], "fund-gone")._id).toBe("fund-roof");
   });
 });
 

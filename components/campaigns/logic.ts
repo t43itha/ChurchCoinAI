@@ -142,6 +142,11 @@ export function buildPledgeInput(
   };
 }
 
+// The campaign the hub shows: the chosen one while it still exists, otherwise the first. Needs at least one campaign.
+export function selectedCampaign(campaigns: Fund[], selectedId: string): Fund {
+  return campaigns.find((fund) => fund._id === selectedId) ?? campaigns[0];
+}
+
 export type NewCampaignForm = { name: string; target: string; endDate: string; description: string };
 
 export const campaignNameReady = (form: NewCampaignForm) => form.name.trim() !== "";

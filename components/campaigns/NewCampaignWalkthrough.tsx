@@ -11,7 +11,7 @@ const STEPS = ["Name and target", "End date"] as const;
 const DONE = STEPS.length;
 
 export interface NewCampaignWalkthroughProps {
-  onAddFund: (fund: FundCreateInput) => Promise<boolean>;
+  onAddFund: (fund: FundCreateInput) => Promise<string | null>;
   onClose: () => void;
 }
 

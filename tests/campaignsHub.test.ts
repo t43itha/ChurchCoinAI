@@ -67,11 +67,11 @@ const donors: Donor[] = [];
 
 const noop = () => {};
 
-const renderCampaigns = (role: UserRole, overrides: { funds?: Fund[] } = {}) =>
+const renderCampaigns = (role: UserRole, overrides: { funds?: Fund[]; pledges?: Pledge[] } = {}) =>
   renderToStaticMarkup(
     createElement(Campaigns, {
       funds: overrides.funds ?? [roof],
-      pledges,
+      pledges: overrides.pledges ?? pledges,
       transactions,
       donors,
       onAddPledge: () => Promise.resolve(true),
@@ -79,7 +79,7 @@ const renderCampaigns = (role: UserRole, overrides: { funds?: Fund[] } = {}) =>
       onBulkAddPledges: noop,
       onBulkAddDonors: () => Promise.resolve([]),
       onUpdateTransaction: noop,
-      onAddFund: () => Promise.resolve(true),
+      onAddFund: () => Promise.resolve("fund-new"),
       currentUser: user(role),
     })
   );
@@ -123,8 +123,23 @@ describe("Campaigns hub", () => {
     expect(html).toContain("£1,200.00 of £28,800.00 · Monthly");
   });
 
-  it("says an open-ended pledge has no end date rather than a total", () => {
-    expect(renderCampaigns("Admin")).toContain("£0.00 paid · Monthly · no end date");
+  it("shows an open-ended pledge's instalment and what it has paid, with no end date rather than a total", () => {
+    const html = renderCampaigns("Admin");
+
+    expect(html).toContain("£1,000.00 monthly · £0.00 received · no end date");
+    expect(html).not.toContain("£0.00 paid");
+  });
+
+  it("notes on the receipt how many open-ended pledges are left out of what is still to come", () => {
+    expect(renderCampaigns("Admin")).toContain("Excludes 1 pledge with no end date");
+  });
+
+  it("leaves the open-ended note off the receipt when every pledge has an end date", () => {
+    const boundedOnly = pledges.filter((pledge) => pledge._id !== "p-grace");
+    const html = renderCampaigns("Admin", { pledges: boundedOnly });
+
+    expect(html).not.toContain("no end date");
+    expect(html).toContain("£27,600.00");
   });
 
   it("shows the real amount still owed when the campaign is over-pledged", () => {

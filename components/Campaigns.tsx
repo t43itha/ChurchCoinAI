@@ -33,6 +33,7 @@ import {
   pledgeOutstandingPence,
   pledgeTag,
   receivedOn,
+  selectedCampaign,
   type PledgeTag,
 } from "./campaigns/logic";
 import { ReceiptCard, ReceiptRow } from "./wizard/Receipt";
@@ -48,7 +49,7 @@ interface CampaignsProps {
   onBulkAddPledges: (ps: PledgeCreateInput[]) => void;
   onBulkAddDonors: (ds: DonorCreateInput[]) => Promise<{ id: string; name: string; isNew: boolean }[]>;
   onUpdateTransaction: (t: Transaction) => void;
-  onAddFund: (fund: FundCreateInput) => Promise<boolean>;
+  onAddFund: (fund: FundCreateInput) => Promise<string | null>;
   currentUser: AppUser;
   onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
@@ -115,13 +116,20 @@ const Campaigns: React.FC<CampaignsProps> = ({
 
   const close = () => setPanel(null);
 
-  const selectedFund = campaignFunds.find((f) => f._id === selectedFundId) ?? campaignFunds[0];
+  const selectedFund = selectedCampaign(campaignFunds, selectedFundId);
+
+  // A campaign started here becomes the one on screen, so the next pledge goes to it.
+  const createCampaign = async (fund: FundCreateInput) => {
+    const fundId = await onAddFund(fund);
+    if (fundId) setSelectedFundId(fundId);
+    return fundId;
+  };
 
   // Undefined when there are no campaigns; only starting one is possible then.
   const renderSheets = () => {
     if (!panel) return null;
     if (panel.kind === "newCampaign") {
-      return canStartCampaign ? <NewCampaignWalkthrough onAddFund={onAddFund} onClose={close} /> : null;
+      return canStartCampaign ? <NewCampaignWalkthrough onAddFund={createCampaign} onClose={close} /> : null;
     }
     if (!selectedFund) return null;
     const fundId = selectedFund._id;
@@ -264,6 +272,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
   const giftAidToClaim = roundMoney(sumMoney(giftAidRows, (t) => t.amount) * 0.25);
 
   const behindCount = rows.filter((row) => row.tag === "behind").length;
+  // Open-ended pledges add nothing to "Pledged, to come", so the receipt says how many it leaves out.
+  const openEndedCount = rows.filter((row) => row.target === null && row.pledge.status === "Active").length;
   const openCount = campaignFunds.filter((f) => isOpenCampaign(f, today)).length;
 
   const search = pledgeSearch.trim().toLowerCase();
@@ -347,6 +357,11 @@ const Campaigns: React.FC<CampaignsProps> = ({
                   <ReceiptRow label="Gift Aid to claim (25%)" value={gbp(giftAidToClaim)} />
                 )}
                 <ReceiptRow label="Pledged, to come" value={gbp(outstanding)} />
+                {openEndedCount > 0 && (
+                  <p className="pb-1 text-xs text-grey-mid">
+                    Excludes {openEndedCount} {openEndedCount === 1 ? "pledge" : "pledges"} with no end date
+                  </p>
+                )}
                 <ReceiptRow label="Still to find" value={gbp(split.toFind)} />
               </div>
             </ReceiptCard>
@@ -439,7 +454,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
                     <b className="block truncate text-[14.5px] text-ink">{pledge.donorName}</b>
                     <span className="block truncate text-xs text-grey-mid">
                       {pledgeTarget === null
-                        ? `${gbp(received)} paid · ${pledge.frequency} · no end date`
+                        ? `${gbp(pledge.amount)} ${pledge.frequency.toLowerCase()} · ${gbp(received)} received · no end date`
                         : `${gbp(received)} of ${gbp(pledgeTarget)} · ${pledge.frequency}`}
                       {lastPaid ? ` · last paid ${dayMonth(lastPaid)}` : ""}
                     </span>
