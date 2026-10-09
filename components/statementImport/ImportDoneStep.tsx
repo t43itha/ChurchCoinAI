@@ -1,9 +1,5 @@
 import { Check, Plus, Scale } from "lucide-react";
-import { fieldLabel, screenTitle } from "../wizard/ui";
-
-const NEXT_ITEM =
-  "flex w-full items-center gap-3.5 rounded-2xl border border-ledger bg-white p-3.5 text-left transition-colors hover:bg-grey-light";
-const NEXT_ICON = "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl";
+import { fieldLabel, nextIcon, nextItem, screenTitle } from "../wizard/ui";
 
 interface ImportDoneStepProps {
   added: number;
@@ -29,8 +25,8 @@ export default function ImportDoneStep({ added, fileName, onReconcile, onImportA
       <div className="mt-6 text-left">
         <span className={fieldLabel}>What's next</span>
         {onReconcile && (
-          <button type="button" onClick={onReconcile} className={`${NEXT_ITEM} mb-2`}>
-            <span className={`${NEXT_ICON} bg-sage-light text-sage`}>
+          <button type="button" onClick={onReconcile} className={`${nextItem} mb-2`}>
+            <span className={`${nextIcon} bg-sage-light text-sage`}>
               <Scale size={17} aria-hidden="true" />
             </span>
             <span className="min-w-0">
@@ -39,8 +35,8 @@ export default function ImportDoneStep({ added, fileName, onReconcile, onImportA
             </span>
           </button>
         )}
-        <button type="button" onClick={onImportAnother} className={NEXT_ITEM}>
-          <span className={`${NEXT_ICON} bg-grey-light text-ink`}>
+        <button type="button" onClick={onImportAnother} className={nextItem}>
+          <span className={`${nextIcon} bg-grey-light text-ink`}>
             <Plus size={17} aria-hidden="true" />
           </span>
           <span className="min-w-0">

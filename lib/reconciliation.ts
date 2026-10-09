@@ -1,5 +1,6 @@
 // Pure money math for statement reconciliation. All comparisons happen in
 // integer pence because transaction amounts are stored as floating-point pounds.
+import { roundMoney } from "../convex/lib/money";
 
 export interface ClearedTransactionLike {
   amount: number;
@@ -10,13 +11,33 @@ export function toPence(pounds: number): number {
   return Math.round(pounds * 100);
 }
 
+// Money in and money out of the cleared lines, both positive, in integer pence.
+export function computeClearedSplitPence(cleared: ClearedTransactionLike[]): {
+  inPence: number;
+  outPence: number;
+} {
+  let inPence = 0;
+  let outPence = 0;
+  for (const t of cleared) {
+    if (t.type === "Income") inPence += toPence(t.amount);
+    else outPence += toPence(t.amount);
+  }
+  return { inPence, outPence };
+}
+
 export function computeClearedTotalPence(
   cleared: ClearedTransactionLike[]
 ): number {
-  return cleared.reduce(
-    (sum, t) => sum + (t.type === "Income" ? toPence(t.amount) : -toPence(t.amount)),
-    0
-  );
+  const { inPence, outPence } = computeClearedSplitPence(cleared);
+  return inPence - outPence;
+}
+
+// A balance typed on the statement, in pounds. Accepts "£1,250.40" and "-35".
+// Anything else is null: parseFloat would read "1,250.40" as 1 and "12abc" as 12.
+export function parseBalance(text: string): number | null {
+  const cleaned = text.trim().replace(/[£,\s]/g, "");
+  if (!/^-?(\d+(\.\d{1,2})?|\.\d{1,2})$/.test(cleaned)) return null;
+  return roundMoney(Number(cleaned));
 }
 
 /**

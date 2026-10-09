@@ -20,6 +20,8 @@ import {
   btnMd,
   btnOutline,
   darkCard,
+  tickBox,
+  tickRow,
   txtInput,
 } from "../wizard/ui";
 import type { WizardModel } from "./useCollectionDraft";
@@ -130,15 +132,9 @@ export default function StartStep({ model, existingCount, resumable, onResume, o
             type="button"
             aria-pressed={on}
             onClick={() => toggleService(row.id)}
-            className={`flex h-[52px] w-full items-center gap-3 rounded-2xl border-[1.5px] bg-white px-3.5 text-left text-ink ${
-              on ? "border-ink" : "border-ledger"
-            }`}
+            className={`${tickRow} ${on ? "border-ink" : "border-ledger"}`}
           >
-            <span
-              className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] border-[1.5px] ${
-                on ? "border-ink bg-ink text-white" : "border-[#cfcac2]"
-              }`}
-            >
+            <span className={`${tickBox} ${on ? "border-ink bg-ink text-white" : "border-[#cfcac2]"}`}>
               {on && <Check size={14} aria-hidden="true" />}
             </span>
             <b className="min-w-0 flex-1 truncate text-[14.5px]">{row.label}</b>

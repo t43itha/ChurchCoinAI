@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   toPence,
+  computeClearedSplitPence,
   computeClearedTotalPence,
   computeDifferencePence,
   canCompleteSession,
+  parseBalance,
 } from "../lib/reconciliation";
 
 const tx = (amount: number, type: "Income" | "Expenditure") => ({ amount, type });
@@ -27,6 +29,42 @@ describe("computeClearedTotalPence", () => {
   });
   it("returns 0 for empty list", () => {
     expect(computeClearedTotalPence([])).toBe(0);
+  });
+});
+
+describe("computeClearedSplitPence", () => {
+  it("splits cleared lines into money in and money out, both positive", () => {
+    const cleared = [tx(100, "Income"), tx(40.5, "Expenditure"), tx(25.1, "Income")];
+    expect(computeClearedSplitPence(cleared)).toEqual({ inPence: 12510, outPence: 4050 });
+  });
+  it("is zero on both sides for no lines", () => {
+    expect(computeClearedSplitPence([])).toEqual({ inPence: 0, outPence: 0 });
+  });
+  it("agrees with the signed total", () => {
+    const cleared = [tx(0.1, "Income"), tx(0.2, "Expenditure")];
+    const { inPence, outPence } = computeClearedSplitPence(cleared);
+    expect(inPence - outPence).toBe(computeClearedTotalPence(cleared));
+  });
+});
+
+describe("parseBalance", () => {
+  it("reads a typed balance in pounds, including negatives", () => {
+    expect(parseBalance("1250.40")).toBe(1250.4);
+    expect(parseBalance("-35")).toBe(-35);
+  });
+  it("returns null for text that is not a number", () => {
+    expect(parseBalance("")).toBeNull();
+    expect(parseBalance("abc")).toBeNull();
+  });
+  it("reads the whole amount as typed on a statement, with a £ sign or thousands separators", () => {
+    expect(parseBalance("£1,250.40")).toBe(1250.4);
+    expect(parseBalance(" 1,250.40 ")).toBe(1250.4);
+    expect(parseBalance("-£35.5")).toBe(-35.5);
+  });
+  it("rejects partial numbers instead of reading their first digits", () => {
+    expect(parseBalance("12abc")).toBeNull();
+    expect(parseBalance("1.2.3")).toBeNull();
+    expect(parseBalance("1.234")).toBeNull();
   });
 });
 
