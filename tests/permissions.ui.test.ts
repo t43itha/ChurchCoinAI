@@ -93,7 +93,7 @@ describe.each<UserRole>(["Pastorate", "Guest"])("%s reconciliation UI", (role) =
   it("skips every cash banking query even if the component is mounted directly", () => {
     render(createElement(CashChequeBanking, { currentUser: user(role), funds: [] }));
     const calls = queryMock.mock.calls.filter(([ref]) => getFunctionName(ref).startsWith("queries/cashBankingReconciliations:"));
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
     expect(calls.every(([, args]) => args === "skip")).toBe(true);
   });
   it("hides bank and cash reconciliation entry points", () => {
