@@ -99,10 +99,11 @@ const Settings: FC<SettingsProps> = ({
   const [sheet, setSheet] = useState<Sheet | null>(() => sheetForSearch(location.search, currentUser.role));
   const [fundDraft, setFundDraft] = useState<Partial<Fund>>({});
 
+  // Follows navigation both ways: a deep link opens its sheet, and Back to a URL without one closes it.
+  // Rows opened by a click don't change the URL, so this only runs when navigation does.
   useEffect(() => {
-    const requested = sheetForSearch(location.search, currentUser.role);
-    if (requested) setSheet(requested);
-  }, [currentUser.role, location.search]);
+    setSheet(sheetForSearch(location.search, currentUser.role));
+  }, [currentUser.role, location.key, location.search]);
 
   if (!can(currentUser.role, "settings.view")) {
     return (
