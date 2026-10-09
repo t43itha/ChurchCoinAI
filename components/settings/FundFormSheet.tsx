@@ -1,4 +1,4 @@
-import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { isMovementCategory } from "../../lib/movementCategories";
 import { categoryNamesForTransactionTypes } from "../../lib/transactionCategories";
@@ -18,7 +18,7 @@ import {
   txtArea,
   txtInput,
 } from "../wizard/ui";
-import { readLogoIntoDraft } from "./fundLogo";
+import { createLogoDraftReader } from "./fundLogo";
 
 const FORM_ID = "fund-form";
 const FUND_TYPES: FundType[] = [FundType.UNRESTRICTED, FundType.RESTRICTED, FundType.DESIGNATED];
@@ -44,6 +44,8 @@ export default function FundFormSheet({ fund, categories, onChange, onAddFund, o
       mounted.current = false;
     };
   }, []);
+
+  const readLogo = useMemo(() => createLogoDraftReader(onChange, () => mounted.current), [onChange]);
 
   // Cash collections can only use income categories that aren't movement legs.
   const incomeCategoryNames = (() => {
@@ -111,7 +113,7 @@ export default function FundFormSheet({ fund, categories, onChange, onAddFund, o
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) readLogoIntoDraft(file, fund._id, () => mounted.current, onChange);
+              if (file) readLogo(file, fund._id);
             }}
           />
           <p className="text-xs text-grey-mid">Optional. Shown on campaign reports.</p>

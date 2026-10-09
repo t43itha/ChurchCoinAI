@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, type UserRole } from "../lib/permissions";
-import { searchWithoutTab, settingsRowsFor, sheetForSearch, sheetForTab, SETTINGS_ROWS } from "../components/settings/settingsRows";
+import { searchWithout, searchWithoutTab, settingsRowsFor, sheetForSearch, sheetForTab, SETTINGS_ROWS } from "../components/settings/settingsRows";
 
 const idsFor = (role: UserRole) => settingsRowsFor(role).map((row) => row.id);
 
@@ -88,5 +88,32 @@ describe("settings ?tab= deep links", () => {
   it("leaves a search without a tab param alone", () => {
     expect(searchWithoutTab("")).toBe("");
     expect(searchWithoutTab("?subscription=cancelled")).toBe("?subscription=cancelled");
+  });
+
+  it("drops only the named params", () => {
+    expect(searchWithout("?tab=bank&bankConnection=success&bankConnectionState=abc", ["bankConnection", "bankConnectionState"])).toBe(
+      "?tab=bank"
+    );
+    expect(searchWithout("?tab=bank", ["bankConnection"])).toBe("?tab=bank");
+  });
+
+  it("does not replay a finished bank callback after close and reopen", () => {
+    // The bank sheet clears its callback params from the browser URL, which React Router's location doesn't see.
+    // Closing reads the browser search, so the stale router copy never gets written back.
+    let browserSearch = "?tab=bank&bankConnection=success&bankConnectionState=abc";
+    let routerSearch = browserSearch;
+
+    browserSearch = searchWithout(browserSearch, ["bankConnection", "bankConnectionState"]);
+
+    const closedSearch = searchWithoutTab(browserSearch);
+    if (closedSearch !== routerSearch) {
+      browserSearch = closedSearch;
+      routerSearch = closedSearch;
+    }
+
+    // Reopening the bank row mounts the sheet, which reads the browser search for a callback.
+    expect(sheetForSearch(browserSearch, "Admin")).toBeNull();
+    expect(new URLSearchParams(browserSearch).get("bankConnection")).toBeNull();
+    expect(routerSearch).toBe(browserSearch);
   });
 });

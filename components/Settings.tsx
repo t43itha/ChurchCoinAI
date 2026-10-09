@@ -117,9 +117,10 @@ const Settings: FC<SettingsProps> = ({
   }
 
   // Closing also clears a consumed ?tab=, otherwise clicking the same deep link again changes nothing and stays closed.
+  // The browser search is the source of truth: the bank sheet clears its callback params without telling React Router.
   const close = () => {
     setSheet(null);
-    const search = searchWithoutTab(location.search);
+    const search = searchWithoutTab(window.location.search);
     if (search !== location.search) navigate({ pathname: location.pathname, search }, { replace: true });
   };
   const planName = PLANS.find((plan) => plan.id === access?.plan)?.name;

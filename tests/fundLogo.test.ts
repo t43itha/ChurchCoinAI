@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readLogoIntoDraft } from "../components/settings/fundLogo";
+import { createLogoDraftReader } from "../components/settings/fundLogo";
 import { FundType, type Fund } from "../types";
 
 // Holds each read until the test finishes it, so edits can land while the file is still being read.
@@ -39,7 +39,8 @@ describe("fund logo read", () => {
     vi.stubGlobal("FileReader", FakeFileReader);
     const store = draftStore({ _id: "fund-1", name: "Harvest", type: FundType.UNRESTRICTED });
 
-    readLogoIntoDraft(logo, "fund-1", () => true, store.setDraft);
+    const readLogo = createLogoDraftReader(store.setDraft, () => true);
+    readLogo(logo, "fund-1");
     store.setDraft({ ...store.current(), name: "Harvest 2026", targetAmount: 500 });
     reads[0].finish("data:image/png;base64,AAA");
 
@@ -57,7 +58,8 @@ describe("fund logo read", () => {
     const store = draftStore({ name: "New fund", type: FundType.UNRESTRICTED });
     let open = true;
 
-    readLogoIntoDraft(logo, undefined, () => open, store.setDraft);
+    const readLogo = createLogoDraftReader(store.setDraft, () => open);
+    readLogo(logo, undefined);
     open = false;
     reads[0].finish("data:image/png;base64,AAA");
 
@@ -68,10 +70,39 @@ describe("fund logo read", () => {
     vi.stubGlobal("FileReader", FakeFileReader);
     const store = draftStore({ _id: "fund-1", name: "Harvest", type: FundType.UNRESTRICTED });
 
-    readLogoIntoDraft(logo, "fund-1", () => true, store.setDraft);
+    const readLogo = createLogoDraftReader(store.setDraft, () => true);
+    readLogo(logo, "fund-1");
     store.setDraft({ _id: "fund-2", name: "Building", type: FundType.RESTRICTED });
     reads[0].finish("data:image/png;base64,AAA");
 
     expect(store.current()).toEqual({ _id: "fund-2", name: "Building", type: FundType.RESTRICTED });
+  });
+
+  it("keeps the newest pick when the earlier read finishes last", () => {
+    vi.stubGlobal("FileReader", FakeFileReader);
+    const store = draftStore({ _id: "fund-1", name: "Harvest", type: FundType.UNRESTRICTED });
+    const readLogo = createLogoDraftReader(store.setDraft, () => true);
+
+    readLogo(logo, "fund-1");
+    readLogo(logo, "fund-1");
+    reads[1].finish("data:image/png;base64,BBB");
+    reads[0].finish("data:image/png;base64,AAA");
+
+    expect(store.current().logoUrl).toBe("data:image/png;base64,BBB");
+  });
+
+  it("applies the newest pick when it finishes first and the earlier one lands later", () => {
+    vi.stubGlobal("FileReader", FakeFileReader);
+    const store = draftStore({ _id: "fund-1", name: "Harvest", type: FundType.UNRESTRICTED });
+    const readLogo = createLogoDraftReader(store.setDraft, () => true);
+
+    readLogo(logo, "fund-1");
+    readLogo(logo, "fund-1");
+    reads[1].finish("data:image/png;base64,BBB");
+
+    expect(store.current().logoUrl).toBe("data:image/png;base64,BBB");
+
+    reads[0].finish("data:image/png;base64,AAA");
+    expect(store.current().logoUrl).toBe("data:image/png;base64,BBB");
   });
 });

@@ -6,6 +6,7 @@ import { Id } from '../convex/_generated/dataModel';
 import { Fund, AppUser } from '../types';
 import { ChevronRight, Landmark, Link2, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { notify } from '../lib/notifications';
+import { searchWithout } from './settings/settingsRows';
 import WizardFrame from './wizard/WizardFrame';
 import StepFooter from './wizard/StepFooter';
 import { btnLg, btnPrimary, card, eyebrow, screenHelp, screenTitle, tagAmber, tagBase, tagSage, txtInput } from './wizard/ui';
@@ -42,14 +43,13 @@ const getCallbackAttemptState = () => {
   return new URLSearchParams(window.location.search).get('bankConnectionState');
 };
 
-const clearBankCallbackParams = () => {
-  const searchParams = new URLSearchParams(window.location.search);
-  searchParams.delete('bankConnection');
-  searchParams.delete('bankConnectionState');
-  const nextSearch = searchParams.toString();
-  const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-  window.history.replaceState(window.history.state, '', nextUrl);
+// Edits the browser URL directly, so React Router's location goes stale. Settings reads the browser search when it closes for this reason.
+const replaceCallbackParams = (names: string[]) => {
+  const nextSearch = searchWithout(window.location.search, names);
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${nextSearch}${window.location.hash}`);
 };
+
+const clearBankCallbackParams = () => replaceCallbackParams(['bankConnection', 'bankConnectionState']);
 
 const tagError = `${tagBase} bg-error-light text-error`;
 
@@ -107,10 +107,7 @@ const BankConnectionsSettings: FC<BankConnectionsSettingsProps> = ({ funds, curr
         return;
       }
 
-      searchParams.delete('bankConnection');
-      const nextSearch = searchParams.toString();
-      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
-      window.history.replaceState(window.history.state, '', nextUrl);
+      replaceCallbackParams(['bankConnection']);
       setConnectionError(null);
       setIsAwaitingCompletion(true);
       notify('Bank authorised', 'ChurchCoin is securely finishing the Yapily connection.');

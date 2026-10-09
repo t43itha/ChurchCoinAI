@@ -21,6 +21,8 @@ const INVALID_EMAILS = [
   "sarah@-church.org",
   "sarah@church-.org",
   "sarah@church.o",
+  "sarah@church.org-",
+  "sarah@church.-org",
   "sarah@@church.org",
   "sa rah@church.org",
   "sarah@church .org",
@@ -40,7 +42,17 @@ describe("invite email rules", () => {
     expect(canOpenInviteStep("send", email)).toBe(false);
   });
 
-  it.each(["sarah@church.org", "  sarah@church.org  ", "first.last+giving@sub-domain.church.org.uk", "x@y.co"])(
+  it.each([
+    "sarah@church.org",
+    "  sarah@church.org  ",
+    "first.last+giving@sub-domain.church.org.uk",
+    "x@y.co",
+    "treasurer@example.xn--p1ai",
+    "treasurer@mail.example.xn--p1ai",
+    "sarah+giving@church.org",
+    "o'brien@church.org",
+    "o'brien+giving@mail.church.org.uk",
+  ])(
     "accepts %j",
     (email) => {
       expect(isValidInviteEmail(email)).toBe(true);

@@ -4,7 +4,8 @@ import type { InvitationCreateInput } from "../../types";
 export type InviteStep = "email" | "role" | "send";
 
 const LOCAL_PART = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/i;
-const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+// The TLD starts with a letter but may hold digits and hyphens, so punycode TLDs such as xn--p1ai pass.
+const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z](?:[a-z0-9-]*[a-z0-9])$/i;
 
 // Strict on purpose: one @, no spaces, and a dotted domain of letters, digits and hyphens. Surrounding spaces are trimmed.
 export function isValidInviteEmail(value: string): boolean {

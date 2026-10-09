@@ -48,11 +48,16 @@ export function sheetForSearch(search: string, role: UserRole): SettingsSheetId 
   return sheetForTab(new URLSearchParams(search).get("tab"), role);
 }
 
-// Drops a consumed `?tab=` so the same link (the trial card's, for one) changes the URL and opens the sheet again.
-export function searchWithoutTab(search: string): string {
+// Drops the named params from a search string, leaving the rest in place.
+export function searchWithout(search: string, names: readonly string[]): string {
   const params = new URLSearchParams(search);
-  if (!params.has("tab")) return search;
-  params.delete("tab");
+  if (!names.some((name) => params.has(name))) return search;
+  names.forEach((name) => params.delete(name));
   const rest = params.toString();
   return rest ? `?${rest}` : "";
+}
+
+// Drops a consumed `?tab=` so the same link (the trial card's, for one) changes the URL and opens the sheet again.
+export function searchWithoutTab(search: string): string {
+  return searchWithout(search, ["tab"]);
 }
