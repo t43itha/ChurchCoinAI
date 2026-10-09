@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Search, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import type { Fund } from "../../types";
 import { chip, linkBtn, txtInput } from "../wizard/ui";
 
@@ -120,8 +120,7 @@ export default function TransactionFilterBar({
           </select>
 
           <button type="button" onClick={onOpenMore} className={`${chip} gap-2 ${moreCount > 0 ? "border-ink text-ink" : ""}`}>
-            <SlidersHorizontal size={15} strokeWidth={1.9} aria-hidden="true" />
-            Filter
+            + Filter
             {moreCount > 0 && <span className="font-mono text-xs">{moreCount}</span>}
           </button>
         </>

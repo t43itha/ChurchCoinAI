@@ -82,9 +82,9 @@ describe("transaction movement actions", () => {
     expect(finance).not.toContain("Void transaction and exclude");
   });
 
-  it("shows New transfer in the header to editors only", () => {
-    expect(renderManager("Finance Team", [])).toContain("New transfer");
-    expect(renderManager("Pastorate", [])).not.toContain("New transfer");
+  it("offers the Add chooser, which holds New transfer, to editors only", () => {
+    expect(renderManager("Finance Team", [])).toContain(">Add<");
+    expect(renderManager("Pastorate", [])).not.toContain(">Add<");
   });
 
   it("shows waiting legs from any month when opened from the dashboard", () => {
