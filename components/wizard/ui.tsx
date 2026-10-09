@@ -76,9 +76,11 @@ interface SegmentedProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   label: string;
+  // Optional count shown after a segment's name, e.g. "Needs you 7".
+  counts?: Partial<Record<T, number>>;
 }
 
-export function Segmented<T extends string>({ options, value, onChange, label }: SegmentedProps<T>) {
+export function Segmented<T extends string>({ options, value, onChange, label, counts }: SegmentedProps<T>) {
   return (
     <div
       role="group"
@@ -99,6 +101,9 @@ export function Segmented<T extends string>({ options, value, onChange, label }:
             }`}
           >
             {option}
+            {counts?.[option] !== undefined && (
+              <span className="ml-1.5 font-mono text-xs text-grey-mid">{counts[option]}</span>
+            )}
           </button>
         );
       })}

@@ -1,0 +1,144 @@
+import { roundMoney, sumMoney } from "../../convex/lib/money";
+import {
+  filterFundBalanceRows,
+  isUnlinkedMovementLeg,
+  isVoidedTransaction,
+  sumFundBalance,
+} from "../../lib/reportableTransactions";
+import type { Transaction } from "../../types";
+import { gbp } from "../cashEntry/format";
+
+// Segment labels double as values, since the Segmented kit shows its options as text.
+export const HUB_VIEWS = ["Everything", "Giving", "Banking", "Needs you"] as const;
+export type HubView = (typeof HUB_VIEWS)[number];
+
+export const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All status" },
+  { value: "active", label: "Active" },
+  { value: "voided", label: "Voided" },
+  { value: "reconciled", label: "Reconciled" },
+  { value: "unreconciled", label: "Pending" },
+  { value: "unlinked", label: "Unlinked income" },
+  { value: "awaiting-link", label: "Waiting for other side" },
+  { value: "needs-reclassifying", label: "Needs reclassifying" },
+] as const;
+export type StatusFilter = (typeof STATUS_FILTER_OPTIONS)[number]["value"];
+export const parseStatusFilter = (value: string | null): StatusFilter =>
+  STATUS_FILTER_OPTIONS.find((option) => option.value === value)?.value ?? "all";
+
+export interface TransactionFilters {
+  search: string;
+  month: number | null;
+  year: number | null;
+  category: string;
+  fundId: string;
+  status: StatusFilter;
+}
+
+export function filterTransactions(
+  transactions: Transaction[],
+  filters: TransactionFilters,
+  retiredCategoryNames: Set<string>
+): Transaction[] {
+  const term = filters.search.trim().toLowerCase();
+  return transactions
+    .filter((t) => {
+      if (term) {
+        const matches =
+          t.description.toLowerCase().includes(term) ||
+          t.category.toLowerCase().includes(term) ||
+          Boolean(t.donorName?.toLowerCase().includes(term)) ||
+          t.amount.toString().includes(term);
+        if (!matches) return false;
+      }
+
+      if (filters.month !== null || filters.year !== null) {
+        const txDate = new Date(t.date);
+        if (filters.year !== null && txDate.getFullYear() !== filters.year) return false;
+        if (filters.month !== null && txDate.getMonth() !== filters.month) return false;
+      }
+
+      if (filters.category && t.category !== filters.category) return false;
+      if (filters.fundId && t.fundId !== filters.fundId) return false;
+
+      switch (filters.status) {
+        case "all":
+          return true;
+        case "active":
+          return !isVoidedTransaction(t);
+        case "voided":
+          return isVoidedTransaction(t);
+        case "reconciled":
+          return t.isReconciled;
+        case "unreconciled":
+          return !t.isReconciled;
+        // Income with no pledge, for manual linking.
+        case "unlinked":
+          return t.type === "Income" && !t.pledgeId;
+        case "awaiting-link":
+          return isUnlinkedMovementLeg(t);
+        case "needs-reclassifying":
+          return !isVoidedTransaction(t) && retiredCategoryNames.has(t.category);
+      }
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+// The "Needs you" view: live rows that are uncategorised, waiting for their other
+// side, or sitting in a retired category.
+export function needsYou(transaction: Transaction, retiredCategoryNames: Set<string>): boolean {
+  if (isVoidedTransaction(transaction)) return false;
+  return (
+    !transaction.category ||
+    retiredCategoryNames.has(transaction.category) ||
+    isUnlinkedMovementLeg(transaction)
+  );
+}
+
+export interface DayGroup {
+  date: string;
+  rows: Transaction[];
+  net: number;
+}
+
+// Rows keep the order they arrive in, so callers sort first.
+export function groupByDay(transactions: Transaction[]): DayGroup[] {
+  const groups = new Map<string, Transaction[]>();
+  for (const transaction of transactions) {
+    const rows = groups.get(transaction.date);
+    if (rows) rows.push(transaction);
+    else groups.set(transaction.date, [transaction]);
+  }
+  return [...groups].map(([date, rows]) => ({ date, rows, net: sumFundBalance(rows) }));
+}
+
+// Money in, money out and net for a set of rows. Voided rows, and cash banking
+// deposits that would count the same money twice, are left out.
+export function periodTotals(rows: Transaction[]) {
+  const fundRows = filterFundBalanceRows(rows);
+  const moneyIn = sumMoney(
+    fundRows.filter((t) => t.type === "Income"),
+    (t) => t.amount
+  );
+  const moneyOut = sumMoney(
+    fundRows.filter((t) => t.type === "Expenditure"),
+    (t) => t.amount
+  );
+  return { moneyIn, moneyOut, net: roundMoney(sumFundBalance(rows)) };
+}
+
+// Signed for the list: income is "+", spending is a minus sign.
+export function formatSignedAmount(transaction: Pick<Transaction, "type" | "amount">): string {
+  return `${transaction.type === "Income" ? "+" : "−"}${gbp(Math.abs(transaction.amount))}`;
+}
+
+export function formatSignedNet(value: number): string {
+  return `${value < 0 ? "−" : "+"}${gbp(Math.abs(value))}`;
+}
+
+// Convex wraps server errors in its own prefix; show the message the server wrote.
+export function errorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const match = /Uncaught (?:Convex)?Error: ([^\n]+)/.exec(error.message);
+  return (match?.[1] ?? error.message).trim() || fallback;
+}

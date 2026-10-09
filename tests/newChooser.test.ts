@@ -8,8 +8,8 @@ import { canAddNew, linkParamsToRemove, newChooserRows, newKindModal, parseNewKi
 import { ROLES, type UserRole } from "../lib/permissions";
 
 const ROW_IDS: Record<UserRole, string[]> = {
-  Admin: ["giving", "statement", "sync", "entry", "transfer", "cash-banking"],
-  "Finance Team": ["giving", "statement", "sync", "entry", "transfer", "cash-banking"],
+  Admin: ["giving", "statement", "sync", "entry", "transfer", "link", "cash-banking"],
+  "Finance Team": ["giving", "statement", "sync", "entry", "transfer", "link", "cash-banking"],
   Pastorate: [],
   Guest: [],
 };
@@ -33,8 +33,8 @@ describe("newChooserRows", () => {
 });
 
 describe("parseNewKind", () => {
-  it("accepts the five chooser kinds", () => {
-    for (const kind of ["giving", "statement", "sync", "entry", "transfer"]) {
+  it("accepts the six chooser kinds", () => {
+    for (const kind of ["giving", "statement", "sync", "entry", "transfer", "link"]) {
       expect(parseNewKind(kind)).toBe(kind);
     }
   });
@@ -54,6 +54,7 @@ describe("newKindModal", () => {
     expect(newKindModal("sync")).toBe("bankSync");
     expect(newKindModal("entry")).toBe("singleEntry");
     expect(newKindModal("transfer")).toBe("journalTransfer");
+    expect(newKindModal("link")).toBe("smartLink");
   });
 });
 
