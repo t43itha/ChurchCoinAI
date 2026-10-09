@@ -1,8 +1,17 @@
 // Pure building blocks shared by the monthly and annual reports, their PDF and
 // Excel exports. Money totals use sumMoney / roundMoney from convex/lib/money.
 import type { CategoryGroup } from "../types";
-import type { LedgerRow } from "./reportableTransactions";
-import type { DateRange, MonthBucket } from "./reportPeriods";
+import { roundMoney, sumMoney } from "../convex/lib/money";
+import {
+  filterIncomeAndExpenditure,
+  hasBankEffect,
+  isReportableIncomeTransaction,
+  sumFundBalance,
+  transfersByFund,
+  type LedgerRow,
+} from "./reportableTransactions";
+import { completionPercent, isCategorized } from "./dashboardKpis";
+import { isWithinRange, type DateRange, type MonthBucket } from "./reportPeriods";
 
 export type ReportTransaction = LedgerRow & {
   date: string;
@@ -103,9 +112,58 @@ export type ReserveCover = {
 
 export const RESERVE_TARGET_MONTHS = 3;
 
-// Income and expenditure of reportable rows (filterIncomeAndExpenditure) in range.
+// Income and expenditure of the reportable rows among `rows`.
+function reportableTotals(rows: ReportTransaction[]): { income: number; expenditure: number } {
+  const reportable = filterIncomeAndExpenditure(rows);
+  return {
+    income: sumMoney(reportable.filter(isReportableIncomeTransaction), (row) => row.amount),
+    expenditure: sumMoney(
+      reportable.filter((row) => row.type === "Expenditure"),
+      (row) => row.amount
+    ),
+  };
+}
+
+// Adds a whole number of years to a yyyy-mm-dd date. 29 February becomes 28
+// February in a non-leap year.
+function shiftDateByYears(date: string, years: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const targetYear = year + years;
+  const isLeap = (targetYear % 4 === 0 && targetYear % 100 !== 0) || targetYear % 400 === 0;
+  const targetDay = month === 2 && day === 29 && !isLeap ? 28 : day;
+  return `${String(targetYear).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(
+    targetDay
+  ).padStart(2, "0")}`;
+}
+
+function shiftRangeBackOneYear(range: DateRange): DateRange {
+  return {
+    startDate: shiftDateByYears(range.startDate, -1),
+    endDate: shiftDateByYears(range.endDate, -1),
+  };
+}
+
+function fundTotals(rows: FundStatementRow[]): FundStatementTotals {
+  return {
+    opening: sumMoney(rows, (row) => row.opening),
+    income: sumMoney(rows, (row) => row.income),
+    expenditure: sumMoney(rows, (row) => row.expenditure),
+    transfers: sumMoney(rows, (row) => row.transfers),
+    other: sumMoney(rows, (row) => row.other),
+    closing: sumMoney(rows, (row) => row.closing),
+  };
+}
+
+const FUND_TYPE_ORDER: Record<string, number> = {
+  Unrestricted: 0,
+  Designated: 1,
+  Restricted: 2,
+};
+
+// Income and spending from the reportable rows in range, for the period.
 export function periodTotals(rows: ReportTransaction[], range: DateRange): PeriodTotals {
-  throw new Error("not implemented");
+  const { income, expenditure } = reportableTotals(rows.filter((row) => isWithinRange(row.date, range)));
+  return { income, expenditure, net: roundMoney(income - expenditure) };
 }
 
 // Largest total first, subcategories largest first. `previous` is matched by
@@ -114,12 +172,29 @@ export function rankCategoryGroups(
   groups: CategoryGroup[],
   previous?: CategoryGroup[]
 ): RankedCategory[] {
-  throw new Error("not implemented");
+  const sideTotal = sumMoney(groups, (group) => group.total);
+  return [...groups]
+    .sort((a, b) => b.total - a.total || a.mainCategory.localeCompare(b.mainCategory))
+    .map((group) => {
+      const ranked: RankedCategory = {
+        ...group,
+        subcategories: [...group.subcategories].sort(
+          (a, b) => b.total - a.total || a.name.localeCompare(b.name)
+        ),
+        share: sideTotal === 0 ? 0 : group.total / sideTotal,
+      };
+      if (previous) {
+        ranked.previous =
+          previous.find((prior) => prior.mainCategory === group.mainCategory)?.total ?? 0;
+      }
+      return ranked;
+    });
 }
 
 // Percentage change, one decimal place. null when previous is 0.
 export function percentChange(current: number, previous: number): number | null {
-  throw new Error("not implemented");
+  if (previous === 0) return null;
+  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
 }
 
 // opening = fund balance (sumFundBalance) of rows dated before range.startDate;
@@ -132,7 +207,47 @@ export function buildFundStatement(
   rows: ReportTransaction[],
   range: DateRange
 ): FundStatement {
-  throw new Error("not implemented");
+  const transfersById = new Map<string, number>(
+    transfersByFund(rows.filter((row) => isWithinRange(row.date, range))).funds.map(
+      (fund): [string, number] => [fund.fundId, fund.net]
+    )
+  );
+
+  const statementRows: FundStatementRow[] = funds.map((fund) => {
+    const fundRows = rows.filter((row) => row.fundId === fund._id);
+    const opening = sumFundBalance(fundRows.filter((row) => row.date < range.startDate));
+    const closing = sumFundBalance(fundRows.filter((row) => row.date <= range.endDate));
+    const { income, expenditure } = reportableTotals(
+      fundRows.filter((row) => isWithinRange(row.date, range))
+    );
+    const transfers = transfersById.get(fund._id) ?? 0;
+    return {
+      fundId: fund._id,
+      fund: fund.name,
+      type: fund.type,
+      opening,
+      income,
+      expenditure,
+      transfers,
+      other: roundMoney(closing - opening - income + expenditure - transfers),
+      closing,
+    };
+  });
+
+  statementRows.sort((a, b) => {
+    const rank = (type: string) => FUND_TYPE_ORDER[type] ?? 3;
+    return rank(a.type) - rank(b.type) || a.fund.localeCompare(b.fund);
+  });
+
+  const isUnrestricted = (row: FundStatementRow) =>
+    row.type === "Unrestricted" || row.type === "Designated";
+
+  return {
+    rows: statementRows,
+    unrestricted: fundTotals(statementRows.filter(isUnrestricted)),
+    restricted: fundTotals(statementRows.filter((row) => !isUnrestricted(row))),
+    total: fundTotals(statementRows),
+  };
 }
 
 // Reportable income and expenditure per bucket. priorRows, when given, fill
@@ -143,20 +258,97 @@ export function buildTrend(
   throughDate: string,
   priorRows?: ReportTransaction[]
 ): TrendPoint[] {
-  throw new Error("not implemented");
+  return buckets.map((bucket) => {
+    const { income, expenditure } = reportableTotals(
+      rows.filter((row) => isWithinRange(row.date, bucket))
+    );
+    const isFuture = bucket.startDate > throughDate;
+    const point: TrendPoint = {
+      ...bucket,
+      income,
+      expenditure,
+      net: roundMoney(income - expenditure),
+      isFuture,
+      isPartial: !isFuture && throughDate < bucket.endDate,
+    };
+    if (priorRows) {
+      const priorRange = shiftRangeBackOneYear(bucket);
+      point.priorIncome = reportableTotals(
+        priorRows.filter((row) => isWithinRange(row.date, priorRange))
+      ).income;
+    }
+    return point;
+  });
 }
 
 // Over rows that reach the bank (hasBankEffect) in range, the same measure the
 // dashboard's month-end checks use. Percentages are whole numbers; null when
 // there are no such rows.
 export function buildReadiness(rows: ReportTransaction[], range: DateRange): DataReadiness {
-  throw new Error("not implemented");
+  const bankRows = rows.filter((row) => hasBankEffect(row) && isWithinRange(row.date, range));
+  const count = bankRows.length;
+  return {
+    transactionCount: count,
+    categorisedPercent: completionPercent(
+      bankRows.filter((row) => isCategorized(row.category)).length,
+      count
+    ),
+    reconciledPercent: completionPercent(
+      bankRows.filter((row) => row.isReconciled === true).length,
+      count
+    ),
+  };
 }
 
 export function groupGivingByDonor(
   rows: Array<{ donorId?: string; donorName?: string; amount: number; isGiftAidEligible?: boolean }>
 ): GivingByDonor {
-  throw new Error("not implemented");
+  type GivingRow = (typeof rows)[number];
+  const named = new Map<string, { donorId?: string; donor?: string; rows: GivingRow[] }>();
+  const anonymous: GivingRow[] = [];
+
+  for (const row of rows) {
+    if (!row.donorId && !row.donorName) {
+      anonymous.push(row);
+      continue;
+    }
+    const key = row.donorId ? `id:${row.donorId}` : `name:${row.donorName}`;
+    let group = named.get(key);
+    if (!group) {
+      group = { donorId: row.donorId || undefined, rows: [] };
+      named.set(key, group);
+    }
+    group.rows.push(row);
+    // Later rows win, so a donor who changed name shows their latest name.
+    if (row.donorName) group.donor = row.donorName;
+  }
+
+  const givers: GiverSummary[] = [...named.values()].map((group) => {
+    const summary: GiverSummary = {
+      donor: group.donor ?? "Unknown donor",
+      gifts: group.rows.length,
+      total: sumMoney(group.rows, (row) => row.amount),
+      giftAidEligible: group.rows.some((row) => row.isGiftAidEligible === true),
+    };
+    if (group.donorId) summary.donorId = group.donorId;
+    return summary;
+  });
+  givers.sort((a, b) => b.total - a.total || a.donor.localeCompare(b.donor));
+
+  if (anonymous.length > 0) {
+    givers.push({
+      donor: "Anonymous",
+      gifts: anonymous.length,
+      total: sumMoney(anonymous, (row) => row.amount),
+      giftAidEligible: false,
+    });
+  }
+
+  return {
+    givers,
+    donorCount: named.size,
+    giftCount: rows.length,
+  };
 }
 
 // Unrestricted-fund balance divided by the average of the given monthly
@@ -165,5 +357,13 @@ export function reserveCover(
   unrestrictedBalance: number,
   monthlyExpenditures: number[]
 ): ReserveCover {
-  throw new Error("not implemented");
+  const average = monthlyExpenditures.length
+    ? sumMoney(monthlyExpenditures, (value) => value) / monthlyExpenditures.length
+    : 0;
+  return {
+    months: average > 0 ? Math.round((unrestrictedBalance / average) * 10) / 10 : null,
+    unrestrictedBalance,
+    averageMonthlyExpenditure: roundMoney(average),
+    targetMonths: RESERVE_TARGET_MONTHS,
+  };
 }

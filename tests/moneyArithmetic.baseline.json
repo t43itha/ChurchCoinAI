@@ -12,7 +12,7 @@
   "convex/queries/cashBankingReconciliations.ts": 2,
   "convex/queries/cashCollections.ts": 4,
   "convex/queries/donors.ts": 1,
-  "convex/queries/reports.ts": 34,
+  "convex/queries/reports.ts": 10,
   "convex/queries/transactions.ts": 3,
   "lib/cashChequeBanking.ts": 6,
   "lib/inPersonGiving.ts": 7,

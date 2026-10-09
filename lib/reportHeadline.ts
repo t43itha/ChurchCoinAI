@@ -1,5 +1,6 @@
 // The one-sentence summary at the top of a report, built from its figures. No AI:
 // the same numbers always give the same sentence.
+import { percentChange } from "./reportSummary";
 
 export type HeadlineMover = {
   name: string;
@@ -35,12 +36,112 @@ export type Headline = {
   rest: string;
 };
 
-export function buildHeadline(input: HeadlineInput): Headline {
-  throw new Error("not implemented");
+const MIN_MOVER_CHANGE = 10;
+const MIN_MOVER_POUNDS = 1;
+
+const moneyFormat = new Intl.NumberFormat("en-GB", {
+  style: "currency",
+  currency: "GBP",
+  maximumFractionDigits: 0,
+});
+
+const formatMoney = (amount: number) => moneyFormat.format(Math.abs(amount));
+
+const wholePercent = (percent: number) => Math.round(Math.abs(percent));
+
+const capitalise = (sentence: string) => sentence.charAt(0).toUpperCase() + sentence.slice(1);
+
+function incomeSentence(input: HeadlineInput, hasExpenditureSentence: boolean): string | null {
+  const change = input.incomeChange;
+  if (change === null) return null;
+  const verb = input.kind === "year" && !input.isComplete ? "is" : "was";
+  let phrase: string;
+  if (Math.abs(change) < 1) phrase = `level with ${input.comparisonLabel}`;
+  else {
+    const direction = change > 0 ? "up" : "down";
+    phrase = `${direction} ${wholePercent(change)}% on ${input.comparisonLabel}`;
+  }
+  const mover = input.incomeMover ? `, mostly ${input.incomeMover.name}` : "";
+  return `Income ${verb} ${phrase}${mover}${hasExpenditureSentence ? ";" : "."}`;
 }
 
+// Lower case: the caller capitalises it when it opens the headline.
+function expenditureSentence(input: HeadlineInput): string | null {
+  const change = input.expenditureChange;
+  if (change === null) return null;
+  let phrase: string;
+  if (Math.abs(change) < 1) phrase = "held steady";
+  else phrase = `${change > 0 ? "rose" : "fell"} ${wholePercent(change)}%`;
+  const mover = input.expenditureMover ? `, mostly ${input.expenditureMover.name}` : "";
+  return `spending ${phrase}${mover}.`;
+}
+
+function obligationsSentence(input: HeadlineInput): string | null {
+  const parts: string[] = [];
+  const tithe = input.missionTitheDue ?? 0;
+  const giftAid = input.giftAidClaimable ?? 0;
+  if (tithe > 0) parts.push(`${formatMoney(tithe)} mission tithe is due`);
+  if (giftAid > 0) parts.push(`${formatMoney(giftAid)} of Gift Aid can be claimed`);
+  if (parts.length === 0) return null;
+  return `${capitalise(parts.join(" and "))}.`;
+}
+
+function reserveSentence(months: number): string {
+  const unit = months === 1 ? "month" : "months";
+  return `General fund reserves would cover ${months} ${unit} of running costs.`;
+}
+
+export function buildHeadline(input: HeadlineInput): Headline {
+  let tone: HeadlineTone;
+  let status: string;
+  let lead: string;
+  if (Math.abs(input.net) < 0.5) {
+    tone = "breakeven";
+    status = "Break-even";
+    lead = "Income and spending broke even";
+  } else if (input.net > 0) {
+    tone = "surplus";
+    status = "Surplus";
+    lead = `A ${formatMoney(input.net)} surplus`;
+  } else {
+    tone = "deficit";
+    status = "Deficit";
+    lead = `A ${formatMoney(input.net)} deficit`;
+  }
+
+  const expenditure = expenditureSentence(input);
+  const income = incomeSentence(input, expenditure !== null);
+  const sentences: string[] = [];
+  if (income) sentences.push(income);
+  if (expenditure) sentences.push(income ? expenditure : capitalise(expenditure));
+
+  if (input.kind === "month") {
+    const obligations = obligationsSentence(input);
+    if (obligations) sentences.push(obligations);
+  } else if (typeof input.reserveCoverMonths === "number") {
+    sentences.push(reserveSentence(input.reserveCoverMonths));
+  }
+
+  const prefix = input.isComplete ? ". " : " so far. ";
+  const rest = sentences.length > 0 ? prefix + sentences.join(" ") : prefix.trimEnd();
+  return { tone, status, lead, rest };
+}
+
+// The category that moved most against the comparison period: among rows with a
+// comparison above zero, moves of at least 10% and £1 (absolute), the largest
+// in pounds. Undefined when nothing moved enough.
 export function pickMover(
   rows: Array<{ mainCategory: string; total: number; previous?: number }>
 ): HeadlineMover | undefined {
-  throw new Error("not implemented");
+  let best: { mover: HeadlineMover; pounds: number } | undefined;
+  for (const row of rows) {
+    if (row.previous === undefined || row.previous <= 0) continue;
+    const change = percentChange(row.total, row.previous);
+    const pounds = Math.abs(row.total - row.previous);
+    if (change === null || Math.abs(change) < MIN_MOVER_CHANGE || pounds < MIN_MOVER_POUNDS) continue;
+    if (!best || pounds > best.pounds) {
+      best = { mover: { name: row.mainCategory, change }, pounds };
+    }
+  }
+  return best?.mover;
 }
