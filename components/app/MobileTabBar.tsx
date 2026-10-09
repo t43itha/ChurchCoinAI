@@ -4,8 +4,9 @@ import { can, type UserRole } from "../../lib/permissions";
 import { canAddNew } from "./newChooserRows";
 
 // Bottom offset that puts a fixed element just above this bar on phones. The bar is 60px of
-// tabs, a 1px rule and the safe-area padding (or 8px), plus 12px of air. Keep in step with the nav below.
-export const tabBarClearance = "bottom-[calc(4.5rem+1px+max(0.5rem,env(safe-area-inset-bottom)))]";
+// tabs, a 1px rule and the safe-area padding (or 8px); the New button rises 20px above it (-mt-5),
+// then 12px of air. Keep in step with the nav below.
+export const tabBarClearance = "bottom-[calc(5.75rem+1px+max(0.5rem,env(safe-area-inset-bottom)))]";
 
 // Phone navigation: Home · Money · + New · People · Reports. Settings and Ask Ward
 // are in the menu drawer. Roles that cannot add entries get the four tabs without the New slot.

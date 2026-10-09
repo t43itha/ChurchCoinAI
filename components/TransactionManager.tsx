@@ -668,14 +668,21 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newKindParam, bankConnectionsLoaded]);
 
-  // Cash banking is reached by a link from the shell or the dashboard, so it can
-  // arrive while this page is already mounted.
+  // Cash banking is reached by a link from the shell or the dashboard, so it can arrive while
+  // this page is already mounted. The param is removed once applied so the same link works again.
   const viewParam = searchParams.get('view');
   useEffect(() => {
-    if (viewParam === 'cash-banking' && can(currentUser.role, 'reconciliation.manage')) {
+    if (viewParam !== 'cash-banking') return;
+    if (can(currentUser.role, 'reconciliation.manage')) {
       setShowReconciliation(false);
       setActiveTransactionTab('cashChequeBanking');
     }
+    setSearchParams((params) => {
+      params.delete('view');
+      return params;
+    }, { replace: true });
+    // setSearchParams is stable for this router; only a new arrival of the param matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewParam, currentUser.role]);
 
   const formatDateUK = (dateString: string) => {
