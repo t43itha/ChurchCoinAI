@@ -117,10 +117,7 @@ export default function Loans({ currentUser }: { currentUser: AppUser }) {
               const detail = [
                 `${gbp(loan.repaid)} repaid of ${gbp(loan.borrowed)}`,
                 lastRepayment ? `last repaid ${formatUkDate(lastRepayment)}` : "no repayments yet",
-                loan.dueDate ? `due ${formatUkDate(loan.dueDate)}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ");
+              ].join(" · ");
               return (
                 <li key={loan._id}>
                   <div className="flex items-center gap-2 px-4 pt-3.5">
@@ -133,8 +130,8 @@ export default function Loans({ currentUser }: { currentUser: AppUser }) {
                     >
                       <span className="min-w-0 flex-1">
                         <b className="block truncate text-[14.5px] text-ink">{loan.lender}</b>
-                        <span className="block truncate text-xs text-grey-mid">{detail}</span>
-                        {loan.note && <span className="block truncate text-xs text-grey-mid">{loan.note}</span>}
+                        <span className="block text-xs text-grey-mid">{detail}</span>
+                        {loan.dueDate && <span className="block text-xs text-grey-mid">due {formatUkDate(loan.dueDate)}</span>}
                       </span>
                       <span className="shrink-0 text-right">
                         <span className="block whitespace-nowrap font-mono text-sm font-semibold text-ink">
@@ -160,16 +157,24 @@ export default function Loans({ currentUser }: { currentUser: AppUser }) {
                     </div>
                   </div>
                   {isOpen && (
-                    <ul id={`loan-legs-${loan._id}`} className="divide-y divide-ledger border-t border-ledger bg-paper px-4">
-                      {loan.legs.map((leg) => (
-                        <LoanLegRow
-                          key={leg._id}
-                          leg={leg}
-                          canEdit={canEdit}
-                          onUnlink={() => handleUnlink(leg._id as Id<"transactions">)}
-                        />
-                      ))}
-                    </ul>
+                    <div id={`loan-legs-${loan._id}`} className="border-t border-ledger bg-paper px-4">
+                      {loan.note && (
+                        <p className="pt-3 text-sm text-ink">
+                          <span className="block text-xs font-semibold text-grey-mid">Note</span>
+                          {loan.note}
+                        </p>
+                      )}
+                      <ul className="divide-y divide-ledger">
+                        {loan.legs.map((leg) => (
+                          <LoanLegRow
+                            key={leg._id}
+                            leg={leg}
+                            canEdit={canEdit}
+                            onUnlink={() => handleUnlink(leg._id as Id<"transactions">)}
+                          />
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </li>
               );
@@ -196,17 +201,25 @@ export default function Loans({ currentUser }: { currentUser: AppUser }) {
 function LoanLegRow({ leg, canEdit, onUnlink }: { leg: LoanLeg; canEdit: boolean; onUnlink: () => void }) {
   const voided = isVoidedTransaction(leg);
   const textClass = voided ? "text-grey-mid line-through" : "text-ink";
+  // Phones stack the leg in two lines (date and direction, then description, amount and Unlink).
+  // From sm up the wrappers disappear and the row reads date, description, direction, amount, Unlink as before.
   return (
-    <li className="flex items-center gap-3 py-2.5 text-sm">
-      <span className={`w-24 shrink-0 font-mono ${textClass}`}>{formatUkDate(leg.date)}</span>
-      <span className={`min-w-0 flex-1 truncate ${textClass}`}>{leg.description}</span>
-      <span className="shrink-0 text-xs font-semibold text-grey-mid">{leg.type === "Income" ? "Received" : "Repaid"}</span>
-      <span className={`w-24 shrink-0 text-right font-mono ${textClass}`}>{gbp(leg.amount)}</span>
-      {canEdit && !voided && (
-        <button type="button" aria-label="Remove from loan" onClick={onUnlink} className={linkBtnSm}>
-          Unlink
-        </button>
-      )}
+    <li className="py-2.5 text-sm sm:flex sm:items-center sm:gap-3">
+      <div className="flex items-center gap-2 sm:contents">
+        <span className={`font-mono text-xs sm:w-24 sm:shrink-0 sm:text-sm ${textClass}`}>{formatUkDate(leg.date)}</span>
+        <span className="shrink-0 text-xs font-semibold text-grey-mid sm:order-1">
+          {leg.type === "Income" ? "Received" : "Repaid"}
+        </span>
+      </div>
+      <div className="mt-1 flex items-center gap-3 sm:contents">
+        <span className={`min-w-0 flex-1 truncate ${textClass}`}>{leg.description}</span>
+        <span className={`w-24 shrink-0 text-right font-mono sm:order-2 ${textClass}`}>{gbp(leg.amount)}</span>
+        {canEdit && !voided && (
+          <button type="button" aria-label="Remove from loan" onClick={onUnlink} className={`${linkBtnSm} sm:order-2`}>
+            Unlink
+          </button>
+        )}
+      </div>
     </li>
   );
 }

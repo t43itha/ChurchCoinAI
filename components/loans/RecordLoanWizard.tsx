@@ -12,6 +12,8 @@ import StepFooter from "../wizard/StepFooter";
 import WizardFrame from "../wizard/WizardFrame";
 import {
   btnLg,
+  btnMd,
+  btnOutline,
   btnPrimary,
   eyebrow,
   fieldLabel,
@@ -24,11 +26,13 @@ import {
 } from "../wizard/ui";
 import {
   LOAN_RAIL_ORDER,
+  confirmRepaymentSelection,
   loanProblem,
   loanSummary,
   newLoanArgs,
   receivedCandidates,
   repaymentCandidates,
+  staleRepaymentIds,
   whoIsReady,
   type LoanStepKind,
   type LoanValues,
@@ -74,6 +78,8 @@ export default function RecordLoanWizard({ onClose }: { onClose: () => void }) {
   const received = receivedOptions.find((leg) => leg._id === receivedId);
   const repayments = repaymentOptions.filter((leg) => repaymentIds.includes(leg._id));
   const problem = loanProblem(received, repayments);
+  // Picked repayments that dropped out since they were ticked. Recording waits until the user confirms the rest.
+  const stale = staleRepaymentIds(repaymentIds, repaymentOptions);
 
   const index = step === "done" ? LOAN_RAIL_ORDER.length : LOAN_RAIL_ORDER.indexOf(step);
   const previous = PREVIOUS_STEP[step];
@@ -87,6 +93,8 @@ export default function RecordLoanWizard({ onClose }: { onClose: () => void }) {
   const toggleRepayment = (id: string) =>
     setRepaymentIds((current) => (current.includes(id) ? current.filter((existing) => existing !== id) : [...current, id]));
 
+  const confirmSelection = () => setRepaymentIds((current) => confirmRepaymentSelection(current, repaymentOptions));
+
   const recordAnother = () => {
     setValues(EMPTY_VALUES);
     setReceivedId(null);
@@ -97,7 +105,7 @@ export default function RecordLoanWizard({ onClose }: { onClose: () => void }) {
   };
 
   const record = async () => {
-    if (!received || problem !== null || saving) return;
+    if (!received || problem !== null || stale.length > 0 || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -223,6 +231,17 @@ export default function RecordLoanWizard({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         )}
+        {stale.length > 0 && (
+          <div role="alert" className="mt-4 rounded-2xl bg-amber-light px-3.5 py-3 text-sm text-amber">
+            <p>
+              {stale.length} selected {stale.length === 1 ? "repayment is" : "repayments are"} no longer waiting to be linked
+              {" "}and {stale.length === 1 ? "has" : "have"} dropped out of this loan. Check the list, then confirm the selection.
+            </p>
+            <button type="button" onClick={confirmSelection} className={`${btnOutline} ${btnMd} mt-3 w-full`}>
+              Confirm repayments
+            </button>
+          </div>
+        )}
         {problem !== null && (
           <p className="mt-4 rounded-2xl bg-error-light px-3.5 py-2.5 text-sm text-error">{problem}</p>
         )}
@@ -230,7 +249,12 @@ export default function RecordLoanWizard({ onClose }: { onClose: () => void }) {
     );
     footer = (
       <StepFooter>
-        <button type="button" disabled={saving || problem !== null} onClick={() => void record()} className={`${btnPrimary} ${btnLg}`}>
+        <button
+          type="button"
+          disabled={saving || problem !== null || stale.length > 0}
+          onClick={() => void record()}
+          className={`${btnPrimary} ${btnLg}`}
+        >
           Record loan
         </button>
       </StepFooter>

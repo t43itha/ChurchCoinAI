@@ -32,6 +32,16 @@ export const repaymentCandidates = <T extends MovementLeg>(transactions: T[]): T
 
 export const whoIsReady = (values: LoanValues) => values.lender.trim() !== "";
 
+// Picked repayments that are no longer waiting to be linked, because they were linked, voided or reclassified since.
+export const staleRepaymentIds = (selectedIds: string[], options: MovementLeg[]): string[] =>
+  selectedIds.filter((id) => !options.some((leg) => leg._id === id));
+
+// The picked repayments that are still waiting, once the user has reviewed a changed selection.
+export const confirmRepaymentSelection = (selectedIds: string[], options: MovementLeg[]): string[] => {
+  const stale = new Set(staleRepaymentIds(selectedIds, options));
+  return selectedIds.filter((id) => !stale.has(id));
+};
+
 // Null when the received money and the chosen repayments make a complete loan.
 export function loanProblem(received: MovementLeg | undefined, repayments: MovementLeg[]): string | null {
   if (!received) return "Choose the money received.";

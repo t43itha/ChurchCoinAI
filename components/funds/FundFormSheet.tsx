@@ -25,6 +25,31 @@ function incomeCategoryNames(categories: Category[], saved: string): string[] {
   return saved && !names.includes(saved) ? [...names, saved] : names;
 }
 
+// Blank means no target. An explicit zero stays a number so an edit can clear a saved target.
+const targetAmountFrom = (target: string) => (target.trim() === "" ? undefined : Number(target));
+
+export interface FundDraft {
+  name: string;
+  type: FundType;
+  category: string;
+  target: string;
+  deadline: string;
+  description: string;
+}
+
+// The edited fund as handed to onUpdate. Zero is kept, so a £10,000 target changed to 0 really is cleared.
+export function fundUpdateFromDraft(fund: Fund, draft: FundDraft): Fund {
+  return {
+    ...fund,
+    name: draft.name.trim(),
+    type: draft.type,
+    defaultIncomeCategory: draft.category,
+    targetAmount: targetAmountFrom(draft.target),
+    deadline: draft.deadline,
+    description: draft.description,
+  };
+}
+
 interface FundFormSheetProps {
   // Omitted to create a fund.
   fund?: Fund;
@@ -47,16 +72,15 @@ export default function FundFormSheet({ fund, categories, onCreate, onUpdate, on
 
   const save = () => {
     if (trimmedName === "") return;
-    // A target of zero means no target, as it always has.
-    const targetAmount = Number(target) || undefined;
     if (fund) {
-      onUpdate({ ...fund, name: trimmedName, type, defaultIncomeCategory: category, targetAmount, deadline, description });
+      onUpdate(fundUpdateFromDraft(fund, { name, type, category, target, deadline, description }));
     } else {
       onCreate({
         name: trimmedName,
         type,
         description: description || undefined,
-        targetAmount,
+        // A target of zero means no target when a fund is created, as it always has.
+        targetAmount: targetAmountFrom(target) || undefined,
         deadline: deadline || undefined,
         defaultIncomeCategory: category || undefined,
       });

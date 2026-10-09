@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { lastRepaymentDate, loanStatus } from "../components/loans/loanFacts";
 import {
+  confirmRepaymentSelection,
   loanProblem,
   newLoanArgs,
   receivedCandidates,
   repaymentCandidates,
+  staleRepaymentIds,
   whoIsReady,
 } from "../components/loans/loanWalkthrough";
 import type { Id } from "../convex/_generated/dataModel";
@@ -69,6 +71,42 @@ describe("loan walkthrough validation", () => {
   it("refuses a repayment that is not on a loan", () => {
     const plainOut = leg({ _id: "plain-out", type: "Expenditure", movementKind: undefined });
     expect(loanProblem(received, [plainOut])).toBe("Every transaction must be marked as a loan to link them.");
+  });
+});
+
+describe("repayments that change after they are picked", () => {
+  const picked = ["out-1", "out-2"];
+  const repaymentsAtPick = [repayment("out-1", 200), repayment("out-2", 100)];
+
+  it("reports nothing when every picked repayment is still waiting", () => {
+    expect(staleRepaymentIds(picked, repaymentCandidates(repaymentsAtPick))).toEqual([]);
+  });
+
+  it("reports a repayment another user linked since it was picked", () => {
+    const linkedElsewhere = repaymentsAtPick.filter((item) => item._id !== "out-2");
+    expect(staleRepaymentIds(picked, repaymentCandidates(linkedElsewhere))).toEqual(["out-2"]);
+  });
+
+  it("reports a repayment voided or reclassified since it was picked", () => {
+    const changed = [repayment("out-1", 200), { ...repayment("out-2", 100), isVoided: true }];
+    expect(staleRepaymentIds(picked, repaymentCandidates(changed))).toEqual(["out-2"]);
+
+    const reclassified = [repayment("out-1", 200), { ...repayment("out-2", 100), movementKind: "transfer" as const }];
+    expect(staleRepaymentIds(picked, repaymentCandidates(reclassified))).toEqual(["out-2"]);
+  });
+
+  it("keeps only the still-waiting picks once the user confirms, so the loan is built from what they reviewed", () => {
+    const linkedElsewhere = repaymentsAtPick.filter((item) => item._id !== "out-2");
+    const options = repaymentCandidates(linkedElsewhere);
+    const kept = confirmRepaymentSelection(picked, options);
+
+    expect(kept).toEqual(["out-1"]);
+    expect(staleRepaymentIds(kept, options)).toEqual([]);
+    const live = options.filter((item) => kept.includes(item._id));
+    expect(newLoanArgs({ lender: "Diocese", dueDate: "", note: "" }, received, live).transactionIds).toEqual([
+      "in-1",
+      "out-1",
+    ]);
   });
 });
 

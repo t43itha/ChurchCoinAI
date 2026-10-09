@@ -81,8 +81,13 @@ describe("loans hub", () => {
   it("shows each loan's repayment progress and its last repayment", () => {
     const html = renderLoans("Finance Team");
     expect(html).toContain("£1,000.00 repaid of £1,852.00 · last repaid 05/03/2026");
-    expect(html).toContain("£1,000.00 repaid of £5,000.00 · no repayments yet · due 01/01/2020");
+    expect(html).toContain("£1,000.00 repaid of £5,000.00 · no repayments yet");
     expect(html).toContain("width:53.99568034557235%");
+  });
+
+  it("gives the due date its own line rather than appending it to the progress line", () => {
+    const html = renderLoans("Finance Team");
+    expect(html).toContain('<span class="block text-xs text-grey-mid">due 01/01/2020</span>');
   });
 
   it("offers Record a loan and Edit only to roles that can write the ledger", () => {
