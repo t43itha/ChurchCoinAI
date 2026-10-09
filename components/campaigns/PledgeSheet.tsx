@@ -36,7 +36,8 @@ export default function PledgeSheet({ campaignName, pledge, onSave, onClose }: P
       amount: Number(form.amount),
       frequency: form.frequency,
       startDate: form.startDate,
-      endDate: form.endDate || undefined,
+      // Sent as '' when cleared: the server only patches endDate when it is defined.
+      endDate: form.endDate,
       status,
     });
 
