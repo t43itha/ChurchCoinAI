@@ -38,7 +38,8 @@ const roof: Fund = {
 
 const pledges: Pledge[] = [
   { _id: "p-grace", donorName: "Grace Okafor", amount: 1000, fundId: "fund-roof", frequency: "Monthly", startDate: "2026-01-01", status: "Active" },
-  { _id: "p-ruth", donorName: "Ruth Bailey", amount: 2400, fundId: "fund-roof", frequency: "Monthly", startDate: "2026-01-01", status: "Active" },
+  // Twelve monthly instalments of £2,400 across 2026: £28,800 to fulfil.
+  { _id: "p-ruth", donorName: "Ruth Bailey", amount: 2400, fundId: "fund-roof", frequency: "Monthly", startDate: "2026-01-01", endDate: "2026-12-31", status: "Active" },
   { _id: "p-harrison", donorName: "Harrison family", amount: 500, fundId: "fund-roof", frequency: "One-off", startDate: "2026-06-01", status: "Completed" },
 ];
 
@@ -73,12 +74,12 @@ const renderCampaigns = (role: UserRole, overrides: { funds?: Fund[] } = {}) =>
       pledges,
       transactions,
       donors,
-      onAddPledge: noop,
+      onAddPledge: () => Promise.resolve(true),
       onUpdatePledge: noop,
       onBulkAddPledges: noop,
       onBulkAddDonors: () => Promise.resolve([]),
       onUpdateTransaction: noop,
-      onAddFund: () => Promise.resolve(),
+      onAddFund: () => Promise.resolve(true),
       currentUser: user(role),
     })
   );
@@ -101,10 +102,10 @@ describe("Campaigns hub", () => {
     expect(html).toContain("Ends 31 January · 114 days left");
     expect(html).toContain("£1,800");
     expect(html).toContain("of £60,000 target");
-    // Received £1,800, still owed on pledges £2,200, and the rest to find.
+    // Received £1,800, still owed on pledges £27,600, and the rest to find.
     expect(html).toContain("£1,800.00");
-    expect(html).toContain("£2,200.00");
-    expect(html).toContain("£56,000.00");
+    expect(html).toContain("£27,600.00");
+    expect(html).toContain("£30,600.00");
   });
 
   it("tags each pledge on track, behind or paid", () => {
@@ -114,7 +115,33 @@ describe("Campaigns hub", () => {
     expect(html).toContain("Behind");
     expect(html).toContain("On track");
     expect(html).toContain("Paid ✓");
-    expect(html).toContain("£1,200 of £2,400");
+  });
+
+  it("compares a bounded recurring pledge's receipts with its whole schedule", () => {
+    const html = renderCampaigns("Admin");
+
+    expect(html).toContain("£1,200.00 of £28,800.00 · Monthly");
+  });
+
+  it("says an open-ended pledge has no end date rather than a total", () => {
+    expect(renderCampaigns("Admin")).toContain("£0.00 paid · Monthly · no end date");
+  });
+
+  it("shows the real amount still owed when the campaign is over-pledged", () => {
+    // £18,200 is what fits in the bar; the receipt still shows the £27,600 actually owed.
+    const html = renderCampaigns("Admin", { funds: [{ ...roof, targetAmount: 20_000 }] });
+
+    expect(html).toContain("£27,600.00");
+    expect(html).not.toContain("£18,200");
+    expect(html).toContain("£0.00");
+  });
+
+  it("keeps showing the amount still owed once the target is reached", () => {
+    // Gifts already exceed the £1,000 target, so nothing is left to find but the pledges still owed.
+    const html = renderCampaigns("Admin", { funds: [{ ...roof, targetAmount: 1_000 }] });
+
+    expect(html).toContain("£27,600.00");
+    expect(html).toContain("of £1,000 target · 100%");
   });
 
   it("shows the Gift Aid row only when the church has Gift Aid on and the fund has eligible gifts", () => {

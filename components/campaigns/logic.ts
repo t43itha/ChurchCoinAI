@@ -1,5 +1,5 @@
-import { sumMoney } from "../../convex/lib/money";
-import { isPledgeBehind, type PledgeFrequency } from "../../lib/pledgeProgress";
+import { meetsMoneyTarget, sumMoney } from "../../convex/lib/money";
+import { isPledgeBehind, pledgeFulfillmentTarget, type PledgeFrequency } from "../../lib/pledgeProgress";
 import { toPence } from "../../lib/reconciliation";
 import { FundType, type Fund, type FundCreateInput, type Pledge, type PledgeCreateInput, type Transaction } from "../../types";
 import type { RailStepState } from "../wizard/RailStep";
@@ -56,10 +56,17 @@ export function campaignSplit(targetPounds: number, collectedPounds: number, out
   return { received: receivedPence / 100, pledged: pledgedPence / 100, toFind: toFindPence / 100 };
 }
 
-// What an active pledge still owes, in pence. Completed and cancelled pledges owe nothing.
-export function pledgeOutstandingPence(pledge: Pick<Pledge, "amount" | "status">, receivedPounds: number): number {
+// What an active pledge still owes, in pence, measured against its fulfilment target: the whole
+// schedule for a bounded recurring pledge, not one instalment. An open-ended recurring pledge has no
+// fixed total, so nothing is counted as still to come. Completed and cancelled pledges owe nothing.
+export function pledgeOutstandingPence(
+  pledge: Pick<Pledge, "amount" | "status" | "frequency" | "startDate" | "endDate">,
+  receivedPounds: number
+): number {
   if (pledge.status !== "Active") return 0;
-  return Math.max(toPence(pledge.amount) - toPence(receivedPounds), 0);
+  const target = pledgeFulfillmentTarget(pledge);
+  if (target === null || meetsMoneyTarget(receivedPounds, target)) return 0;
+  return Math.max(toPence(target) - toPence(receivedPounds), 0);
 }
 
 export function pledgeTag(pledge: Pledge, incomeRows: Transaction[], today: string): PledgeTag {
@@ -111,10 +118,15 @@ export const pledgeAmountReady = (form: PledgeForm) => {
   return Number.isFinite(amount) && amount > 0;
 };
 
+// Instalments are counted from the start date, so a pledge cannot be saved without one.
+export const pledgeStartReady = (form: PledgeForm) => /^\d{4}-\d{2}-\d{2}$/.test(form.startDate);
+
+export const pledgeScheduleReady = (form: PledgeForm) => pledgeAmountReady(form) && pledgeStartReady(form);
+
 // A new pledge matches an existing donor by name when the walkthrough did not pick one.
 export function buildPledgeInput(
   form: PledgeForm,
-  { fundId, donors, today }: { fundId: string; donors: { _id: string; name: string }[]; today: string }
+  { fundId, donors }: { fundId: string; donors: { _id: string; name: string }[] }
 ): PledgeCreateInput {
   const donorName = form.donorName.trim();
   const existing = donors.find((donor) => donor.name.toLowerCase() === donorName.toLowerCase());
@@ -124,7 +136,7 @@ export function buildPledgeInput(
     amount: pledgeAmount(form),
     fundId,
     frequency: form.frequency,
-    startDate: form.startDate || today,
+    startDate: form.startDate,
     endDate: form.endDate || undefined,
     status: "Active",
   };

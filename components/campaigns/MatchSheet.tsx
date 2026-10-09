@@ -1,9 +1,9 @@
 import { Check, X } from "lucide-react";
 import type { Transaction } from "../../types";
+import { gbp } from "../cashEntry/format";
 import StepFooter from "../wizard/StepFooter";
 import WizardFrame from "../wizard/WizardFrame";
 import { btnLg, btnOutline, btnPrimary, btnSage, screenTitle } from "../wizard/ui";
-import { formatWholePounds } from "./logic";
 
 export type PledgeMatch = {
   transactionId: string;
@@ -50,7 +50,7 @@ export default function MatchSheet({ matches, transactions, onConfirm, onDismiss
             <li key={`${match.transactionId}-${match.pledgeId}`} className="rounded-2xl border border-ledger bg-white p-3.5">
               <div className="flex items-baseline justify-between gap-3">
                 <b className="min-w-0 truncate text-[14.5px] text-ink">{transaction.description}</b>
-                <span className="shrink-0 font-mono text-sm font-bold text-sage">{formatWholePounds(transaction.amount)}</span>
+                <span className="shrink-0 font-mono text-sm font-bold text-sage">{gbp(transaction.amount)}</span>
               </div>
               <p className="mt-0.5 text-xs text-grey-mid">
                 {transaction.date}

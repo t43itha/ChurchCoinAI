@@ -10,13 +10,14 @@ export interface SwitchCampaignSheetProps {
   campaigns: Fund[];
   selectedId: string;
   today: string;
+  canStartCampaign: boolean;
   onPick: (fundId: string) => void;
   onNew: () => void;
   onClose: () => void;
 }
 
 // One campaign is shown at a time, so choosing one is a single tick from the list.
-export default function SwitchCampaignSheet({ campaigns, selectedId, today, onPick, onNew, onClose }: SwitchCampaignSheetProps) {
+export default function SwitchCampaignSheet({ campaigns, selectedId, today, canStartCampaign, onPick, onNew, onClose }: SwitchCampaignSheetProps) {
   const [picked, setPicked] = useState(selectedId);
 
   return (
@@ -61,10 +62,12 @@ export default function SwitchCampaignSheet({ campaigns, selectedId, today, onPi
           );
         })}
       </div>
-      <button type="button" onClick={onNew} className={`${btnDashed} mt-3`}>
-        <Plus size={16} aria-hidden="true" />
-        New campaign
-      </button>
+      {canStartCampaign && (
+        <button type="button" onClick={onNew} className={`${btnDashed} mt-3`}>
+          <Plus size={16} aria-hidden="true" />
+          New campaign
+        </button>
+      )}
     </WizardFrame>
   );
 }

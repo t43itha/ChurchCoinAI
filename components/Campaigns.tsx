@@ -5,6 +5,7 @@ import { api } from "../convex/_generated/api";
 import { roundMoney, sumMoney } from "../convex/lib/money";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import { can } from "../lib/permissions";
+import { pledgeFulfillmentTarget } from "../lib/pledgeProgress";
 import { isReportableIncomeTransaction, sumRaised } from "../lib/reportableTransactions";
 import { AppUser, Donor, DonorCreateInput, Fund, FundCreateInput, FundType, Pledge, PledgeCreateInput, Transaction } from "../types";
 import { useGiftAidEnabled } from "./app/useGiftAidEnabled";
@@ -42,12 +43,12 @@ interface CampaignsProps {
   pledges: Pledge[];
   transactions: Transaction[];
   donors: Donor[];
-  onAddPledge: (p: PledgeCreateInput) => void;
+  onAddPledge: (p: PledgeCreateInput) => Promise<boolean>;
   onUpdatePledge: (p: Pledge) => void;
   onBulkAddPledges: (ps: PledgeCreateInput[]) => void;
   onBulkAddDonors: (ds: DonorCreateInput[]) => Promise<{ id: string; name: string; isNew: boolean }[]>;
   onUpdateTransaction: (t: Transaction) => void;
-  onAddFund: (fund: FundCreateInput) => Promise<void>;
+  onAddFund: (fund: FundCreateInput) => Promise<boolean>;
   currentUser: AppUser;
   onPledgeCompleted?: (donorName: string, amount: number) => void;
 }
@@ -132,6 +133,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
             campaigns={campaignFunds}
             selectedId={fundId}
             today={today}
+            canStartCampaign={canStartCampaign}
             onPick={(id) => {
               setSelectedFundId(id);
               close();
@@ -241,6 +243,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
     const payments = paymentsByPledge.get(pledge._id) ?? [];
     return {
       pledge,
+      // The whole schedule for a bounded pledge, null when open-ended.
+      target: pledgeFulfillmentTarget(pledge),
       received: receivedOn(payments),
       lastPaid: latestDate(payments),
       tag: pledgeTag(pledge, incomeRows, today),
@@ -250,7 +254,9 @@ const Campaigns: React.FC<CampaignsProps> = ({
   const totalPledged = sumMoney(campaignPledges, (p) => p.amount);
   const collected = sumRaised(fundTransactions);
   const target = selectedFund.targetAmount || totalPledged * 1.2;
+  // Real outstanding feeds the receipt and labels; the split is capped only to draw the bar.
   const outstandingPence = rows.reduce((sum, row) => sum + pledgeOutstandingPence(row.pledge, row.received), 0);
+  const outstanding = outstandingPence / 100;
   const split = campaignSplit(target, collected, outstandingPence);
   const percent = target > 0 ? Math.min(Math.round((split.received / target) * 100), 100) : 0;
 
@@ -340,7 +346,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
                 {giftAidOn && giftAidRows.length > 0 && (
                   <ReceiptRow label="Gift Aid to claim (25%)" value={gbp(giftAidToClaim)} />
                 )}
-                <ReceiptRow label="Pledged, to come" value={gbp(split.pledged)} />
+                <ReceiptRow label="Pledged, to come" value={gbp(outstanding)} />
                 <ReceiptRow label="Still to find" value={gbp(split.toFind)} />
               </div>
             </ReceiptCard>
@@ -374,8 +380,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
           value={formatWholePounds(collected)}
           sub={`of ${formatWholePounds(target)} target · ${percent}%`}
           segments={[
-            { label: "Received", value: formatWholePounds(split.received), amount: split.received, colour: HERO_COLOURS.received },
-            { label: "Pledged, still to come", value: formatWholePounds(split.pledged), amount: split.pledged, colour: HERO_COLOURS.pledged },
+            { label: "Received", value: formatWholePounds(collected), amount: split.received, colour: HERO_COLOURS.received },
+            { label: "Pledged, still to come", value: formatWholePounds(outstanding), amount: split.pledged, colour: HERO_COLOURS.pledged },
             { label: "To find", value: formatWholePounds(split.toFind), amount: split.toFind, colour: HERO_COLOURS.toFind },
           ]}
         />
@@ -423,7 +429,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
           <Segmented options={FILTERS} value={filter} onChange={setFilter} label="Show pledges" />
 
           <ul className="divide-y divide-ledger overflow-hidden rounded-2xl border border-ledger bg-white">
-            {visibleRows.map(({ pledge, received, lastPaid, tag }) => (
+            {visibleRows.map(({ pledge, target: pledgeTarget, received, lastPaid, tag }) => (
               <li key={pledge._id} className="flex items-center gap-3 px-3.5 py-3">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-grey-light text-xs font-bold text-grey-dark">
@@ -432,7 +438,9 @@ const Campaigns: React.FC<CampaignsProps> = ({
                   <span className="min-w-0 flex-1">
                     <b className="block truncate text-[14.5px] text-ink">{pledge.donorName}</b>
                     <span className="block truncate text-xs text-grey-mid">
-                      {formatWholePounds(received)} of {formatWholePounds(pledge.amount)} · {pledge.frequency}
+                      {pledgeTarget === null
+                        ? `${gbp(received)} paid · ${pledge.frequency} · no end date`
+                        : `${gbp(received)} of ${gbp(pledgeTarget)} · ${pledge.frequency}`}
                       {lastPaid ? ` · last paid ${dayMonth(lastPaid)}` : ""}
                     </span>
                   </span>

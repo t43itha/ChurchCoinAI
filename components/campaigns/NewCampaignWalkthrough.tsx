@@ -11,7 +11,7 @@ const STEPS = ["Name and target", "End date"] as const;
 const DONE = STEPS.length;
 
 export interface NewCampaignWalkthroughProps {
-  onAddFund: (fund: FundCreateInput) => Promise<void>;
+  onAddFund: (fund: FundCreateInput) => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -24,15 +24,18 @@ export default function NewCampaignWalkthrough({ onAddFund, onClose }: NewCampai
 
   const update = (patch: Partial<NewCampaignForm>) => setForm((current) => ({ ...current, ...patch }));
 
+  // Only a confirmed create reaches Done; on failure the form keeps its entries for a retry.
   const create = async () => {
     setSaving(true);
     try {
-      await onAddFund(buildCampaignFund(form));
-      setStep(DONE);
+      if (await onAddFund(buildCampaignFund(form))) setStep(DONE);
     } finally {
       setSaving(false);
     }
   };
+
+  // Once the campaign exists, the rail is a record rather than navigation: a second create needs a new walkthrough.
+  const finished = step === DONE;
 
   const rail = (
     <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-ledger bg-white p-4 lg:flex">
@@ -45,7 +48,7 @@ export default function NewCampaignWalkthrough({ onAddFund, onClose }: NewCampai
             marker={String(index + 1)}
             label={label}
             state={state}
-            disabled={state === "todo"}
+            disabled={finished || state === "todo"}
             onClick={() => setStep(index)}
           />
         );

@@ -20,7 +20,14 @@ import {
   tickRow,
   txtInput,
 } from "../wizard/ui";
-import { buildPledgeInput, PLEDGE_FREQUENCIES, pledgeAmountReady, pledgeFormReady, railState, type PledgeForm } from "./logic";
+import {
+  buildPledgeInput,
+  PLEDGE_FREQUENCIES,
+  pledgeFormReady,
+  pledgeScheduleReady,
+  railState,
+  type PledgeForm,
+} from "./logic";
 
 const STEPS = ["Donor", "Amount & schedule"] as const;
 const DONE = STEPS.length;
@@ -30,7 +37,7 @@ export interface PledgeWalkthroughProps {
   fundId: string;
   donors: Donor[];
   today: string;
-  onAdd: (pledge: PledgeCreateInput) => void;
+  onAdd: (pledge: PledgeCreateInput) => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -44,15 +51,25 @@ export default function PledgeWalkthrough({ campaignName, fundId, donors, today,
     startDate: today,
     endDate: "",
   });
+  const [saving, setSaving] = useState(false);
 
   const update = (patch: Partial<PledgeForm>) => setForm((current) => ({ ...current, ...patch }));
   const query = form.donorName.trim().toLowerCase();
   const suggestions = donors.filter((donor) => donor.name.toLowerCase().includes(query)).slice(0, 6);
 
-  const save = () => {
-    onAdd(buildPledgeInput(form, { fundId, donors, today }));
-    setStep(DONE);
+  // Only a confirmed add reaches Done; on failure the entries stay so the user can retry.
+  const save = async () => {
+    if (saving || !pledgeScheduleReady(form)) return;
+    setSaving(true);
+    try {
+      if (await onAdd(buildPledgeInput(form, { fundId, donors }))) setStep(DONE);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  // Once the pledge is saved, the rail is a record rather than navigation: another pledge needs "Add another pledge".
+  const finished = step === DONE;
 
   const restart = () => {
     setForm({ donorName: "", amount: "", frequency: "Monthly", startDate: today, endDate: "" });
@@ -70,7 +87,7 @@ export default function PledgeWalkthrough({ campaignName, fundId, donors, today,
             marker={String(index + 1)}
             label={label}
             state={state}
-            disabled={state === "todo"}
+            disabled={finished || state === "todo"}
             onClick={() => setStep(index)}
           />
         );
@@ -177,7 +194,7 @@ export default function PledgeWalkthrough({ campaignName, fundId, donors, today,
     );
     footer = (
       <StepFooter>
-        <button type="button" disabled={!pledgeAmountReady(form)} onClick={save} className={`${btnPrimary} ${btnLg}`}>
+        <button type="button" disabled={saving || !pledgeScheduleReady(form)} onClick={() => void save()} className={`${btnPrimary} ${btnLg}`}>
           <Plus size={16} aria-hidden="true" />
           Add pledge
         </button>
@@ -223,6 +240,7 @@ export default function PledgeWalkthrough({ campaignName, fundId, donors, today,
       onBack={step > 0 && step < DONE ? () => setStep(step - 1) : undefined}
       progress={{ total: STEPS.length, current: step }}
       rail={rail}
+      locked={saving}
       footer={footer}
     >
       {body}

@@ -21,7 +21,8 @@ export const useFundCategoryActions = ({
   const removeCategory = useMutation(api.mutations.categories.remove);
   const setCategoryRetired = useMutation(api.mutations.categories.setRetired);
 
-  const handleAddFund = async (fund: FundCreateInput) => {
+  // Resolves true only when the fund was created, so callers can keep their form open on failure.
+  const handleAddFund = async (fund: FundCreateInput): Promise<boolean> => {
     try {
       await createFund({
         name: fund.name,
@@ -33,9 +34,11 @@ export const useFundCategoryActions = ({
         defaultIncomeCategory: fund.defaultIncomeCategory,
       });
       showNotification("Fund Created", `${fund.name} has been created.`);
+      return true;
     } catch (error) {
       console.error("Failed to add fund:", error);
       showNotification("Error", "Failed to create fund. Please try again.");
+      return false;
     }
   };
 

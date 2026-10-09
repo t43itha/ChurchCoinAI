@@ -4,7 +4,7 @@ import type { Pledge } from "../../types";
 import WizardFrame from "../wizard/WizardFrame";
 import StepFooter from "../wizard/StepFooter";
 import { Segmented, amtBox, amtInput, amtSymbol, btnLg, btnPrimary, fieldLabel, txtInput } from "../wizard/ui";
-import { PLEDGE_FREQUENCIES, pledgeAmountReady, pledgeFormReady, type PledgeForm } from "./logic";
+import { PLEDGE_FREQUENCIES, pledgeFormReady, pledgeScheduleReady, type PledgeForm } from "./logic";
 
 const STATUSES = ["Active", "Completed", "Cancelled"] as const;
 
@@ -29,7 +29,8 @@ export default function PledgeSheet({ campaignName, pledge, onSave, onClose }: P
 
   const update = (patch: Partial<PledgeForm>) => setForm((current) => ({ ...current, ...patch }));
 
-  const save = () =>
+  const save = () => {
+    if (!pledgeFormReady(form) || !pledgeScheduleReady(form)) return;
     onSave({
       ...pledge,
       donorName: form.donorName.trim(),
@@ -40,6 +41,7 @@ export default function PledgeSheet({ campaignName, pledge, onSave, onClose }: P
       endDate: form.endDate,
       status,
     });
+  };
 
   return (
     <WizardFrame
@@ -48,7 +50,7 @@ export default function PledgeSheet({ campaignName, pledge, onSave, onClose }: P
       onClose={onClose}
       footer={
         <StepFooter>
-          <button type="button" disabled={!pledgeFormReady(form) || !pledgeAmountReady(form)} onClick={save} className={`${btnPrimary} ${btnLg}`}>
+          <button type="button" disabled={!pledgeFormReady(form) || !pledgeScheduleReady(form)} onClick={save} className={`${btnPrimary} ${btnLg}`}>
             <Save size={16} aria-hidden="true" />
             Save changes
           </button>

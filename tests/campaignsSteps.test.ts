@@ -10,6 +10,8 @@ import {
   pledgeAmountReady,
   pledgeFormReady,
   pledgeOutstandingPence,
+  pledgeScheduleReady,
+  pledgeStartReady,
   pledgeTag,
   railState,
   whatsAppUrl,
@@ -71,14 +73,34 @@ describe("campaignSplit", () => {
 });
 
 describe("pledgeOutstandingPence", () => {
-  it("is what an active pledge still owes", () => {
-    expect(pledgeOutstandingPence({ amount: 100, status: "Active" }, 30)).toBe(7_000);
+  const oneOff = { amount: 100, status: "Active", frequency: "One-off", startDate: "2026-01-01" } as const;
+  // £100 a month across the whole of 2026: twelve instalments, £1,200 to fulfil.
+  const monthlyYear = { amount: 100, status: "Active", frequency: "Monthly", startDate: "2026-01-01", endDate: "2026-12-31" } as const;
+
+  it("is what an active one-off pledge still owes", () => {
+    expect(pledgeOutstandingPence(oneOff, 30)).toBe(7_000);
   });
 
-  it("is nothing once a pledge is completed or cancelled, or overpaid", () => {
-    expect(pledgeOutstandingPence({ amount: 100, status: "Completed" }, 0)).toBe(0);
-    expect(pledgeOutstandingPence({ amount: 100, status: "Cancelled" }, 0)).toBe(0);
-    expect(pledgeOutstandingPence({ amount: 100, status: "Active" }, 150)).toBe(0);
+  it("measures a bounded recurring pledge against the whole schedule, not one instalment", () => {
+    // One £100 instalment received: £1,100 of the £1,200 is still to come.
+    expect(pledgeOutstandingPence(monthlyYear, 100)).toBe(110_000);
+    expect(pledgeOutstandingPence(monthlyYear, 0)).toBe(120_000);
+  });
+
+  it("is nothing once a bounded recurring pledge has been paid in full", () => {
+    expect(pledgeOutstandingPence(monthlyYear, 1_200)).toBe(0);
+    expect(pledgeOutstandingPence(monthlyYear, 1_250)).toBe(0);
+  });
+
+  it("counts nothing as still to come for an open-ended recurring pledge", () => {
+    const openEnded = { ...monthlyYear, endDate: undefined };
+    expect(pledgeOutstandingPence(openEnded, 0)).toBe(0);
+    expect(pledgeOutstandingPence(openEnded, 300)).toBe(0);
+  });
+
+  it("is nothing once a pledge is completed or cancelled", () => {
+    expect(pledgeOutstandingPence({ ...oneOff, status: "Completed" }, 0)).toBe(0);
+    expect(pledgeOutstandingPence({ ...monthlyYear, status: "Cancelled" }, 0)).toBe(0);
   });
 });
 
@@ -133,11 +155,19 @@ describe("pledge form steps", () => {
     expect(pledgeAmountReady({ ...form, amount: "12.5" })).toBe(true);
   });
 
+  it("needs a start date to save, because instalments are counted from it", () => {
+    expect(pledgeStartReady({ ...form, startDate: "" })).toBe(false);
+    expect(pledgeStartReady({ ...form, startDate: "2026-1-5" })).toBe(false);
+    expect(pledgeStartReady(form)).toBe(true);
+    expect(pledgeScheduleReady({ ...form, amount: "20", startDate: "" })).toBe(false);
+    expect(pledgeScheduleReady({ ...form, amount: "20" })).toBe(true);
+  });
+
   it("builds the pledge, linking the donor the walkthrough picked or matches by name", () => {
     const donors = [{ _id: "donor-9", name: "Grace Okafor" }];
     const base = { ...form, donorName: "  grace okafor ", amount: "150", endDate: "" };
 
-    expect(buildPledgeInput(base, { fundId: "fund-roof", donors, today: TODAY })).toEqual({
+    expect(buildPledgeInput(base, { fundId: "fund-roof", donors })).toEqual({
       donorName: "grace okafor",
       donorId: "donor-9",
       amount: 150,
@@ -148,12 +178,12 @@ describe("pledge form steps", () => {
       status: "Active",
     });
 
-    const picked = buildPledgeInput({ ...base, donorId: "donor-2" }, { fundId: "fund-roof", donors, today: TODAY });
+    const picked = buildPledgeInput({ ...base, donorId: "donor-2" }, { fundId: "fund-roof", donors });
     expect(picked.donorId).toBe("donor-2");
   });
 
   it("leaves the donor unlinked when the name is new", () => {
-    const input = buildPledgeInput({ ...form, donorName: "New Giver", amount: "20", startDate: "2026-02-01", endDate: "2026-12-31" }, { fundId: "fund-roof", donors: [], today: TODAY });
+    const input = buildPledgeInput({ ...form, donorName: "New Giver", amount: "20", startDate: "2026-02-01", endDate: "2026-12-31" }, { fundId: "fund-roof", donors: [] });
     expect(input.donorId).toBeUndefined();
     expect(input.startDate).toBe("2026-02-01");
     expect(input.endDate).toBe("2026-12-31");
