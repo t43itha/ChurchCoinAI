@@ -98,8 +98,8 @@ describe("needsYou", () => {
     expect(needsYou(row({ movementKind: "transfer", type: "Expenditure" }), retired)).toBe(true);
   });
 
-  it("includes income with no pledge, the same test as the Unlinked income filter", () => {
-    expect(needsYou(row({ category: "Offerings" }), retired)).toBe(true);
+  it("leaves categorised income without a pledge to the Unlinked income filter", () => {
+    expect(needsYou(row({ category: "Offerings" }), retired)).toBe(false);
     expect(needsYou(row({ category: "Offerings", pledgeId: "p1" }), retired)).toBe(false);
     expect(needsYou(row({ category: "Repairs", type: "Expenditure" }), retired)).toBe(false);
   });

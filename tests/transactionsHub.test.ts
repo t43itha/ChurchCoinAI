@@ -79,12 +79,13 @@ describe("transactions hub header and segments", () => {
       row({ _id: "a" }),
       row({ _id: "b", amount: 40, type: "Expenditure", category: "Repairs" }),
       row({ _id: "v", isVoided: true }),
+      row({ _id: "u", category: "" }),
     ]);
-    expect(html).toContain("2 this year");
+    expect(html).toContain("3 this year");
     expect(html).toContain("Everything");
     expect(html).toContain("Giving");
     expect(html).toContain(">Banking<");
-    // The unpledged income row needs a look, as "Unlinked income" does.
+    // Only the uncategorised row needs a look; income without a pledge does not.
     expect(html).toMatch(/Needs you<span[^>]*>1<\/span>/);
     expect(html).toContain(">Add<");
     expect(html).toContain(">Reconcile<");

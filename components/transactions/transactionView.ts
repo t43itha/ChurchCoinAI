@@ -89,12 +89,13 @@ const isUnlinkedIncome = (transaction: Transaction) => transaction.type === "Inc
 
 // The "Needs you" view: live rows that are uncategorised, unlinked income, waiting for
 // their other side, or sitting in a retired category.
+// Lines someone has to act on. Income without a pledge stays under the "Unlinked income" filter
+// rather than here: most giving has no pledge, so it would bury the lines that need a decision.
 export function needsYou(transaction: Transaction, retiredCategoryNames: Set<string>): boolean {
   if (isVoidedTransaction(transaction)) return false;
   return (
     !transaction.category ||
     retiredCategoryNames.has(transaction.category) ||
-    isUnlinkedIncome(transaction) ||
     isUnlinkedMovementLeg(transaction)
   );
 }
