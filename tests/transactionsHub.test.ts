@@ -5,6 +5,7 @@ import { getFunctionName } from "convex/server";
 import { describe, expect, it, vi } from "vitest";
 import TransactionManager from "../components/TransactionManager";
 import { longDate } from "../components/cashEntry/format";
+import TransactionCompactTable from "../components/transactions/TransactionCompactTable";
 import TransactionEditPanel, { editActionsFor } from "../components/transactions/TransactionEditPanel";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import type { UserRole } from "../lib/permissions";
@@ -94,6 +95,40 @@ describe("transactions hub header and segments", () => {
     expect(html).not.toContain(">Banking<");
     expect(html).not.toContain(">Reconcile<");
     expect(html).not.toContain(">Add<");
+  });
+});
+
+describe("row detail", () => {
+  const listProps = (pledges: Pledge[] = []) => ({
+    funds,
+    pledges,
+    selectedIds: new Set<string>(),
+    canEdit: true,
+    canDeleteTransfer: false,
+    onOpen: () => undefined,
+    onToggleSelect: () => undefined,
+    onLinkOtherSide: () => undefined,
+    onUnlink: () => undefined,
+    onDeleteTransfer: () => undefined,
+  });
+
+  it("shows a reconciled tag, and a category line on phones", () => {
+    const html = renderHub("Finance Team", [row({ _id: "r", isReconciled: true, description: "Tithe" })]);
+    expect(html).toContain(">Reconciled<");
+    expect(html).toContain("mt-1.5 flex sm:hidden");
+  });
+
+  it("keeps donor and linked-pledge detail in the compact table", () => {
+    const pledge = { _id: "p1", fundId: "building", donorName: "J Okafor", amount: 50, frequency: "Monthly", status: "Active" } as unknown as Pledge;
+    const html = renderPanel(
+      createElement(TransactionCompactTable, {
+        rows: [row({ _id: "c", donorName: "J Okafor", pledgeId: "p1", description: "Standing order" })],
+        list: listProps([pledge]),
+      })
+    );
+    expect(html).toContain("Ref J Okafor");
+    expect(html).toContain("Linked to Building");
+    expect(html).toContain("overflow-x-auto");
   });
 });
 

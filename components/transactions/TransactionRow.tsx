@@ -41,6 +41,10 @@ export default function TransactionRow({
   const isActive = list.activeId === t._id;
   const isIncome = t.type === "Income";
   const Icon = isJournal ? ArrowLeftRight : isIncome ? ArrowDownLeft : ArrowUpRight;
+  const donorAndPledge = [t.donorName && `Ref ${t.donorName}`, linkedPledgeFund && `Linked to ${linkedPledgeFund.name}`]
+    .filter(Boolean)
+    .join(" · ");
+  const categoryPill = t.category ? <span className={tagGrey}>{t.category}</span> : <span className={tagAmber}>Pick a category</span>;
 
   const checkbox = list.canEdit ? (
     <input
@@ -70,6 +74,11 @@ export default function TransactionRow({
       {isJournal && (
         <span className={tagGrey} title="Transfer between funds made in ChurchCoin">
           Journal
+        </span>
+      )}
+      {t.isReconciled && (
+        <span className={tagGrey} title="Ticked in a completed bank reconciliation">
+          Reconciled
         </span>
       )}
     </>
@@ -124,15 +133,14 @@ export default function TransactionRow({
       <tr className={`group border-t border-ledger transition-colors ${rowTone} ${isVoided ? "opacity-60" : ""}`}>
         <td className="w-10 pl-3.5 pr-1 py-2.5">{checkbox}</td>
         <td className="whitespace-nowrap px-2.5 py-2.5 font-mono text-[12.5px] text-grey-mid">{formatUkDate(t.date)}</td>
-        <td className="min-w-0 px-2.5 py-2.5">
+        <td className="w-full max-w-0 px-2.5 py-2.5">
           <button type="button" disabled={!list.canEdit} onClick={() => list.onOpen(t)} className="flex min-w-0 max-w-full items-center gap-2 text-left disabled:cursor-default">
-            <span className="truncate text-sm font-semibold text-ink">{t.description}</span>
+            <span className="min-w-0 truncate text-sm font-semibold text-ink">{t.description}</span>
             {tags}
           </button>
+          {donorAndPledge && <p className="truncate text-xs text-grey-mid">{donorAndPledge}</p>}
         </td>
-        <td className="whitespace-nowrap px-2.5 py-2.5 text-[12.5px]">
-          {t.category ? <span className={tagGrey}>{t.category}</span> : <span className={tagAmber}>Pick a category</span>}
-        </td>
+        <td className="whitespace-nowrap px-2.5 py-2.5 text-[12.5px]">{categoryPill}</td>
         <td className="whitespace-nowrap px-2.5 py-2.5 text-[13px] text-grey-dark">{fund?.name}</td>
         <td
           className={`whitespace-nowrap px-2.5 py-2.5 text-right font-mono text-sm font-bold tabular-nums ${isIncome ? "text-sage" : "text-ink"}`}
@@ -163,14 +171,11 @@ export default function TransactionRow({
             {tags}
           </span>
           <span className="mt-0.5 block truncate text-xs text-grey-mid">
-            {[fund?.name, t.paymentMethod, t.donorName && `Ref ${t.donorName}`, linkedPledgeFund && `Linked to ${linkedPledgeFund.name}`]
-              .filter(Boolean)
-              .join(" · ")}
+            {[fund?.name, t.paymentMethod, donorAndPledge].filter(Boolean).join(" · ")}
           </span>
+          <span className="mt-1.5 flex sm:hidden">{categoryPill}</span>
         </span>
-        <span className="hidden shrink-0 sm:inline-flex">
-          {t.category ? <span className={tagGrey}>{t.category}</span> : <span className={tagAmber}>Pick a category</span>}
-        </span>
+        <span className="hidden shrink-0 sm:inline-flex">{categoryPill}</span>
         <span
           className={`w-[112px] shrink-0 whitespace-nowrap text-right font-mono text-[15px] font-bold tabular-nums ${isIncome ? "text-sage" : "text-ink"}`}
         >

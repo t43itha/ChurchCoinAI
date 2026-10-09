@@ -5,8 +5,9 @@ import TransactionRow, { type TransactionListProps } from "./TransactionRow";
 // Desktop-only dense view of the same rows, for scanning many lines at once.
 export default function TransactionCompactTable({ rows, list }: { rows: Transaction[]; list: TransactionListProps }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-ledger bg-white">
-      <table className="w-full text-left">
+    // Scrolls sideways rather than clipping, so the amount and actions stay reachable on narrow desktops.
+    <div className="overflow-x-auto rounded-2xl border border-ledger bg-white">
+      <table className="w-full min-w-[640px] text-left">
         <thead className="bg-paper">
           <tr className={eyebrow}>
             <th scope="col" className="w-10 py-2.5 pl-3.5 pr-1">
