@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { getFunctionName } from "convex/server";
 import { describe, expect, it, vi } from "vitest";
-import Loans, { EditLoanPanel } from "../components/Loans";
+import Loans from "../components/Loans";
+import LoanSheet from "../components/loans/LoanSheet";
 import TransactionManager from "../components/TransactionManager";
 import { LinkMovementPanel } from "../components/transactions/LinkMovementModal";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
@@ -129,7 +130,7 @@ describe("LinkMovementPanel", () => {
   });
 });
 
-type Loan = ComponentProps<typeof EditLoanPanel>["loan"];
+type Loan = ComponentProps<typeof LoanSheet>["loan"];
 const movementId = (id: string) => id as Id<"movements">;
 const transactionId = (id: string) => id as Id<"transactions">;
 const loan = (overrides: Partial<Loan>): Loan => ({
@@ -177,7 +178,7 @@ describe("Loans page", () => {
     expect(html).toContain(">Open</span>");
     expect(html).toContain(">Overdue</span>");
     expect(html).toContain(">Repaid</span>");
-    expect(html).toContain("<tfoot>");
+    expect(html).toContain("2 open · £4,852.00 still owed");
     for (const total of ["£7,352.00", "£2,500.00", "£4,852.00"]) expect(html).toContain(total);
   });
 
@@ -196,8 +197,8 @@ describe("Loans page", () => {
     expect(renderLoans("Finance Team", loans)).toContain('aria-label="Edit loan"');
   });
 
-  it("pre-fills the edit form with the loan's details", () => {
-    const html = render(createElement(EditLoanPanel, { loan: loans[1], isSaving: false, onSave: vi.fn(), onClose: vi.fn() }));
+  it("pre-fills the edit sheet with the loan's details", () => {
+    const html = render(createElement(LoanSheet, { loan: loans[1], isSaving: false, onSave: vi.fn(), onClose: vi.fn() }));
     expect(html).toContain('value="Church Bank"');
     expect(html).toContain('value="2020-01-01"');
     expect(html).toContain(">Save<");
