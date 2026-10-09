@@ -5,7 +5,15 @@ import type { ProgrammeIncome } from '../lib/programmeIncome';
 import type { FundStatement, GiverSummary, GivingByDonor, TrendPoint } from '../lib/reportSummary';
 import { sumMoney } from '../convex/lib/money';
 import { isGiftAidEnabled } from '../lib/giftAid';
-import { fundCellValues, formatPercentChange, formatUkDate, priorTotalFor, splitFundRows } from './reportFormatting';
+import {
+  comparisonLabel,
+  fundCellValues,
+  formatPercentChange,
+  inProgressLine,
+  formatUkDate,
+  priorTotalFor,
+  splitFundRows,
+} from './reportFormatting';
 
 type SheetCell = string | number;
 type SheetRows = SheetCell[][];
@@ -209,7 +217,12 @@ export const generateMonthlyReportXLSX = async (
   XLSX.utils.book_append_sheet(
     workbook,
     summarySheet(
-      ['RCI Missions Monthly Report', churchDetails.name, reportData.period.label],
+      [
+        'RCI Missions Monthly Report',
+        churchDetails.name,
+        reportData.period.label,
+        ...(inProgressLine(reportData.period) ? [inProgressLine(reportData.period)!] : []),
+      ],
       [
         { label: 'Gross Income', value: totals.grossIncome, money: true },
         { label: 'Total Expenditure', value: totals.totalExpenditure, money: true },
@@ -235,7 +248,7 @@ export const generateMonthlyReportXLSX = async (
         groups: reportData.receipts,
         total: totals.grossIncome,
         totalLabel: 'Total',
-        comparison: { label: previousMonth.label, groups: previousMonth.receipts, total: previousMonth.totals.income },
+        comparison: { label: comparisonLabel(previousMonth), groups: previousMonth.receipts, total: previousMonth.totals.income },
       })
     ),
     'Receipts'
@@ -250,7 +263,7 @@ export const generateMonthlyReportXLSX = async (
         groups: reportData.payments,
         total: totals.totalExpenditure,
         totalLabel: 'Total',
-        comparison: { label: previousMonth.label, groups: previousMonth.payments, total: previousMonth.totals.expenditure },
+        comparison: { label: comparisonLabel(previousMonth), groups: previousMonth.payments, total: previousMonth.totals.expenditure },
       })
     ),
     'Payments'
@@ -258,7 +271,7 @@ export const generateMonthlyReportXLSX = async (
 
   XLSX.utils.book_append_sheet(
     workbook,
-    XLSX.utils.aoa_to_sheet(fundPositionRows(fundStatement, 'Fund position')),
+    XLSX.utils.aoa_to_sheet(fundPositionRows(fundStatement, `Fund position at ${formatUkDate(reportData.period.throughDate)}`)),
     'Fund position'
   );
 

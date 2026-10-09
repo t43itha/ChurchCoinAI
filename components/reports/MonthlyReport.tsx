@@ -67,13 +67,18 @@ const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   const period = useMemo(() => monthPeriod(year, month, today), [year, month, today]);
   const reportData = useQuery(api.queries.reports.monthlyReportData, { year, month, today });
+  // Same activity window as the server figures: up to today for the current month.
+  const activity = useMemo(
+    () => ({ startDate: period.startDate, endDate: period.throughDate }),
+    [period]
+  );
   const programmeIncome = useMemo(
     () =>
       incomeByProgramme(
-        transactions.filter((transaction) => isWithinRange(transaction.date, period)),
+        transactions.filter((transaction) => isWithinRange(transaction.date, activity)),
         programmes
       ),
-    [transactions, programmes, period]
+    [transactions, programmes, activity]
   );
 
   const currentYear = Number(today.slice(0, 4));

@@ -7,7 +7,13 @@ import {
   generateMonthlyReportHTML,
   loansSectionHTML,
 } from "../services/pdfGenerator";
-import { fundStatementSheetRows, categorySheetRows, tithesSheetRows } from "../services/excelGenerator";
+import * as XLSX from "xlsx";
+import {
+  fundStatementSheetRows,
+  categorySheetRows,
+  generateMonthlyReportXLSX,
+  tithesSheetRows,
+} from "../services/excelGenerator";
 
 const churchDetails = (giftAidEnabled: boolean) => ({
   name: "Test Church",
@@ -268,5 +274,69 @@ describe("annual report PDF", () => {
     expect(html).not.toContain("Gift Aid");
     expect(html).toContain("Reserve cover");
     expect(html).toContain("1.6 months");
+  });
+});
+
+describe("partial monthly report labelling", () => {
+  const inProgressOctober = () =>
+    monthlyReport({
+      period: period({
+        label: "October 2026",
+        startDate: "2026-10-01",
+        endDate: "2026-10-31",
+        throughDate: "2026-10-09",
+        isComplete: false,
+      }),
+      comparison: {
+        previousMonth: {
+          ...monthlyReport().comparison.previousMonth,
+          range: { startDate: "2026-09-01", endDate: "2026-09-09" },
+        },
+        sameMonthLastYear: {
+          ...monthlyReport().comparison.sameMonthLastYear,
+          range: { startDate: "2025-10-01", endDate: "2025-10-09" },
+        },
+      },
+    });
+
+  it("PDF says the month is in progress, dates the fund position and clips the comparison label", () => {
+    const html = generateMonthlyReportHTML(inProgressOctober(), churchDetails(true));
+
+    expect(html).toContain("In progress: 1 Oct – 9 Oct 2026");
+    expect(html).toContain("Fund position at 9 Oct 2026");
+    expect(html).toContain("vs September 2026 (1–9 Sep):");
+  });
+
+  it("Excel summary says the month is in progress and the comparison header uses the clipped label", async () => {
+    const workbook = XLSX.read(
+      await (await generateMonthlyReportXLSX(inProgressOctober(), churchDetails(true))).arrayBuffer(),
+      { type: "array" }
+    );
+    const summary = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Summary, { header: 1 });
+    const receipts = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Receipts, { header: 1 });
+
+    expect(summary).toContainEqual(["In progress: 1 Oct – 9 Oct 2026"]);
+    expect(receipts[2]).toEqual(["Main Category", "Subcategory", "Amount", "September 2026 (1–9 Sep)", "Change"]);
+    expect(workbook.Sheets["Fund position"]).toBeDefined();
+    expect(XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["Fund position"], { header: 1 })[0]).toEqual([
+      "Fund position at 9 Oct 2026",
+    ]);
+  });
+
+  it("a complete month shows neither the in-progress line nor a date range in its comparison label", async () => {
+    const report = monthlyReport();
+    const html = generateMonthlyReportHTML(report, churchDetails(true));
+    expect(html).not.toContain("In progress");
+    expect(html).toContain("vs September 2026:");
+    expect(html).toContain("Fund position at 31 Oct 2026");
+
+    const workbook = XLSX.read(
+      await (await generateMonthlyReportXLSX(report, churchDetails(true))).arrayBuffer(),
+      { type: "array" }
+    );
+    const summary = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Summary, { header: 1 });
+    const receipts = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets.Receipts, { header: 1 });
+    expect(summary.flat().some((cell) => String(cell).startsWith("In progress"))).toBe(false);
+    expect(receipts[2][3]).toBe("September 2026");
   });
 });

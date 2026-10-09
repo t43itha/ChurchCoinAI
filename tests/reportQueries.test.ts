@@ -231,3 +231,68 @@ describe("annual trend", () => {
     expect(trendIncome).toBe(report.totals.totalIncome);
   });
 });
+
+describe("in-progress month activity", () => {
+  const ctx = fixture(
+    reportRecords([
+      transaction("previous-month", { date: "2026-09-03", amount: 100 }),
+      transaction("elapsed-october", { date: "2026-10-01", amount: 100 }),
+      transaction("future-october", { date: "2026-10-20", amount: 900, isGiftAidEligible: true }),
+    ])
+  );
+
+  it("leaves transactions dated after today out of the month's figures", async () => {
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-09" });
+
+    expect(report.totals.grossIncome).toBe(100);
+    const receiptsTotal = report.receipts.reduce((sum: number, group: any) => sum + group.total, 0);
+    expect(receiptsTotal).toBe(100);
+    expect(report.missionTithe.total).toBe(100);
+    expect(report.missionTithe.weeklyBreakdown.reduce((sum: number, week: any) => sum + week.total, 0)).toBe(100);
+    expect(report.giftAidSummary.eligible).toBe(0);
+    expect(report.trend.find((point: any) => point.label === "Oct").income).toBe(100);
+    const fundRow = report.fundStatement.rows.find((row: any) => row.fund === "General");
+    expect(fundRow.income).toBe(100);
+    expect(report.comparison.previousMonth.totals.income).toBe(100);
+  });
+
+  it("keeps Sunday weeks after today in the weekly breakdown with zero totals", async () => {
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-09" });
+    const weekEndings = report.weeklyBreakdown.map((week: any) => week.weekEnding);
+
+    expect(weekEndings).toEqual(["2026-10-04", "2026-10-11", "2026-10-18", "2026-10-25"]);
+    expect(report.weeklyBreakdown.find((week: any) => week.weekEnding === "2026-10-25").receiptsTotal).toBe(0);
+  });
+});
+
+describe("partial-month reserve cover", () => {
+  it("values spending only up to today in the tax year", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("opening", { date: "2026-03-01", amount: 1000 }),
+        transaction("spent-so-far", { type: "Expenditure", date: "2026-04-08", amount: 100, category: "Utilities" }),
+        transaction("spent-later", { type: "Expenditure", date: "2026-04-20", amount: 800, category: "Utilities" }),
+      ])
+    );
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-04-09" });
+
+    expect(report.reserveCover.averageMonthlyExpenditure).toBe(100);
+    expect(report.reserveCover.months).toBe(9);
+  });
+
+  it("values spending only up to today in the calendar year", async () => {
+    const records = reportRecords([
+      transaction("opening", { date: "2025-12-01", amount: 1000 }),
+      transaction("spent-so-far", { type: "Expenditure", date: "2026-01-08", amount: 100, category: "Utilities" }),
+      transaction("spent-later", { type: "Expenditure", date: "2026-01-20", amount: 800, category: "Utilities" }),
+    ]);
+    records.organizations = [{ _id: "org", accessMode: "legacy", reportingPeriod: "calendar_year" }];
+    const ctx = fixture(records);
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-01-09" });
+
+    expect(report.reserveCover.averageMonthlyExpenditure).toBe(100);
+    expect(report.reserveCover.months).toBe(9);
+  });
+});

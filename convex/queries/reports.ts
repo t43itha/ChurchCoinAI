@@ -87,17 +87,18 @@ function getWeekEndingDate(date: Date): string {
 // Helper to get all Sundays in a month
 function getSundaysInMonth(year: number, month: number): string[] {
   const sundays: string[] = [];
-  const date = new Date(year, month, 1);
+  // UTC throughout, so the Sundays do not depend on the host's timezone.
+  const date = new Date(Date.UTC(year, month, 1));
 
   // Find first Sunday
-  while (date.getDay() !== 0) {
-    date.setDate(date.getDate() + 1);
+  while (date.getUTCDay() !== 0) {
+    date.setUTCDate(date.getUTCDate() + 1);
   }
 
   // Collect all Sundays in the month
-  while (date.getMonth() === month) {
+  while (date.getUTCMonth() === month) {
     sundays.push(date.toISOString().split("T")[0]);
-    date.setDate(date.getDate() + 7);
+    date.setUTCDate(date.getUTCDate() + 7);
   }
 
   return sundays;
@@ -276,7 +277,7 @@ export const monthlyCashBreakdown = query({
       status: "draft" | "submitted" | "banked" | "none";
     }> = [];
 
-    let monthlyTotals = {
+    const monthlyTotals = {
       grossIncome: 0,
       pettyCashTotal: 0,
       bankableTotal: 0,
@@ -607,20 +608,23 @@ export const monthlyReportData = query({
     ]);
     const { rows, lookup } = inputs;
 
-    const monthRows = rowsIn(rows, period);
-    const reportable = filterIncomeAndExpenditure(monthRows);
+    // Figures cover the month up to today (the whole month once it has finished).
+    const activity: DateRange = { startDate: period.startDate, endDate: period.throughDate };
+    const activityRows = rowsIn(rows, activity);
+    const reportable = filterIncomeAndExpenditure(activityRows);
     const incomeRows = reportable.filter(isReportableIncomeTransaction);
     const expenditureRows = reportable.filter((row) => row.type === "Expenditure");
     const { receipts, payments } = groupReport(reportable, lookup);
 
     // Weekly breakdown: a row per Sunday, plus a partial week after the last Sunday.
+    // Weeks after throughDate are listed but total 0.
     const sundays = getSundaysInMonth(args.year, args.month);
     const weeklyBreakdown = sundays.map((weekEnding) =>
       weekBreakdown(reportable, addDays(weekEnding, -6), weekEnding, weekEnding)
     );
     const lastSunday = sundays[sundays.length - 1];
-    if (lastSunday && lastSunday < period.endDate) {
-      const partial = weekBreakdown(reportable, addDays(lastSunday, 1), period.endDate, period.endDate);
+    if (lastSunday && lastSunday < activity.endDate) {
+      const partial = weekBreakdown(reportable, addDays(lastSunday, 1), activity.endDate, activity.endDate);
       if (partial.receiptsTotal > 0 || partial.paymentsTotal > 0) weeklyBreakdown.push(partial);
     }
 
@@ -632,10 +636,10 @@ export const monthlyReportData = query({
       weekEnding,
       total: missionWeekTotal(addDays(weekEnding, -6), weekEnding),
     }));
-    if (lastSunday && lastSunday < period.endDate) {
-      const partialTotal = missionWeekTotal(addDays(lastSunday, 1), period.endDate);
+    if (lastSunday && lastSunday < activity.endDate) {
+      const partialTotal = missionWeekTotal(addDays(lastSunday, 1), activity.endDate);
       if (partialTotal > 0) {
-        missionTitheBreakdown.push({ weekEnding: period.endDate, total: partialTotal });
+        missionTitheBreakdown.push({ weekEnding: activity.endDate, total: partialTotal });
       }
     }
     const missionTitheTotal = sumMoney(missionRows, (row) => row.amount);
@@ -743,9 +747,9 @@ export const monthlyReportData = query({
         startDate: period.startDate,
         endDate: period.throughDate,
       }),
-      readiness: buildReadiness(rows, period),
-      transfers: buildTransferSummary(monthRows, inputs.funds),
-      loans: await loadLoanRows(ctx, user.organizationId, period.endDate),
+      readiness: buildReadiness(rows, activity),
+      transfers: buildTransferSummary(activityRows, inputs.funds),
+      loans: await loadLoanRows(ctx, user.organizationId, period.throughDate),
     };
   },
 });
@@ -797,12 +801,19 @@ export const annualReportData = query({
     const completeMonths = monthlyTrend.filter((point) => !point.isFuture && !point.isPartial);
     const basis =
       completeMonths.length > 0 ? completeMonths : monthlyTrend.filter((point) => !point.isFuture);
+    // A partial month counts only the days up to today, so future spending stays out.
     const reserve = reserveCover(
       sumMoney(
         fundStatement.rows.filter((row) => row.type === "Unrestricted"),
         (row) => row.closing
       ),
-      basis.map((point) => periodTotals(unrestrictedRows, point).expenditure)
+      basis.map(
+        (point) =>
+          periodTotals(unrestrictedRows, {
+            startDate: point.startDate,
+            endDate: point.endDate < period.throughDate ? point.endDate : period.throughDate,
+          }).expenditure
+      )
     );
 
     // Mission Tithe over the elapsed span.

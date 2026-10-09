@@ -6,8 +6,10 @@ import { percentChange } from "../lib/reportSummary";
 import { sumMoney } from "../convex/lib/money";
 import { isGiftAidEnabled } from "../lib/giftAid";
 import {
+  comparisonLabel,
   fundCellValues,
   formatPercentChange,
+  inProgressLine,
   formatUkDate,
   priorTotalFor,
   splitFundRows,
@@ -738,11 +740,12 @@ export const generateMonthlyReportHTML = (
   const { previousMonth } = reportData.comparison;
   const { totals, fundStatement } = reportData;
   const { showOther } = splitFundRows(fundStatement);
+  const progress = inProgressLine(reportData.period);
   const givers = reportData.titheGivers.givers;
   const vsPrevious = (current: number, previous: number) =>
     percentChange(current, previous) === null
       ? ""
-      : `<div class="vs">vs ${escapeHtml(previousMonth.label)}: ${formatPercentChange(current, previous)}</div>`;
+      : `<div class="vs">vs ${escapeHtml(comparisonLabel(reportData.comparison.previousMonth))}: ${formatPercentChange(current, previous)}</div>`;
 
   const html = `
     <!DOCTYPE html>
@@ -761,6 +764,7 @@ export const generateMonthlyReportHTML = (
         <div class="meta">
           <p>Report Date: ${todayFormatted}</p>
           <p>Period: ${escapeHtml(reportData.period.label)}</p>
+          ${progress ? `<p>${escapeHtml(progress)}</p>` : ''}
           ${churchDetails.charityNumber ? `<p>Charity No: ${escapeHtml(churchDetails.charityNumber)}</p>` : ''}
         </div>
       </div>
@@ -796,7 +800,7 @@ export const generateMonthlyReportHTML = (
             groups: reportData.receipts,
             total: totals.grossIncome,
             totalLabel: "Total Receipts",
-            comparison: { label: previousMonth.label, groups: previousMonth.receipts, total: previousMonth.totals.income },
+            comparison: { label: comparisonLabel(previousMonth), groups: previousMonth.receipts, total: previousMonth.totals.income },
             showPrior: false,
           })}
         </div>
@@ -808,13 +812,13 @@ export const generateMonthlyReportHTML = (
             groups: reportData.payments,
             total: totals.totalExpenditure,
             totalLabel: "Total Payments",
-            comparison: { label: previousMonth.label, groups: previousMonth.payments, total: previousMonth.totals.expenditure },
+            comparison: { label: comparisonLabel(previousMonth), groups: previousMonth.payments, total: previousMonth.totals.expenditure },
             showPrior: false,
           })}
         </div>
       </div>
 
-      <div class="section-title">Fund position</div>
+      <div class="section-title">Fund position at ${formatUkDate(reportData.period.throughDate)}</div>
       <table>
         <thead>
           <tr>
