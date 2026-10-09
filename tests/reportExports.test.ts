@@ -204,6 +204,18 @@ describe("category sheet and tithes sheet", () => {
     expect(rows.find((row) => row[0] === "Missions")).toEqual(["Missions", "", 50, 0, "—"]);
   });
 
+  it("keeps a category that only existed in the comparison period, with its prior total", () => {
+    const rows = categorySheetRows({
+      title: "Income",
+      currentLabel: "2026/27",
+      groups: [group("Offerings", 900)],
+      total: 900,
+      totalLabel: "Total Income",
+      comparison: { label: "2025/26", groups: [group("Offerings", 1000), group("Grants", 10000)], total: 11000 },
+    });
+    expect(rows.find((row) => row[0] === "Grants")).toEqual(["Grants", "", 0, 10000, "−100.0%"]);
+  });
+
   it("omits the Gift Aid column when Gift Aid is disabled", () => {
     const givers: GivingByDonor = {
       givers: [{ donor: "Alex", gifts: 2, total: 150, giftAidEligible: true }],
@@ -267,6 +279,24 @@ describe("annual report PDF", () => {
     );
     expect(html).toContain("Comparison with 2025/26");
     expect(html).toContain("+33.3%");
+  });
+
+  it("lists a comparison-only category with its prior total in the comparison table", () => {
+    const html = generateAnnualReportHTML(
+      annualReport({
+        prior: {
+          label: "2025/26",
+          range: { startDate: "2025-04-06", endDate: "2026-04-05" },
+          totals: totals(11000, 400),
+          receipts: [group("Offerings", 1000), group("Grants", 10000)],
+          payments: [group("Ministry", 400)],
+        },
+      }),
+      churchDetails(true)
+    );
+    expect(html).toMatch(
+      /<td>Grants<\/td>\s*<td class="amount">£0\.00<\/td>\s*<td class="amount">£10000\.00<\/td>\s*<td class="amount">−100\.0%<\/td>/
+    );
   });
 
   it("omits Gift Aid sections when Gift Aid is disabled", () => {

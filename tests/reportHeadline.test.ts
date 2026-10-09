@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildHeadline, pickMover, type HeadlineInput } from "../lib/reportHeadline";
+import { rankCategoryGroups } from "../lib/reportSummary";
 
 const month: HeadlineInput = {
   kind: "month",
@@ -140,6 +141,15 @@ describe("pickMover", () => {
         { mainCategory: "Misc", total: 1.5, previous: 1 },
       ])
     ).toEqual({ name: "Travel", change: 300 });
+  });
+
+  it("names a category that only existed in the comparison period", () => {
+    const current = [{ mainCategory: "Offerings", total: 900, subcategories: [] }];
+    const prior = [
+      { mainCategory: "Offerings", total: 1000, subcategories: [] },
+      { mainCategory: "Grants", total: 10000, subcategories: [] },
+    ];
+    expect(pickMover(rankCategoryGroups(current, prior))).toEqual({ name: "Grants", change: -100 });
   });
 
   it("is undefined when nothing moved enough", () => {

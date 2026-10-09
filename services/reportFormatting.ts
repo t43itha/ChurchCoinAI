@@ -1,6 +1,6 @@
 // Pure helpers shared by the report PDF and Excel exports: fund statement
 // grouping, change labels and dates. Money totals use sumMoney.
-import type { CategoryGroup, ReportComparison } from "../types";
+import type { ReportComparison } from "../types";
 import {
   isUnrestrictedFund,
   percentChange,
@@ -31,10 +31,6 @@ export function fundCellValues(totals: FundStatementTotals, showOther: boolean):
     totals.closing,
   ];
 }
-
-// A comparison period's total for a main category. 0 when the category is absent.
-export const priorTotalFor = (groups: CategoryGroup[], mainCategory: string) =>
-  groups.find((group) => group.mainCategory === mainCategory)?.total ?? 0;
 
 // "+12.5%", "−3.0%", or "—" when there is no base to compare with.
 export function formatPercentChange(current: number, previous: number): string {

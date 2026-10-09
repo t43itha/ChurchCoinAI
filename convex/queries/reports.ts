@@ -822,16 +822,17 @@ export const annualReportData = query({
       (row) => row.amount
     );
 
-    // Giving: named givers, and those who gave in at least half the elapsed months.
-    const givingRows = incomeRows.filter((row) => row.donorId || row.donorName);
+    // Giving: every gift counts; donorCount is named givers only. regularGivers
+    // are the named givers who gave in at least half the elapsed months.
     const giving = groupGivingByDonor(
-      givingRows.map((row) => ({
+      incomeRows.map((row) => ({
         donorId: row.donorId,
         donorName: row.donorName,
         amount: row.amount,
         isGiftAidEligible: row.isGiftAidEligible,
       }))
     );
+    const givingRows = incomeRows.filter((row) => row.donorId || row.donorName);
     const elapsedMonths = monthBuckets(elapsed);
     const regularThreshold = Math.max(1, Math.ceil(period.monthsElapsed / 2));
     const regularGivers = [

@@ -157,13 +157,21 @@ export function periodTotals(rows: ReportTransaction[], range: DateRange): Perio
 }
 
 // Largest total first, subcategories largest first. `previous` is matched by
-// mainCategory.
+// mainCategory; categories that only appear there are added with a zero total,
+// so the comparison column still adds up to the prior total.
 export function rankCategoryGroups(
   groups: CategoryGroup[],
   previous?: CategoryGroup[]
 ): RankedCategory[] {
   const sideTotal = sumMoney(groups, (group) => group.total);
-  return [...groups]
+  const currentNames = new Set(groups.map((group) => group.mainCategory));
+  const absent: CategoryGroup[] = [];
+  for (const prior of previous ?? []) {
+    if (currentNames.has(prior.mainCategory)) continue;
+    currentNames.add(prior.mainCategory);
+    absent.push({ mainCategory: prior.mainCategory, total: 0, subcategories: [] });
+  }
+  return [...groups, ...absent]
     .sort((a, b) => b.total - a.total || a.mainCategory.localeCompare(b.mainCategory))
     .map((group) => {
       const ranked: RankedCategory = {

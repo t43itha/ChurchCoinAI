@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import { MonthlyReportData, AnnualReportData, ChurchDetails, CategoryGroup, LoanReportRow } from '../types';
 import type { TransferSummary } from '../lib/reportableTransactions';
 import type { ProgrammeIncome } from '../lib/programmeIncome';
-import type { FundStatement, GiverSummary, GivingByDonor, TrendPoint } from '../lib/reportSummary';
+import { rankCategoryGroups, type FundStatement, type GiverSummary, type GivingByDonor, type TrendPoint } from '../lib/reportSummary';
 import { sumMoney } from '../convex/lib/money';
 import { isGiftAidEnabled } from '../lib/giftAid';
 import {
@@ -11,7 +11,6 @@ import {
   formatPercentChange,
   inProgressLine,
   formatUkDate,
-  priorTotalFor,
   splitFundRows,
 } from './reportFormatting';
 
@@ -69,8 +68,8 @@ export const categorySheetRows = (opts: {
   if (comparison) header.push(comparison.label, "Change");
   const rows: SheetRows = [[opts.title], [""], header];
 
-  opts.groups.forEach((group) => {
-    const prior = comparison ? priorTotalFor(comparison.groups, group.mainCategory) : 0;
+  rankCategoryGroups(opts.groups, comparison?.groups).forEach((group) => {
+    const prior = group.previous ?? 0;
     rows.push([
       group.mainCategory,
       "",

@@ -2,7 +2,7 @@
 import { Donor, Pledge, Fund, ChurchDetails, Transaction, MonthlyReportData, AnnualReportData, CategoryGroup, LoanReportRow } from "../types";
 import { filterIncomeAndExpenditure, type TransferSummary } from "../lib/reportableTransactions";
 import type { ProgrammeIncome } from "../lib/programmeIncome";
-import { percentChange } from "../lib/reportSummary";
+import { percentChange, rankCategoryGroups } from "../lib/reportSummary";
 import { sumMoney } from "../convex/lib/money";
 import { isGiftAidEnabled } from "../lib/giftAid";
 import {
@@ -11,7 +11,6 @@ import {
   formatPercentChange,
   inProgressLine,
   formatUkDate,
-  priorTotalFor,
   splitFundRows,
 } from "./reportFormatting";
 
@@ -661,8 +660,8 @@ const categoryTableHTML = (opts: {
           </tr>
         </thead>
         <tbody>
-          ${opts.groups.map((group) => {
-            const prior = comparison ? priorTotalFor(comparison.groups, group.mainCategory) : 0;
+          ${rankCategoryGroups(opts.groups, comparison?.groups).map((group) => {
+            const prior = group.previous ?? 0;
             return `
               <tr class="main-category">
                 <td>${escapeHtml(group.mainCategory)}</td>

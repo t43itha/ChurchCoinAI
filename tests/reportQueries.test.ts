@@ -98,6 +98,29 @@ describe("annual report for an in-progress tax year", () => {
   });
 });
 
+describe("annual giving counts", () => {
+  const giving = async (transactions: Row[]) => {
+    const report = await invoke(reports.annualReportData, fixture(reportRecords(transactions)), {
+      year: 2026,
+      today: "2026-10-08",
+    });
+    return report.giving;
+  };
+
+  it("counts anonymous gifts in giftCount but only named givers in donorCount", async () => {
+    const result = await giving([
+      transaction("anonymous", { date: "2026-05-03", amount: 10 }),
+      transaction("named", { date: "2026-05-10", amount: 20, donorId: "donor-1", donorName: "Alex" }),
+    ]);
+    expect(result).toMatchObject({ giftCount: 2, donorCount: 1 });
+  });
+
+  it("counts an anonymous-only year as gifts with no givers", async () => {
+    const result = await giving([transaction("anonymous", { date: "2026-05-03", amount: 10 })]);
+    expect(result).toMatchObject({ giftCount: 1, donorCount: 0, regularGivers: 0 });
+  });
+});
+
 describe("fund statement", () => {
   it("closes each fund at its balance and totals to the sum of closings", async () => {
     const ctx = fixture(

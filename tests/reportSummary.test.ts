@@ -11,6 +11,7 @@ import {
   type ReportTransaction,
 } from "../lib/reportSummary";
 import { monthBuckets, type MonthBucket } from "../lib/reportPeriods";
+import { sumMoney } from "../convex/lib/money";
 
 const april = { startDate: "2026-04-01", endDate: "2026-04-30" };
 
@@ -70,6 +71,20 @@ describe("rankCategoryGroups", () => {
     ]);
     expect(ranked.find((group) => group.mainCategory === "Giving")?.previous).toBe(400);
     expect(ranked.find((group) => group.mainCategory === "Rent")?.previous).toBe(0);
+  });
+
+  it("adds a zero-total row for each category only in the comparison period", () => {
+    const current = [{ mainCategory: "Offerings", total: 900, subcategories: [{ name: "Sunday", total: 900 }] }];
+    const prior = [
+      { mainCategory: "Offerings", total: 1000, subcategories: [{ name: "Sunday", total: 1000 }] },
+      { mainCategory: "Grants", total: 10000, subcategories: [{ name: "Trust", total: 10000 }] },
+    ];
+    const ranked = rankCategoryGroups(current, prior);
+
+    expect(ranked.map((group) => group.mainCategory)).toEqual(["Offerings", "Grants"]);
+    expect(ranked[1]).toEqual({ mainCategory: "Grants", total: 0, subcategories: [], share: 0, previous: 10000 });
+    expect(sumMoney(ranked, (group) => group.previous ?? 0)).toBe(11000);
+    expect(sumMoney(ranked, (group) => group.total)).toBe(900);
   });
 
   it("gives a zero share when the side total is zero", () => {
