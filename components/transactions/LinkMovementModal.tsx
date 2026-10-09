@@ -1,264 +1,88 @@
-import { useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
-import { meetsMoneyTarget } from "../../convex/lib/money";
-import type { MovementKind } from "../../lib/movementCategories";
-import { linkCandidates, linkState, MOVEMENT_LABELS } from "../../lib/movementMatching";
-import { formatUkDate } from "../../lib/dateUtils";
+import { linkState } from "../../lib/movementMatching";
 import { notify } from "../../lib/notifications";
 import type { Fund, Transaction } from "../../types";
-import TransactionDialog, {
-  DialogFooter,
-  FORM_INPUT_CLASS as INPUT_CLASS,
-  FORM_LABEL_CLASS as LABEL_CLASS,
-} from "./TransactionDialog";
+import LinkDoneStep from "../movements/LinkDoneStep";
+import {
+  OtherSideStep,
+  LinkSummary,
+  ReceivedLoanStep,
+  RepaymentStep,
+  type LinkFormProps,
+} from "../movements/LinkMatchStep";
+import {
+  LINK_STEPS,
+  linkedSummary,
+  railStateFor,
+  type LinkArgs,
+  type LinkedWith,
+  type LinkStep,
+} from "../movements/linkSteps";
+import RailStep from "../wizard/RailStep";
+import WizardFrame from "../wizard/WizardFrame";
+import { eyebrow } from "../wizard/ui";
 
-type LinkArgs = FunctionArgs<typeof api.mutations.movements.link>;
-type Loan = FunctionReturnType<typeof api.queries.movements.listLoans>[number];
+const LABELS: Record<LinkStep, string> = { match: "Match", done: "Done" };
 
-const CHOICE_CLASS =
-  "flex items-start gap-3 p-3 rounded-sm border border-ledger cursor-pointer hover:bg-paper transition-colors";
-
-const money = (amount: number) => `£${amount.toFixed(2)}`;
-const fundName = (funds: Fund[], fundId: string) =>
-  funds.find((fund) => fund._id === fundId)?.name ?? "Unknown fund";
-
-type LinkFormProps = {
-  transaction: Transaction;
-  transactions: Transaction[];
-  funds: Fund[];
-  loans: Loan[] | undefined;
-  isSaving: boolean;
-  onLink: (args: LinkArgs) => void;
-  onClose: () => void;
-};
-
-function OtherSideForm({
-  kind,
-  transaction,
-  transactions,
-  funds,
-  isSaving,
-  onLink,
-  onClose,
-}: LinkFormProps & { kind: MovementKind }) {
-  const transactionId = transaction._id as Id<"transactions">;
-  const candidates = linkCandidates(transaction, transactions);
-  const [chosenId, setChosenId] = useState(candidates[0]?._id ?? "");
-  const chosen = candidates.find((candidate) => candidate._id === chosenId);
-
-  return (
-    <form
-      className="p-5 flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (chosen) onLink({ transactionIds: [transactionId, chosen._id as Id<"transactions">] });
-      }}
-    >
-      {candidates.length === 0 ? (
-        <>
-          <p className="text-sm text-grey-dark">
-            {`No unlinked ${MOVEMENT_LABELS[kind]} of ${money(transaction.amount)} going the other way within 14 days.`}
-          </p>
-          <p className="text-xs text-grey-mid">Mark the other side with the same category first.</p>
-        </>
-      ) : (
-        <fieldset className="flex flex-col gap-2">
-          <legend className={LABEL_CLASS}>Choose the other side</legend>
-          {candidates.map((candidate) => (
-            <label key={candidate._id} className={CHOICE_CLASS}>
-              <input
-                type="radio"
-                name="other-side"
-                value={candidate._id}
-                checked={candidate._id === chosenId}
-                onChange={() => setChosenId(candidate._id)}
-                className="mt-1 accent-[#a9743f]"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-ink truncate">{candidate.description}</span>
-                <span className="block text-xs text-grey-mid font-mono mt-0.5">
-                  {`${formatUkDate(candidate.date)} · ${fundName(funds, candidate.fundId)} · ${money(candidate.amount)}`}
-                </span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-      )}
-      <DialogFooter submitLabel="Link" submitDisabled={!chosen} isSaving={isSaving} onClose={onClose} />
-    </form>
-  );
-}
-
-function LoanRadioList({
-  name,
-  loans,
-  chosenId,
-  onChoose,
-}: {
-  name: string;
-  loans: Loan[];
-  chosenId: string;
-  onChoose: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      {loans.map((loan) => (
-        <label key={loan._id} className={CHOICE_CLASS}>
-          <input
-            type="radio"
-            name={name}
-            value={loan._id}
-            checked={loan._id === chosenId}
-            onChange={() => onChoose(loan._id)}
-            className="mt-1 accent-[#a9743f]"
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-ink truncate">{loan.lender}</span>
-            <span className="block text-xs text-grey-mid font-mono mt-0.5">
-              {`${money(loan.outstanding)} outstanding of ${money(loan.borrowed)}${loan.dueDate ? ` · due ${formatUkDate(loan.dueDate)}` : ""}`}
-            </span>
-          </span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function ReceivedLoanForm({ transaction, loans, isSaving, onLink, onClose }: LinkFormProps) {
-  const transactionId = transaction._id as Id<"transactions">;
-  const [mode, setMode] = useState<"new" | "existing">("new");
-  const [lender, setLender] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [note, setNote] = useState("");
-  const [chosenLoanId, setChosenLoanId] = useState("");
-  const chosenLoan = loans?.find((loan) => loan._id === chosenLoanId);
-  const canSubmit = mode === "new" ? lender.trim() !== "" : chosenLoan !== undefined;
-
-  return (
-    <form
-      className="p-5 flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (mode === "new") {
-          onLink({
-            transactionIds: [transactionId],
-            lender: lender.trim(),
-            dueDate: dueDate || undefined,
-            note: note.trim() || undefined,
-          });
-        } else if (chosenLoan) {
-          onLink({ transactionIds: [transactionId], movementId: chosenLoan._id });
-        }
-      }}
-    >
-      <p className="text-sm text-grey-dark">
-        {`${money(transaction.amount)} received. Record it as a new loan, or add it to one already on the register.`}
-      </p>
-      <div className="flex gap-5">
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="radio" name="loan-mode" checked={mode === "new"} onChange={() => setMode("new")} className="accent-[#a9743f]" />
-          New loan
-        </label>
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="radio" name="loan-mode" checked={mode === "existing"} onChange={() => setMode("existing")} className="accent-[#a9743f]" />
-          Add to an existing loan
-        </label>
-      </div>
-
-      {mode === "new" ? (
-        <div className="flex flex-col gap-3">
-          <div>
-            <label htmlFor="loan-lender" className={LABEL_CLASS}>Lender</label>
-            <input id="loan-lender" type="text" required value={lender} onChange={(e) => setLender(e.target.value)} className={INPUT_CLASS} />
-          </div>
-          <div>
-            <label htmlFor="loan-due-date" className={LABEL_CLASS}>Due date (optional)</label>
-            <input id="loan-due-date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={`${INPUT_CLASS} font-mono`} />
-          </div>
-          <div>
-            <label htmlFor="loan-note" className={LABEL_CLASS}>Note (optional)</label>
-            <input id="loan-note" type="text" value={note} onChange={(e) => setNote(e.target.value)} className={INPUT_CLASS} />
-          </div>
-        </div>
-      ) : loans === undefined ? (
-        <p className="text-sm text-grey-mid">Loading loans…</p>
-      ) : loans.length === 0 ? (
-        <p className="text-sm text-grey-mid">No loans recorded yet. Use New loan instead.</p>
-      ) : (
-        <LoanRadioList name="existing-loan" loans={loans} chosenId={chosenLoanId} onChoose={setChosenLoanId} />
-      )}
-
-      <DialogFooter submitLabel="Link" submitDisabled={!canSubmit} isSaving={isSaving} onClose={onClose} />
-    </form>
-  );
-}
-
-function RepaymentForm({ transaction, loans, isSaving, onLink, onClose }: LinkFormProps) {
-  const transactionId = transaction._id as Id<"transactions">;
-  const [chosenLoanId, setChosenLoanId] = useState("");
-  const openLoans = (loans ?? []).filter(
-    (loan) => !loan.isRepaid && meetsMoneyTarget(loan.outstanding, transaction.amount)
-  );
-  const chosenLoan = openLoans.find((loan) => loan._id === chosenLoanId);
-
-  return (
-    <form
-      className="p-5 flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (chosenLoan) onLink({ transactionIds: [transactionId], movementId: chosenLoan._id });
-      }}
-    >
-      {loans === undefined ? (
-        <p className="text-sm text-grey-mid">Loading loans…</p>
-      ) : openLoans.length === 0 ? (
-        <p className="text-sm text-grey-dark">
-          {`No open loan has ${money(transaction.amount)} outstanding. Record the money received as a loan first.`}
-        </p>
-      ) : (
-        <>
-          <p className="text-sm text-grey-dark">{`Choose the loan that ${money(transaction.amount)} repays.`}</p>
-          <LoanRadioList name="repaid-loan" loans={openLoans} chosenId={chosenLoanId} onChoose={setChosenLoanId} />
-        </>
-      )}
-      <DialogFooter submitLabel="Link" submitDisabled={!chosenLoan} isSaving={isSaving} onClose={onClose} />
-    </form>
-  );
-}
-
+// Shows the form for the way this transaction is waiting: the other side of a transfer or
+// returned payment, or a loan received (Income) or repaid (Expenditure).
 export function LinkMovementPanel(props: LinkFormProps) {
   const { transaction } = props;
   const state = linkState(transaction);
   if (state.status !== "waiting") return null;
-  if (state.kind === "loan") {
-    return transaction.type === "Income" ? <ReceivedLoanForm {...props} /> : <RepaymentForm {...props} />;
-  }
-  return <OtherSideForm {...props} kind={state.kind} />;
+  return (
+    <>
+      <LinkSummary transaction={transaction} funds={props.funds} />
+      {state.kind === "loan" ? (
+        transaction.type === "Income" ? <ReceivedLoanStep {...props} /> : <RepaymentStep {...props} />
+      ) : (
+        <OtherSideStep {...props} kind={state.kind} />
+      )}
+    </>
+  );
 }
 
-type LinkMovementModalProps = {
+export interface LinkMovementModalProps {
   transaction: Transaction;
   transactions: Transaction[];
   funds: Fund[];
+  // Test-only: opens at a later step. The product always opens on the match step.
+  initialStep?: LinkStep;
   onClose: () => void;
-};
+}
 
-export default function LinkMovementModal({ transaction, transactions, funds, onClose }: LinkMovementModalProps) {
+// Walkthrough for linking this transaction to the other side of its movement.
+export default function LinkMovementModal({ transaction, transactions, funds, initialStep, onClose }: LinkMovementModalProps) {
   const link = useMutation(api.mutations.movements.link);
   const state = linkState(transaction);
   const isLoan = state.status === "waiting" && state.kind === "loan";
   const loans = useQuery(api.queries.movements.listLoans, isLoan ? {} : "skip");
   const [isSaving, setIsSaving] = useState(false);
+  const [linked, setLinked] = useState<{ summary: string | null } | null>(
+    initialStep === "done" ? { summary: null } : null
+  );
+  const step: LinkStep = linked ? "done" : "match";
 
-  const handleLink = async (args: LinkArgs) => {
+  const requestClose = useCallback(() => {
+    if (!isSaving) onClose();
+  }, [isSaving, onClose]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [requestClose]);
+
+  const handleLink = async (args: LinkArgs, linkedWith: LinkedWith) => {
     setIsSaving(true);
     try {
       await link(args);
       notify("Linked", "Both sides are now linked.");
-      onClose();
+      setLinked({ summary: linkedSummary(linkedWith) });
     } catch (error) {
       notify("Error", error instanceof Error ? error.message : "Failed to link this transaction.");
     } finally {
@@ -266,17 +90,45 @@ export default function LinkMovementModal({ transaction, transactions, funds, on
     }
   };
 
+  const rail = (
+    <aside className="hidden min-h-0 flex-col overflow-y-auto border-r border-ledger bg-white p-4 lg:flex">
+      <div className={`${eyebrow} mx-2.5 mb-1`}>Movement</div>
+      {LINK_STEPS.map((kind, index) => (
+        <RailStep
+          key={kind}
+          marker={String(index + 1)}
+          label={LABELS[kind]}
+          state={railStateFor(kind, step)}
+          // The steps follow one another, so the rail only shows progress.
+          disabled
+          onClick={() => undefined}
+        />
+      ))}
+    </aside>
+  );
+
   return (
-    <TransactionDialog title="Link other side" onClose={onClose}>
-      <LinkMovementPanel
-        transaction={transaction}
-        transactions={transactions}
-        funds={funds}
-        loans={loans}
-        isSaving={isSaving}
-        onLink={handleLink}
-        onClose={onClose}
-      />
-    </TransactionDialog>
+    <WizardFrame
+      ariaLabel="Link other side"
+      title="Link other side"
+      // Locks every control while the link is being saved, so it can't be repeated.
+      locked={isSaving}
+      onClose={requestClose}
+      progress={{ total: LINK_STEPS.length, current: LINK_STEPS.indexOf(step) }}
+      rail={rail}
+    >
+      {step === "done" ? (
+        <LinkDoneStep summary={linked?.summary ?? null} onDone={onClose} />
+      ) : (
+        <LinkMovementPanel
+          transaction={transaction}
+          transactions={transactions}
+          funds={funds}
+          loans={loans}
+          isSaving={isSaving}
+          onLink={(args, linkedWith) => void handleLink(args, linkedWith)}
+        />
+      )}
+    </WizardFrame>
   );
 }

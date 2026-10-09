@@ -111,7 +111,6 @@ describe("LinkMovementPanel", () => {
         loans: undefined,
         isSaving: false,
         onLink: vi.fn(),
-        onClose: vi.fn(),
       })
     );
 
