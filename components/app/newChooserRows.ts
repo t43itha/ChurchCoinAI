@@ -95,3 +95,34 @@ const ROWS: NewChooserRow[] = [
 export function newChooserRows(role: UserRole): NewChooserRow[] {
   return ROWS.filter((row) => can(role, row.capability));
 }
+
+// The desktop "+ New" button and the phone bar's New slot only show when there is something to open.
+export function canAddNew(role: UserRole): boolean {
+  return newChooserRows(role).length > 0;
+}
+
+export type NewKindStep =
+  | { type: "idle" }
+  | { type: "wait" }
+  | { type: "handled"; modal: NewKindModal | null; leaveReconciliation: boolean };
+
+// What Transactions does with ?new=<kind> on this run of its effect. `handled` is the value the
+// page already acted on, so a Strict Mode replay or a re-render does nothing a second time.
+export function planNewKind({
+  param,
+  handled,
+  canEdit,
+  bankConnectionsLoaded,
+}: {
+  param: string | null;
+  handled: string | null;
+  canEdit: boolean;
+  bankConnectionsLoaded: boolean;
+}): NewKindStep {
+  if (!param || param === handled) return { type: "idle" };
+  const kind = parseNewKind(param);
+  // Sync needs the connected accounts, so wait for them rather than report none.
+  if (kind && canEdit && newKindModal(kind) === "bankSync" && !bankConnectionsLoaded) return { type: "wait" };
+  const modal = kind && canEdit ? newKindModal(kind) : null;
+  return { type: "handled", modal, leaveReconciliation: modal !== null };
+}

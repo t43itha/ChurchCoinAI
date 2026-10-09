@@ -25,7 +25,8 @@ import ImportCategorizationProgress from './ImportCategorizationProgress';
 import LinkMovementModal from './transactions/LinkMovementModal';
 import JournalTransferModal from './transactions/JournalTransferModal';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
-import { newKindModal, parseNewKind } from './app/newChooserRows';
+import { planNewKind } from './app/newChooserRows';
+import { tabBarClearance } from './app/MobileTabBar';
 
 interface Category {
   _id: string;
@@ -637,18 +638,16 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       handledNewKind.current = null;
       return;
     }
-    if (handledNewKind.current === newKindParam) return;
-    const kind = parseNewKind(newKindParam);
-    // Sync needs the connected accounts, so wait for them rather than report none.
-    if (kind && canEdit && newKindModal(kind) === 'bankSync' && !bankConnectionsLoaded) return;
+    const step = planNewKind({ param: newKindParam, handled: handledNewKind.current, canEdit, bankConnectionsLoaded });
+    if (step.type !== 'handled') return;
     handledNewKind.current = newKindParam;
     setSearchParams((params) => {
       params.delete('new');
       return params;
     }, { replace: true });
-    if (!kind || !canEdit) return;
-    setShowReconciliation(false);
-    switch (newKindModal(kind)) {
+    if (!step.modal) return;
+    if (step.leaveReconciliation) setShowReconciliation(false);
+    switch (step.modal) {
       case 'cashTakings':
         startTransition(() => setShowCashTakingsModal(true));
         break;
@@ -1324,7 +1323,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       {/* Floating Bulk Actions - Fixed to bottom of viewport */}
       {activeTransactionTab === 'all' && selectedIds.size > 0 && canEdit && createPortal(
           <div
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)] bg-ink text-white rounded-[14px] py-3 pl-5 pr-4 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.55)] flex items-center gap-4 mb-[env(safe-area-inset-bottom)]"
+            className={`fixed ${tabBarClearance} md:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)] bg-ink text-white rounded-[14px] py-3 pl-5 pr-4 shadow-[0_18px_44px_-16px_rgba(0,0,0,0.55)] flex items-center gap-4 md:mb-[env(safe-area-inset-bottom)]`}
             style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' }}
           >
               <span className="font-mono text-[12.5px] font-bold tracking-[0.06em] text-[#6b8e6b] pr-4 border-r border-white/[0.18] shrink-0 whitespace-nowrap">{selectedIds.size} SELECTED</span>

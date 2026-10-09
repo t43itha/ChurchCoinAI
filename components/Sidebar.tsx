@@ -11,6 +11,7 @@ import type { PlanTier } from '@/lib/onboardingIntent';
 import { getPlanName } from '@/lib/plans';
 import { getTrialProgress } from '@/lib/trial';
 import { btnMd, btnPrimary, eyebrow } from './wizard/ui';
+import { canAddNew } from './app/newChooserRows';
 
 // Type for Convex user from database
 interface ConvexUser {
@@ -126,19 +127,21 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isOpen, onClose, onNew, 
           </button>
         </div>
 
-        <div className="px-[18px]">
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onNew();
-            }}
-            className={`${btnPrimary} ${btnMd}`}
-          >
-            <Plus size={16} strokeWidth={2.2} aria-hidden="true" />
-            New
-          </button>
-        </div>
+        {canAddNew(role) && (
+          <div className="px-[18px]">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onNew();
+              }}
+              className={`${btnPrimary} ${btnMd}`}
+            >
+              <Plus size={16} strokeWidth={2.2} aria-hidden="true" />
+              New
+            </button>
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="min-h-0 flex-1 overflow-y-auto px-[18px] pb-2">

@@ -1,14 +1,23 @@
-﻿import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import type { UserRole } from "../../lib/permissions";
 import WizardFrame from "../wizard/WizardFrame";
 import { nextIcon, nextItem, screenHelp, screenTitle } from "../wizard/ui";
 import { newChooserRows } from "./newChooserRows";
 
 // The single "+ New" entry point. Choosing a row closes the sheet and opens the
-// matching walkthrough or modal on Transactions.
+// matching walkthrough or modal on Transactions. Only shown to roles with rows to offer.
 export default function NewChooser({ role, onClose }: { role: UserRole; onClose: () => void }) {
   const navigate = useNavigate();
   const rows = newChooserRows(role);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const choose = (to: string) => {
     onClose();
@@ -20,28 +29,22 @@ export default function NewChooser({ role, onClose }: { role: UserRole; onClose:
       <h2 className={screenTitle}>What are you adding?</h2>
       <p className={screenHelp}>Pick one. Each opens a short walkthrough.</p>
 
-      {rows.length === 0 ? (
-        <p className="rounded-2xl border border-ledger bg-white px-4 py-3.5 text-sm text-grey-mid">
-          Your role can view the books but not add to them. Ask an administrator or the finance team to record entries.
-        </p>
-      ) : (
-        <div className="grid gap-2">
-          {rows.map((row) => {
-            const Icon = row.icon;
-            return (
-              <button key={row.id} type="button" onClick={() => choose(row.to)} className={nextItem}>
-                <span className={`${nextIcon} ${toneClass(row.tone)}`}>
-                  <Icon size={17} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <b className="block text-[14.5px] text-ink">{row.title}</b>
-                  <span className="block text-xs text-grey-mid">{row.detail}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="grid gap-2">
+        {rows.map((row) => {
+          const Icon = row.icon;
+          return (
+            <button key={row.id} type="button" onClick={() => choose(row.to)} className={nextItem}>
+              <span className={`${nextIcon} ${toneClass(row.tone)}`}>
+                <Icon size={17} aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-[14.5px] text-ink">{row.title}</b>
+                <span className="block text-xs text-grey-mid">{row.detail}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </WizardFrame>
   );
 }

@@ -83,6 +83,37 @@ describe("Dashboard hub", () => {
     expect(html).not.toContain("You&#x27;re up to date.");
   });
 
+  it("shows four needs-you rows and offers the rest behind a button, with the total in the status line", () => {
+    summary = {
+      ...baseSummary(),
+      readiness: {
+        ...baseSummary().readiness,
+        unreconciledExpenditureCount: 4,
+        cashBankingPendingWeeks: 1,
+        unlinkedMovementLegs: 1,
+        possibleDoubleCountMonths: ["2026-09"],
+      },
+      donorFollowUp: { ...baseSummary().donorFollowUp, missedGiftAidCount: 3, missedGiftAidValue: 120, pledgesBehindCount: 2 },
+    };
+    const html = renderDashboard("Admin");
+
+    expect(html).toContain("6 things need you.");
+    expect(html).toContain("Show 2 more");
+    expect(html).toContain("Possible double count");
+    // The receipt column also mentions missing Gift Aid, so match the needs-you row's title element.
+    expect(html).not.toContain(">Gifts missing Gift Aid</b>");
+    expect(html).not.toContain(">Pledges behind</b>");
+  });
+
+  it("offers no expander when four or fewer rows need the user", () => {
+    summary = {
+      ...baseSummary(),
+      readiness: { ...baseSummary().readiness, unlinkedMovementLegs: 2 },
+      donorFollowUp: { ...baseSummary().donorFollowUp, missedGiftAidCount: 3, missedGiftAidValue: 120 },
+    };
+    expect(renderDashboard("Admin")).not.toMatch(/Show \d+ more/);
+  });
+
   it("uses the singular status line for one item", () => {
     summary = {
       ...baseSummary(),
