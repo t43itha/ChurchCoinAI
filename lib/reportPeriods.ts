@@ -108,15 +108,23 @@ export function financialYearStartFor(date: string, reportingPeriod: ReportingPe
   return date >= `${year}-04-06` ? year : year - 1;
 }
 
-// Moves both ends by whole years. 29 February becomes 28 February.
+// Moves both ends by whole years. A start on 29 February becomes 28 February in a
+// non-leap year. An end on the last day of its month stays on the last day of
+// the target month, so 1-28 February 2025 shifts to 1-29 February 2024.
 export function shiftRangeByYears(range: DateRange, years: number): DateRange {
-  const shift = (iso: string): string => {
+  const shiftStart = (iso: string): string => {
     const [year, month, day] = iso.split("-").map(Number);
     const targetYear = year + years;
     const targetDay = month === 2 && day === 29 && !isLeapYear(targetYear) ? 28 : day;
     return toIso(Date.UTC(targetYear, month - 1, targetDay));
   };
-  return { startDate: shift(range.startDate), endDate: shift(range.endDate) };
+  const shiftEnd = (iso: string): string => {
+    const [year, month, day] = iso.split("-").map(Number);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    if (day === lastDay) return toIso(Date.UTC(year + years, month, 0));
+    return shiftStart(iso);
+  };
+  return { startDate: shiftStart(range.startDate), endDate: shiftEnd(range.endDate) };
 }
 
 // The same elapsed span one year earlier: startDate..throughDate shifted back a

@@ -10,7 +10,7 @@ import {
   reserveCover,
   type ReportTransaction,
 } from "../lib/reportSummary";
-import type { MonthBucket } from "../lib/reportPeriods";
+import { monthBuckets, type MonthBucket } from "../lib/reportPeriods";
 
 const april = { startDate: "2026-04-01", endDate: "2026-04-30" };
 
@@ -180,6 +180,39 @@ describe("buildTrend", () => {
       [row({ date: "2025-04-08", amount: 80, type: "Income" }), row({ date: "2025-05-08", amount: 999, type: "Income", isVoided: true })]
     );
     expect(trend.map((point) => point.priorIncome)).toEqual([80, 0, 0]);
+  });
+
+  it("totals only elapsed days in the bucket that holds throughDate", () => {
+    const trend = buildTrend(
+      [
+        row({ date: "2026-10-01", amount: 100, type: "Income" }),
+        row({ date: "2026-10-20", amount: 900, type: "Income" }),
+        row({ date: "2026-11-02", amount: 50, type: "Income" }),
+      ],
+      monthBuckets({ startDate: "2026-04-06", endDate: "2027-04-05" }),
+      "2026-10-09"
+    );
+    const byLabel = (label: string) => trend.find((point) => point.label === label);
+    expect(byLabel("Oct")).toMatchObject({ isPartial: true, income: 100 });
+    expect(byLabel("Nov")).toMatchObject({ isFuture: true, income: 0 });
+  });
+
+  it("keeps the full prior-year month for priorIncome even when the current bucket is partial", () => {
+    const [october] = buildTrend(
+      [row({ date: "2026-10-01", amount: 100, type: "Income" })],
+      [{ startDate: "2026-10-01", endDate: "2026-10-31", label: "Oct" }],
+      "2026-10-09",
+      [row({ date: "2025-10-25", amount: 70, type: "Income" })]
+    );
+    expect(october).toMatchObject({ income: 100, priorIncome: 70 });
+  });
+
+  it("gives February 2025 the whole of February 2024 as its prior year, leap day included", () => {
+    const priorRows = [row({ date: "2024-02-29", amount: 100, type: "Income" })];
+    const taxYear = buildTrend([], monthBuckets({ startDate: "2024-04-06", endDate: "2025-04-05" }), "2025-04-05", priorRows);
+    const calendar = buildTrend([], monthBuckets({ startDate: "2025-01-01", endDate: "2025-12-31" }), "2025-12-31", priorRows);
+    expect(taxYear.find((point) => point.label === "Feb")?.priorIncome).toBe(100);
+    expect(calendar.find((point) => point.label === "Feb")?.priorIncome).toBe(100);
   });
 
   it("shifts 29 February back to 28 February for the prior year", () => {

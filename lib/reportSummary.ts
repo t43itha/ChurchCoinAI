@@ -11,7 +11,12 @@ import {
   type LedgerRow,
 } from "./reportableTransactions";
 import { completionPercent, isCategorized } from "./dashboardKpis";
-import { isWithinRange, type DateRange, type MonthBucket } from "./reportPeriods";
+import {
+  isWithinRange,
+  shiftRangeByYears,
+  type DateRange,
+  type MonthBucket,
+} from "./reportPeriods";
 
 export type ReportTransaction = LedgerRow & {
   date: string;
@@ -128,25 +133,6 @@ function reportableTotals(rows: ReportTransaction[]): { income: number; expendit
   };
 }
 
-// Adds a whole number of years to a yyyy-mm-dd date. 29 February becomes 28
-// February in a non-leap year.
-function shiftDateByYears(date: string, years: number): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const targetYear = year + years;
-  const isLeap = (targetYear % 4 === 0 && targetYear % 100 !== 0) || targetYear % 400 === 0;
-  const targetDay = month === 2 && day === 29 && !isLeap ? 28 : day;
-  return `${String(targetYear).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(
-    targetDay
-  ).padStart(2, "0")}`;
-}
-
-function shiftRangeBackOneYear(range: DateRange): DateRange {
-  return {
-    startDate: shiftDateByYears(range.startDate, -1),
-    endDate: shiftDateByYears(range.endDate, -1),
-  };
-}
-
 function fundTotals(rows: FundStatementRow[]): FundStatementTotals {
   return {
     opening: sumMoney(rows, (row) => row.opening),
@@ -260,8 +246,13 @@ export function buildTrend(
   priorRows?: ReportTransaction[]
 ): TrendPoint[] {
   return buckets.map((bucket) => {
+    // Only days up to throughDate count. A future bucket clips to an empty range.
+    const elapsed: DateRange = {
+      startDate: bucket.startDate,
+      endDate: bucket.endDate < throughDate ? bucket.endDate : throughDate,
+    };
     const { income, expenditure } = reportableTotals(
-      rows.filter((row) => isWithinRange(row.date, bucket))
+      rows.filter((row) => isWithinRange(row.date, elapsed))
     );
     const isFuture = bucket.startDate > throughDate;
     const point: TrendPoint = {
@@ -273,7 +264,8 @@ export function buildTrend(
       isPartial: !isFuture && throughDate < bucket.endDate,
     };
     if (priorRows) {
-      const priorRange = shiftRangeBackOneYear(bucket);
+      // The whole prior-year month, as the reference line.
+      const priorRange = shiftRangeByYears(bucket, -1);
       point.priorIncome = reportableTotals(
         priorRows.filter((row) => isWithinRange(row.date, priorRange))
       ).income;

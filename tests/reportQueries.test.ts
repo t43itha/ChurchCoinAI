@@ -166,3 +166,68 @@ describe("monthly comparison", () => {
     });
   });
 });
+
+describe("monthly year to date", () => {
+  it("totals April from the tax year that contains it, not the one that started before it", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("last-tax-year", { date: "2025-05-01", amount: 10000 }),
+        transaction("april-after-6th", { date: "2026-04-10", amount: 100 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 3, today: "2026-05-10" });
+
+    expect(report.yearToDate.label).toBe("2026/27");
+    expect(report.yearToDate.totals).toMatchObject({ income: 100 });
+  });
+
+  it("leaves out April income dated before 6 April, which belongs to the previous tax year", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("last-tax-year", { date: "2025-05-01", amount: 10000 }),
+        transaction("april-before-6th", { date: "2026-04-03", amount: 50 }),
+        transaction("april-after-6th", { date: "2026-04-10", amount: 100 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 3, today: "2026-05-10" });
+
+    expect(report.yearToDate.totals).toMatchObject({ income: 100 });
+  });
+});
+
+describe("in-progress monthly fund statement", () => {
+  it("values the fund at today, not at the end of the month", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("early-october", { date: "2026-10-01", amount: 100 }),
+        transaction("late-october", { date: "2026-10-20", amount: 900 }),
+      ])
+    );
+
+    const report = await invoke(reports.monthlyReportData, ctx, { year: 2026, month: 9, today: "2026-10-09" });
+    const general = report.fundStatement.rows.find((row: any) => row.fund === "General");
+
+    expect(general).toMatchObject({ income: 100, closing: 100 });
+  });
+});
+
+describe("annual trend", () => {
+  it("sums the non-future trend months to the year's total income when a future-dated row is present", async () => {
+    const ctx = fixture(
+      reportRecords([
+        transaction("may", { date: "2026-05-03", amount: 200 }),
+        transaction("early-october", { date: "2026-10-01", amount: 100 }),
+        transaction("late-october", { date: "2026-10-20", amount: 900 }),
+      ])
+    );
+
+    const report = await invoke(reports.annualReportData, ctx, { year: 2026, today: "2026-10-09" });
+    const settled = report.monthlyTrend.filter((point: any) => !point.isFuture);
+    const trendIncome = settled.reduce((sum: number, point: any) => sum + point.income, 0);
+
+    expect(report.totals.totalIncome).toBe(300);
+    expect(trendIncome).toBe(report.totals.totalIncome);
+  });
+});

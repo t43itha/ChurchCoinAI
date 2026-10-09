@@ -691,9 +691,10 @@ export const monthlyReportData = query({
       period.throughDate
     );
 
-    // Year to date: from the start of the financial year containing this month.
+    // Year to date: from the start of the financial year containing the last day
+    // covered, up to that day.
     const financialYear = financialYearPeriod(
-      financialYearStartFor(period.startDate, reportingPeriod),
+      financialYearStartFor(period.throughDate, reportingPeriod),
       reportingPeriod,
       args.today
     );
@@ -735,10 +736,13 @@ export const monthlyReportData = query({
         label: financialYear.label,
         totals: periodTotals(rows, {
           startDate: financialYear.startDate,
-          endDate: period.endDate,
+          endDate: period.throughDate,
         }),
       },
-      fundStatement: buildFundStatement(inputs.reportFunds, rows, period),
+      fundStatement: buildFundStatement(inputs.reportFunds, rows, {
+        startDate: period.startDate,
+        endDate: period.throughDate,
+      }),
       readiness: buildReadiness(rows, period),
       transfers: buildTransferSummary(monthRows, inputs.funds),
       loans: await loadLoanRows(ctx, user.organizationId, period.endDate),

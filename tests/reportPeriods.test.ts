@@ -149,6 +149,17 @@ describe("shiftRangeByYears", () => {
     });
   });
 
+  it("moves a month-end endDate to the last day of the target month", () => {
+    expect(shiftRangeByYears({ startDate: "2025-02-01", endDate: "2025-02-28" }, -1)).toEqual({
+      startDate: "2024-02-01",
+      endDate: "2024-02-29",
+    });
+    expect(shiftRangeByYears({ startDate: "2024-02-01", endDate: "2024-02-29" }, -1)).toEqual({
+      startDate: "2023-02-01",
+      endDate: "2023-02-28",
+    });
+  });
+
   it("keeps 29 February when the target year is leap", () => {
     expect(shiftRangeByYears({ startDate: "2024-02-29", endDate: "2024-03-01" }, 4)).toEqual({
       startDate: "2028-02-29",
