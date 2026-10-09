@@ -1,69 +1,32 @@
+import { useEffect, useMemo, useState, type FC } from "react";
+import { useConvex, useMutation } from "convex/react";
+import { Plus, ShieldAlert } from "lucide-react";
+import { api } from "../convex/_generated/api";
+import { Id } from "../convex/_generated/dataModel";
+import { meetsMoneyTarget, sumMoney } from "../convex/lib/money";
+import { notify } from "../lib/notifications";
+import { filterIncomeAndExpenditure, sumReportableIncome } from "../lib/reportableTransactions";
+import { isGiftAidEnabled } from "../lib/giftAid";
 import { can } from "../lib/permissions";
-import React, { useState, useMemo } from 'react';
-import { useConvex, useMutation } from 'convex/react';
-import { api } from '../convex/_generated/api';
-import { Id } from '../convex/_generated/dataModel';
-import { Donor, DonorCreateInput, Transaction, Pledge, PledgeCreateInput, Fund, TransactionType, AppUser, ChurchDetails } from '../types';
-import { Plus, User, Calendar, Mail, Phone, MapPin, Gift, Search, History, Wallet, Edit2, X, Save, Link as LinkIcon, Unlink, FileText, Printer, ShieldAlert, LayoutDashboard, UserCog, MessageSquare, CheckCircle2, Copy, Send, Heart, Clock, PartyPopper, Info, CalendarCheck, Users, Merge, Check, AlertTriangle } from 'lucide-react';
-import { notify } from '../lib/notifications';
-import { formatLocalDateInputValue } from '../lib/dateUtils';
-import { filterIncomeAndExpenditure, sumReportableIncome } from '../lib/reportableTransactions';
-import { meetsMoneyTarget } from '../convex/lib/money';
-import { isGiftAidEnabled } from '../lib/giftAid';
-
-// WhatsApp message template types
-type TemplateType = 'newPledge' | 'pledgeChaser' | 'pledgeFulfillment' | 'generalUpdate' | 'endOfYear';
-
-interface MessageTemplate {
-  name: string;
-  description: string;
-  template: string;
-  requiresPledge: boolean;
-}
-
-const MESSAGE_TEMPLATES: Record<TemplateType, MessageTemplate> = {
-  newPledge: {
-    name: 'New Pledge',
-    description: 'Thank you for signing up',
-    template: `Hi {donorName}, thank you for committing to support our church with your pledge of £{pledgeAmount} ({frequency}) towards {fundName}. Your generosity makes a real difference. We look forward to partnering with you on this journey. God bless!
-
-— {financeTeamName}`,
-    requiresPledge: true
-  },
-  pledgeChaser: {
-    name: 'Pledge Reminder',
-    description: 'Gentle reminder to start giving',
-    template: `Hi {donorName}, we hope you're doing well! This is a gentle reminder about your pledge of £{pledgeAmount} ({frequency}) towards {fundName}. When you're ready, your contribution will help us continue our mission. Every gift matters. Thank you for your commitment!
-
-— {financeTeamName}`,
-    requiresPledge: true
-  },
-  pledgeFulfillment: {
-    name: 'Pledge Complete',
-    description: 'Thank you for fulfilling pledge',
-    template: `Hi {donorName}, amazing news! You've completed your pledge of £{pledgeAmount} towards {fundName}. Thank you for your faithful giving - it's made a real impact. If you'd like to continue supporting this cause or explore other giving opportunities, we'd love to hear from you.
-
-— {financeTeamName}`,
-    requiresPledge: true
-  },
-  generalUpdate: {
-    name: 'General Update',
-    description: 'General appreciation message',
-    template: `Hi {donorName}, thank you for being part of our church community. Your faithful giving towards {fundName} has helped us serve and grow. We're grateful for your ongoing support and partnership in our mission.
-
-— {financeTeamName}`,
-    requiresPledge: false
-  },
-  endOfYear: {
-    name: 'End of Year',
-    description: 'Annual giving summary',
-    template: `Hi {donorName}, as we reflect on the past year, we want to thank you for your generosity. Your total giving of £{yearTotal} towards {fundName} has made a meaningful difference in our community. Wishing you a blessed year ahead!
-
-— {financeTeamName}`,
-    requiresPledge: false
-  }
-};
-import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import type { AppUser, ChurchDetails, Donor, DonorCreateInput, Fund, Pledge, PledgeCreateInput, Transaction } from "../types";
+import HubHeader from "./hub/HubHeader";
+import WizardFrame from "./wizard/WizardFrame";
+import { btnMd, btnOutline, btnPrimary, card, eyebrow } from "./wizard/ui";
+import DonorDetail from "./donors/DonorDetail";
+import DonorList, { type MergeControls } from "./donors/DonorList";
+import DonorSheet from "./donors/DonorSheet";
+import ExportSheet, { type ExportPeriod, type ExportReport } from "./donors/ExportSheet";
+import MergeSheet, { type DuplicateGroup } from "./donors/MergeSheet";
+import ScheduleSheet from "./donors/ScheduleSheet";
+import ThankYouWalkthrough from "./donors/ThankYouWalkthrough";
+import {
+  activeScheduleMap,
+  filterDonors,
+  givingStats,
+  statFor,
+  whatsappNumber,
+  type DonorFilter,
+} from "./donors/donorDirectory";
 
 interface DonorManagerProps {
   donors: Donor[];
@@ -79,325 +42,235 @@ interface DonorManagerProps {
   churchDetails?: ChurchDetails;
 }
 
-const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
+// The one sheet open over the page. Null when the page is showing on its own.
+type Sheet = "add" | "edit" | "schedule" | "export" | "merge" | "thankYou" | null;
+
+const DAY_MS = 86_400_000;
+const NEW_DONOR_DEFAULTS: Partial<Donor> = { type: "Individual", isGiftAidActive: false, communicationPreference: "Email" };
+
+// Below xl the donor profile opens as a sheet; from xl it sits beside the directory.
+function useWideLayout() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1280px)");
+    const update = () => setWide(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
+const DonorManager: FC<DonorManagerProps> = ({ donors, transactions, pledges, funds, onAddDonor, onUpdateDonor, onAddPledge, onUpdatePledge, onUpdateTransaction, currentUser, churchDetails }) => {
   const convex = useConvex();
   const giftAidEnabled = isGiftAidEnabled(churchDetails);
-  const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id || null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'profile' | 'communicate'>('overview');
+  const canEdit = can(currentUser.role, "donors.write");
+  const canView = can(currentUser.role, "donors.read");
+  const wide = useWideLayout();
 
-  // Mobile view state for master-detail pattern
-  const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
+  const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id ?? null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<DonorFilter>("everyone");
+  const [sheet, setSheet] = useState<Sheet>(null);
 
-  // Message template state
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null);
-  const [selectedPledgeForTemplate, setSelectedPledgeForTemplate] = useState<string | null>(null);
-  const [selectedFundForTemplate, setSelectedFundForTemplate] = useState<string | null>(null);
-  const [generatedMessage, setGeneratedMessage] = useState('');
-  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
-
-  // Modals state
-  const [showAddPledgeModal, setShowAddPledgeModal] = useState(false);
-  const [showAddDonorModal, setShowAddDonorModal] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [showMergeModal, setShowMergeModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-
-  // Export period selection state
-  const [exportPeriod, setExportPeriod] = useState<'year' | 'last6months' | 'all'>('year');
+  // Export state
+  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("year");
   const [exportYear, setExportYear] = useState(new Date().getFullYear());
-
-  // Report type selection state for export modal
-  const [selectedReportType, setSelectedReportType] = useState<'all' | 'tithes' | 'campaign'>('all');
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | undefined>();
+  const [exportReport, setExportReport] = useState<ExportReport>({ type: "all" });
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Merge state
-  const [duplicateGroups, setDuplicateGroups] = useState<any[]>([]);
+  const mergeDonors = useMutation(api.mutations.donors.merge);
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [isFindingDuplicates, setIsFindingDuplicates] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [selectedMergeGroup, setSelectedMergeGroup] = useState<number | null>(null);
   const [selectedPrimaryId, setSelectedPrimaryId] = useState<string | null>(null);
-
-  // Manual merge state
   const [manualMergeMode, setManualMergeMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
   const [manualPrimaryId, setManualPrimaryId] = useState<string | null>(null);
 
-  // Convex mutations for merge
-  const mergeDonors = useMutation(api.mutations.donors.merge);
-
-  // Forms state
-  const [formData, setFormData] = useState<Partial<Donor>>({});
-  const [newDonorData, setNewDonorData] = useState<Partial<Donor>>({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
-  const [newPledgeData, setNewPledgeData] = useState<Partial<Pledge>>({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
-
-  const canEdit = can(currentUser.role, "donors.write");
-  const canView = can(currentUser.role, "donors.read");
-
-  const filteredDonors = donors.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  // Per-donor giving stats for the directory list and summary strip
-  const donorStats = useMemo(() => {
-    const stats = new Map<string, { ytd: number; lastGift: number }>();
-    const year = new Date().getFullYear();
-    for (const t of filterIncomeAndExpenditure(transactions)) {
-      if (t.type !== 'Income') continue;
-      const keys = [t.donorId, t.donorName].filter(Boolean) as string[];
-      const time = new Date(t.date).getTime();
-      const inYear = new Date(t.date).getFullYear() === year;
-      for (const key of keys) {
-        const s = stats.get(key) ?? { ytd: 0, lastGift: 0 };
-        if (inYear) s.ytd += t.amount;
-        if (time > s.lastGift) s.lastGift = time;
-        stats.set(key, s);
-      }
-    }
-    return stats;
-  }, [transactions]);
-
-  const statFor = (d: Donor) => donorStats.get(d._id) ?? donorStats.get(d.name) ?? { ytd: 0, lastGift: 0 };
+  const year = new Date().getFullYear();
+  const now = Date.now();
+  const stats = useMemo(() => givingStats(transactions, year), [transactions, year]);
+  const schedules = useMemo(() => activeScheduleMap(pledges), [pledges]);
 
   const summary = useMemo(() => {
-    const now = Date.now();
-    const yearAgo = now - 365 * 86400000;
-    const sixtyDaysAgo = now - 60 * 86400000;
-    const month = new Date().getMonth();
-    const year = new Date().getFullYear();
     let active = 0;
     let needsReview = 0;
-    for (const d of donors) {
-      const { lastGift } = donorStats.get(d._id) ?? donorStats.get(d.name) ?? { lastGift: 0 };
-      if (lastGift >= yearAgo) active++;
-      if ((giftAidEnabled && !d.isGiftAidActive) || lastGift < sixtyDaysAgo) needsReview++;
+    for (const donor of donors) {
+      const { lastGift } = statFor(stats, donor);
+      if (lastGift >= now - 365 * DAY_MS) active++;
+      if ((giftAidEnabled && !donor.isGiftAidActive) || lastGift < now - 60 * DAY_MS) needsReview++;
     }
-    const monthTotal = filterIncomeAndExpenditure(transactions)
-      .filter(t => t.type === 'Income' && new Date(t.date).getMonth() === month && new Date(t.date).getFullYear() === year)
-      .reduce((acc, t) => acc + t.amount, 0);
+    const month = new Date().getMonth();
+    const monthTotal = sumMoney(
+      filterIncomeAndExpenditure(transactions).filter(
+        (t) => t.type === "Income" && new Date(t.date).getMonth() === month && new Date(t.date).getFullYear() === year
+      ),
+      (t) => t.amount
+    );
     return {
       active,
-      giftAid: donors.filter(d => d.isGiftAidActive).length,
-      monthTotal,
       needsReview,
-      monthLabel: new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+      monthTotal,
+      giftAid: donors.filter((donor) => donor.isGiftAidActive).length,
+      monthLabel: new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
     };
-  }, [donors, transactions, donorStats, giftAidEnabled]);
+  }, [donors, transactions, stats, giftAidEnabled, now, year]);
+
+  const visibleDonors = filterDonors(donors, { search, filter, stats, giftAidEnabled, now });
 
   // After all hooks (Rules of Hooks) — Guests cannot view donor records.
   if (!canView) {
-      return (
-          <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
-              <div className="w-16 h-16 bg-grey-light rounded-2xl flex items-center justify-center mb-6 text-ledger"><ShieldAlert size={32} /></div>
-              <h2 className="text-lg font-bold text-ink font-mono mb-2">Access Restricted</h2>
-              <p className="text-sm max-w-sm text-center">Your user role ({currentUser.role}) does not have permission to view donor records.</p>
-          </div>
-      );
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] text-grey-mid">
+        <div className="w-16 h-16 bg-grey-light rounded-2xl flex items-center justify-center mb-6 text-ledger"><ShieldAlert size={32} /></div>
+        <h2 className="text-lg font-bold text-ink font-mono mb-2">Access Restricted</h2>
+        <p className="text-sm max-w-sm text-center">Your user role ({currentUser.role}) does not have permission to view donor records.</p>
+      </div>
+    );
   }
 
-  const giftAidStatus = (d: Donor): { tone: string; label: string } => {
-    const { lastGift } = statFor(d);
-    if (lastGift > 0 && lastGift < Date.now() - 60 * 86400000) return { tone: 'bg-amber', label: 'Lapsed' };
-    if (!giftAidEnabled) return { tone: 'bg-sage', label: 'Active' };
-    if (d.isGiftAidActive) return { tone: 'bg-sage', label: 'Gift Aid' };
-    return { tone: 'bg-error', label: 'No declaration' };
+  const selectedDonor = donors.find((donor) => donor._id === selectedDonorId);
+  const gifts = selectedDonor
+    ? transactions
+        .filter((t) => t.donorId === selectedDonor._id || t.donorName === selectedDonor.name)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    : [];
+  const donorPledges = selectedDonor
+    ? pledges.filter((p) => p.donorId === selectedDonor._id || p.donorName === selectedDonor.name)
+    : [];
+  const yearGifts = filterIncomeAndExpenditure(gifts).filter(
+    (t) => t.type === "Income" && new Date(t.date).getFullYear() === year
+  );
+  const yearTotal = sumMoney(yearGifts, (t) => t.amount);
+  const churchName = churchDetails?.name || "Church";
+
+  const closeSheet = () => setSheet(null);
+
+  const selectDonor = (donor: Donor) => {
+    setSelectedDonorId(donor._id);
+    setDetailOpen(true);
   };
 
-  const selectedDonor = donors.find(d => d._id === selectedDonorId);
-  const donorTransactions = transactions.filter(t => t.donorId === selectedDonorId || t.donorName === selectedDonor?.name)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const reportableDonorTransactions = filterIncomeAndExpenditure(donorTransactions);
-    
-  const lifetimeValue = sumReportableIncome(donorTransactions);
-  const donorPledges = pledges.filter(p => p.donorId === selectedDonorId || p.donorName === selectedDonor?.name);
-  const activePledges = donorPledges.filter(p => p.status === 'Active');
-
-  const chartData = reportableDonorTransactions.filter(t => t.type === 'Income').slice(0, 10).map(t => ({
-      date: new Date(t.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      amount: t.amount
-  })).reverse();
-
-  // Calculate year total for End of Year template
-  const currentYear = new Date().getFullYear();
-  const yearTotal = reportableDonorTransactions
-    .filter(t => t.type === 'Income' && new Date(t.date).getFullYear() === currentYear)
-    .reduce((acc, t) => acc + t.amount, 0);
-
-  // Get completed pledges for the donor
-  const completedPledges = donorPledges.filter(p => p.status === 'Completed');
-
-  // Generate message from template with variable substitution
-  const generateMessageFromTemplate = (templateType: TemplateType, pledgeId?: string, fundId?: string): string => {
-    if (!selectedDonor) return '';
-
-    const template = MESSAGE_TEMPLATES[templateType];
-    let message = template.template;
-
-    // Replace donor name
-    message = message.replace(/{donorName}/g, selectedDonor.name);
-
-    // Replace year total for end of year template
-    message = message.replace(/{yearTotal}/g, yearTotal.toLocaleString());
-    message = message.replace(
-      /{financeTeamName}/g,
-      `${churchDetails?.name || 'Church'} Finance Team`
-    );
-
-    // Replace pledge-specific variables if a pledge is selected
-    if (pledgeId) {
-      const pledge = donorPledges.find(p => p._id === pledgeId);
-      if (pledge) {
-        const fundName = funds.find(f => f._id === pledge.fundId)?.name || 'General Fund';
-        message = message.replace(/{pledgeAmount}/g, pledge.amount.toLocaleString());
-        message = message.replace(/{frequency}/g, pledge.frequency);
-        message = message.replace(/{fundName}/g, fundName);
-      }
-    } else if (fundId) {
-      // For non-pledge templates, use selected fund
-      const fundName = funds.find(f => f._id === fundId)?.name || 'General Fund';
-      message = message.replace(/{fundName}/g, fundName);
+  const submitNewDonor = async (values: Partial<Donor>) => {
+    if (!values.name) return;
+    const createdId = await onAddDonor({
+      name: values.name,
+      email: values.email,
+      phone: values.phone,
+      address: values.address,
+      postcode: values.postcode,
+      notes: values.notes,
+      type: values.type || "Individual",
+      isGiftAidActive: values.isGiftAidActive,
+      communicationPreference: values.communicationPreference,
+    });
+    setSheet(null);
+    if (createdId) {
+      setSelectedDonorId(createdId);
+      setDetailOpen(true);
     }
-
-    return message;
   };
 
-  // Handle template selection
-  const handleSelectTemplate = (templateType: TemplateType) => {
-    setSelectedTemplate(templateType);
-    setCopiedToClipboard(false);
+  const saveDonorEdit = (values: Partial<Donor>) => {
+    if (selectedDonor && values.name) {
+      onUpdateDonor({ ...selectedDonor, ...values } as Donor);
+      setSheet(null);
+    }
+  };
 
-    const template = MESSAGE_TEMPLATES[templateType];
-    if (template.requiresPledge) {
-      // For pledge fulfillment, only show completed pledges
-      const availablePledges = templateType === 'pledgeFulfillment' ? completedPledges : donorPledges;
+  const addSchedule = (pledge: PledgeCreateInput) => {
+    onAddPledge(pledge);
+    setSheet(null);
+  };
 
-      if (availablePledges.length > 0) {
-        const firstPledge = availablePledges[0];
-        setSelectedPledgeForTemplate(firstPledge._id);
-        setSelectedFundForTemplate(null);
-        setGeneratedMessage(generateMessageFromTemplate(templateType, firstPledge._id));
-      } else {
-        setSelectedPledgeForTemplate(null);
-        setSelectedFundForTemplate(null);
-        if (templateType === 'pledgeFulfillment') {
-          setGeneratedMessage('No completed pledges found for this donor.');
-        } else {
-          setGeneratedMessage('No pledges found for this donor. Please add a pledge first.');
-        }
-      }
-    } else {
-      // For non-pledge templates, select first fund
-      setSelectedPledgeForTemplate(null);
-      if (funds.length > 0) {
-        const firstFund = funds[0];
-        setSelectedFundForTemplate(firstFund._id);
-        setGeneratedMessage(generateMessageFromTemplate(templateType, undefined, firstFund._id));
-      } else {
-        setSelectedFundForTemplate(null);
-        setGeneratedMessage(generateMessageFromTemplate(templateType));
+  const handleLinkTransaction = (transaction: Transaction, pledgeId: string) => {
+    // We rely on the parent component (App.tsx) handling onUpdateTransaction to check for completion
+    onUpdateTransaction({ ...transaction, pledgeId });
+  };
+
+  const handleUnlinkTransaction = (transaction: Transaction) => {
+    const oldPledgeId = transaction.pledgeId;
+    if (!oldPledgeId) return;
+
+    onUpdateTransaction({ ...transaction, pledgeId: undefined });
+
+    // Check if unlinking should reactivate a completed pledge
+    const pledge = pledges.find((p) => p._id === oldPledgeId);
+    if (pledge && pledge.status === "Completed") {
+      const remainingSum = sumReportableIncome(
+        transactions.filter((t) => t.pledgeId === oldPledgeId && t._id !== transaction._id)
+      );
+      if (!meetsMoneyTarget(remainingSum, pledge.amount)) {
+        onUpdatePledge({ ...pledge, status: "Active" });
       }
     }
   };
-
-  // Handle pledge selection for template
-  const handlePledgeSelectForTemplate = (pledgeId: string) => {
-    setSelectedPledgeForTemplate(pledgeId);
-    setCopiedToClipboard(false);
-    if (selectedTemplate) {
-      setGeneratedMessage(generateMessageFromTemplate(selectedTemplate, pledgeId));
-    }
-  };
-
-  // Handle fund selection for template (non-pledge templates)
-  const handleFundSelectForTemplate = (fundId: string) => {
-    setSelectedFundForTemplate(fundId);
-    setCopiedToClipboard(false);
-    if (selectedTemplate) {
-      setGeneratedMessage(generateMessageFromTemplate(selectedTemplate, undefined, fundId));
-    }
-  };
-
-  // Copy message to clipboard
-  const copyMessageToClipboard = async () => {
-    if (!generatedMessage) return;
-    try {
-      await navigator.clipboard.writeText(generatedMessage);
-      setCopiedToClipboard(true);
-      setTimeout(() => setCopiedToClipboard(false), 2000);
-    } catch (e) {
-      console.error('Failed to copy to clipboard:', e);
-    }
-  };
-
-  // Share via WhatsApp
-  const shareMessageViaWhatsApp = () => {
-    if (!selectedDonor?.phone || !generatedMessage) return;
-    const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
-    const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
-    window.open(`https://wa.me/${formatted}?text=${encodeURIComponent(generatedMessage)}`, '_blank', 'noopener');
-  };
-
-  const handleEditClick = () => { if (selectedDonor && canEdit) { setFormData(selectedDonor); setIsEditing(true); } };
 
   // Get date range for export based on period selection
   const getExportDateRange = () => {
-    if (exportPeriod === 'all') return { start: undefined, end: undefined };
-    if (exportPeriod === 'last6months') {
+    if (exportPeriod === "all") return { start: undefined, end: undefined };
+    if (exportPeriod === "last6months") {
       const end = new Date();
       const start = new Date();
       start.setMonth(start.getMonth() - 6);
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0]
+        start: start.toISOString().split("T")[0],
+        end: end.toISOString().split("T")[0],
       };
     }
-    // Year selection
-    return {
-      start: `${exportYear}-01-01`,
-      end: `${exportYear}-12-31`
-    };
+    return { start: `${exportYear}-01-01`, end: `${exportYear}-12-31` };
   };
 
-  const buildScheduleExport = async (
-    filterType: 'all' | 'tithes' | 'campaign',
-    fundId?: string
-  ) => {
+  const getPeriodDescription = () => {
+    if (exportPeriod === "all") return "all giving history";
+    if (exportPeriod === "last6months") {
+      const end = new Date();
+      const start = new Date();
+      start.setMonth(start.getMonth() - 6);
+      return `${start.toLocaleDateString("en-GB", { month: "short", year: "numeric" })} - ${end.toLocaleDateString("en-GB", { month: "short", year: "numeric" })}`;
+    }
+    return String(exportYear);
+  };
+
+  const buildScheduleExport = async (filterType: "all" | "tithes" | "campaign", fundId?: string) => {
     if (!selectedDonor) return null;
 
     let filteredPledges = donorPledges;
-    let filteredTransactions = reportableDonorTransactions;
+    let filteredTransactions = filterIncomeAndExpenditure(gifts);
     let logoOverride: string | undefined;
     let campaignName: string | undefined;
 
     const { start: periodStart, end: periodEnd } = getExportDateRange();
 
     if (periodStart && periodEnd) {
-      filteredTransactions = filteredTransactions.filter(t => {
-        const txDate = t.date;
-        return txDate >= periodStart && txDate <= periodEnd;
-      });
+      filteredTransactions = filteredTransactions.filter((t) => t.date >= periodStart && t.date <= periodEnd);
     }
 
-    if (filterType === 'tithes') {
-      const titheFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
-      filteredPledges = donorPledges.filter(p => titheFundIds.includes(p.fundId));
-      const tithePledgeIds = pledges.filter(p => titheFundIds.includes(p.fundId)).map(p => p._id);
-      filteredTransactions = filteredTransactions.filter(t =>
-        titheFundIds.includes(t.fundId) || (t.pledgeId && tithePledgeIds.includes(t.pledgeId))
+    if (filterType === "tithes") {
+      const titheFundIds = funds.filter((f) => f.type === "Unrestricted").map((f) => f._id);
+      filteredPledges = donorPledges.filter((p) => titheFundIds.includes(p.fundId));
+      const tithePledgeIds = pledges.filter((p) => titheFundIds.includes(p.fundId)).map((p) => p._id);
+      filteredTransactions = filteredTransactions.filter(
+        (t) => titheFundIds.includes(t.fundId) || (t.pledgeId && tithePledgeIds.includes(t.pledgeId))
       );
-    } else if (filterType === 'campaign' && fundId) {
-      filteredPledges = donorPledges.filter(p => p.fundId === fundId);
-      const campaignPledgeIds = pledges.filter(p => p.fundId === fundId).map(p => p._id);
-      filteredTransactions = filteredTransactions.filter(t =>
-        t.fundId === fundId || (t.pledgeId && campaignPledgeIds.includes(t.pledgeId))
+    } else if (filterType === "campaign" && fundId) {
+      filteredPledges = donorPledges.filter((p) => p.fundId === fundId);
+      const campaignPledgeIds = pledges.filter((p) => p.fundId === fundId).map((p) => p._id);
+      filteredTransactions = filteredTransactions.filter(
+        (t) => t.fundId === fundId || (t.pledgeId && campaignPledgeIds.includes(t.pledgeId))
       );
 
-      const campaignFund = funds.find(f => f._id === fundId);
+      const campaignFund = funds.find((f) => f._id === fundId);
       if (campaignFund?.logoUrl) logoOverride = campaignFund.logoUrl;
       campaignName = campaignFund?.name;
     }
 
-    const details = churchDetails || { name: 'ChurchCoin', address: '', email: '' };
-    const { generateScheduleHTML, buildDonorSchedulePdfFilename } = await import('../services/pdfGenerator');
+    const details = churchDetails || { name: "ChurchCoin", address: "", email: "" };
+    const { generateScheduleHTML, buildDonorSchedulePdfFilename } = await import("../services/pdfGenerator");
     const html = generateScheduleHTML(
       selectedDonor,
       filteredPledges,
@@ -422,47 +295,35 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
     return { html, filename };
   };
 
-  const generateSchedulePdf = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+  const generateSchedulePdf = async (filterType: "all" | "tithes" | "campaign", fundId?: string) => {
     const exportData = await buildScheduleExport(filterType, fundId);
     if (!exportData) return null;
 
-    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml } = await import('../services/pdfExport');
+    const { ensureHtmlTitleForPdf, renderPdfBlobFromHtml } = await import("../services/pdfExport");
     const htmlWithTitle = ensureHtmlTitleForPdf(exportData.html, exportData.filename);
     const blob = await renderPdfBlobFromHtml({ html: htmlWithTitle });
     return { blob, filename: exportData.filename };
   };
 
-  const handlePrintSchedule = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+  const handlePrintSchedule = async (filterType: "all" | "tithes" | "campaign", fundId?: string) => {
     if (!selectedDonor || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
     try {
       const pdf = await generateSchedulePdf(filterType, fundId);
       if (!pdf) return;
-      const { savePdfBlob } = await import('../services/pdfExport');
+      const { savePdfBlob } = await import("../services/pdfExport");
       const didSave = await savePdfBlob({ blob: pdf.blob, filename: pdf.filename });
-      if (didSave) setShowExportModal(false);
+      if (didSave) setSheet(null);
     } catch (e) {
-      console.error('PDF export failed:', e);
+      console.error("PDF export failed:", e);
       notify("Error", e instanceof Error ? e.message : "Could not create the donor schedule.");
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
-  // Get period description for messages
-  const getPeriodDescription = () => {
-    if (exportPeriod === 'all') return 'all giving history';
-    if (exportPeriod === 'last6months') {
-      const end = new Date();
-      const start = new Date();
-      start.setMonth(start.getMonth() - 6);
-      return `${start.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} - ${end.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`;
-    }
-    return String(exportYear);
-  };
-
   // Send via WhatsApp
-  const handleSendViaWhatsApp = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+  const handleSendViaWhatsApp = async (filterType: "all" | "tithes" | "campaign", fundId?: string) => {
     if (!selectedDonor?.phone || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
 
@@ -471,9 +332,7 @@ const DonorManager: React.FC<DonorManagerProps> = ({ donors, transactions, pledg
       if (!pdf) return;
 
       const filenameWithExt = `${pdf.filename}.pdf`;
-
-      const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
-      const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
+      const formatted = whatsappNumber(selectedDonor.phone);
 
       const message = `Hi ${selectedDonor.name},
 
@@ -481,7 +340,7 @@ Please find attached your giving statement for ${getPeriodDescription()}.
 
 Thank you for your faithful support!
 
-— ${churchDetails?.name || 'Church'} Finance Team
+— ${churchName} Finance Team
 
 📎 Please attach: ${filenameWithExt}`;
 
@@ -491,13 +350,13 @@ Thank you for your faithful support!
         // ignore
       }
 
-      const { downloadPdfBlob, sharePdfBlob } = await import('../services/pdfExport');
+      const { downloadPdfBlob, sharePdfBlob } = await import("../services/pdfExport");
 
       const anyNavigator = navigator as any;
       const isMobile =
-        typeof anyNavigator.userAgentData?.mobile === 'boolean'
+        typeof anyNavigator.userAgentData?.mobile === "boolean"
           ? anyNavigator.userAgentData.mobile
-          : window.matchMedia?.('(pointer:coarse)')?.matches || /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+          : window.matchMedia?.("(pointer:coarse)")?.matches || /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
 
       if (isMobile) {
         const didShare = await sharePdfBlob({
@@ -507,7 +366,7 @@ Thank you for your faithful support!
           text: message,
         });
         if (didShare) {
-          setShowExportModal(false);
+          setSheet(null);
           return;
         }
       }
@@ -516,16 +375,16 @@ Thank you for your faithful support!
       downloadPdfBlob({ blob: pdf.blob, filename: pdf.filename });
       window.location.href = `whatsapp://send?phone=${formatted}&text=${encodeURIComponent(message)}`;
 
-      setShowExportModal(false);
+      setSheet(null);
     } catch (e) {
-      console.error('WhatsApp send failed:', e);
+      console.error("WhatsApp send failed:", e);
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
   // Send via Email
-  const handleSendViaEmail = async (filterType: 'all' | 'tithes' | 'campaign', fundId?: string) => {
+  const handleSendViaEmail = async (filterType: "all" | "tithes" | "campaign", fundId?: string) => {
     if (!selectedDonor?.email || isGeneratingPdf) return;
     setIsGeneratingPdf(true);
 
@@ -542,12 +401,12 @@ Please find attached your giving statement for ${getPeriodDescription()}.
 Thank you for your faithful support!
 
 Kind regards,
-${churchDetails?.name || 'Church'} Finance Team
+${churchName} Finance Team
 
 ---
 [Please attach the downloaded PDF: ${filenameWithExt}]`;
 
-      const { sharePdfBlob, savePdfBlob } = await import('../services/pdfExport');
+      const { sharePdfBlob, savePdfBlob } = await import("../services/pdfExport");
       const didShare = await sharePdfBlob({ blob: pdf.blob, filename: pdf.filename, title: subject, text: body });
 
       if (!didShare) {
@@ -557,90 +416,12 @@ ${churchDetails?.name || 'Church'} Finance Team
         window.location.href = mailtoUrl;
       }
 
-      setShowExportModal(false);
+      setSheet(null);
     } catch (e) {
-      console.error('Email send failed:', e);
+      console.error("Email send failed:", e);
     } finally {
       setIsGeneratingPdf(false);
     }
-  };
-
-  const openWhatsApp = () => {
-      if (!selectedDonor?.phone) return;
-      const cleanPhone = selectedDonor.phone.replace(/[^0-9]/g, '');
-      const formatted = cleanPhone.startsWith('0') ? '44' + cleanPhone.substring(1) : cleanPhone;
-      window.location.href = `whatsapp://send?phone=${formatted}`;
-  };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (selectedDonor && formData.name) { onUpdateDonor({ ...selectedDonor, ...formData } as Donor); setIsEditing(false); }
-  };
-
-  const handleAddDonorSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (newDonorData.name) {
-          const newDonor: DonorCreateInput = {
-              name: newDonorData.name,
-              email: newDonorData.email,
-              phone: newDonorData.phone,
-              address: newDonorData.address,
-              postcode: newDonorData.postcode,
-              notes: newDonorData.notes,
-              type: newDonorData.type || 'Individual',
-              isGiftAidActive: newDonorData.isGiftAidActive,
-              communicationPreference: newDonorData.communicationPreference
-          };
-          const createdId = await onAddDonor(newDonor);
-          setShowAddDonorModal(false);
-          setNewDonorData({ type: 'Individual', isGiftAidActive: false, communicationPreference: 'Email' });
-          if (createdId) setSelectedDonorId(createdId);
-          setActiveTab('profile'); 
-      }
-  };
-
-  const handleAddPledgeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedDonor && newPledgeData.amount && newPledgeData.fundId) {
-        const pledge: PledgeCreateInput = {
-            donorId: selectedDonor._id,
-            donorName: selectedDonor.name,
-            amount: Number(newPledgeData.amount),
-            fundId: newPledgeData.fundId,
-            frequency: newPledgeData.frequency as any,
-            startDate: newPledgeData.startDate || formatLocalDateInputValue(new Date()),
-            endDate: newPledgeData.endDate,
-            status: 'Active'
-        };
-        onAddPledge(pledge);
-        setShowAddPledgeModal(false);
-        setNewPledgeData({ frequency: 'Monthly', status: 'Active', startDate: formatLocalDateInputValue(new Date()) });
-    }
-  };
-
-  const handleLinkTransaction = (transaction: Transaction, pledgeId: string) => {
-      if (!pledgeId) return;
-      // We rely on the parent component (App.tsx) handling onUpdateTransaction to check for completion
-      onUpdateTransaction({ ...transaction, pledgeId });
-  };
-
-  const handleUnlinkTransaction = (transaction: Transaction) => {
-      const oldPledgeId = transaction.pledgeId;
-      if (!oldPledgeId) return;
-
-      onUpdateTransaction({ ...transaction, pledgeId: undefined });
-
-      // Check if unlinking should reactivate a completed pledge
-      const pledge = pledges.find(p => p._id === oldPledgeId);
-      if (pledge && pledge.status === 'Completed') {
-           const remainingSum = sumReportableIncome(
-              transactions.filter(t => t.pledgeId === oldPledgeId && t._id !== transaction._id)
-           );
-
-           if (!meetsMoneyTarget(remainingSum, pledge.amount)) {
-                onUpdatePledge({ ...pledge, status: 'Active' });
-           }
-      }
   };
 
   // Handle finding duplicate donors
@@ -648,18 +429,20 @@ ${churchDetails?.name || 'Church'} Finance Team
     setIsFindingDuplicates(true);
     try {
       const groups = await convex.query(api.mutations.donors.findDuplicates, {});
-        setDuplicateGroups(groups);
-        if (groups.length === 0) {
-        notify('Notice', 'No duplicate donors found.');
-        } else {
-          setShowMergeModal(true);
-        }
-      } catch (error) {
-        console.error('Error finding duplicates:', error);
-      notify('Error', 'Failed to find duplicates.');
-      } finally {
-        setIsFindingDuplicates(false);
+      setDuplicateGroups(groups);
+      if (groups.length === 0) {
+        notify("Notice", "No duplicate donors found.");
+      } else {
+        setSelectedMergeGroup(null);
+        setSelectedPrimaryId(null);
+        setSheet("merge");
       }
+    } catch (error) {
+      console.error("Error finding duplicates:", error);
+      notify("Error", "Failed to find duplicates.");
+    } finally {
+      setIsFindingDuplicates(false);
+    }
   };
 
   // Handle merging donors (auto-detected)
@@ -669,9 +452,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
     setIsMerging(true);
     try {
-      const duplicateIds = group.donors
-        .filter((d: any) => d._id !== selectedPrimaryId)
-        .map((d: any) => d._id);
+      const duplicateIds = group.donors.filter((d) => d._id !== selectedPrimaryId).map((d) => d._id);
 
       const result = await mergeDonors({
         primaryDonorId: selectedPrimaryId as Id<"donors">,
@@ -679,37 +460,38 @@ ${churchDetails?.name || 'Church'} Finance Team
       });
 
       notify(
-        'Merge Completed',
+        "Merge Completed",
         `Moved ${result.mergedTransactions} transactions, ${result.mergedPledges} pledges, and removed ${result.deletedDonors} duplicate donors.`
       );
 
       // Remove this group from the list
-      setDuplicateGroups(prev => prev.filter((_, i) => i !== groupIndex));
+      setDuplicateGroups((prev) => prev.filter((_, i) => i !== groupIndex));
       setSelectedMergeGroup(null);
       setSelectedPrimaryId(null);
 
-      // If no more groups, close modal
-      if (duplicateGroups.length <= 1) {
-        setShowMergeModal(false);
-      }
+      // If no more groups, close the sheet
+      if (duplicateGroups.length <= 1) setSheet(null);
     } catch (error) {
-      console.error('Error merging donors:', error);
-      notify('Error', 'Failed to merge donors.');
+      console.error("Error merging donors:", error);
+      notify("Error", "Failed to merge donors.");
     } finally {
       setIsMerging(false);
     }
   };
 
+  const pickDuplicate = (groupIndex: number, donorId: string) => {
+    setSelectedMergeGroup(groupIndex);
+    setSelectedPrimaryId(donorId);
+  };
+
   // Toggle donor selection for manual merge
   const toggleDonorForMerge = (donorId: string) => {
-    setSelectedForMerge(prev => {
+    setSelectedForMerge((prev) => {
       const next = new Set(prev);
       if (next.has(donorId)) {
         next.delete(donorId);
         // If we removed the primary, reset it
-        if (manualPrimaryId === donorId) {
-          setManualPrimaryId(null);
-        }
+        if (manualPrimaryId === donorId) setManualPrimaryId(null);
       } else {
         next.add(donorId);
       }
@@ -723,8 +505,7 @@ ${churchDetails?.name || 'Church'} Finance Team
 
     setIsMerging(true);
     try {
-      const duplicateIds = Array.from(selectedForMerge)
-        .filter(id => id !== manualPrimaryId);
+      const duplicateIds = Array.from(selectedForMerge).filter((id) => id !== manualPrimaryId);
 
       const result = await mergeDonors({
         primaryDonorId: manualPrimaryId as Id<"donors">,
@@ -732,17 +513,14 @@ ${churchDetails?.name || 'Church'} Finance Team
       });
 
       notify(
-        'Merge Completed',
+        "Merge Completed",
         `Moved ${result.mergedTransactions} transactions, ${result.mergedPledges} pledges, and removed ${result.deletedDonors} duplicate donors.`
       );
 
-      // Reset manual merge state
-      setManualMergeMode(false);
-      setSelectedForMerge(new Set());
-      setManualPrimaryId(null);
+      cancelManualMerge();
     } catch (error) {
-      console.error('Error merging donors:', error);
-      notify('Error', 'Failed to merge donors.');
+      console.error("Error merging donors:", error);
+      notify("Error", "Failed to merge donors.");
     } finally {
       setIsMerging(false);
     }
@@ -755,875 +533,177 @@ ${churchDetails?.name || 'Church'} Finance Team
     setManualPrimaryId(null);
   };
 
+  const mergeControls: MergeControls | undefined = canEdit
+    ? {
+        active: manualMergeMode,
+        selected: selectedForMerge,
+        primaryId: manualPrimaryId,
+        busy: isMerging,
+        onStart: () => setManualMergeMode(true),
+        onToggle: toggleDonorForMerge,
+        onKeep: (donorId) => setManualPrimaryId(donorId),
+        onMerge: () => void handleManualMerge(),
+        onCancel: cancelManualMerge,
+      }
+    : undefined;
+
+  const openExport = () => {
+    setExportReport({ type: "all" });
+    setSheet("export");
+  };
+
+  const detail = selectedDonor ? (
+    <DonorDetail
+      donor={selectedDonor}
+      giftAidEnabled={giftAidEnabled}
+      canEdit={canEdit}
+      now={now}
+      year={year}
+      yearTotal={yearTotal}
+      yearCount={yearGifts.length}
+      lifetimeTotal={sumReportableIncome(gifts)}
+      gifts={gifts}
+      donorPledges={donorPledges}
+      allPledges={pledges}
+      funds={funds}
+      onEdit={() => setSheet("edit")}
+      onExport={openExport}
+      onAddSchedule={() => setSheet("schedule")}
+      onThankYou={() => setSheet("thankYou")}
+      onLinkPledge={handleLinkTransaction}
+      onUnlinkPledge={handleUnlinkTransaction}
+    />
+  ) : null;
+
   return (
-    <div className="ledger-space-y-[22px] animate-enter max-w-7xl mx-auto pb-12">
-      {/* Page header */}
-      <header className="swiss-card-static p-6 md:p-[26px] flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div>
-          <h2 className="text-[32px] leading-tight font-bold text-ink tracking-tight">Donors</h2>
-          <p className="text-grey-mid mt-2 text-[15px] font-medium">Giving history, {giftAidEnabled ? 'Gift Aid status, ' : ''}and follow-up at a glance.</p>
-        </div>
-        {canEdit && (
-          <div className="flex gap-2 self-start shrink-0">
-            <button
-              onClick={handleFindDuplicates}
-              disabled={isFindingDuplicates}
-              className="btn-secondary px-4 py-2 text-xs font-bold uppercase flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
-            >
-              <Merge size={14} /> {isFindingDuplicates ? 'Searching…' : 'Find duplicates'}
-            </button>
-            <button
-              onClick={() => setShowAddDonorModal(true)}
-              className="btn-primary px-4 py-2 text-xs font-bold uppercase flex items-center gap-2 whitespace-nowrap"
-            >
-              <Users size={14} /> Add donor
-            </button>
-          </div>
-        )}
-      </header>
-
-      {/* Summary strip */}
-      <div className={`grid grid-cols-2 ${giftAidEnabled ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
-        {[
-          { label: 'Active donors', value: String(summary.active), sub: 'Gave in last 12 months', edge: '' },
-          ...(giftAidEnabled ? [{ label: 'Gift Aid eligible', value: String(summary.giftAid), sub: 'Declarations on file', edge: 'border-l-[3px] border-l-sage' }] : []),
-          { label: 'Giving this month', value: `£${summary.monthTotal.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`, sub: summary.monthLabel, edge: '' },
-          { label: 'Needs review', value: String(summary.needsReview), sub: 'Lapsed, expired, or missing', edge: 'border-l-[3px] border-l-amber' },
-        ].map((s) => (
-          <div key={s.label} className={`bg-white border border-ledger rounded-xl px-5 py-4 ${s.edge}`}>
-            <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-grey-mid whitespace-nowrap">{s.label}</div>
-            <div className="font-mono text-[24px] font-bold text-ink tracking-tight mt-1.5">{s.value}</div>
-            <div className="text-[12px] text-grey-mid mt-0.5 whitespace-nowrap">{s.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex h-[600px] gap-0 swiss-card overflow-hidden relative">
-      {/* Sidebar - Directory */}
-      <div className={`${mobileView === 'detail' ? 'hidden' : 'w-full'} md:block md:w-[340px] border-r border-ledger bg-white flex flex-col shrink-0`}>
-        <div className="p-4 border-b border-ledger ledger-space-y-3 bg-[#fcfbf9]">
-          <div className="flex justify-between items-center">
-              <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Donor Directory</h3>
-              <div className="flex gap-1">
-                {canEdit && !manualMergeMode && (
-                  <button
-                    onClick={() => setManualMergeMode(true)}
-                    className="p-1.5 bg-amber-light hover:bg-[#fcf7f0] rounded-lg text-amber transition-colors border border-[#ecd8bd]"
-                    title="Select donors to merge"
-                  >
-                    <Merge size={14} />
-                  </button>
-                )}
-              </div>
-          </div>
-          {/* Manual merge mode banner */}
-          {manualMergeMode && (
-            <div className="bg-amber-light border border-[#ecd8bd] rounded-xl p-3 ledger-space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-amber">Select donors to merge</span>
-                <button onClick={cancelManualMerge} className="text-amber hover:text-amber-dark">
-                  <X size={14} />
-                </button>
-              </div>
-              <p className="text-[11px] text-amber-dark">
-                {selectedForMerge.size === 0 && "Click donors below to select them"}
-                {selectedForMerge.size === 1 && "Select at least one more donor"}
-                {selectedForMerge.size >= 2 && !manualPrimaryId && "Now click 'Keep' on the donor to keep as primary"}
-                {selectedForMerge.size >= 2 && manualPrimaryId && `Ready to merge ${selectedForMerge.size} donors`}
-              </p>
-              {selectedForMerge.size >= 2 && manualPrimaryId && (
-                <button
-                  onClick={handleManualMerge}
-                  disabled={isMerging}
-                  className="w-full py-2 bg-amber text-white rounded-lg text-xs font-bold uppercase hover:bg-amber-dark disabled:opacity-50"
-                >
-                  {isMerging ? 'Merging...' : `Merge ${selectedForMerge.size} Donors`}
-                </button>
-              )}
-            </div>
-          )}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid" size={14} />
-            <input type="text" placeholder="Search donors..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border border-ledger rounded-lg focus:outline-hidden focus:ring-[3px] focus:ring-ink/10 focus:border-ink bg-white transition-colors" />
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {filteredDonors.map(donor => {
-            const isSelectedForMerge = selectedForMerge.has(donor._id);
-            const isPrimary = manualPrimaryId === donor._id;
-
-            return (
-              <div
-                key={donor._id}
-                className={`w-full text-left px-4 py-3 border-b border-ledger transition-colors flex items-center gap-3 ${
-                  manualMergeMode && isSelectedForMerge
-                    ? 'bg-amber-light border-l-4 border-l-amber'
-                    : selectedDonorId === donor._id
-                    ? 'bg-amber-light border-l-4 border-l-amber'
-                    : 'hover:bg-grey-light border-l-4 border-l-transparent'
-                }`}
-              >
-                {/* Merge mode checkbox */}
-                {manualMergeMode && (
-                  <button
-                    onClick={() => toggleDonorForMerge(donor._id)}
-                    className={`w-5 h-5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      isSelectedForMerge
-                        ? 'bg-amber border-amber text-white'
-                        : 'border-grey-mid hover:border-amber'
-                    }`}
-                  >
-                    {isSelectedForMerge && <Check size={12} />}
-                  </button>
-                )}
-
-                {/* Donor info - clickable */}
-                <button
-                  onClick={() => {
-                    if (manualMergeMode) {
-                      toggleDonorForMerge(donor._id);
-                    } else {
-                      setSelectedDonorId(donor._id);
-                      setMobileView('detail'); // Switch to detail view on mobile
-                      setGeneratedMessage('');
-                      setSelectedTemplate(null);
-                      setSelectedPledgeForTemplate(null);
-                      setSelectedFundForTemplate(null);
-                    }
-                  }}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                >
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                    isPrimary ? 'bg-amber text-white' : selectedDonorId === donor._id ? 'bg-white text-amber ring-1 ring-[#ecd8bd]' : 'bg-grey-light text-grey-dark'
-                  }`}>
-                    {donor.name.charAt(0)}
-                  </div>
-                  <div className="min-w-0 flex-1 text-left">
-                    <div className={`text-sm font-semibold truncate ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-dark'}`}>
-                      {donor.name}
-                      {isPrimary && <span className="ml-1 text-[10px] text-amber">(Primary)</span>}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${giftAidStatus(donor).tone}`} />
-                      <span className="text-[11px] text-grey-mid truncate">{giftAidStatus(donor).label}</span>
-                    </div>
-                  </div>
-                  {!manualMergeMode && (
-                    <span className={`font-mono text-[12px] font-bold shrink-0 ${selectedDonorId === donor._id ? 'text-ink' : 'text-grey-mid'}`}>
-                      £{(statFor(donor).ytd / 1000).toFixed(1)}k
-                    </span>
-                  )}
-                </button>
-
-                {/* Keep as primary button */}
-                {manualMergeMode && isSelectedForMerge && selectedForMerge.size >= 2 && !isPrimary && (
-                  <button
-                    onClick={() => setManualPrimaryId(donor._id)}
-                    className="text-[10px] px-2 py-1 bg-amber-light text-amber-dark border border-[#ecd8bd] rounded-sm hover:bg-[#f5e7d4] shrink-0"
-                  >
-                    Keep
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          {filteredDonors.length === 0 && <div className="p-8 text-center text-grey-mid text-xs">No donors found.</div>}
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className={`${mobileView === 'list' ? 'hidden' : 'flex-1'} md:flex md:flex-1 flex-col bg-paper overflow-hidden`}>
-        {selectedDonor ? (
-          <>
-            <div className="bg-white border-b border-ledger px-4 md:px-7 py-6 flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
-               <div className="flex items-center gap-4">
-                  {/* Back button for mobile */}
-                  <button
-                    onClick={() => setMobileView('list')}
-                    className="md:hidden p-2 -ml-2 text-grey-mid hover:text-ink hover:bg-grey-light rounded-lg transition-colors"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                  </button>
-                  <div className="w-12 h-12 bg-ink rounded-xl flex items-center justify-center text-white text-xl font-bold font-mono">{selectedDonor.name.charAt(0)}</div>
-                  <div>
-                      <h1 className="text-2xl font-bold text-ink leading-tight tracking-tight">{selectedDonor.name}</h1>
-                      <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-grey-mid font-medium">{selectedDonor.type}</span>
-                          {giftAidEnabled && selectedDonor.isGiftAidActive && <span className="font-mono inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-[0.1em] bg-sage-light text-sage-dark"><Gift size={10} /> Gift Aid</span>}
-                      </div>
-                  </div>
-               </div>
-               <div className="flex items-center gap-6">
-                   <div className="text-right hidden sm:block"><p className="font-mono text-[10.5px] font-semibold text-grey-mid uppercase tracking-[0.1em]">Lifetime Value</p><p className="text-xl font-bold text-ink font-mono tracking-tight">£{lifetimeValue.toLocaleString()}</p></div>
-                   <div className="h-8 w-px bg-grey-light hidden sm:block"></div>
-                   <div className="flex gap-2">
-                       {canEdit && <button onClick={handleEditClick} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded-lg text-xs font-bold text-grey-dark hover:border-[#c9c5be] transition-colors"><Edit2 size={14} /> <span className="hidden lg:inline">Edit</span></button>}
-                        <button onClick={() => { setSelectedReportType('all'); setSelectedCampaignId(undefined); setShowExportModal(true); }} className="flex items-center gap-2 px-3 py-2 bg-white border border-ledger rounded-lg text-xs font-bold text-grey-dark hover:border-[#c9c5be] transition-colors"><Printer size={14} /> <span className="hidden lg:inline">Export</span></button>
-                   </div>
-               </div>
-            </div>
-            <div className="bg-white border-b border-ledger px-4 sm:px-7 flex items-center gap-4 sm:gap-6 sticky top-0 z-10 overflow-x-auto scrollbar-hide">
-                {[
-                    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-                    { id: 'history', label: 'History', icon: History },
-                    { id: 'profile', label: 'Profile', icon: UserCog },
-                    { id: 'communicate', label: 'Communicate', icon: MessageSquare },
-                ].map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 py-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] border-b-2 transition-colors whitespace-nowrap shrink-0 ${activeTab === tab.id ? 'border-amber text-amber' : 'border-transparent text-grey-mid hover:text-ink'}`}>
-                        <tab.icon size={14} /> {tab.label}
-                    </button>
-                ))}
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 md:p-7">
-                {activeTab === 'overview' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-5 max-w-6xl">
-                        <div className="swiss-card p-6 bg-white">
-                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><Calendar size={16}/> Giving Schedules</h3>
-                                {canEdit && <button onClick={() => setShowAddPledgeModal(true)} className="btn-primary text-xs px-3 py-1.5 font-bold uppercase">+ New</button>}
-                             </div>
-                             {donorPledges.length === 0 ? <div className="p-8 text-center bg-paper rounded-lg border border-dashed border-ledger"><p className="text-sm text-grey-mid font-medium">No active pledges.</p></div> : (
-                                <div className="ledger-space-y-3">
-                                {donorPledges.map(p => (
-                                    <div key={p._id} className="flex justify-between items-center p-3 border border-ledger rounded-xl hover:bg-[#fcfbf9] transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-md ${p.status === 'Active' ? 'bg-sage-light text-sage' : 'bg-grey-light text-grey-mid'}`}><Wallet size={16} /></div>
-                                            <div><div className="font-bold text-ink text-sm">{funds.find(f => f._id === p.fundId)?.name}</div><div className="text-xs text-grey-mid font-medium">{p.frequency}</div></div>
-                                        </div>
-                                        <div className="text-right"><div className="font-bold text-ink font-mono">£{p.amount}</div><div className={`text-[10px] font-bold uppercase tracking-wide ${p.status === 'Active' ? 'text-sage' : 'text-grey-mid'}`}>{p.status}</div></div>
-                                    </div>
-                                ))}
-                                </div>
-                             )}
-                        </div>
-                        <div className="swiss-card p-6 bg-white">
-                            <h3 className="font-mono font-semibold text-grey-mid mb-6 text-[11px] uppercase tracking-[0.1em]">Giving Trend (Last 10)</h3>
-                             <div className="h-60">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={chartData}>
-                                        <XAxis dataKey="date" tick={{fontSize: 10, fill: '#78716c'}} tickLine={false} axisLine={false} dy={10}/>
-                                        <Tooltip cursor={{fill: '#faf9f7'}} contentStyle={{borderRadius: '12px', fontSize: '12px', border: '1px solid #e7e5e1', boxShadow: '0 16px 40px -16px rgba(28,25,23,.28)', fontFamily: 'JetBrains Mono'}} />
-                                        <Bar dataKey="amount" fill="#1c1917" radius={[4, 4, 0, 0]} barSize={30} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                {activeTab === 'history' && (
-                    <div className="swiss-card p-0 bg-white overflow-hidden max-w-5xl">
-                         <div className="p-4 border-b border-ledger bg-[#fcfbf9] flex justify-between items-center"><div className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Transaction Ledger</div><div className="text-xs font-mono text-grey-mid">{donorTransactions.length} RECORDS</div></div>
-                         {donorTransactions.length === 0 ? <div className="p-12 text-center text-grey-mid"><History size={32} className="mx-auto mb-2 opacity-20"/><p className="text-sm">No transaction history found.</p></div> : (
-                            <>
-                              {/* Mobile List View */}
-                              <div className="md:hidden ledger-divide-y ledger-divide-grey-light">
-                                {donorTransactions.map(t => {
-                                  const linkedPledge = pledges.find(p => p._id === t.pledgeId);
-                                  return (
-                                    <div key={t._id} className="p-4">
-                                      <div className="flex justify-between items-start mb-2">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="font-medium text-ink text-sm truncate">{t.description}</div>
-                                          <div className="text-xs text-grey-mid mt-0.5 flex items-center gap-2">
-                                            <span className="font-mono">{t.date}</span>
-                                            <span className="px-1.5 py-0.5 bg-grey-light rounded-sm text-[10px] font-bold text-grey-dark uppercase border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span>
-                                          </div>
-                                        </div>
-                                        <div className={`font-mono text-lg font-bold ${t.type === TransactionType.INCOME ? 'text-sage' : 'text-ink'}`}>
-                                          {t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}
-                                        </div>
-                                      </div>
-                                      {t.type === TransactionType.INCOME && canEdit && (
-                                        <div className="mt-2 pt-2 border-t border-grey-light">
-                                          {linkedPledge ? (
-                                            <div className="flex items-center justify-between">
-                                              <div className="px-2 py-1 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30">
-                                                <LinkIcon size={10} /> Linked to Pledge
-                                              </div>
-                                              <button onClick={() => handleUnlinkTransaction(t)} className="text-xs text-grey-mid hover:text-error transition-colors" title="Unlink">
-                                                Unlink
-                                              </button>
-                                            </div>
-                                          ) : (
-                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="w-full bg-paper border border-ledger text-xs text-grey-dark rounded-sm px-3 py-2 focus:ring-1 focus:ring-ink outline-hidden">
-                                              <option value="">Link to Pledge...</option>
-                                              {activePledges.map(p => <option key={p._id} value={p._id}>{funds.find(f => f._id === p.fundId)?.name} (£{p.amount})</option>)}
-                                            </select>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Desktop Table View */}
-                              <table className="hidden md:table w-full text-left ledger-table">
-                                <thead className="bg-white"><tr><th className="pl-6 py-4">Date</th><th className="px-4 py-4">Description</th><th className="px-4 py-4 text-right">Amount</th><th className="px-4 py-4">Fund</th><th className="px-4 py-4">Pledge Link</th></tr></thead>
-                                <tbody>
-                                    {donorTransactions.map(t => {
-                                        const linkedPledge = pledges.find(p => p._id === t.pledgeId);
-                                        return (
-                                            <tr key={t._id} className="hover:bg-paper transition-colors group">
-                                                <td className="pl-6 py-3 text-grey-mid font-mono text-xs border-b border-grey-light">{t.date}</td>
-                                                <td className="px-4 py-3 font-medium text-ink text-sm border-b border-grey-light">{t.description}</td>
-                                                <td className={`px-4 py-3 font-mono text-sm font-bold text-right border-b border-grey-light ${t.type === TransactionType.INCOME ? 'text-sage' : 'text-ink'}`}>{t.type === TransactionType.INCOME ? '+' : '-'}£{t.amount.toFixed(2)}</td>
-                                                <td className="px-4 py-3 border-b border-grey-light"><span className="px-2 py-0.5 bg-grey-light rounded-sm text-[10px] font-bold text-grey-dark uppercase tracking-wide border border-ledger">{funds.find(f => f._id === t.fundId)?.name}</span></td>
-                                                <td className="px-4 py-3 border-b border-grey-light">
-                                                    {t.type === TransactionType.INCOME && canEdit ? (
-                                                        linkedPledge ? <div className="flex items-center gap-2"><div className="px-2 py-1 bg-sage-light text-sage-dark rounded-sm text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border border-sage/30"><LinkIcon size={10} /> Linked</div><button onClick={() => handleUnlinkTransaction(t)} className="text-grey-mid hover:text-error transition-colors p-1" title="Unlink"><Unlink size={12} /></button></div> :
-                                                        <div className="relative group/select">
-                                                            <select onChange={(e) => handleLinkTransaction(t, e.target.value)} value="" className="appearance-none bg-white border border-ledger hover:border-grey-mid text-xs text-grey-mid rounded-sm px-2 py-1 pr-6 focus:ring-1 focus:ring-ink outline-hidden w-full max-w-[140px] cursor-pointer">
-                                                                <option value="">Link Pledge...</option>
-                                                                {activePledges.map(p => <option key={p._id} value={p._id}>{funds.find(f => f._id === p.fundId)?.name} (£{p.amount})</option>)}
-                                                            </select>
-                                                            <LinkIcon size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-grey-mid pointer-events-none" />
-                                                        </div>
-                                                    ) : <span className="text-ledger">-</span>}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                              </table>
-                            </>
-                         )}
-                    </div>
-                )}
-                {activeTab === 'profile' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-                        <div className="swiss-card p-6 bg-white">
-                             <h3 className="font-mono font-semibold text-grey-mid mb-4 text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><User size={16} /> Contact Details</h3>
-                             <div className="ledger-space-y-4">
-                                 <div className="flex items-center gap-3 p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><Mail size={16} className="text-grey-mid"/><span className="text-sm font-medium text-grey-dark">{selectedDonor.email || 'No email provided'}</span></div>
-                                 <div className="flex items-center justify-between p-3 bg-[#fcfbf9] rounded-xl border border-ledger">
-                                     <div className="flex items-center gap-3">
-                                         <Phone size={16} className="text-grey-mid"/>
-                                         <span className="text-sm font-medium text-grey-dark">{selectedDonor.phone || 'No phone number'}</span>
-                                     </div>
-                                     {selectedDonor.phone && (
-                                         <button onClick={openWhatsApp} className="p-1.5 bg-[#25D366] text-white rounded-sm hover:bg-[#128C7E] transition-colors" title="Message on WhatsApp">
-                                             <MessageSquare size={14} />
-                                         </button>
-                                     )}
-                                 </div>
-                                 <div className="flex items-start gap-3 p-3 bg-[#fcfbf9] rounded-xl border border-ledger">
-                                     <MapPin size={16} className="text-grey-mid mt-0.5 shrink-0"/>
-                                     <div className="flex-1">
-                                        <span className="text-sm font-medium text-grey-dark block whitespace-pre-wrap">{selectedDonor.address || 'No address on file'}</span>
-                                        {selectedDonor.postcode && <span className="text-xs text-grey-mid font-mono block mt-1">{selectedDonor.postcode}</span>}
-                                     </div>
-                                 </div>
-                             </div>
-                        </div>
-                        <div className="swiss-card p-6 bg-white">
-                             <h3 className="font-mono font-semibold text-grey-mid mb-4 text-[11px] uppercase tracking-[0.1em] flex items-center gap-2"><FileText size={16} /> Notes & Settings</h3>
-                             <div className="bg-amber-light p-4 rounded-xl border border-[#ecd8bd] mb-4"><p className="text-xs text-amber-dark italic min-h-[60px]">{selectedDonor.notes || 'No private notes added.'}</p></div>
-                             <div className="ledger-space-y-2">
-                                <div className="flex justify-between items-center p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><span className="text-sm font-bold text-grey-dark">Donor Type</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.type}</span></div>
-                                <div className="flex justify-between items-center p-3 bg-[#fcfbf9] rounded-xl border border-ledger"><span className="text-sm font-bold text-grey-dark">Comm. Pref</span><span className="text-xs font-mono text-grey-mid uppercase">{selectedDonor.communicationPreference || 'Email'}</span></div>
-                             </div>
-                        </div>
-                    </div>
-                )}
-                {activeTab === 'communicate' && (
-                    <div className="swiss-card p-6 bg-white max-w-4xl">
-                        <h3 className="font-mono font-semibold text-grey-mid flex items-center gap-2 text-[11px] uppercase tracking-[0.1em] mb-4">
-                            <MessageSquare size={16} /> Message Templates
-                        </h3>
-
-                        {/* Template Selection Grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-                            {(Object.entries(MESSAGE_TEMPLATES) as [TemplateType, MessageTemplate][]).map(([key, template]) => (
-                                <button
-                                    key={key}
-                                    onClick={() => handleSelectTemplate(key)}
-                                    className={`p-3 text-left border rounded-lg transition-all ${
-                                        selectedTemplate === key
-                                            ? 'border-ink bg-ink text-white'
-                                            : 'border-ledger bg-white hover:border-grey-mid hover:bg-paper'
-                                    }`}
-                                >
-                                    <div className={`text-xs font-bold mb-1 ${selectedTemplate === key ? 'text-white' : 'text-ink'}`}>
-                                        {template.name}
-                                    </div>
-                                    <div className={`text-[10px] ${selectedTemplate === key ? 'text-grey-light' : 'text-grey-mid'}`}>
-                                        {template.description}
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Pledge Selector (for pledge-specific templates) */}
-                        {selectedTemplate && MESSAGE_TEMPLATES[selectedTemplate].requiresPledge && (
-                            <div className="mb-4">
-                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">
-                                    Select Pledge
-                                </label>
-                                {(() => {
-                                    const availablePledges = selectedTemplate === 'pledgeFulfillment' ? completedPledges : donorPledges;
-                                    return availablePledges.length > 0 ? (
-                                        <select
-                                            value={selectedPledgeForTemplate || ''}
-                                            onChange={(e) => handlePledgeSelectForTemplate(e.target.value)}
-                                            className="w-full max-w-sm p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"
-                                        >
-                                            {availablePledges.map(p => (
-                                                <option key={p._id} value={p._id}>
-                                                    {funds.find(f => f._id === p.fundId)?.name} - £{p.amount} ({p.frequency}) - {p.status}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    ) : (
-                                        <p className="text-xs text-grey-mid italic">
-                                            {selectedTemplate === 'pledgeFulfillment'
-                                                ? 'No completed pledges found for this donor.'
-                                                : 'No pledges found for this donor.'}
-                                        </p>
-                                    );
-                                })()}
-                            </div>
-                        )}
-
-                        {/* Fund Selector (for non-pledge templates) */}
-                        {selectedTemplate && !MESSAGE_TEMPLATES[selectedTemplate].requiresPledge && funds.length > 0 && (
-                            <div className="mb-4">
-                                <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">
-                                    Select Fund
-                                </label>
-                                <select
-                                    value={selectedFundForTemplate || ''}
-                                    onChange={(e) => handleFundSelectForTemplate(e.target.value)}
-                                    className="w-full max-w-sm p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"
-                                >
-                                    {funds.map(f => (
-                                        <option key={f._id} value={f._id}>
-                                            {f.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-
-                        {/* Generated Message Preview */}
-                        <div className="mb-4">
-                            <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-2">
-                                Message Preview
-                            </label>
-                            <textarea
-                                className="w-full h-48 p-4 text-sm border border-ledger rounded-lg focus:ring-1 focus:ring-ink focus:border-grey-mid outline-hidden leading-relaxed resize-none bg-paper text-grey-dark"
-                                value={generatedMessage}
-                                onChange={(e) => setGeneratedMessage(e.target.value)}
-                                placeholder="Select a template above to generate a message..."
-                            />
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={copyMessageToClipboard}
-                                disabled={!generatedMessage}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wide transition-colors ${
-                                    copiedToClipboard
-                                        ? 'bg-sage-light text-sage-dark'
-                                        : generatedMessage
-                                            ? 'bg-grey-light text-grey-dark hover:bg-ledger'
-                                            : 'bg-grey-light text-grey-mid cursor-not-allowed'
-                                }`}
-                            >
-                                {copiedToClipboard ? <CheckCircle2 size={14} /> : <Copy size={14} />}
-                                {copiedToClipboard ? 'Copied!' : 'Copy'}
-                            </button>
-                            <button
-                                onClick={shareMessageViaWhatsApp}
-                                disabled={!generatedMessage || !selectedDonor?.phone}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-xs font-bold uppercase tracking-wide transition-colors ${
-                                    generatedMessage && selectedDonor?.phone
-                                        ? 'bg-[#25D366] text-white hover:bg-[#128C7E]'
-                                        : 'bg-grey-light text-grey-mid cursor-not-allowed'
-                                }`}
-                                title={!selectedDonor?.phone ? 'No phone number on file' : ''}
-                            >
-                                <Send size={14} /> WhatsApp
-                            </button>
-                        </div>
-
-                        {/* No phone warning */}
-                        {generatedMessage && !selectedDonor?.phone && (
-                            <p className="text-[10px] text-amber-dark mt-2 text-right">
-                                No phone number on file for this donor
-                            </p>
-                        )}
-                    </div>
-                )}
-            </div>
-          </>
-        ) : <div className="flex flex-col items-center justify-center h-full text-ledger ledger-space-y-4"><div className="w-20 h-20 bg-grey-light rounded-full flex items-center justify-center"><User size={32} className="opacity-20" /></div><p className="text-sm font-medium">Select a donor to view details.</p></div>}
-      </div>
-      </div>
-
-      {showAddDonorModal && canEdit && (
-          <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
-              <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter my-auto sm:my-8 overflow-hidden">
-                  <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9] z-10"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">New Donor Profile</h3><button onClick={() => setShowAddDonorModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
-                  <form onSubmit={handleAddDonorSubmit} className="p-4 sm:p-6 ledger-space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name *</label><input type="text" value={newDonorData.name || ''} onChange={e => setNewDonorData({...newDonorData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors" required placeholder="e.g. John Doe"/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={newDonorData.email || ''} onChange={e => setNewDonorData({...newDonorData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={newDonorData.phone || ''} onChange={e => setNewDonorData({...newDonorData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Address</label>
-                        <textarea value={newDonorData.address || ''} onChange={e => setNewDonorData({...newDonorData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors h-16 resize-none" placeholder="Street, City..."/>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={newDonorData.postcode || ''} onChange={e => setNewDonorData({...newDonorData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"/></div>
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={newDonorData.communicationPreference || 'Email'} onChange={e => setNewDonorData({...newDonorData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={newDonorData.type || 'Individual'} onChange={e => setNewDonorData({...newDonorData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
-                          {giftAidEnabled && (<div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={newDonorData.isGiftAidActive || false} onChange={e => setNewDonorData({...newDonorData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>)}
-                      </div>
-                      <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={newDonorData.notes || ''} onChange={e => setNewDonorData({...newDonorData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden h-16 resize-none"/></div>
-                      <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setShowAddDonorModal(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Plus size={14} /> Create Profile</button></div>
-                  </form>
-              </div>
-          </div>
-      )}
-
-      {isEditing && canEdit && (
-          <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-start justify-center overflow-y-auto p-4 pt-8 sm:pt-12">
-              <div className="bg-white w-full max-w-lg rounded-xl shadow-soft-lg border border-ledger animate-enter my-auto sm:my-8 overflow-hidden">
-                  <div className="sticky top-0 p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9] z-10"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">Edit Donor Profile</h3><button onClick={() => setIsEditing(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
-                  <form onSubmit={handleSaveEdit} className="p-4 sm:p-6 ledger-space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="md:col-span-2"><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Full Name</label><input type="text" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors" required/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Email</label><input type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Phone</label><input type="tel" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors"/></div>
-                      </div>
-                      <div>
-                          <label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Address</label>
-                          <textarea value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors h-16 resize-none"/>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Postcode</label><input type="text" value={formData.postcode || ''} onChange={e => setFormData({...formData, postcode: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"/></div>
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Comm. Preference</label><select value={formData.communicationPreference || 'Email'} onChange={e => setFormData({...formData, communicationPreference: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Email">Email</option><option value="Post">Post</option><option value="Phone">Phone</option></select></div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Type</label><select value={formData.type || 'Individual'} onChange={e => setFormData({...formData, type: e.target.value as any})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="Individual">Individual</option><option value="Organization">Organization</option></select></div>
-                          {giftAidEnabled && (<div className="flex items-end pb-3"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" checked={formData.isGiftAidActive || false} onChange={e => setFormData({...formData, isGiftAidActive: e.target.checked})} className="rounded-sm border-ledger text-sage focus:ring-0 w-4 h-4"/><span className="text-sm font-medium text-grey-dark group-hover:text-sage-dark transition-colors">Gift Aid Active</span></label></div>)}
-                      </div>
-                      <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Private Notes</label><textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full p-2.5 bg-paper border border-ledger rounded-sm text-sm focus:bg-white focus:ring-1 focus:ring-ink outline-hidden h-16 resize-none"/></div>
-                      <div className="flex justify-end gap-3 pt-4 border-t border-ledger"><button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 text-xs font-bold uppercase text-grey-mid hover:bg-grey-light rounded-lg">Cancel</button><button type="submit" className="btn-primary px-6 py-2 text-xs font-bold uppercase flex items-center gap-2"><Save size={14} /> Save Changes</button></div>
-                  </form>
-              </div>
-          </div>
-      )}
-
-      {showAddPledgeModal && canEdit && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter overflow-hidden">
-                <div className="p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]"><h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em]">New Schedule</h3><button onClick={() => setShowAddPledgeModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button></div>
-                <form onSubmit={handleAddPledgeSubmit} className="p-6 ledger-space-y-4">
-                    <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Target Fund</label><select value={newPledgeData.fundId || ''} onChange={e => setNewPledgeData({...newPledgeData, fundId: e.target.value})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden transition-colors" required><option value="">Select Fund...</option>{funds.map(f => (<option key={f._id} value={f._id}>{f.name}</option>))}</select></div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Amount</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-grey-mid text-xs">£</span><input type="number" value={newPledgeData.amount || ''} onChange={e => setNewPledgeData({...newPledgeData, amount: parseFloat(e.target.value)})} className="w-full pl-6 p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono" placeholder="0.00" required/></div></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Frequency</label><select value={newPledgeData.frequency} onChange={e => setNewPledgeData({...newPledgeData, frequency: e.target.value as any})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden"><option value="One-off">One-off</option><option value="Weekly">Weekly</option><option value="Monthly">Monthly</option><option value="Annual">Annual</option></select></div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">Start Date</label><input type="date" value={newPledgeData.startDate} onChange={e => setNewPledgeData({...newPledgeData, startDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono" required/></div>
-                        <div><label className="block text-[10px] font-bold text-grey-mid uppercase tracking-wide mb-1">End Date (Optional)</label><input type="date" value={newPledgeData.endDate || ''} onChange={e => setNewPledgeData({...newPledgeData, endDate: e.target.value})} className="w-full p-2.5 border border-ledger rounded-sm text-sm bg-paper focus:bg-white focus:ring-1 focus:ring-ink outline-hidden font-mono"/></div>
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4 border-t border-ledger mt-4"><button type="button" onClick={() => setShowAddPledgeModal(false)} className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors">Cancel</button><button type="submit" className="btn-primary px-5 py-2 font-bold uppercase text-xs tracking-wide flex items-center gap-2"><Plus size={14} /> Create Schedule</button></div>
-                </form>
-            </div>
-        </div>
-      )}
-
-      {showExportModal && selectedDonor && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-xl shadow-soft-lg border border-ledger animate-enter overflow-hidden">
-                {/* Compact Header */}
-                <div className="px-4 py-3 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
-                    <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2">
-                        <Printer size={16} /> Export for {selectedDonor.name}
-                    </h3>
-                    <button onClick={() => setShowExportModal(false)} className="text-grey-mid hover:text-grey-dark"><X size={16}/></button>
-                </div>
-                <div className="p-4 ledger-space-y-3">
-                    {/* Inline Period Selection */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] font-bold text-grey-mid uppercase">Period:</span>
-                        <div className="flex gap-1">
-                            {(['year', 'last6months', 'all'] as const).map(period => (
-                                <button
-                                    key={period}
-                                    type="button"
-                                    onClick={() => setExportPeriod(period)}
-                                    className={`px-2 py-1 text-[11px] font-bold rounded-sm transition-colors ${
-                                        exportPeriod === period
-                                            ? 'bg-ink text-white'
-                                            : 'bg-grey-light text-grey-dark hover:bg-ledger'
-                                    }`}
-                                >
-                                    {period === 'year' ? 'Year' : period === 'last6months' ? '6 Mo' : 'All'}
-                                </button>
-                            ))}
-                        </div>
-                        {exportPeriod === 'year' && (
-                            <select
-                                value={exportYear}
-                                onChange={(e) => setExportYear(Number(e.target.value))}
-                                className="px-2 py-1 text-xs font-mono bg-white border border-ledger rounded-sm focus:ring-1 focus:ring-ink outline-hidden"
-                            >
-                                {[0, 1, 2].map(offset => {
-                                    const year = new Date().getFullYear() - offset;
-                                    return <option key={year} value={year}>{year}</option>;
-                                })}
-                            </select>
-                        )}
-                        {exportPeriod === 'last6months' && (
-                            <span className="text-[10px] text-grey-mid">
-                                {(() => {
-                                    const end = new Date();
-                                    const start = new Date();
-                                    start.setMonth(start.getMonth() - 6);
-                                    return `${start.toLocaleDateString('en-GB', {month:'short'})} – ${end.toLocaleDateString('en-GB', {month:'short', year:'numeric'})}`;
-                                })()}
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Compact Report Type Selection */}
-                    {(() => {
-                        const incomeTransactions = reportableDonorTransactions.filter(t => t.type === 'Income');
-                        const unrestrictedFundIds = funds.filter(f => f.type === 'Unrestricted').map(f => f._id);
-                        const titheTransactions = incomeTransactions.filter(t => unrestrictedFundIds.includes(t.fundId));
-                        const hasAllTransactions = incomeTransactions.length > 0;
-                        const hasTitheTransactions = titheTransactions.length > 0;
-                        const restrictedFunds = funds.filter(f => f.type === 'Restricted');
-
-                        return (
-                            <div className="ledger-space-y-2">
-                                <div className="text-[10px] font-bold text-grey-mid uppercase tracking-wide">Report Type</div>
-
-                                {/* Grid of compact report options */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => { setSelectedReportType('all'); setSelectedCampaignId(undefined); }}
-                                        className={`p-2.5 text-left border rounded-lg transition-colors ${
-                                            selectedReportType === 'all' && !selectedCampaignId
-                                                ? 'border-ink bg-paper ring-1 ring-ink'
-                                                : 'border-ledger hover:border-grey-mid'
-                                        }`}
-                                    >
-                                        <div className="font-bold text-ink text-xs">All Schedules</div>
-                                        {hasAllTransactions && <div className="text-[9px] text-grey-mid mt-0.5">All funds</div>}
-                                    </button>
-
-                                    <button
-                                        onClick={() => { setSelectedReportType('tithes'); setSelectedCampaignId(undefined); }}
-                                        className={`p-2.5 text-left border rounded-lg transition-colors ${
-                                            selectedReportType === 'tithes'
-                                                ? 'border-ink bg-paper ring-1 ring-ink'
-                                                : 'border-ledger hover:border-grey-mid'
-                                        }`}
-                                    >
-                                        <div className="font-bold text-ink text-xs">Tithes Only</div>
-                                        {hasTitheTransactions && <div className="text-[9px] text-grey-mid mt-0.5">Regular giving</div>}
-                                    </button>
-
-                                    {restrictedFunds.map(fund => {
-                                        const hasCampaignTransactions = incomeTransactions.some(t => t.fundId === fund._id);
-                                        return (
-                                            <button
-                                                key={fund._id}
-                                                onClick={() => { setSelectedReportType('campaign'); setSelectedCampaignId(fund._id); }}
-                                                className={`p-2.5 text-left border rounded-lg transition-colors ${
-                                                    selectedReportType === 'campaign' && selectedCampaignId === fund._id
-                                                        ? 'border-ink bg-paper ring-1 ring-ink'
-                                                        : 'border-ledger hover:border-grey-mid'
-                                                }`}
-                                            >
-                                                <div className="font-bold text-ink text-xs truncate">{fund.name}</div>
-                                                {hasCampaignTransactions && <div className="text-[9px] text-grey-mid mt-0.5">Campaign</div>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })()}
-
-                    {/* Action Buttons Row */}
-                    <div className="flex gap-2 pt-2">
-                        <button
-                            onClick={() => handlePrintSchedule(selectedReportType, selectedCampaignId)}
-                            disabled={isGeneratingPdf}
-                            className="flex-1 py-2.5 border border-ledger rounded-lg hover:bg-paper transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Printer size={16} />
-                            <span className="font-bold text-xs">{isGeneratingPdf ? 'Generating…' : 'Save PDF'}</span>
-                        </button>
-
-                        {selectedDonor.phone ? (
-                            <button
-                                onClick={() => handleSendViaWhatsApp(selectedReportType, selectedCampaignId)}
-                                disabled={isGeneratingPdf}
-                                className="flex-1 py-2.5 border border-[#cfe0cf] bg-sage-light rounded-lg hover:bg-[#e3ece3] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <MessageSquare className="text-sage" size={16} />
-                                <span className="font-bold text-xs text-sage-dark">WhatsApp</span>
-                            </button>
-                        ) : selectedDonor.email ? (
-                            <button
-                                onClick={() => handleSendViaEmail(selectedReportType, selectedCampaignId)}
-                                disabled={isGeneratingPdf}
-                                className="flex-1 py-2.5 border border-ledger bg-paper rounded-lg hover:bg-grey-light transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <Mail className="text-grey-dark" size={16} />
-                                <span className="font-bold text-xs text-grey-dark">Email</span>
-                            </button>
-                        ) : null}
-
-                        {selectedDonor.phone && selectedDonor.email && (
-                            <button
-                                onClick={() => handleSendViaEmail(selectedReportType, selectedCampaignId)}
-                                disabled={isGeneratingPdf}
-                                className="py-2.5 px-3 border border-ledger rounded-lg hover:bg-paper transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Send via Email"
-                            >
-                                <Mail className="text-grey-mid" size={16} />
-                            </button>
-                        )}
-                    </div>
-
-                    {/* No contact warning if needed */}
-                    {!selectedDonor.phone && !selectedDonor.email && (
-                        <div className="flex items-center gap-2 text-[10px] text-amber-dark bg-amber-light border border-[#ecd8bd] px-2 py-1.5 rounded-sm">
-                            <AlertTriangle size={12} />
-                            <span>No contact info on file for sending</span>
-                        </div>
-                    )}
-
-                    {/* Cancel aligned right */}
-                    <div className="flex justify-end pt-1">
-                        <button onClick={() => setShowExportModal(false)} className="px-3 py-1.5 text-grey-mid font-bold uppercase text-[10px] tracking-wide hover:bg-paper rounded-sm transition-colors">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* Merge Duplicates Modal */}
-      {showMergeModal && canEdit && (
-        <div className="fixed inset-0 bg-ink/20 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-xl shadow-soft-lg border border-ledger animate-enter max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-ledger flex justify-between items-center bg-[#fcfbf9]">
-              <h3 className="font-mono font-semibold text-grey-mid text-[11px] uppercase tracking-[0.1em] flex items-center gap-2">
-                <Users size={16} /> Merge Duplicate Donors
-              </h3>
-              <button onClick={() => setShowMergeModal(false)} className="text-grey-mid hover:text-grey-dark">
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto flex-1">
-              {duplicateGroups.length === 0 ? (
-                <p className="text-grey-mid text-sm text-center py-8">No duplicate donors found.</p>
-              ) : (
-                <div className="ledger-space-y-6">
-                  <p className="text-xs text-grey-mid">
-                    Found {duplicateGroups.length} group(s) of potential duplicates. Select the primary donor to keep, and duplicates will be merged into it.
-                  </p>
-
-                  {duplicateGroups.map((group, groupIndex) => (
-                    <div key={groupIndex} className="border border-ledger rounded-lg p-4 ledger-space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-grey-mid uppercase">
-                          Group {groupIndex + 1} - {group.donors.length} donors
-                        </span>
-                        {selectedMergeGroup === groupIndex && selectedPrimaryId && (
-                          <button
-                            onClick={() => handleMergeDonors(groupIndex)}
-                            disabled={isMerging}
-                            className="px-3 py-1.5 bg-amber text-white rounded-sm text-xs font-bold uppercase hover:bg-amber-dark disabled:opacity-50 flex items-center gap-1"
-                          >
-                            {isMerging ? 'Merging...' : <><Merge size={12} /> Merge</>}
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="ledger-space-y-2">
-                        {group.donors.map((donor: any) => {
-                          const isSelected = selectedMergeGroup === groupIndex && selectedPrimaryId === donor._id;
-                          const isSuggested = group.suggestedPrimary === donor._id;
-
-                          return (
-                            <button
-                              key={donor._id}
-                              onClick={() => {
-                                setSelectedMergeGroup(groupIndex);
-                                setSelectedPrimaryId(donor._id);
-                              }}
-                              className={`w-full p-3 text-left border rounded-lg transition-colors ${
-                                isSelected
-                                  ? 'border-amber bg-amber-light'
-                                  : 'border-ledger hover:border-grey-mid hover:bg-paper'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <div className="font-bold text-ink text-sm flex items-center gap-2">
-                                    {donor.name}
-                                    {isSuggested && (
-                                      <span className="text-[10px] bg-sage/20 text-sage-dark px-1.5 py-0.5 rounded-sm">
-                                        Suggested
-                                      </span>
-                                    )}
-                                    {isSelected && (
-                                      <span className="text-[10px] bg-amber-light text-amber-dark border border-[#ecd8bd] px-1.5 py-0.5 rounded-sm">
-                                        Primary
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-grey-mid mt-1 flex gap-3">
-                                    {donor.email && <span>{donor.email}</span>}
-                                    {donor.phone && <span>{donor.phone}</span>}
-                                    {!donor.email && !donor.phone && <span className="italic">No contact info</span>}
-                                  </div>
-                                </div>
-                                <div className="text-right text-xs text-grey-mid">
-                                  {giftAidEnabled && donor.isGiftAidActive && (
-                                    <span className="text-sage">Gift Aid ✓</span>
-                                  )}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-ledger flex justify-end">
+    <div className="animate-enter space-y-6 pb-12">
+      <HubHeader
+        title="Donors"
+        status={
+          giftAidEnabled
+            ? `${donors.length} ${donors.length === 1 ? "person" : "people"} · ${summary.giftAid} have a Gift Aid declaration`
+            : `${donors.length} ${donors.length === 1 ? "person" : "people"}`
+        }
+        actions={
+          canEdit ? (
+            <>
               <button
-                onClick={() => setShowMergeModal(false)}
-                className="px-4 py-2 text-grey-mid font-bold uppercase text-xs tracking-wide hover:bg-paper rounded-sm transition-colors"
+                type="button"
+                onClick={() => void handleFindDuplicates()}
+                disabled={isFindingDuplicates}
+                className={`${btnOutline} ${btnMd} !w-auto px-4`}
               >
-                Close
+                {isFindingDuplicates ? "Searching…" : "Find duplicates"}
               </button>
-            </div>
-          </div>
-        </div>
+              <button type="button" onClick={() => setSheet("add")} className={`${btnPrimary} ${btnMd} !w-auto px-5`}>
+                <Plus size={16} aria-hidden="true" />
+                Add donor
+              </button>
+            </>
+          ) : null
+        }
+      />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SummaryCard label="Active donors" value={String(summary.active)} sub="Gave in last 12 months" />
+        <SummaryCard
+          label="Giving this month"
+          value={`£${summary.monthTotal.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
+          sub={summary.monthLabel}
+        />
+        <SummaryCard label="Needs review" value={String(summary.needsReview)} sub="Stopped giving, or no Gift Aid" />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+        <DonorList
+          donors={donors}
+          visible={visibleDonors}
+          search={search}
+          onSearch={setSearch}
+          filter={filter}
+          onFilter={setFilter}
+          stats={stats}
+          schedules={schedules}
+          giftAidEnabled={giftAidEnabled}
+          now={now}
+          selectedId={selectedDonorId}
+          onSelect={selectDonor}
+          merge={mergeControls}
+        />
+
+        <aside className="hidden max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-ledger bg-white p-5 xl:sticky xl:top-6 xl:block" aria-label="Donor profile">
+          {detail ?? <p className="py-12 text-center text-sm text-grey-mid">Select a donor to see their giving.</p>}
+        </aside>
+      </div>
+
+      {!wide && detailOpen && sheet === null && selectedDonor && (
+        <WizardFrame ariaLabel={`${selectedDonor.name} profile`} title={selectedDonor.name} onClose={() => setDetailOpen(false)}>
+          {detail}
+        </WizardFrame>
+      )}
+
+      {sheet === "add" && canEdit && (
+        <DonorSheet mode="add" initial={NEW_DONOR_DEFAULTS} giftAidEnabled={giftAidEnabled} onSubmit={(values) => void submitNewDonor(values)} onClose={closeSheet} />
+      )}
+      {sheet === "edit" && canEdit && selectedDonor && (
+        <DonorSheet key={selectedDonor._id} mode="edit" initial={selectedDonor} giftAidEnabled={giftAidEnabled} onSubmit={saveDonorEdit} onClose={closeSheet} />
+      )}
+      {sheet === "schedule" && canEdit && selectedDonor && (
+        <ScheduleSheet donorId={selectedDonor._id} donorName={selectedDonor.name} funds={funds} onSubmit={addSchedule} onClose={closeSheet} />
+      )}
+      {sheet === "export" && selectedDonor && (
+        <ExportSheet
+          donor={selectedDonor}
+          funds={funds}
+          incomeTransactions={filterIncomeAndExpenditure(gifts).filter((t) => t.type === "Income")}
+          period={exportPeriod}
+          onPeriodChange={setExportPeriod}
+          year={exportYear}
+          onYearChange={setExportYear}
+          report={exportReport}
+          onReportChange={setExportReport}
+          busy={isGeneratingPdf}
+          onSavePdf={() => void handlePrintSchedule(exportReport.type, exportReport.campaignId)}
+          onWhatsApp={() => void handleSendViaWhatsApp(exportReport.type, exportReport.campaignId)}
+          onEmail={() => void handleSendViaEmail(exportReport.type, exportReport.campaignId)}
+          onClose={closeSheet}
+        />
+      )}
+      {sheet === "merge" && canEdit && (
+        <MergeSheet
+          groups={duplicateGroups}
+          giftAidEnabled={giftAidEnabled}
+          selectedGroup={selectedMergeGroup}
+          selectedPrimaryId={selectedPrimaryId}
+          busy={isMerging}
+          onPick={pickDuplicate}
+          onMerge={(groupIndex) => void handleMergeDonors(groupIndex)}
+          onClose={closeSheet}
+        />
+      )}
+      {sheet === "thankYou" && selectedDonor && (
+        <ThankYouWalkthrough
+          key={selectedDonor._id}
+          donor={selectedDonor}
+          donorPledges={donorPledges}
+          funds={funds}
+          yearTotal={yearTotal}
+          churchName={churchName}
+          onClose={closeSheet}
+        />
       )}
     </div>
   );
 };
+
+function SummaryCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className={card}>
+      <p className={eyebrow}>{label}</p>
+      <p className="mt-1.5 font-mono text-xl font-bold tabular-nums text-ink">{value}</p>
+      <p className="mt-0.5 text-xs text-grey-mid">{sub}</p>
+    </div>
+  );
+}
 
 export default DonorManager;
