@@ -420,6 +420,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       }
   };
 
+  // Selects the uncategorised lines and opens them in "Needs you", so each is categorised in the
+  // edit panel and saved there. Nothing is written here, so starting again is harmless.
+  const startCategorising = () => {
+      setFilterStatus('all');
+      setFilterCategory('');
+      setSelectedIds(new Set(uncategorisedRows.map((t) => t._id)));
+      setView('Needs you');
+  };
+
   const handleSmartLinkPledges = async () => {
       setIsReconciling(true);
       try {
@@ -790,9 +799,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
                 tone="amber"
                 icon={Tag}
                 title={`${uncategorisedRows.length} ${uncategorisedRows.length === 1 ? 'line needs' : 'lines need'} a category`}
-                detail="We suggest one for each. It takes about a minute."
+                detail="Open each line and choose one. Nothing is saved until you do."
                 action="Start"
-                onClick={() => void runAutoCategorise(new Set(uncategorisedRows.map((t) => t._id)))}
+                onClick={startCategorising}
               />
             )}
           </NeedsYou>
