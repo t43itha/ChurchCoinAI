@@ -1,6 +1,7 @@
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "../../convex/_generated/api";
 import type { RailStepState } from "../wizard/RailStep";
+import { gbp } from "../cashEntry/format";
 
 // The rail, in order. Done is the confirmation.
 export const LINK_STEPS = ["match", "done"] as const;
@@ -15,7 +16,6 @@ export function railStateFor(kind: LinkStep, current: LinkStep): RailStepState {
 export type LinkArgs = FunctionArgs<typeof api.mutations.movements.link>;
 export type Loan = FunctionReturnType<typeof api.queries.movements.listLoans>[number];
 
-export const money = (amount: number) => `£${amount.toFixed(2)}`;
 
 // What the link was made to, as the done step describes it. Each form reports the one it chose.
 export type LinkedWith =
@@ -26,7 +26,7 @@ export type LinkedWith =
 export function linkedSummary(linkedWith: LinkedWith): string {
   switch (linkedWith.kind) {
     case "transaction":
-      return `Linked to ${linkedWith.description}, ${money(linkedWith.amount)}.`;
+      return `Linked to ${linkedWith.description}, ${gbp(linkedWith.amount)}.`;
     case "new-loan":
       return `Recorded as a new loan from ${linkedWith.lender}.`;
     case "loan":

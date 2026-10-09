@@ -6,7 +6,7 @@ import { formatUkDate } from "../../lib/dateUtils";
 import { linkCandidates, MOVEMENT_LABELS, openLoansFor } from "../../lib/movementMatching";
 import type { Fund, Transaction } from "../../types";
 import DateInput from "../cashEntry/DateInput";
-import { shortDate } from "../cashEntry/format";
+import { gbp, shortDate } from "../cashEntry/format";
 import { signedGbp } from "../statementImport/format";
 import StepFooter from "../wizard/StepFooter";
 import {
@@ -21,7 +21,7 @@ import {
   tickRow,
   txtInput,
 } from "../wizard/ui";
-import { money, type LinkArgs, type LinkedWith, type Loan } from "./linkSteps";
+import { type LinkArgs, type LinkedWith, type Loan } from "./linkSteps";
 
 export interface LinkFormProps {
   transaction: Transaction;
@@ -110,8 +110,8 @@ function LoanRows({ loans, chosenId, onChoose }: { loans: Loan[]; chosenId: stri
           key={loan._id}
           on={loan._id === chosenId}
           title={loan.lender}
-          detail={`of ${money(loan.borrowed)} borrowed${loan.dueDate ? ` · due ${formatUkDate(loan.dueDate)}` : ""}`}
-          amount={money(loan.outstanding)}
+          detail={`of ${gbp(loan.borrowed)} borrowed${loan.dueDate ? ` · due ${formatUkDate(loan.dueDate)}` : ""}`}
+          amount={gbp(loan.outstanding)}
           onChoose={() => onChoose(loan._id)}
         />
       ))}
@@ -141,7 +141,7 @@ export function OtherSideStep({
       {candidates.length === 0 ? (
         <>
           <p className="text-sm text-grey-dark">
-            {`No unlinked ${MOVEMENT_LABELS[kind]} of ${money(transaction.amount)} going the other way within 14 days.`}
+            {`No unlinked ${MOVEMENT_LABELS[kind]} of ${gbp(transaction.amount)} going the other way within 14 days.`}
           </p>
           <p className="mt-1 text-xs text-grey-mid">Mark the other side with the same category first.</p>
         </>
@@ -152,8 +152,8 @@ export function OtherSideStep({
               key={candidate._id}
               on={candidate._id === chosenId}
               title={candidate.description}
-              detail={`${formatUkDate(candidate.date)} · ${fundName(funds, candidate.fundId)}`}
-              amount={money(candidate.amount)}
+              detail={`${shortDate(candidate.date)} · ${fundName(funds, candidate.fundId)}`}
+              amount={gbp(candidate.amount)}
               onChoose={() => setChosenId(candidate._id)}
             />
           ))}
@@ -191,7 +191,7 @@ export function ReceivedLoanStep({ transaction, loans, isSaving, onLink }: LinkF
   return (
     <div>
       <h2 className={screenTitle}>New loan, or an existing one?</h2>
-      <p className={screenHelp}>{`${money(transaction.amount)} received. Record it as a new loan, or add it to one already on the register.`}</p>
+      <p className={screenHelp}>{`${gbp(transaction.amount)} received. Record it as a new loan, or add it to one already on the register.`}</p>
       <Segmented label="Loan" options={LOAN_MODES} value={mode} onChange={setMode} />
 
       <div className="mt-1">
@@ -265,11 +265,11 @@ export function RepaymentStep({ transaction, loans, isSaving, onLink }: LinkForm
         <p className="mt-4 text-sm text-grey-mid">Loading loans…</p>
       ) : openLoans.length === 0 ? (
         <p className="mt-4 text-sm text-grey-dark">
-          {`No open loan has ${money(transaction.amount)} outstanding. Record the money received as a loan first.`}
+          {`No open loan has ${gbp(transaction.amount)} outstanding. Record the money received as a loan first.`}
         </p>
       ) : (
         <>
-          <p className={screenHelp}>{`Choose the loan that ${money(transaction.amount)} repays.`}</p>
+          <p className={screenHelp}>{`Choose the loan that ${gbp(transaction.amount)} repays.`}</p>
           <LoanRows loans={openLoans} chosenId={chosenLoanId} onChoose={setChosenLoanId} />
         </>
       )}
