@@ -42,7 +42,6 @@ export default function BankReviewSheet({ review, funds, categoryNamesFor }: Ban
         // Closing drops the batch, so it asks first, as Discard does not.
         if (window.confirm("Discard these bank lines? They will not be added to the ledger.")) clear();
       }}
-      locked={isCategorising}
       footer={
         <StepFooter>
           <div className="grid gap-2 sm:grid-cols-[auto_1fr_auto]">
@@ -54,7 +53,7 @@ export default function BankReviewSheet({ review, funds, categoryNamesFor }: Ban
             ) : (
               <span className="hidden sm:block" />
             )}
-            <button type="button" onClick={clear} disabled={isCategorising} className={`${btnMd} rounded-2xl font-semibold text-grey-dark disabled:opacity-50`}>
+            <button type="button" onClick={clear} className={`${btnMd} rounded-2xl font-semibold text-grey-dark`}>
               Discard
             </button>
             <button
