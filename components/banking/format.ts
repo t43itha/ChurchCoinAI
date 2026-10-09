@@ -18,3 +18,12 @@ export function historyDate(iso: string) {
   const date = new Date(`${iso}T00:00:00`);
   return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
+
+// "2 collections · counted £150.00 · £30.00 short". The variance part only appears when banked and counted differ.
+export function historyDetail(record: { cashCollectionIds: readonly unknown[]; expectedTotal: number; varianceAmount: number }) {
+  const parts = [countLabel(record.cashCollectionIds.length, "collection"), `counted ${gbp(record.expectedTotal)}`];
+  if (record.varianceAmount !== 0) {
+    parts.push(`${gbp(Math.abs(record.varianceAmount))} ${record.varianceAmount < 0 ? "short" : "over"}`);
+  }
+  return parts.join(" · ");
+}

@@ -10,7 +10,7 @@ import type { AppUser, Fund } from "../types";
 import { gbp } from "./cashEntry/format";
 import BankingWizard from "./banking/BankingWizard";
 import ReopenSheet from "./banking/ReopenSheet";
-import { countLabel, historyDate } from "./banking/format";
+import { countLabel, historyDate, historyDetail } from "./banking/format";
 import {
   btnMd,
   btnOutline,
@@ -145,9 +145,7 @@ export default function CashChequeBanking({ funds, currentUser }: CashChequeBank
                   {/* Full width on phones so the date never wraps; the amount, tag and Reopen then sit on the line below. */}
                   <span className="w-full min-w-0 sm:w-auto sm:min-w-[140px] sm:flex-1">
                     <b className="block whitespace-nowrap text-[14.5px] text-ink">{dateOf(record)}</b>
-                    <span className="text-[12.5px] text-grey-mid">
-                      {countLabel(record.cashCollectionIds.length, "collection")}
-                    </span>
+                    <span className="text-[12.5px] text-grey-mid">{historyDetail(record)}</span>
                   </span>
                   <span className="flex items-center gap-3">
                     <span className="whitespace-nowrap font-mono text-sm text-ink">{gbp(record.bankedTotal)}</span>

@@ -16,7 +16,7 @@ import {
   type OpenCollection,
   type SavedBanking,
 } from "../components/banking/draft";
-import { countLabel, differenceText, historyDate } from "../components/banking/format";
+import { countLabel, differenceText, historyDate, historyDetail } from "../components/banking/format";
 import { gbp } from "../components/cashEntry/format";
 import { signedGbp } from "../components/statementImport/format";
 
@@ -327,6 +327,14 @@ describe("difference and count wording", () => {
   it("pluralises a count", () => {
     expect(countLabel(1, "collection")).toBe("1 collection");
     expect(countLabel(2, "collection")).toBe("2 collections");
+  });
+
+  it("shows what was counted in a history row, and any shortfall or excess", () => {
+    expect(historyDetail({ cashCollectionIds: ["a"], expectedTotal: 150, varianceAmount: 0 })).toBe("1 collection · counted £150.00");
+    expect(historyDetail({ cashCollectionIds: ["a", "b"], expectedTotal: 150, varianceAmount: -30 })).toBe(
+      "2 collections · counted £150.00 · £30.00 short"
+    );
+    expect(historyDetail({ cashCollectionIds: ["a"], expectedTotal: 150, varianceAmount: 5 })).toBe("1 collection · counted £150.00 · £5.00 over");
   });
 
   it("writes a history date short, with September as Sep", () => {
