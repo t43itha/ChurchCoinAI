@@ -3,7 +3,9 @@ import { gapPounds, monthName, periodLabel } from "../components/reconcile/forma
 import {
   RAIL_ORDER,
   previousMonthRange,
+  previousStepFor,
   railStateFor,
+  resolveStep,
   startStepFor,
 } from "../components/reconcile/steps";
 
@@ -37,6 +39,41 @@ describe("startStepFor", () => {
 
   it("opens a completed session on the done step", () => {
     expect(startStepFor("completed")).toBe("done");
+  });
+});
+
+describe("resolveStep", () => {
+  it("keeps the position the user picked", () => {
+    expect(resolveStep("tick", "draft")).toBe("tick");
+    expect(resolveStep("balances", "completed")).toBe("balances");
+  });
+
+  it("opens a completed session on its summary when nothing was picked", () => {
+    expect(resolveStep(null, "completed")).toBe("done");
+  });
+
+  it("falls back to where an open session opens if a stale summary position is left behind", () => {
+    expect(resolveStep("done", "reopened")).toBe("tick");
+    expect(resolveStep("done", "draft")).toBe("tick");
+  });
+});
+
+describe("previousStepFor", () => {
+  it("steps back one rail item for an open session", () => {
+    expect(previousStepFor("finish", false)).toBe("tick");
+    expect(previousStepFor("balances", false)).toBe("account");
+    expect(previousStepFor("account", false)).toBeUndefined();
+  });
+
+  it("walks a completed session back to its summary rather than the locked account step", () => {
+    expect(previousStepFor("finish", true)).toBe("tick");
+    expect(previousStepFor("tick", true)).toBe("balances");
+    expect(previousStepFor("balances", true)).toBe("done");
+  });
+
+  it("has no step before the summary", () => {
+    expect(previousStepFor("done", true)).toBeUndefined();
+    expect(previousStepFor("done", false)).toBeUndefined();
   });
 });
 

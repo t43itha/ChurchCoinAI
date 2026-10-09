@@ -29,19 +29,28 @@ export default function TickStep({
   onToggle: (transactionId: Id<"transactions">, ticked: boolean) => void;
 }) {
   const [view, setView] = useState<(typeof TICK_VIEWS)[number]>("To tick");
-  const ticked = view === "Ticked";
+  // A completed reconciliation is read-only, so it only shows the lines that were ticked.
+  const ticked = disabled || view === "Ticked";
   const lines = [...(ticked ? cleared : candidates)].sort(byDate);
 
   return (
     <div>
       <h2 className={screenTitle}>Tick what's on the statement</h2>
-      <p className={screenHelp}>
-        Tick each line you can find on the paper statement. {candidates.length} to tick, {cleared.length} ticked.
-      </p>
+      {disabled ? (
+        <p className={screenHelp}>
+          Completed — reopen to change ticks. {cleared.length} ticked.
+        </p>
+      ) : (
+        <p className={screenHelp}>
+          Tick each line you can find on the paper statement. {candidates.length} to tick, {cleared.length} ticked.
+        </p>
+      )}
 
-      <div className="mb-3">
-        <Segmented options={TICK_VIEWS} value={view} onChange={setView} label="Show lines" />
-      </div>
+      {!disabled && (
+        <div className="mb-3">
+          <Segmented options={TICK_VIEWS} value={view} onChange={setView} label="Show lines" />
+        </div>
+      )}
 
       <div className="space-y-2.5">
         {lines.map((line) => {
@@ -73,9 +82,11 @@ export default function TickStep({
 
       {lines.length === 0 && (
         <p className="rounded-2xl border border-dashed border-ledger p-4 text-center text-sm text-grey-mid">
-          {ticked
-            ? "Nothing ticked yet. Tap a line when you find it on the statement."
-            : "Every line for this fund up to the end of the period is ticked."}
+          {disabled
+            ? "No lines were ticked on this reconciliation."
+            : ticked
+              ? "Nothing ticked yet. Tap a line when you find it on the statement."
+              : "Every line for this fund up to the end of the period is ticked."}
         </p>
       )}
     </div>

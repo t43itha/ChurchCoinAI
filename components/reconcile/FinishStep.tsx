@@ -6,17 +6,21 @@ import type { ReconcileStepKind } from "./steps";
 
 interface FinishStepProps {
   differencePence: number;
+  // A completed reconciliation is already locked, so the copy says so instead of inviting completion.
+  completed?: boolean;
   onGo: (step: ReconcileStepKind) => void;
 }
 
 // Positive: the ticked lines add up to more than the statement. Negative: the statement shows more.
-export default function FinishStep({ differencePence, onGo }: FinishStepProps) {
+export default function FinishStep({ differencePence, completed = false, onGo }: FinishStepProps) {
   if (differencePence === 0) {
     return (
       <div>
         <h2 className={screenTitle}>It balances</h2>
         <p className={screenHelp}>
-          Your ticked lines and the statement agree. Completing locks these lines.
+          {completed
+            ? "Completed — these lines are locked. Reopen the reconciliation to change anything."
+            : "Your ticked lines and the statement agree. Completing locks these lines."}
         </p>
       </div>
     );

@@ -23,6 +23,24 @@ export function startStepFor(status: SessionStatus | null): ReconcileStepKind {
   return status === "completed" ? "done" : "tick";
 }
 
+// The step on screen. The summary only exists for a completed session, so a stale "done"
+// position for a session that is open again falls back to where that session opens.
+export function resolveStep(position: ReconcileStepKind | null, status: SessionStatus | null): ReconcileStepKind {
+  if (position === null) return startStepFor(status);
+  if (position === "done") return status === "completed" ? "done" : startStepFor(status);
+  return position;
+}
+
+// Back goes one step up the rail. A completed session is browsed read-only, so Back from
+// balances returns to its summary rather than to the account step, which is locked.
+export function previousStepFor(step: ReconcileStepKind, completed: boolean): ReconcileStepKind | undefined {
+  if (step === "done") return undefined;
+  const index = RAIL_ORDER.indexOf(step);
+  if (index === 0) return undefined;
+  if (completed && index === 1) return "done";
+  return RAIL_ORDER[index - 1];
+}
+
 const pad = (value: number) => String(value).padStart(2, "0");
 
 // The calendar month before `today` (YYYY-MM-DD), as the statement period.

@@ -66,6 +66,33 @@ describe("parseBalance", () => {
     expect(parseBalance("1.2.3")).toBeNull();
     expect(parseBalance("1.234")).toBeNull();
   });
+  it("reads correctly grouped and ungrouped amounts", () => {
+    expect(parseBalance("1,234.50")).toBe(1234.5);
+    expect(parseBalance("1.5")).toBe(1.5);
+    expect(parseBalance("1234567.89")).toBe(1234567.89);
+  });
+  it("reads a true minus sign and £ in either order of sign", () => {
+    expect(parseBalance("-\u00a31,234.50")).toBe(-1234.5);
+    expect(parseBalance("\u2212\u00a31,234.50")).toBe(-1234.5);
+  });
+  it("reads accounting negatives in brackets as negative", () => {
+    expect(parseBalance("(1,234.50)")).toBe(-1234.5);
+    expect(parseBalance("(\u00a31,234.50)")).toBe(-1234.5);
+  });
+  it("rejects grouping that is not in threes instead of dropping the commas", () => {
+    expect(parseBalance("1,5")).toBeNull();
+    expect(parseBalance("1,234,50")).toBeNull();
+    expect(parseBalance("12,34")).toBeNull();
+  });
+  it("rejects empty text, words and a dot used as a thousands separator", () => {
+    expect(parseBalance("")).toBeNull();
+    expect(parseBalance("abc")).toBeNull();
+    expect(parseBalance("1.234")).toBeNull();
+  });
+  it("rejects a double sign or brackets around a negative", () => {
+    expect(parseBalance("(-1)")).toBeNull();
+    expect(parseBalance("-(1)")).toBeNull();
+  });
 });
 
 describe("computeDifferencePence", () => {

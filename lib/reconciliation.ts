@@ -32,12 +32,22 @@ export function computeClearedTotalPence(
   return inPence - outPence;
 }
 
-// A balance typed on the statement, in pounds. Accepts "£1,250.40" and "-35".
-// Anything else is null: parseFloat would read "1,250.40" as 1 and "12abc" as 12.
+// Unsigned amount: optional £, then digits with no grouping or with thousands
+// grouping, then optional pence. Grouping that is not in threes ("1,5", "12,34") is rejected.
+const UNSIGNED_BALANCE = /^£?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
+
+// A balance typed on the statement, in pounds. Accepts "£1,250.40", "-£35", "−£35"
+// (a true minus sign) and accounting negatives "(1,234.50)". Anything else is null:
+// stripping commas would turn "1,5" into 15, and parseFloat would read "12abc" as 12.
 export function parseBalance(text: string): number | null {
-  const cleaned = text.trim().replace(/[£,\s]/g, "");
-  if (!/^-?(\d+(\.\d{1,2})?|\.\d{1,2})$/.test(cleaned)) return null;
-  return roundMoney(Number(cleaned));
+  const trimmed = text.trim();
+  const accounting = /^\((.*)\)$/.exec(trimmed);
+  const signed = accounting === null && /^[-\u2212]/.test(trimmed);
+  const body = accounting ? accounting[1] : signed ? trimmed.slice(1) : trimmed;
+  if (!UNSIGNED_BALANCE.test(body)) return null;
+  const value = Number(body.replace(/^£/, "").replace(/,/g, ""));
+  const negative = accounting !== null || signed;
+  return roundMoney(negative && value !== 0 ? -value : value);
 }
 
 /**

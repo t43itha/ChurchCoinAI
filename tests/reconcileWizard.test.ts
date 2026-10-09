@@ -131,6 +131,84 @@ describe("reconcile wizard", () => {
   });
 });
 
+// The markup of the first button whose text contains `text`, so attributes can be checked on it.
+const buttonWith = (markup: string, text: string) =>
+  markup.match(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<\/button>/g)?.find((button) => button.includes(text));
+
+describe("completed and reopened reconciliations", () => {
+  const completed = () => {
+    fixtures.sessions = [session({ status: "completed" })];
+    fixtures.workspace = workspaceFor(
+      { status: "completed" },
+      [line("t1", "Grant", 500, "Income"), line("t2", "Rent", 200, "Expenditure")],
+      [line("t3", "Cheque 101", 75, "Expenditure")]
+    );
+  };
+
+  it("browses a completed reconciliation's ticks read-only, listing only the cleared lines", () => {
+    completed();
+    const markup = render({ sessionId: sessionId("rs-draft"), initialStep: "tick" });
+    expect(markup).toContain("Completed — reopen to change ticks");
+    expect(markup).toContain("Grant");
+    expect(markup).toContain("Rent");
+    expect(markup).not.toContain("Cheque 101");
+    expect(markup).not.toContain('aria-label="Show lines"');
+    // Every tick control is disabled.
+    const rows = markup.match(/<button[^>]*aria-pressed="true"[^>]*>/g) ?? [];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toContain('disabled=""');
+    // The receipt still shows the balance check, and Back is offered.
+    expect(markup).toContain("Balance check");
+    expect(markup).toContain('aria-label="Back"');
+  });
+
+  it("keeps the balances and tick rail items open, but not the locked account step", () => {
+    completed();
+    const markup = render({ sessionId: sessionId("rs-draft"), initialStep: "tick" });
+    expect(buttonWith(markup, "Statement balances")).not.toContain('disabled=""');
+    expect(buttonWith(markup, "Tick off lines")).not.toContain('disabled=""');
+    expect(buttonWith(markup, "Finish")).not.toContain('disabled=""');
+    expect(buttonWith(markup, "Account")).toContain('disabled=""');
+  });
+
+  it("shows a completed reconciliation's balances with the inputs disabled", () => {
+    completed();
+    const markup = render({ sessionId: sessionId("rs-draft"), initialStep: "balances" });
+    for (const id of ["reconcile-opening", "reconcile-closing"]) {
+      expect(markup.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`))?.[0]).toContain('disabled=""');
+    }
+    // Moves along to the ticks without saving anything.
+    expect(buttonWith(markup, "Next: tick off lines")).not.toContain('disabled=""');
+  });
+
+  it("offers a way back to the summary rather than completing again at the finish step", () => {
+    completed();
+    const markup = render({ sessionId: sessionId("rs-draft"), initialStep: "finish" });
+    expect(markup).toContain("Completed — these lines are locked.");
+    expect(markup).toContain("Back to summary");
+    expect(markup).not.toContain("Complete reconciliation");
+  });
+
+  it("shows the reopened reason once above the balances, tick and finish steps", () => {
+    fixtures.sessions = [session({ status: "reopened", reopenedReason: "Wrong date" })];
+    fixtures.workspace = workspaceFor({ status: "reopened", reopenedReason: "Wrong date" }, [
+      line("t1", "Grant", 500, "Income"),
+    ]);
+    for (const initialStep of ["balances", "tick", "finish"] as const) {
+      const markup = render({ sessionId: sessionId("rs-draft"), initialStep });
+      expect(markup.split("Reopened: Wrong date").length - 1).toBe(1);
+      expect(markup).toMatch(/<p class="[^"]*bg-amber-light[^"]*">Reopened: Wrong date<\/p>/);
+    }
+  });
+
+  it("does not show a reopened note on an open draft", () => {
+    fixtures.sessions = [session({})];
+    fixtures.workspace = workspaceFor({}, [line("t1", "Grant", 500, "Income")]);
+    const markup = render({ sessionId: sessionId("rs-draft"), initialStep: "tick" });
+    expect(markup).not.toContain("Reopened:");
+  });
+});
+
 describe("reconciliation list", () => {
   it("renders each session row with its status tag", () => {
     fixtures.funds = funds;

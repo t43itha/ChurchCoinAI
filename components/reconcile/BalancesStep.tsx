@@ -9,9 +9,12 @@ export interface BalanceValues {
 export default function BalancesStep({
   values,
   onChange,
+  disabled = false,
 }: {
   values: BalanceValues;
   onChange: (patch: Partial<BalanceValues>) => void;
+  // A completed reconciliation shows its balances read-only.
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -30,6 +33,7 @@ export default function BalancesStep({
           autoComplete="off"
           placeholder="0.00"
           value={values.opening}
+          disabled={disabled}
           onChange={(event) => onChange({ opening: event.target.value })}
           className={amtInput}
         />
@@ -47,6 +51,7 @@ export default function BalancesStep({
           autoComplete="off"
           placeholder="0.00"
           value={values.closing}
+          disabled={disabled}
           onChange={(event) => onChange({ closing: event.target.value })}
           className={amtInput}
         />

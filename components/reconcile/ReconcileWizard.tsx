@@ -22,7 +22,14 @@ import ReconcileDone from "./ReconcileDone";
 import ReconcileReceipt from "./ReconcileReceipt";
 import TickStep from "./TickStep";
 import { gapPounds, monthName } from "./format";
-import { RAIL_ORDER, railStateFor, previousMonthRange, startStepFor, type ReconcileStepKind } from "./steps";
+import {
+  RAIL_ORDER,
+  previousMonthRange,
+  previousStepFor,
+  railStateFor,
+  resolveStep,
+  type ReconcileStepKind,
+} from "./steps";
 
 const LABELS: Record<(typeof RAIL_ORDER)[number], string> = {
   account: "Account & month",
@@ -92,9 +99,10 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
       candidate.fundId === values.fundId && candidate.status !== "completed" && candidate._id !== sessionId
   );
 
-  const step: ReconcileStepKind = isCompleted ? "done" : (position ?? startStepFor(session?.status ?? null));
+  // A completed session opens on its summary, but its steps stay open to browse read-only.
+  const step: ReconcileStepKind = resolveStep(position, session?.status ?? null);
   const stepPosition = step === "done" ? RAIL_ORDER.length : RAIL_ORDER.indexOf(step);
-  const previous = step === "done" || stepPosition === 0 ? undefined : RAIL_ORDER[stepPosition - 1];
+  const previous = previousStepFor(step, isCompleted);
 
   // Amounts are compared in pence on the server, so the walkthrough reads the saved balances once they exist.
   const opening = session ? session.statementOpeningBalance : parseBalance(values.opening);
@@ -179,6 +187,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
     setError(null);
     try {
       await completeSession({ sessionId });
+      setPosition("done");
     } catch (err) {
       setError(messageOf(err, "Could not complete the reconciliation."));
     } finally {
@@ -237,18 +246,29 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
     );
   } else if (step === "balances") {
     body = (
-      <BalancesStep values={values} onChange={(patch) => setEdits((current) => ({ ...current, ...patch }))} />
+      <BalancesStep
+        values={values}
+        disabled={isCompleted}
+        onChange={(patch) => setEdits((current) => ({ ...current, ...patch }))}
+      />
     );
     footer = (
       <StepFooter>
-        <button
-          type="button"
-          disabled={saving || !balancesReady}
-          onClick={() => void saveBalances()}
-          className={`${btnPrimary} ${btnLg}`}
-        >
-          Next: tick off lines →
-        </button>
+        {isCompleted ? (
+          // Nothing to save on a completed session, so this only moves along the rail.
+          <button type="button" onClick={() => go("tick")} className={`${btnPrimary} ${btnLg}`}>
+            Next: tick off lines →
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={saving || !balancesReady}
+            onClick={() => void saveBalances()}
+            className={`${btnPrimary} ${btnLg}`}
+          >
+            Next: tick off lines →
+          </button>
+        )}
       </StepFooter>
     );
   } else if (step === "tick" && workspace) {
@@ -268,8 +288,14 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
       </StepFooter>
     );
   } else if (step === "finish" && differencePence !== null) {
-    body = <FinishStep differencePence={differencePence} onGo={go} />;
-    footer = (
+    body = <FinishStep differencePence={differencePence} completed={isCompleted} onGo={go} />;
+    footer = isCompleted ? (
+      <StepFooter>
+        <button type="button" onClick={() => go("done")} className={`${btnPrimary} ${btnLg}`}>
+          Back to summary
+        </button>
+      </StepFooter>
+    ) : (
       <StepFooter>
         <div className="space-y-1.5">
           <button
@@ -313,7 +339,8 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
             label={LABELS[kind]}
             trailing={kind === "tick" && workspace ? String(workspace.cleared.length) : undefined}
             state={state}
-            disabled={isCompleted || state === "todo"}
+            // A completed session can be read from balances onward, but its account is locked.
+            disabled={isCompleted ? kind === "account" : state === "todo"}
             onClick={() => go(kind)}
           />
         );
@@ -325,6 +352,16 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
     step === "done" ? undefined : (
       <ReconcileReceipt opening={opening} closing={closing} split={split} differencePence={differencePence} />
     );
+
+  // Shown once above the steps that can change the reconciliation, so the reason stays in view.
+  const reopenedNote =
+    session?.status === "reopened" &&
+    session.reopenedReason &&
+    (step === "balances" || step === "tick" || step === "finish") ? (
+      <p className="mb-4 rounded-2xl bg-amber-light px-3.5 py-2.5 text-sm text-amber">
+        {`Reopened: ${session.reopenedReason}`}
+      </p>
+    ) : null;
 
   return (
     <WizardFrame
@@ -347,6 +384,7 @@ export default function ReconcileWizard({ funds, sessionId: initialSessionId, in
       }
       footer={footer}
     >
+      {reopenedNote}
       {body}
     </WizardFrame>
   );

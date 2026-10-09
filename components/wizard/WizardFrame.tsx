@@ -1,6 +1,7 @@
-import type { ReactNode, Ref } from "react";
+import { useRef, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, X } from "lucide-react";
+import { useDialogFocus } from "./useDialogFocus";
 
 export interface WizardFrameProps {
   ariaLabel: string;
@@ -54,10 +55,15 @@ export default function WizardFrame({
   overlay,
   locked = false,
 }: WizardFrameProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef);
+
   const panel = (
     <div className="fixed inset-0 z-50 bg-paper lg:flex lg:items-center lg:justify-center lg:bg-ink/45 lg:p-6">
       <fieldset disabled={locked} className="contents">
         <div
+          ref={dialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label={ariaLabel}
