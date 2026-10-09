@@ -262,7 +262,8 @@ export default function BankingWizard({ funds, reconciliation, initialStep, onCl
   // After a completed deposit, starts a fresh one. The reconciliation it was loaded from is no longer in play.
   const startAnother = () => {
     setPosition("collections");
-    setSelection(null);
+    // The settling effect only runs when the query changes, so freeze the ticks here too.
+    setSelection(awaiting === undefined ? null : settleSelection(null, awaiting));
     setOverrides({});
     setCreditSelection(new Set());
     setCreditDrafts({});
