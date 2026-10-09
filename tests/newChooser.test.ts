@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import MobileTabBar from "../components/app/MobileTabBar";
 import NewChooser from "../components/app/NewChooser";
-import { canAddNew, newChooserRows, newKindModal, parseNewKind, planNewKind } from "../components/app/newChooserRows";
+import { canAddNew, linkParamsToRemove, newChooserRows, newKindModal, parseNewKind, planNewKind } from "../components/app/newChooserRows";
 import { ROLES, type UserRole } from "../lib/permissions";
 
 const ROW_IDS: Record<UserRole, string[]> = {
@@ -154,5 +154,22 @@ describe("NewChooser", () => {
       createElement(MemoryRouter, null, createElement(NewChooser, { role, onClose: () => undefined }))
     );
     expect(html).not.toContain("Sunday&#x27;s giving");
+  });
+});
+
+describe("linkParamsToRemove", () => {
+  const handled = { type: "handled", modal: "singleEntry", leaveReconciliation: true } as const;
+
+  it("removes new and view together when both arrive, so neither restores the other", () => {
+    expect(linkParamsToRemove(handled, "cash-banking")).toEqual(["new", "view"]);
+  });
+
+  it("keeps new while a sync waits for bank connections, but still takes view", () => {
+    expect(linkParamsToRemove({ type: "wait" }, "cash-banking")).toEqual(["view"]);
+  });
+
+  it("leaves unrelated params and other view values alone", () => {
+    expect(linkParamsToRemove({ type: "idle" }, "something-else")).toEqual([]);
+    expect(linkParamsToRemove(handled, null)).toEqual(["new"]);
   });
 });

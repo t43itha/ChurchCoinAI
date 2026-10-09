@@ -25,7 +25,7 @@ import ImportCategorizationProgress from './ImportCategorizationProgress';
 import LinkMovementModal from './transactions/LinkMovementModal';
 import JournalTransferModal from './transactions/JournalTransferModal';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
-import { planNewKind } from './app/newChooserRows';
+import { linkParamsToRemove, planNewKind } from './app/newChooserRows';
 import { tabBarClearance } from './app/MobileTabBar';
 
 interface Category {
@@ -630,22 +630,31 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
   // "+ New" in the app shell opens one of these with ?new=<kind>. The param is removed once
   // handled, so a refresh does not repeat it; the ref stops Strict Mode's effect replay doing so.
+  // "+ New" in the shell opens one of these with ?new=<kind>, and cash banking is linked with
+  // ?view=cash-banking; either can arrive while this page is mounted. Both params are removed in
+  // one replacement once applied (two updaters would each restore the other's param), so the same
+  // link works again and a refresh does not repeat it. The ref ignores Strict Mode's effect replay.
   const newKindParam = searchParams.get('new');
+  const viewParam = searchParams.get('view');
   const handledNewKind = useRef<string | null>(null);
   const bankConnectionsLoaded = bankConnectionsResult !== undefined;
   useEffect(() => {
-    if (!newKindParam) {
-      handledNewKind.current = null;
-      return;
-    }
+    if (!newKindParam) handledNewKind.current = null;
     const step = planNewKind({ param: newKindParam, handled: handledNewKind.current, canEdit, bankConnectionsLoaded });
-    if (step.type !== 'handled') return;
-    handledNewKind.current = newKindParam;
+    const remove = linkParamsToRemove(step, viewParam);
+    if (remove.length === 0) return;
+    const takeNew = step.type === 'handled';
+    const takeView = remove.includes('view');
+    if (takeNew) handledNewKind.current = newKindParam;
     setSearchParams((params) => {
-      params.delete('new');
+      remove.forEach((key) => params.delete(key));
       return params;
     }, { replace: true });
-    if (!step.modal) return;
+    if (takeView && can(currentUser.role, 'reconciliation.manage')) {
+      setShowReconciliation(false);
+      setActiveTransactionTab('cashChequeBanking');
+    }
+    if (!takeNew || !step.modal) return;
     if (step.leaveReconciliation) setShowReconciliation(false);
     switch (step.modal) {
       case 'cashTakings':
@@ -664,26 +673,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         setShowJournalTransfer(true);
         break;
     }
-    // Runs once per arrival of the param; the handlers are current for that render.
+    // Runs once per arrival of a param; the handlers are current for that render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newKindParam, bankConnectionsLoaded]);
-
-  // Cash banking is reached by a link from the shell or the dashboard, so it can arrive while
-  // this page is already mounted. The param is removed once applied so the same link works again.
-  const viewParam = searchParams.get('view');
-  useEffect(() => {
-    if (viewParam !== 'cash-banking') return;
-    if (can(currentUser.role, 'reconciliation.manage')) {
-      setShowReconciliation(false);
-      setActiveTransactionTab('cashChequeBanking');
-    }
-    setSearchParams((params) => {
-      params.delete('view');
-      return params;
-    }, { replace: true });
-    // setSearchParams is stable for this router; only a new arrival of the param matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewParam, currentUser.role]);
+  }, [newKindParam, viewParam, bankConnectionsLoaded, currentUser.role]);
 
   const formatDateUK = (dateString: string) => {
       try {

@@ -126,3 +126,12 @@ export function planNewKind({
   const modal = kind && canEdit ? newKindModal(kind) : null;
   return { type: "handled", modal, leaveReconciliation: modal !== null };
 }
+
+// The deep-link params Transactions removes on this run of its effect, in one replacement so
+// removing one never restores the other. `new` stays while a sync waits for bank connections.
+export function linkParamsToRemove(step: NewKindStep, viewParam: string | null): string[] {
+  const keys: string[] = [];
+  if (step.type === "handled") keys.push("new");
+  if (viewParam === "cash-banking") keys.push("view");
+  return keys;
+}
