@@ -128,10 +128,17 @@ export function planNewKind({
 }
 
 // The deep-link params Transactions removes on this run of its effect, in one replacement so
-// removing one never restores the other. `new` stays while a sync waits for bank connections.
-export function linkParamsToRemove(step: NewKindStep, viewParam: string | null): string[] {
+// removing one never restores the other. `new` stays while a sync waits for bank connections, and
+// is removed again when it is the one already handled: Strict Mode's replay hands the updater the
+// original params, so leaving it out would put it back.
+export function linkParamsToRemove(
+  step: NewKindStep,
+  viewParam: string | null,
+  newParam: string | null = null,
+  handled: string | null = null
+): string[] {
   const keys: string[] = [];
-  if (step.type === "handled") keys.push("new");
+  if (step.type === "handled" || (newParam !== null && newParam === handled)) keys.push("new");
   if (viewParam === "cash-banking") keys.push("view");
   return keys;
 }

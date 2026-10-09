@@ -641,7 +641,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   useEffect(() => {
     if (!newKindParam) handledNewKind.current = null;
     const step = planNewKind({ param: newKindParam, handled: handledNewKind.current, canEdit, bankConnectionsLoaded });
-    const remove = linkParamsToRemove(step, viewParam);
+    const remove = linkParamsToRemove(step, viewParam, newKindParam, handledNewKind.current);
     if (remove.length === 0) return;
     const takeNew = step.type === 'handled';
     const takeView = remove.includes('view');

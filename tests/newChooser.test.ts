@@ -168,6 +168,15 @@ describe("linkParamsToRemove", () => {
     expect(linkParamsToRemove({ type: "wait" }, "cash-banking")).toEqual(["view"]);
   });
 
+  it("removes new again on a Strict Mode replay, when it is the one already handled", () => {
+    expect(linkParamsToRemove({ type: "idle" }, "cash-banking", "entry", "entry")).toEqual(["new", "view"]);
+    expect(linkParamsToRemove({ type: "idle" }, null, "entry", "entry")).toEqual(["new"]);
+  });
+
+  it("keeps a waiting sync's new param even after an earlier request was handled", () => {
+    expect(linkParamsToRemove({ type: "wait" }, null, "sync", "entry")).toEqual([]);
+  });
+
   it("leaves unrelated params and other view values alone", () => {
     expect(linkParamsToRemove({ type: "idle" }, "something-else")).toEqual([]);
     expect(linkParamsToRemove(handled, null)).toEqual(["new"]);
