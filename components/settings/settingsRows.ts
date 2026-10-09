@@ -43,3 +43,16 @@ export function sheetForTab(tab: string | null, role: UserRole): SettingsSheetId
   const id = (LEGACY_TAB_IDS[tab] ?? tab) as SettingsSheetId;
   return settingsRowsFor(role).some((row) => row.id === id) ? id : null;
 }
+
+export function sheetForSearch(search: string, role: UserRole): SettingsSheetId | null {
+  return sheetForTab(new URLSearchParams(search).get("tab"), role);
+}
+
+// Drops a consumed `?tab=` so the same link (the trial card's, for one) changes the URL and opens the sheet again.
+export function searchWithoutTab(search: string): string {
+  const params = new URLSearchParams(search);
+  if (!params.has("tab")) return search;
+  params.delete("tab");
+  const rest = params.toString();
+  return rest ? `?${rest}` : "";
+}

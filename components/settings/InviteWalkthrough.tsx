@@ -4,6 +4,7 @@ import { roleOptions } from "../../lib/roleAccess";
 import { DEFAULT_INVITE_ROLE, type UserRole } from "../../lib/permissions";
 import { notify } from "../../lib/notifications";
 import type { InvitationCreateInput, InvitationSendResult } from "../../types";
+import { canOpenInviteStep, inviteRequest, isValidInviteEmail, type InviteStep } from "./inviteRules";
 import RailStep from "../wizard/RailStep";
 import StepFooter from "../wizard/StepFooter";
 import WizardFrame from "../wizard/WizardFrame";
@@ -22,9 +23,8 @@ import {
 } from "../wizard/ui";
 import { generateInviteMessage } from "./inviteMessage";
 
-type Step = "email" | "role" | "send";
-const STEPS: Step[] = ["email", "role", "send"];
-const LABELS: Record<Step, string> = { email: "Email", role: "Role", send: "Send" };
+const STEPS: InviteStep[] = ["email", "role", "send"];
+const LABELS: Record<InviteStep, string> = { email: "Email", role: "Role", send: "Send" };
 
 interface InviteWalkthroughProps {
   churchName: string;
@@ -39,7 +39,7 @@ type Sent = InvitationSendResult & { email: string; role: UserRole };
 // Three steps (who, what they can do, send) then a done screen. The invitation is created by the same
 // action the old modal used, and the copyable message is built by the same helper.
 export default function InviteWalkthrough({ churchName, senderName, onInviteUser, onClose }: InviteWalkthroughProps) {
-  const [step, setStep] = useState<Step | "done">("email");
+  const [step, setStep] = useState<InviteStep | "done">("email");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>(DEFAULT_INVITE_ROLE);
   const [sending, setSending] = useState(false);
@@ -54,17 +54,24 @@ export default function InviteWalkthrough({ churchName, senderName, onInviteUser
     setCopied(false);
   };
 
+  // Every way out of the email step goes through canOpenInviteStep, so an invalid address never reaches the send step.
+  const goTo = (target: InviteStep) => {
+    if (canOpenInviteStep(target, email)) setStep(target);
+  };
+
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (!email.trim()) {
-      notify("Error", "Please provide an email address.");
+    const request = inviteRequest(email, role);
+    if (!request) {
+      notify("Error", email.trim() ? "Please enter a valid email address." : "Please provide an email address.");
+      setStep("email");
       return;
     }
     setSending(true);
     try {
-      const result = await onInviteUser({ email: email.trim(), role });
+      const result = await onInviteUser(request);
       if (result) {
-        setSent({ ...result, email: email.trim(), role });
+        setSent({ ...result, email: request.email, role });
         setCopied(false);
         setStep("done");
       }
@@ -91,7 +98,7 @@ export default function InviteWalkthrough({ churchName, senderName, onInviteUser
     }
   };
 
-  const railState = (target: Step): "done" | "now" | "todo" => {
+  const railState = (target: InviteStep): "done" | "now" | "todo" => {
     if (step === "done") return "done";
     if (STEPS.indexOf(target) < STEPS.indexOf(step)) return "done";
     return target === step ? "now" : "todo";
@@ -101,6 +108,7 @@ export default function InviteWalkthrough({ churchName, senderName, onInviteUser
   let footer: ReactNode = null;
 
   if (step === "email") {
+    const emailInvalid = email.trim() !== "" && !isValidInviteEmail(email);
     body = (
       <>
         <h2 className={screenTitle}>Who are you inviting?</h2>
@@ -116,13 +124,25 @@ export default function InviteWalkthrough({ churchName, senderName, onInviteUser
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="name@example.com"
+          aria-invalid={emailInvalid || undefined}
+          aria-describedby={emailInvalid ? "invite-email-hint" : undefined}
           className={txtInput}
         />
+        {emailInvalid && (
+          <p id="invite-email-hint" className="mt-2 text-xs text-[#7a5a30]">
+            Check the address. It needs one @ and a domain such as example.com.
+          </p>
+        )}
       </>
     );
     footer = (
       <StepFooter>
-        <button type="button" disabled={!email.trim()} onClick={() => setStep("role")} className={`${btnPrimary} ${btnLg}`}>
+        <button
+          type="button"
+          disabled={!isValidInviteEmail(email)}
+          onClick={() => goTo("role")}
+          className={`${btnPrimary} ${btnLg}`}
+        >
           Next: choose a role →
         </button>
       </StepFooter>
@@ -158,7 +178,7 @@ export default function InviteWalkthrough({ churchName, senderName, onInviteUser
     );
     footer = (
       <StepFooter>
-        <button type="button" onClick={() => setStep("send")} className={`${btnPrimary} ${btnLg}`}>
+        <button type="button" onClick={() => goTo("send")} className={`${btnPrimary} ${btnLg}`}>
           Next: review and send →
         </button>
       </StepFooter>
@@ -263,8 +283,8 @@ export default function InviteWalkthrough({ churchName, senderName, onInviteUser
                 marker={String(index + 1)}
                 label={LABELS[item]}
                 state={railState(item)}
-                disabled={sending}
-                onClick={() => setStep(item)}
+                disabled={sending || !canOpenInviteStep(item, email)}
+                onClick={() => goTo(item)}
               />
             ))}
           </div>

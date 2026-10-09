@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ROLES, type UserRole } from "../lib/permissions";
-import { settingsRowsFor, sheetForTab, SETTINGS_ROWS } from "../components/settings/settingsRows";
+import { searchWithoutTab, settingsRowsFor, sheetForSearch, sheetForTab, SETTINGS_ROWS } from "../components/settings/settingsRows";
 
 const idsFor = (role: UserRole) => settingsRowsFor(role).map((row) => row.id);
 
@@ -65,5 +65,28 @@ describe("settings ?tab= deep links", () => {
     expect(sheetForTab(null, "Admin")).toBeNull();
     expect(sheetForTab("", "Admin")).toBeNull();
     expect(sheetForTab("nonsense", "Admin")).toBeNull();
+  });
+
+  it("opens the sheet again when the same deep link is clicked after closing", () => {
+    // The trial card's link: open from the URL, close (which drops ?tab=), then click the link again.
+    let search = "?tab=billing";
+    expect(sheetForSearch(search, "Admin")).toBe("billing");
+
+    search = searchWithoutTab(search);
+    expect(search).toBe("");
+    expect(sheetForSearch(search, "Admin")).toBeNull();
+
+    search = "?tab=billing";
+    expect(sheetForSearch(search, "Admin")).toBe("billing");
+  });
+
+  it("drops only the tab param when closing a link with other params", () => {
+    expect(searchWithoutTab("?tab=billing&subscription=cancelled")).toBe("?subscription=cancelled");
+    expect(searchWithoutTab("?subscription=cancelled&tab=billing")).toBe("?subscription=cancelled");
+  });
+
+  it("leaves a search without a tab param alone", () => {
+    expect(searchWithoutTab("")).toBe("");
+    expect(searchWithoutTab("?subscription=cancelled")).toBe("?subscription=cancelled");
   });
 });

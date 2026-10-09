@@ -1,5 +1,5 @@
 import { useEffect, useState, type FC } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { ChevronRight, CreditCard, Building2, Gift, Landmark, ShieldAlert, ShieldCheck, Tag, Users, Wallet, type LucideIcon } from "lucide-react";
 import { api } from "../convex/_generated/api";
@@ -17,7 +17,14 @@ import FundsSheet from "./settings/FundsSheet";
 import GiftAidSheet from "./settings/GiftAidSheet";
 import InviteWalkthrough from "./settings/InviteWalkthrough";
 import PeopleSheet from "./settings/PeopleSheet";
-import { SETTINGS_GROUPS, settingsRowsFor, sheetForTab, type SettingsGroup, type SettingsSheetId } from "./settings/settingsRows";
+import {
+  SETTINGS_GROUPS,
+  searchWithoutTab,
+  settingsRowsFor,
+  sheetForSearch,
+  type SettingsGroup,
+  type SettingsSheetId,
+} from "./settings/settingsRows";
 import HubHeader from "./hub/HubHeader";
 import SectionTitle from "./hub/SectionTitle";
 import { nextIcon, nextItem, tagAmber } from "./wizard/ui";
@@ -87,14 +94,13 @@ const Settings: FC<SettingsProps> = ({
   onRemoveFund,
 }) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const access = useQuery(api.queries.subscriptions.access);
-  const [sheet, setSheet] = useState<Sheet | null>(() =>
-    sheetForTab(new URLSearchParams(location.search).get("tab"), currentUser.role)
-  );
+  const [sheet, setSheet] = useState<Sheet | null>(() => sheetForSearch(location.search, currentUser.role));
   const [fundDraft, setFundDraft] = useState<Partial<Fund>>({});
 
   useEffect(() => {
-    const requested = sheetForTab(new URLSearchParams(location.search).get("tab"), currentUser.role);
+    const requested = sheetForSearch(location.search, currentUser.role);
     if (requested) setSheet(requested);
   }, [currentUser.role, location.search]);
 
@@ -110,7 +116,12 @@ const Settings: FC<SettingsProps> = ({
     );
   }
 
-  const close = () => setSheet(null);
+  // Closing also clears a consumed ?tab=, otherwise clicking the same deep link again changes nothing and stays closed.
+  const close = () => {
+    setSheet(null);
+    const search = searchWithoutTab(location.search);
+    if (search !== location.search) navigate({ pathname: location.pathname, search }, { replace: true });
+  };
   const planName = PLANS.find((plan) => plan.id === access?.plan)?.name;
   const rows = settingsRowsFor(currentUser.role);
 

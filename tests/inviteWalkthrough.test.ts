@@ -5,6 +5,61 @@ import InviteWalkthrough from "../components/settings/InviteWalkthrough";
 import { generateInviteMessage } from "../components/settings/inviteMessage";
 import { ROLES } from "../lib/permissions";
 import { roleAccessLines, roleOptions } from "../lib/roleAccess";
+import { canOpenInviteStep, inviteRequest, isValidInviteEmail } from "../components/settings/inviteRules";
+
+const INVALID_EMAILS = [
+  "",
+  "   ",
+  "sarah",
+  "sarah@",
+  "@church.org",
+  "sarah@church!.org",
+  "sarah@church",
+  "sarah@church.",
+  "sarah@.church.org",
+  "sarah@church..org",
+  "sarah@-church.org",
+  "sarah@church-.org",
+  "sarah@church.o",
+  "sarah@@church.org",
+  "sa rah@church.org",
+  "sarah@church .org",
+  "sarah@church.org extra",
+  ".sarah@church.org",
+  "sarah.@church.org",
+  "sa..rah@church.org",
+  "sarah@church_hall.org",
+  `${"a".repeat(64)}@${"b".repeat(190)}.org`,
+];
+
+describe("invite email rules", () => {
+  it.each(INVALID_EMAILS)("rejects %j", (email) => {
+    expect(isValidInviteEmail(email)).toBe(false);
+    expect(inviteRequest(email, "Pastorate")).toBeNull();
+    expect(canOpenInviteStep("role", email)).toBe(false);
+    expect(canOpenInviteStep("send", email)).toBe(false);
+  });
+
+  it.each(["sarah@church.org", "  sarah@church.org  ", "first.last+giving@sub-domain.church.org.uk", "x@y.co"])(
+    "accepts %j",
+    (email) => {
+      expect(isValidInviteEmail(email)).toBe(true);
+      expect(canOpenInviteStep("role", email)).toBe(true);
+    }
+  );
+
+  it("builds the request from the trimmed address and chosen role", () => {
+    expect(inviteRequest("  sarah@church.org ", "Finance Team")).toEqual({
+      email: "sarah@church.org",
+      role: "Finance Team",
+    });
+  });
+
+  it("always leaves the email step open so the user can correct the address", () => {
+    expect(canOpenInviteStep("email", "sarah@church!.org")).toBe(true);
+    expect(canOpenInviteStep("email", "")).toBe(true);
+  });
+});
 
 const message = (inviteUrl: string | null) =>
   generateInviteMessage({

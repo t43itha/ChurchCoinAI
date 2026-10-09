@@ -1,4 +1,4 @@
-import { useRef, type FormEvent } from "react";
+import { useEffect, useRef, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { isMovementCategory } from "../../lib/movementCategories";
 import { categoryNamesForTransactionTypes } from "../../lib/transactionCategories";
@@ -18,7 +18,7 @@ import {
   txtArea,
   txtInput,
 } from "../wizard/ui";
-import { readLogoFile } from "./readLogoFile";
+import { readLogoIntoDraft } from "./fundLogo";
 
 const FORM_ID = "fund-form";
 const FUND_TYPES: FundType[] = [FundType.UNRESTRICTED, FundType.RESTRICTED, FundType.DESIGNATED];
@@ -27,7 +27,7 @@ interface FundFormSheetProps {
   // A fund with an _id is edited; without one a new fund is created.
   fund: Partial<Fund>;
   categories: Category[];
-  onChange: (fund: Partial<Fund>) => void;
+  onChange: Dispatch<SetStateAction<Partial<Fund>>>;
   onAddFund: (fund: FundCreateInput) => void;
   onUpdateFund: (fund: Fund) => void;
   onClose: () => void;
@@ -35,7 +35,15 @@ interface FundFormSheetProps {
 
 export default function FundFormSheet({ fund, categories, onChange, onAddFund, onUpdateFund, onClose }: FundFormSheetProps) {
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const mounted = useRef(false);
   const isEditing = Boolean(fund._id);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // Cash collections can only use income categories that aren't movement legs.
   const incomeCategoryNames = (() => {
@@ -103,7 +111,7 @@ export default function FundFormSheet({ fund, categories, onChange, onAddFund, o
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) readLogoFile(file, (dataUrl) => onChange({ ...fund, logoUrl: dataUrl }));
+              if (file) readLogoIntoDraft(file, fund._id, () => mounted.current, onChange);
             }}
           />
           <p className="text-xs text-grey-mid">Optional. Shown on campaign reports.</p>
