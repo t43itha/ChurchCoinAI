@@ -5,8 +5,6 @@
   "components/Campaigns.tsx": 9,
   "components/DataPrivacySettings.tsx": 2,
   "components/ErrorBoundary.tsx": 2,
-  "components/FundManager.tsx": 5,
-  "components/Loans.tsx": 6,
   "components/Settings.tsx": 2,
   "components/SubscriptionRequired.tsx": 8,
   "components/SupportCenter.tsx": 4,

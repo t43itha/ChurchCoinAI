@@ -1,6 +1,5 @@
 {
   "components/Campaigns.tsx": 1,
-  "components/FundManager.tsx": 1,
   "components/Settings.tsx": 2,
   "components/TransactionManager.tsx": 2,
   "convex/actions/ai.ts": 1,
