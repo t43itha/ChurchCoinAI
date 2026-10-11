@@ -4,11 +4,12 @@ import { MemoryRouter } from "react-router-dom";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Settings from "../components/Settings";
+import SwitchCampaignSheet from "../components/campaigns/SwitchCampaignSheet";
 import Sidebar from "../components/Sidebar";
 import CashChequeBanking from "../components/CashChequeBanking";
 import TransactionManager from "../components/TransactionManager";
 import AppContentRoutes from "../components/app/AppContentRoutes";
-import { ROLES, type UserRole } from "../lib/permissions";
+import { ROLES, can, type UserRole } from "../lib/permissions";
 
 const { queryMock } = vi.hoisted(() => ({ queryMock: vi.fn() }));
 vi.mock("convex/react", () => ({
@@ -107,4 +108,21 @@ describe.each<UserRole>(["Pastorate", "Guest"])("%s reconciliation UI", (role) =
 it("blocks a direct Guest reports route before fetching report data", () => {
   render(createElement(AppContentRoutes, { currentUser: user("Guest"), churchDetails: { name: "Test Church" }, funds: [], categories: [] }), "/reports");
   expect(queryMock).not.toHaveBeenCalled();
+});
+
+describe.each<UserRole>(ROLES)("%s switch campaign sheet", (role) => {
+  it("offers New campaign only to roles that can start a campaign", () => {
+    const html = render(
+      createElement(SwitchCampaignSheet, {
+        campaigns: [{ _id: "fund-roof", name: "Roof appeal", type: "Restricted", balance: 0 }],
+        selectedId: "fund-roof",
+        today: "2026-10-09",
+        canStartCampaign: can(role, "funds.write"),
+        onPick: () => {},
+        onNew: () => {},
+        onClose: () => {},
+      })
+    );
+    expect(html.includes("New campaign")).toBe(can(role, "funds.write"));
+  });
 });

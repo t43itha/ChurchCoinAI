@@ -71,7 +71,8 @@ export const useDonorPledgeActions = ({
     }
   };
 
-  const handleAddPledge = async (pledge: PledgeCreateInput) => {
+  // Resolves true only when the pledge was created, so callers can keep their form open on failure.
+  const handleAddPledge = async (pledge: PledgeCreateInput): Promise<boolean> => {
     try {
       await createPledge({
         donorId: pledge.donorId ? (pledge.donorId as Id<"donors">) : undefined,
@@ -84,9 +85,11 @@ export const useDonorPledgeActions = ({
         status: pledge.status,
       });
       showNotification("Pledge Added", `Pledge from ${pledge.donorName} has been recorded.`);
+      return true;
     } catch (error) {
       console.error("Failed to add pledge:", error);
       showNotification("Error", "Failed to add pledge. Please try again.");
+      return false;
     }
   };
 
