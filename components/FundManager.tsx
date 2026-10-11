@@ -65,7 +65,8 @@ const FundManager: React.FC<FundManagerProps> = ({
   const [openFundId, setOpenFundId] = useState<string | null>(null);
   // null: closed. An empty object creates a fund; a fundId edits one.
   const [formFund, setFormFund] = useState<{ fundId?: string } | null>(null);
-  const [showTransfer, setShowTransfer] = useState(false);
+  // null when closed; an overdrawn fund's "Move money to cover it" prefills the fund to cover and the amount.
+  const [transfer, setTransfer] = useState<{ toFundId?: string; amount?: number } | null>(null);
 
   const canMoveMoney = can(currentUser.role, 'ledger.write');
   const canWriteFunds = can(currentUser.role, 'funds.write');
@@ -124,7 +125,7 @@ const FundManager: React.FC<FundManagerProps> = ({
           actions={
             <>
               {canMoveMoney && (
-                <button type="button" onClick={() => setShowTransfer(true)} className={`${btnOutline} ${btnMd} !w-auto px-5`}>
+                <button type="button" onClick={() => setTransfer({})} className={`${btnOutline} ${btnMd} !w-auto px-5`}>
                   Move money
                 </button>
               )}
@@ -164,7 +165,7 @@ const FundManager: React.FC<FundManagerProps> = ({
                   belowMonthlySpend={monthSpend > 0 && fund.balance < monthSpend}
                   canMoveMoney={canMoveMoney}
                   onOpen={() => setOpenFundId(fund._id)}
-                  onMoveMoney={() => setShowTransfer(true)}
+                  onMoveMoney={() => setTransfer({ toFundId: fund._id, amount: Math.abs(fund.balance) })}
                 />
               );
             })}
@@ -200,7 +201,14 @@ const FundManager: React.FC<FundManagerProps> = ({
         />
       )}
 
-      {showTransfer && <JournalTransferModal funds={funds} onClose={() => setShowTransfer(false)} />}
+      {transfer && (
+        <JournalTransferModal
+          funds={funds}
+          initialToFundId={transfer.toFundId}
+          initialAmount={transfer.amount}
+          onClose={() => setTransfer(null)}
+        />
+      )}
     </div>
   );
 };
