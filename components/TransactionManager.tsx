@@ -574,7 +574,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     try {
       await deleteJournalTransfer({ transactionId: transaction._id as Id<"transactions"> });
       notify("Transfer Deleted", "Both sides of the transfer have been removed.");
-      setEditingId(null);
+      // Only close the deleted row's panel; another row may have been opened while this ran.
+      setEditingId((current) => editingAfterSave(current, transaction._id, null));
     } catch (error) {
       notify("Error", error instanceof Error ? error.message : "Failed to delete transfer.");
     }
