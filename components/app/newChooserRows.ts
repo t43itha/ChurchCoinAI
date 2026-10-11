@@ -1,12 +1,12 @@
-import { ArrowLeftRight, Banknote, FileSpreadsheet, Landmark, PenLine, RefreshCw, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, Banknote, FileSpreadsheet, Landmark, PenLine, RefreshCw, Wand2, type LucideIcon } from "lucide-react";
 import { can, type Capability, type UserRole } from "../../lib/permissions";
 
 // Kinds the chooser can pass to Transactions as ?new=<kind>. Each opens one existing
 // modal there. Cash banking is a view, not a kind, so it uses ?view=cash-banking.
-export const NEW_KINDS = ["giving", "statement", "sync", "entry", "transfer"] as const;
+export const NEW_KINDS = ["giving", "statement", "sync", "entry", "transfer", "link"] as const;
 export type NewKind = (typeof NEW_KINDS)[number];
 
-export type NewKindModal = "cashTakings" | "statementImport" | "bankSync" | "singleEntry" | "journalTransfer";
+export type NewKindModal = "cashTakings" | "statementImport" | "bankSync" | "singleEntry" | "journalTransfer" | "smartLink";
 
 const KIND_MODAL: Record<NewKind, NewKindModal> = {
   giving: "cashTakings",
@@ -14,6 +14,7 @@ const KIND_MODAL: Record<NewKind, NewKindModal> = {
   sync: "bankSync",
   entry: "singleEntry",
   transfer: "journalTransfer",
+  link: "smartLink",
 };
 
 export function parseNewKind(value: string | null | undefined): NewKind | null {
@@ -80,6 +81,15 @@ const ROWS: NewChooserRow[] = [
     tone: "grey",
     capability: "ledger.write",
     to: "/transactions?new=transfer",
+  },
+  {
+    id: "link",
+    title: "Match income to pledges",
+    detail: "Smart Link suggests pledge payments to confirm",
+    icon: Wand2,
+    tone: "grey",
+    capability: "ledger.write",
+    to: "/transactions?new=link",
   },
   {
     id: "cash-banking",
