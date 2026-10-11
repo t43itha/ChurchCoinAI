@@ -134,7 +134,7 @@ export default function TransactionRow({
         <td className="w-10 pl-3.5 pr-1 py-2.5">{checkbox}</td>
         <td className="whitespace-nowrap px-2.5 py-2.5 font-mono text-[12.5px] text-grey-mid">{formatUkDate(t.date)}</td>
         <td className="w-full max-w-0 px-2.5 py-2.5">
-          <button type="button" disabled={!list.canEdit} onClick={() => list.onOpen(t)} className="flex min-w-0 max-w-full items-center gap-2 text-left disabled:cursor-default">
+          <button type="button" onClick={() => list.onOpen(t)} className="flex min-w-0 max-w-full items-center gap-2 text-left">
             <span className="min-w-0 truncate text-sm font-semibold text-ink">{t.description}</span>
             {tags}
           </button>
@@ -158,9 +158,8 @@ export default function TransactionRow({
       <button
         type="button"
         onClick={() => list.onOpen(t)}
-        disabled={!list.canEdit}
         aria-current={isActive ? "true" : undefined}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <span className={`${nextIcon} bg-grey-light text-grey-dark`} aria-hidden="true">
           <Icon size={16} strokeWidth={1.9} />
@@ -171,8 +170,12 @@ export default function TransactionRow({
             {tags}
           </span>
           <span className="mt-0.5 block truncate text-xs text-grey-mid">
-            {[fund?.name, t.paymentMethod, donorAndPledge].filter(Boolean).join(" · ")}
+            {[fund?.name, t.paymentMethod].filter(Boolean).join(" · ")}
           </span>
+          {t.donorName && <span className="block break-words text-xs text-grey-mid">{`Ref ${t.donorName}`}</span>}
+          {linkedPledgeFund && (
+            <span className="block break-words text-xs text-grey-mid">{`Linked to ${linkedPledgeFund.name}`}</span>
+          )}
           <span className="mt-1.5 flex sm:hidden">{categoryPill}</span>
         </span>
         <span className="hidden shrink-0 sm:inline-flex">{categoryPill}</span>

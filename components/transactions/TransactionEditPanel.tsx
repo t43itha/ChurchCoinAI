@@ -2,8 +2,10 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link2, RotateCcw, Trash2, Unlink, X, type LucideIcon } from "lucide-react";
 import type { Fund, Pledge, Transaction, TransactionType } from "../../types";
 import { linkState } from "../../lib/movementMatching";
+import { formatUkDate } from "../../lib/dateUtils";
 import { isVoidedTransaction } from "../../lib/reportableTransactions";
 import DonorSearchInput from "../DonorSearchInput";
+import { gbp } from "../cashEntry/format";
 import StepFooter from "../wizard/StepFooter";
 import { Segmented, amtBox, amtInput, amtSymbol, btnMd, btnOutline, btnPrimary, card, eyebrow, linkBtn, screenTitle, txtInput } from "../wizard/ui";
 import { editDraftProblem, formatSignedAmount } from "./transactionView";
@@ -44,6 +46,11 @@ function pledgesForDonor(draft: Transaction, pledges: Pledge[]) {
   return linked ? [linked, ...matches] : matches;
 }
 
+function pledgeLabel(pledge: Pledge, funds: Fund[]) {
+  const fundName = funds.find((f) => f._id === pledge.fundId)?.name || "Unknown fund";
+  return `${fundName}: £${pledge.amount} (${pledge.frequency}) - ${pledge.status}`;
+}
+
 type EditActionKey = "linkOtherSide" | "unlink" | "deleteTransfer" | "void" | "restore";
 
 export interface EditAction {
@@ -61,14 +68,13 @@ const ACTION_ICONS: Record<EditActionKey, LucideIcon> = {
   restore: RotateCcw,
 };
 
-// The movement and void actions a row offers. A row in a completed reconciliation offers
-// none, since the server would refuse each one.
+// The movement and void actions a row offers. The server refuses any of them that a
+// completed reconciliation blocks, and its message shows in the panel.
 export function editActionsFor(
   transaction: Transaction,
   rights: Pick<TransactionEditPanelProps, "canEdit" | "canDeleteTransfer">,
   handlers: Pick<TransactionEditPanelProps, "onLinkOtherSide" | "onUnlink" | "onDeleteTransfer" | "onVoid" | "onRestore">
 ): EditAction[] {
-  if (transaction.isReconciled) return [];
   const { status } = linkState(transaction);
   const isJournal = status === "journal";
   const actions: EditAction[] = [];
@@ -119,11 +125,12 @@ export default function TransactionEditPanel({
   const isLinked = link.status === "linked" || link.status === "journal";
   const isJournal = link.status === "journal";
   const isVoided = isVoidedTransaction(transaction);
-  // The server keeps isReconciled on the rows a completed reconciliation owns, and clears it on reopen.
-  const lockedByReconciliation = transaction.isReconciled;
-  const frozen = !canEdit || lockedByReconciliation;
-  const locked = frozen || isLinked;
+  // Read-only roles see every field as text. Linked rows keep description, date and donor editable.
+  const readOnly = !canEdit;
+  const locked = readOnly || isLinked;
+  const direction = `${draft.type === "Income" ? "Money in" : "Money out"} (${formatSignedAmount(draft)})`;
   const relevantPledges = pledgesForDonor(draft, pledges);
+  const linkedPledge = draft.pledgeId ? pledges.find((p) => p._id === draft.pledgeId) : undefined;
   const categoryOptions = categoryNamesFor(draft.type, draft.category);
   const actions = editActionsFor(
     transaction,
@@ -149,10 +156,20 @@ export default function TransactionEditPanel({
     }
   };
 
-  const field = (label: string, children: ReactNode) => (
+  // Read-only roles get the value as plain text in place of the input.
+  const field = (label: string, children: ReactNode, readOnlyText: string) => (
     <div className="min-w-0">
-      <label className={`${eyebrow} mb-2 mt-5 block`}>{label}</label>
-      {children}
+      {readOnly ? (
+        <>
+          <p className={`${eyebrow} mb-2 mt-5 block`}>{label}</p>
+          <p className="break-words text-sm font-semibold text-ink">{readOnlyText}</p>
+        </>
+      ) : (
+        <>
+          <label className={`${eyebrow} mb-2 mt-5 block`}>{label}</label>
+          {children}
+        </>
+      )}
     </div>
   );
 
@@ -196,11 +213,6 @@ export default function TransactionEditPanel({
               Transfer between funds. It is edited as a pair, so change it from the transfer.
             </p>
           )}
-          {lockedByReconciliation && (
-            <p className="rounded-2xl bg-amber-light px-3.5 py-2.5 text-amber">
-              This line is in a completed reconciliation. Reopen that reconciliation to change it.
-            </p>
-          )}
           {error && (
             <p role="alert" className="rounded-2xl bg-error-light px-3.5 py-2.5 font-semibold text-error">
               {error}
@@ -224,15 +236,14 @@ export default function TransactionEditPanel({
                 className={amtInput}
               />
             </div>
-          </div>
+          </div>,
+          gbp(draft.amount)
         )}
 
         {field(
           "Money in or out",
           locked ? (
-            <p className="text-sm font-semibold text-ink">
-              {draft.type === "Income" ? "Money in" : "Money out"} ({formatSignedAmount(draft)})
-            </p>
+            <p className="text-sm font-semibold text-ink">{direction}</p>
           ) : (
             <Segmented
               label="Money in or out"
@@ -243,7 +254,8 @@ export default function TransactionEditPanel({
                 setDraft({ ...draft, type, category: categoryStillValid ? draft.category : "" });
               }}
             />
-          )
+          ),
+          direction
         )}
 
         {field(
@@ -252,10 +264,11 @@ export default function TransactionEditPanel({
             type="text"
             required
             value={draft.description}
-            disabled={frozen}
+            disabled={readOnly}
             onChange={(e) => setDraft({ ...draft, description: e.target.value })}
             className={txtInput}
-          />
+          />,
+          draft.description
         )}
 
         <div className="grid gap-x-3 sm:grid-cols-2">
@@ -265,10 +278,11 @@ export default function TransactionEditPanel({
               type="date"
               required
               value={draft.date}
-              disabled={frozen}
+              disabled={readOnly}
               onChange={(e) => setDraft({ ...draft, date: e.target.value })}
               className={txtInput}
-            />
+            />,
+            formatUkDate(draft.date)
           )}
           {field(
             "Fund",
@@ -283,7 +297,8 @@ export default function TransactionEditPanel({
                   {f.name}
                 </option>
               ))}
-            </select>
+            </select>,
+            funds.find((f) => f._id === draft.fundId)?.name ?? "Unknown fund"
           )}
         </div>
 
@@ -301,14 +316,15 @@ export default function TransactionEditPanel({
                 {c}
               </option>
             ))}
-          </select>
+          </select>,
+          draft.category || "No category"
         )}
 
         {field(
           "Donor (optional)",
           <DonorSearchInput
             value={draft.donorName || ""}
-            disabled={frozen}
+            disabled={readOnly}
             onChange={(name) => setDraft({ ...draft, donorName: name })}
             onDonorSelect={(donor) =>
               setDraft({
@@ -319,7 +335,8 @@ export default function TransactionEditPanel({
               })
             }
             placeholder="Search or add donor…"
-          />
+          />,
+          draft.donorName || "No donor"
         )}
 
         {draft.type === "Income" &&
@@ -327,7 +344,7 @@ export default function TransactionEditPanel({
             "Pledge or schedule",
             <select
               value={draft.pledgeId || ""}
-              disabled={frozen}
+              disabled={readOnly}
               onChange={(e) => {
                 const pid = e.target.value;
                 setDraft({
@@ -340,29 +357,29 @@ export default function TransactionEditPanel({
               className={txtInput}
             >
               <option value="">No linked pledge</option>
-              {relevantPledges.map((p) => {
-                const fundName = funds.find((f) => f._id === p.fundId)?.name || "Unknown fund";
-                return (
-                  <option key={p._id} value={p._id}>
-                    {fundName}: £{p.amount} ({p.frequency}) - {p.status}
-                  </option>
-                );
-              })}
-            </select>
+              {relevantPledges.map((p) => (
+                <option key={p._id} value={p._id}>
+                  {pledgeLabel(p, funds)}
+                </option>
+              ))}
+            </select>,
+            linkedPledge ? pledgeLabel(linkedPledge, funds) : "No linked pledge"
           )}
 
-        {giftAidEnabled && (
-          <label className="mt-5 flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-semibold text-grey-dark">
-            <input
-              type="checkbox"
-              checked={draft.isGiftAidEligible || false}
-              disabled={frozen}
-              onChange={(e) => setDraft({ ...draft, isGiftAidEligible: e.target.checked })}
-              className="h-[18px] w-[18px] rounded-md accent-ink"
-            />
-            Gift Aid eligible
-          </label>
-        )}
+        {giftAidEnabled &&
+          (readOnly ? (
+            field("Gift Aid", null, draft.isGiftAidEligible ? "Eligible" : "Not eligible")
+          ) : (
+            <label className="mt-5 flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-semibold text-grey-dark">
+              <input
+                type="checkbox"
+                checked={draft.isGiftAidEligible || false}
+                onChange={(e) => setDraft({ ...draft, isGiftAidEligible: e.target.checked })}
+                className="h-[18px] w-[18px] rounded-md accent-ink"
+              />
+              Gift Aid eligible
+            </label>
+          ))}
 
         {actions.length > 0 && (
           <div className="mt-6 grid gap-2 border-t border-ledger pt-4">
@@ -383,23 +400,22 @@ export default function TransactionEditPanel({
         )}
       </div>
 
-      {!lockedByReconciliation &&
-        (canEdit ? (
-          <StepFooter>
-            <div className="grid gap-2">
-              <button type="submit" disabled={saving} className={`${btnPrimary} h-[54px] text-base`}>
-                {nextTransaction ? "Save · next" : "Save changes"}
+      {canEdit ? (
+        <StepFooter>
+          <div className="grid gap-2">
+            <button type="submit" disabled={saving} className={`${btnPrimary} h-[54px] text-base`}>
+              {nextTransaction ? "Save · next" : "Save changes"}
+            </button>
+            {nextTransaction && (
+              <button type="submit" value="close" disabled={saving} className={`${linkBtn} justify-center`}>
+                Save and close
               </button>
-              {nextTransaction && (
-                <button type="submit" value="close" disabled={saving} className={`${linkBtn} justify-center`}>
-                  Save and close
-                </button>
-              )}
-            </div>
-          </StepFooter>
-        ) : (
-          <p className="mt-6 text-sm text-grey-mid">You can view this entry. Ask someone with edit access to change it.</p>
-        ))}
+            )}
+          </div>
+        </StepFooter>
+      ) : (
+        <p className="mt-6 text-sm text-grey-mid">You can view this entry. Ask someone with edit access to change it.</p>
+      )}
     </form>
   );
 }

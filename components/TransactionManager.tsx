@@ -44,6 +44,7 @@ import InPersonGivingList from './transactions/InPersonGivingList';
 import type { TransactionListProps } from './transactions/TransactionRow';
 import {
   HUB_VIEWS,
+  editingAfterSave,
   errorMessage,
   filterTransactions,
   formatSignedNet,
@@ -640,7 +641,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newKindParam, viewParam, bankConnectionsLoaded, canBank]);
 
-  const editingTransaction = editingId && canEdit ? transactions.find((t) => t._id === editingId) ?? null : null;
+  // Read-only roles can open a row too; the panel shows it as text.
+  const editingTransaction = editingId ? transactions.find((t) => t._id === editingId) ?? null : null;
   const editingIndex = editingTransaction ? displayedTransactions.findIndex((t) => t._id === editingTransaction._id) : -1;
   const nextTransaction = editingIndex >= 0 ? displayedTransactions[editingIndex + 1] : undefined;
 
@@ -666,7 +668,9 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       if (result?.pledgeCompleted && onPledgeCompleted) {
         onPledgeCompleted(result.pledgeCompleted.donorName, result.pledgeCompleted.amount);
       }
-      setEditingId(goNext && nextTransaction ? nextTransaction._id : null);
+      // The save may finish after another row was opened; only move on from the row it saved.
+      const nextId = goNext && nextTransaction ? nextTransaction._id : null;
+      setEditingId((current) => editingAfterSave(current, draft._id, nextId));
     } catch (error) {
       console.error("Failed to update transaction:", error);
       notify("Error", "Failed to update transaction.");

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   editDraftProblem,
+  editingAfterSave,
   errorMessage,
   filterTransactions,
   formatSignedAmount,
@@ -180,6 +181,25 @@ describe("parseStatusFilter", () => {
     expect(parseStatusFilter("unlinked")).toBe("unlinked");
     expect(parseStatusFilter("nope")).toBe("all");
     expect(parseStatusFilter(null)).toBe("all");
+  });
+});
+
+describe("editingAfterSave", () => {
+  it("moves on to the next row from the row that was saved", () => {
+    expect(editingAfterSave("a", "a", "b")).toBe("b");
+  });
+
+  it("closes after the last row, or after a save that did not ask to go on", () => {
+    expect(editingAfterSave("a", "a", null)).toBeNull();
+  });
+
+  it("keeps a row opened while the save was still pending", () => {
+    expect(editingAfterSave("c", "a", "b")).toBe("c");
+    expect(editingAfterSave("c", "a", null)).toBe("c");
+  });
+
+  it("stays closed when the panel was dismissed during the save", () => {
+    expect(editingAfterSave(null, "a", "b")).toBeNull();
   });
 });
 

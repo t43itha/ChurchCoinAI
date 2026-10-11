@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import TransactionManager from "../components/TransactionManager";
 import { longDate } from "../components/cashEntry/format";
 import TransactionCompactTable from "../components/transactions/TransactionCompactTable";
+import TransactionDayList from "../components/transactions/TransactionDayList";
 import TransactionEditPanel, { editActionsFor } from "../components/transactions/TransactionEditPanel";
+import { groupByDay } from "../components/transactions/transactionView";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import type { UserRole } from "../lib/permissions";
 import type { Fund, Pledge, Transaction } from "../types";
@@ -131,6 +133,26 @@ describe("row detail", () => {
     expect(html).toContain("Linked to Building");
     expect(html).toContain("overflow-x-auto");
   });
+
+  it("puts donor and linked pledge on their own lines in the day view", () => {
+    const pledge = { _id: "p1", fundId: "building", donorName: "J Okafor", amount: 50, frequency: "Monthly", status: "Active" } as unknown as Pledge;
+    const html = renderToStaticMarkup(
+      createElement(TransactionDayList, {
+        groups: groupByDay([row({ _id: "d", donorName: "J Okafor", pledgeId: "p1", description: "Standing order" })]),
+        list: listProps([pledge]),
+      })
+    );
+    expect(html).toContain('<span class="block break-words text-xs text-grey-mid">Ref J Okafor</span>');
+    expect(html).toContain('<span class="block break-words text-xs text-grey-mid">Linked to Building</span>');
+  });
+
+  it("lets read-only roles open a row, with no disabled controls", () => {
+    const html = renderToStaticMarkup(
+      createElement(TransactionDayList, { groups: groupByDay([row({})]), list: { ...listProps(), canEdit: false } })
+    );
+    expect(html).toContain("Sunday collection");
+    expect(html).not.toContain("disabled");
+  });
 });
 
 describe("day grouping", () => {
@@ -183,11 +205,28 @@ describe("edit panel", () => {
     expect(html).toMatch(/aria-label="Amount"[^>]*disabled/);
   });
 
-  it("locks a row in a completed reconciliation: inputs disabled, no save or void, and the reason", () => {
+  it("leaves a reconciled row editable, so the server's refusal is what stops a change", () => {
     const html = renderPanel(createElement(TransactionEditPanel, panelProps(row({ isReconciled: true }))));
-    expect(html).toContain("This line is in a completed reconciliation. Reopen that reconciliation to change it.");
-    expect(html).toMatch(/aria-label="Amount"[^>]*disabled/);
-    expect(html).toMatch(/type="text"[^>]*disabled/);
+    expect(html).toContain("Save changes");
+    expect(html).toContain("Void transaction");
+    expect(html).not.toMatch(/aria-label="Amount"[^>]*disabled/);
+  });
+
+  it("shows a read-only entry as plain text, with donor and pledge, and no save or actions", () => {
+    const pledge = { _id: "p1", fundId: "building", donorName: "J Okafor", amount: 50, frequency: "Monthly", status: "Active" } as unknown as Pledge;
+    const html = renderPanel(
+      createElement(TransactionEditPanel, {
+        ...panelProps(row({ donorName: "J Okafor", pledgeId: "p1" }), false),
+        pledges: [pledge],
+        giftAidEnabled: true,
+      })
+    );
+    expect(html).toContain("Building: £50 (Monthly) - Active");
+    expect(html).toContain("J Okafor");
+    expect(html).toContain("Not eligible");
+    expect(html).toContain("You can view this entry.");
+    expect(html).not.toContain("<input");
+    expect(html).not.toContain("<select");
     expect(html).not.toContain("Save changes");
     expect(html).not.toContain("Void transaction");
   });
@@ -238,9 +277,13 @@ describe("edit actions", () => {
     expect(keys).toEqual(["void"]);
   });
 
-  it("offers nothing to read-only roles or to rows in a completed reconciliation", () => {
+  it("offers nothing to read-only roles", () => {
     expect(editActionsFor(row({ isVoided: true }), { canEdit: false, canDeleteTransfer: false }, handlers)).toEqual([]);
-    expect(editActionsFor(row({ isReconciled: true, movementId: "m1", movementKind: "transfer" }), editor, handlers)).toEqual([]);
+  });
+
+  it("offers the same actions on a reconciled row as on any other", () => {
+    const keys = editActionsFor(row({ isReconciled: true }), editor, handlers).map((action) => action.key);
+    expect(keys).toEqual(["void"]);
   });
 });
 

@@ -150,6 +150,12 @@ export function editDraftProblem(draft: Pick<Transaction, "date" | "description"
   return null;
 }
 
+// Where the panel goes once a save finishes. A save can finish after another row was opened,
+// and that row's draft must survive, so only the row that was saved is moved on from.
+export function editingAfterSave(current: string | null, savedId: string, nextId: string | null): string | null {
+  return current === savedId ? nextId : current;
+}
+
 // Convex wraps server errors in its own prefix; show the message the server wrote.
 export function errorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof Error)) return fallback;
