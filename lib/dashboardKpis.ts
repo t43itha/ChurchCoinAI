@@ -10,6 +10,7 @@ import {
   sumFundBalance,
 } from "./reportableTransactions";
 import type { MovementKind } from "./movementCategories";
+import { isPledgeBehind } from "./pledgeProgress";
 import { meetsMoneyTarget, roundMoney, sumMoney } from "../convex/lib/money";
 
 export type DashboardPeriodKey = "currentMonth" | "previousMonth" | "quarter" | "ytd";
@@ -172,18 +173,15 @@ export type BuildExecutiveDashboardSummaryInput = {
   giftAidEnabled?: boolean;
 };
 
+// Tithes, offerings and thanksgiving: the giving that mission tithe and the giving trend are measured
+// on, matching Reports.
 const GIVING_CATEGORIES = new Set(RCI_INCOME_CATEGORIES["Donations"] ?? []);
+// Gift Aid applies to general donations too: the Donations group's own leaf is the canonical
+// "Donation", which the legacy "Donations" name resolves to through CATEGORY_ALIASES.
+const GIFT_AID_GIVING_CATEGORIES = new Set([...GIVING_CATEGORIES, CATEGORY_ALIASES["Donations"]]);
 const UNCATEGORIZED = "Uncategorized";
 const LOW_BALANCE_THRESHOLD = 1000;
 const MAX_CAMPAIGNS = 3;
-
-// Days a pledge can go without a payment before it counts as behind. One-off
-// pledges have no cadence, so they never fall behind.
-const PLEDGE_LAPSE_DAYS: Partial<Record<string, number>> = {
-  Weekly: 14,
-  Monthly: 45,
-  Annual: 395,
-};
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   month: "long",
@@ -484,8 +482,14 @@ function isUnrestrictedTransaction(transaction: DashboardTransaction, unrestrict
   return transaction.fundId ? unrestrictedFundIds.has(transaction.fundId) : false;
 }
 
-function isGivingCategory(category?: string) {
-  return GIVING_CATEGORIES.has(category ? CATEGORY_ALIASES[category] ?? category : "");
+const canonicalCategory = (category?: string) => (category ? CATEGORY_ALIASES[category] ?? category : "");
+
+export function isGivingCategory(category?: string) {
+  return GIVING_CATEGORIES.has(canonicalCategory(category));
+}
+
+export function isGiftAidGivingCategory(category?: string) {
+  return GIFT_AID_GIVING_CATEGORIES.has(canonicalCategory(category));
 }
 
 function isCashOrCheque(transaction: DashboardTransaction) {
@@ -660,57 +664,16 @@ function buildDonorFollowUp(
       transaction.type === "Income" &&
       transaction.donorId !== undefined &&
       declaredDonorIds.has(transaction.donorId) &&
-      isGivingCategory(transaction.category) &&
+      isGiftAidGivingCategory(transaction.category) &&
       transaction.isGiftAidEligible !== true
   );
-  const pledgesBehind = pledges.filter((pledge) => {
-    const lapseDays = PLEDGE_LAPSE_DAYS[pledge.frequency];
-
-    if (pledge.status !== "Active" || lapseDays === undefined) {
-      return false;
-    }
-
-    const windowStart = addDays(period.throughDate, -lapseDays);
-
-    if (pledge.startDate > windowStart || (pledge.endDate && pledge.endDate < windowStart)) {
-      return false;
-    }
-
-    const window = { startDate: windowStart, endDate: period.throughDate };
-    return !transactions.some(
-      (transaction) =>
-        isWithinRange(transaction.date, window) && isPledgeSatisfiedByTransaction(pledge, transaction)
-    );
-  });
+  const pledgesBehind = pledges.filter((pledge) => isPledgeBehind(pledge, transactions, period.throughDate));
 
   return {
     missedGiftAidCount: giftAidEnabled ? missedGiftAid.length : null,
     missedGiftAidValue: giftAidEnabled ? roundMoney(sumAmounts(missedGiftAid) * 0.25) : null,
     pledgesBehindCount: pledgesBehind.length,
   };
-}
-
-function isPledgeSatisfiedByTransaction(
-  pledge: DashboardPledge,
-  transaction: DashboardTransaction
-) {
-  if (transaction.type !== "Income") {
-    return false;
-  }
-
-  if (transaction.pledgeId) {
-    return transaction.pledgeId === pledge._id;
-  }
-
-  if (transaction.donorId && pledge.donorId && transaction.donorId === pledge.donorId) {
-    return true;
-  }
-
-  return Boolean(
-    transaction.donorName &&
-      pledge.donorName &&
-      transaction.donorName === pledge.donorName
-  );
 }
 
 function buildFundBalances(funds: DashboardFund[], transactions: DashboardTransaction[]) {

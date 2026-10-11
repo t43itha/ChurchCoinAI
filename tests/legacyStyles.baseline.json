@@ -4,7 +4,6 @@
   "components/BillingSettings.tsx": 4,
   "components/Campaigns.tsx": 9,
   "components/DataPrivacySettings.tsx": 2,
-  "components/DonorManager.tsx": 15,
   "components/ErrorBoundary.tsx": 2,
   "components/FundManager.tsx": 5,
   "components/Loans.tsx": 6,

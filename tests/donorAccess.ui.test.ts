@@ -26,23 +26,23 @@ function renderDonors(role: UserRole) {
 }
 
 describe("Donors page permissions", () => {
-  it("shows Pastorate the directory and history without editing controls", () => {
+  it("shows Pastorate the directory and profile without editing controls", () => {
     const html = renderDonors("Pastorate");
     expect(html).toContain("Alex Smith");
-    expect(html).toContain("Giving Schedules");
+    expect(html).toContain("Given in");
     expect(html).not.toContain("Access Restricted");
     expect(html).not.toContain("Add donor");
     expect(html).not.toContain("Find duplicates");
     expect(html).not.toContain("Select donors to merge");
-    expect(html).not.toContain(">Edit</span>");
-    expect(html).not.toContain("+ New");
+    expect(html).not.toContain(">Edit<");
+    expect(html).not.toContain("+ New schedule");
   });
 
   it("keeps Guest blocked even when donor props are supplied", () => {
     const html = renderDonors("Guest");
     expect(html).toContain("Access Restricted");
     expect(html).not.toContain("Alex Smith");
-    expect(html).not.toContain("Donor Directory");
+    expect(html).not.toContain("Donor directory");
   });
 
   it.each<UserRole>(["Admin", "Finance Team"])("keeps the finance editing controls for %s", (role) => {
@@ -50,7 +50,7 @@ describe("Donors page permissions", () => {
     expect(html).toContain("Alex Smith");
     expect(html).toContain("Add donor");
     expect(html).toContain("Find duplicates");
-    expect(html).toContain(">Edit</span>");
-    expect(html).toContain("+ New");
+    expect(html).toContain("Select donors to merge");
+    expect(html).toContain(">Edit<");
   });
 });
