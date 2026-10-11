@@ -25,6 +25,7 @@ import {
   validateSupportTicketInput,
 } from "../lib/supportTickets";
 import { takeSupportDraft } from "../lib/supportDraft";
+import { btnMd, btnOutline, btnPrimary } from "./wizard/ui";
 
 type SupportCenterProps = {
   open: boolean;
@@ -270,7 +271,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                 <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-sage/20 bg-[#eef3ee] text-sage-dark">
                   <TicketCheck size={27} strokeWidth={1.8} />
                 </span>
-                <p className="mt-5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-sage-dark">
+                <p className="mt-5 text-[13px] font-bold text-sage-dark">
                   Request submitted
                 </p>
                 <h3 className="mt-2 text-[22px] font-bold tracking-tight text-ink">
@@ -287,14 +288,14 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                       setSubmittedReference(null);
                       setView("requests");
                     }}
-                    className="btn-primary inline-flex min-h-10 items-center gap-2 px-4 text-[12px] font-bold"
+                    className={`${btnPrimary} h-11 !w-auto gap-2 px-5 text-sm`}
                   >
                     View my requests <ChevronRight size={14} />
                   </button>
                   <button
                     type="button"
                     onClick={closeAndReset}
-                    className="btn-outline min-h-10 px-4 text-[12px] font-bold"
+                    className={`${btnOutline} h-11 !w-auto px-5 text-sm`}
                   >
                     Close
                   </button>
@@ -303,7 +304,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
             ) : (
               <form onSubmit={handleSubmit} className="ledger-space-y-6 p-5 sm:p-6">
                 <fieldset>
-                  <legend className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
+                  <legend className="mb-2.5 text-[10px] text-[12px] font-bold text-grey-dark">
                     What can we help with?
                   </legend>
                   <div className="grid gap-2.5 sm:grid-cols-3">
@@ -340,7 +341,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="sm:col-span-2">
-                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
+                    <span className="mb-1.5 block text-[10px] text-[12px] font-bold text-grey-dark">
                       Short title
                     </span>
                     <input
@@ -355,7 +356,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                   </label>
 
                   <label className="sm:col-span-2">
-                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
+                    <span className="mb-1.5 block text-[10px] text-[12px] font-bold text-grey-dark">
                       What happened?
                     </span>
                     <textarea
@@ -374,7 +375,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                   {form.type === "bug" && (
                     <>
                       <label>
-                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
+                        <span className="mb-1.5 block text-[10px] text-[12px] font-bold text-grey-dark">
                           What did you expect?
                         </span>
                         <textarea
@@ -389,7 +390,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                         />
                       </label>
                       <label>
-                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
+                        <span className="mb-1.5 block text-[10px] text-[12px] font-bold text-grey-dark">
                           Steps to reproduce
                         </span>
                         <textarea
@@ -408,7 +409,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                 </div>
 
                 <fieldset>
-                  <legend className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.09em] text-grey-mid">
+                  <legend className="mb-2.5 text-[10px] text-[12px] font-bold text-grey-dark">
                     How much is this affecting you?
                   </legend>
                   <div className="flex flex-wrap gap-2">
@@ -452,7 +453,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-5 text-[12px] font-bold disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`${btnPrimary} ${btnMd} !w-auto px-5 disabled:cursor-not-allowed disabled:opacity-50`}
                   >
                     {isSubmitting ? (
                       <Loader2 size={15} className="animate-spin" />
@@ -482,7 +483,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                   <button
                     type="button"
                     onClick={() => setView("new")}
-                    className="btn-primary mt-5 px-4 py-2.5 text-[11px] font-bold"
+                    className={`${btnPrimary} mt-5 h-11 !w-auto px-5 text-sm`}
                   >
                     Create a request
                   </button>
@@ -508,7 +509,7 @@ const SupportCenter: React.FC<SupportCenterProps> = ({ open, onClose }) => {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.08em] text-grey-mid">
+                            <span className="text-[11px] font-bold text-grey-mid">
                               {ticket.reference}
                             </span>
                             <span className="h-1 w-1 rounded-full bg-ledger" />

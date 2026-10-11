@@ -1,6 +1,7 @@
 import React from "react";
 import { captureRenderError } from "../lib/monitoring";
 import { storeSupportDraft } from "../lib/supportDraft";
+import { btnMd, btnOutline, btnPrimary } from "./wizard/ui";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -49,25 +50,21 @@ class ErrorBoundary extends React.Component<
         <div className="max-w-lg w-full bg-white border border-ledger rounded-xl shadow-soft-md p-6">
           <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
           <p className="text-sm text-grey-dark mb-4">
-            The app hit an unexpected error and could not continue rendering.
+            The app hit an unexpected error and couldn't keep going.
           </p>
-          <p className="text-xs font-mono bg-paper border border-ledger rounded-sm p-3 mb-5 break-words">
+          <p className="text-xs font-mono bg-paper border border-ledger rounded-2xl p-3 mb-5 break-words">
             {this.state.errorMessage}
           </p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={this.reportProblem}
-              className="btn-primary px-4 py-2 text-sm font-bold"
-            >
+          <div className="grid gap-2.5 sm:flex sm:flex-wrap">
+            <button type="button" onClick={this.reportProblem} className={`${btnPrimary} ${btnMd} !w-auto px-5`}>
               Report this problem
             </button>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="btn-outline px-4 py-2 text-sm font-bold"
+              className={`${btnOutline} ${btnMd} !w-auto px-5`}
             >
-              Reload application
+              Reload the app
             </button>
           </div>
         </div>
