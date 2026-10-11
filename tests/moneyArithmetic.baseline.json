@@ -1,5 +1,4 @@
 {
-  "components/TransactionManager.tsx": 2,
   "convex/actions/ai.ts": 1,
   "convex/intelligence/generateInsights.ts": 4,
   "convex/mutations/cashBankingReconciliations.ts": 2,
