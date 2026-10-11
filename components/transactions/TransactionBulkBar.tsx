@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { Loader2, Sparkles, X } from "lucide-react";
 import type { Fund } from "../../types";
 import { chipDark } from "../wizard/ui";
+import { tabBarClearance } from "../app/MobileTabBar";
 
 interface TransactionBulkBarProps {
   count: number;
@@ -31,7 +32,7 @@ export default function TransactionBulkBar({
     <div
       role="region"
       aria-label="Selected transactions"
-      className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 flex-wrap items-center gap-2.5 rounded-2xl bg-ink p-3 text-white shadow-soft-lg"
+      className={`fixed ${tabBarClearance} md:bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 flex-wrap items-center gap-2.5 rounded-2xl bg-ink p-3 text-white shadow-soft-lg`}
     >
       <p className="mr-auto whitespace-nowrap pl-1 font-mono text-sm font-semibold">{count} selected</p>
       <button type="button" onClick={onAutoCategorise} disabled={busy} className={`${chipDark} gap-2 bg-ink disabled:opacity-60`}>
