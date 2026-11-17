@@ -8,6 +8,7 @@ import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
 import { seedOrganizationCategories } from "../lib/categoryIntegrity";
 import { getLaunchFeatures } from "../lib/launchFeatures";
+import { hasLiveSubscription } from "../lib/access";
 import type { Id } from "../_generated/dataModel";
 
 const DEMO_SEED_VERSION = "uk-church-v1";
@@ -279,8 +280,8 @@ export const create = mutation({
 });
 
 // Run once after setting BILLING_ENABLED=true, repeating with the returned
-// cursor until isDone. Every subscription church that never had a trial or a
-// subscription gets a full trial from now; churches already started are skipped.
+// cursor until isDone. Every subscription church that never had a trial and has no
+// live subscription gets a full trial from now; churches already started are skipped.
 export const startTrialsAfterEarlyAccess = internalMutation({
   args: { cursor: v.optional(v.union(v.string(), v.null())) },
   handler: async (ctx, { cursor }) => {
@@ -293,12 +294,19 @@ export const startTrialsAfterEarlyAccess = internalMutation({
       .paginate({ numItems: 100, cursor: cursor ?? null });
     let started = 0;
     for (const organization of page.page) {
-      if (organization.accessMode !== "subscription" || organization.trialStatus !== undefined) continue;
+      if (
+        organization.accessMode !== "subscription" ||
+        organization.trialStatus !== undefined ||
+        organization.billingStartedAt !== undefined
+      ) {
+        continue;
+      }
       const subscription = await ctx.db
         .query("subscriptions")
         .withIndex("by_organization", (q) => q.eq("organizationId", organization._id))
         .first();
-      if (subscription) continue;
+      await ctx.db.patch(organization._id, { billingStartedAt: now });
+      if (hasLiveSubscription(subscription)) continue;
       await startProductTrial(ctx, organization._id, now);
       started += 1;
     }

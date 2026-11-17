@@ -211,9 +211,20 @@ describe("the gap after billing is switched on", () => {
     expect(access.state).toBe("payment_required");
   });
 
-  it("does not reopen a church whose subscription lapsed", async () => {
+  it("keeps a church open whose old subscription ended before billing came back", async () => {
     const access = await resolve(
       subscriptionOrg,
+      { status: "canceled", plan: "growing", updatedAt: NOW, currentPeriodEnd: NOW },
+      { features: BILLING_ON }
+    );
+
+    expect(access.state).toBe("early_access");
+    expect(access.canUseApp).toBe(true);
+  });
+
+  it("does not reopen a church whose subscription lapsed after billing came back", async () => {
+    const access = await resolve(
+      { ...subscriptionOrg, billingStartedAt: NOW - 86_400_000 },
       { status: "canceled", plan: "growing", updatedAt: NOW, currentPeriodEnd: NOW },
       { features: BILLING_ON }
     );

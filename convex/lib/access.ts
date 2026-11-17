@@ -21,6 +21,19 @@ export type OrganizationAccessState =
 
 type AccessCtx = QueryCtx | MutationCtx;
 
+// A subscription Stripe is still billing or collecting. Any other status (canceled,
+// incomplete_expired, unpaid, paused) has ended, so it no longer stands in for a trial.
+const LIVE_SUBSCRIPTION_STATUSES: ReadonlySet<Doc<"subscriptions">["status"]> = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "incomplete",
+]);
+
+export function hasLiveSubscription(subscription: Pick<Doc<"subscriptions">, "status"> | null): boolean {
+  return subscription !== null && LIVE_SUBSCRIPTION_STATUSES.has(subscription.status);
+}
+
 export async function resolveOrganizationAccess(
   ctx: AccessCtx,
   user: Doc<"users">,
@@ -191,9 +204,14 @@ export async function resolveOrganizationAccess(
     };
   }
 
-  // A church that joined during early access has no trial until
-  // startTrialsAfterEarlyAccess runs; keep it open between the flag flip and that run.
-  if (!subscription && organization.trialStatus === undefined) {
+  // A church in early access has no trial until startTrialsAfterEarlyAccess runs;
+  // keep it open between the flag flip and that run. A subscription that ended
+  // before then does not count, but one that ends afterwards does.
+  if (
+    organization.trialStatus === undefined &&
+    organization.billingStartedAt === undefined &&
+    !hasLiveSubscription(subscription)
+  ) {
     return earlyAccess("trial_not_started");
   }
 

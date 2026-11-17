@@ -81,12 +81,19 @@ describe("startTrialsAfterEarlyAccess", () => {
     church("early-a"),
     church("early-b"),
     church("paying"),
+    church("cancelled"),
+    church("checkout-lapsed"),
     church("on-trial", { trialStatus: "active", trialStartedAt: NOW - DAY, trialEndsAt: NOW + 13 * DAY }),
     church("trial-over", { trialStatus: "expired", trialStartedAt: NOW - 20 * DAY, trialEndsAt: NOW - 6 * DAY }),
     church("legacy", { accessMode: "legacy" }),
     church("demo", { accessMode: "demo", dataMode: "synthetic" }),
   ];
-  const subscriptions = [{ _id: "sub", organizationId: "paying", status: "active", plan: "growing" }];
+  // "cancelled" mirrors the live church whose Stripe test subscription was cancelled before early access.
+  const subscriptions = [
+    { _id: "sub", organizationId: "paying", status: "active", plan: "growing" },
+    { _id: "sub-cancelled", organizationId: "cancelled", status: "canceled", plan: "starter" },
+    { _id: "sub-lapsed", organizationId: "checkout-lapsed", status: "incomplete_expired", plan: "starter" },
+  ];
 
   it("refuses to run while billing is still off", async () => {
     vi.stubEnv("BILLING_ENABLED", "");
@@ -100,23 +107,40 @@ describe("startTrialsAfterEarlyAccess", () => {
     const { ctx, get } = fixture({ organizations: churches(), subscriptions });
     const before = Object.fromEntries(churches().map((row) => [row._id, { ...get(row._id) }]));
 
-    // Before the run, early-access churches are still open rather than paywalled.
-    expect((await access(ctx, "early-a")).canUseApp).toBe(true);
+    // Before the run, early-access churches are still open rather than paywalled,
+    // including one whose old subscription has ended.
+    for (const id of ["early-a", "cancelled", "checkout-lapsed"]) {
+      expect((await access(ctx, id)).canUseApp).toBe(true);
+    }
 
     const result = await invoke(startTrialsAfterEarlyAccess, ctx, {});
 
-    expect(result).toMatchObject({ started: 2, isDone: true });
-    for (const id of ["early-a", "early-b"]) {
+    expect(result).toMatchObject({ started: 4, isDone: true });
+    for (const id of ["early-a", "early-b", "cancelled", "checkout-lapsed"]) {
       expect(get(id)).toMatchObject({ trialStatus: "active", trialStartedAt: NOW, trialEndsAt: NOW + PRODUCT_TRIAL_DURATION_MS });
       const after = await access(ctx, id);
       expect(after.state).toBe("active_trial");
       expect(after.expiresAt).toBe(NOW + PRODUCT_TRIAL_DURATION_MS);
     }
-    for (const id of ["paying", "on-trial", "trial-over", "legacy", "demo"]) {
+    // A paying church keeps its subscription; only the hand-off is recorded.
+    expect(get("paying")).toEqual({ ...before.paying, billingStartedAt: NOW });
+    for (const id of ["on-trial", "trial-over", "legacy", "demo"]) {
       expect(get(id)).toEqual(before[id]);
     }
-    expect(ctx.scheduler.runAt).toHaveBeenCalledTimes(2);
+    expect(ctx.scheduler.runAt).toHaveBeenCalledTimes(4);
     expect(ctx.scheduler.runAt).toHaveBeenCalledWith(NOW + PRODUCT_TRIAL_DURATION_MS, expect.anything(), { organizationId: "early-a" });
+  });
+
+  it("paywalls a church that was paying at switch-on and cancels afterwards", async () => {
+    vi.stubEnv("BILLING_ENABLED", "true");
+    const lapsing = subscriptions.map((row) => ({ ...row }));
+    const { ctx } = fixture({ organizations: churches(), subscriptions: lapsing });
+    await invoke(startTrialsAfterEarlyAccess, ctx, {});
+
+    lapsing[0].status = "canceled";
+    const { ctx: later } = fixture({ organizations: churches().map((row) => (row._id === "paying" ? { ...row, billingStartedAt: NOW } : row)), subscriptions: lapsing });
+
+    expect((await access(later, "paying")).state).toBe("payment_required");
   });
 
   it("is idempotent: a second run, even days later, starts nothing and moves no dates", async () => {
@@ -129,7 +153,7 @@ describe("startTrialsAfterEarlyAccess", () => {
 
     expect(second).toMatchObject({ started: 0 });
     expect(get("early-a")?.trialEndsAt).toBe(NOW + PRODUCT_TRIAL_DURATION_MS);
-    expect(ctx.scheduler.runAt).toHaveBeenCalledTimes(2);
+    expect(ctx.scheduler.runAt).toHaveBeenCalledTimes(4);
   });
 
   it("works through every church a page at a time", async () => {
