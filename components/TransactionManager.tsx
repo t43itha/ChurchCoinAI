@@ -458,10 +458,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       if (t && matchedPledge) {
           try {
+              // The server names the gift after the pledge's donor.
               const result = await updateTransaction({
                   transactionId: t._id as Id<"transactions">,
-                  pledgeId: matchedPledge._id as Id<"pledges">, // Use the actual pledge ID from our data
-                  donorName: match.donorName || matchedPledge.donorName || t.donorName
+                  pledgeId: matchedPledge._id as Id<"pledges">,
               });
               // Check if pledge was completed
               if (result?.pledgeCompleted && onPledgeCompleted) {

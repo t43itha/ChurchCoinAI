@@ -28,7 +28,8 @@ import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
 import { effectiveCategories } from "../../lib/transactionCategories";
-import { acceptedMatches, fitSmartLinkPrompt, type SmartLinkPage } from "../../lib/smartLink";
+import { acceptedMatches, type SmartLinkPage } from "../../lib/smartLink";
+import { smartLinkCursorValidator } from "../queries/pledges";
 
 // Initialize Gemini AI with server-side API key
 const getAI = () => {
@@ -877,33 +878,31 @@ export const generateInsights = action({
 });
 
 // Smart Link: suggests links between unlinked income and open pledges, one
-// bounded page at a time. Candidates are income dated on or after the earliest
-// open pledge, oldest first; `after` continues from the previous page, and
-// `remaining` says how many are still to check.
+// bounded request at a time (see planSmartLinkRequest). `after` continues from
+// the previous request, and `remaining` says how many gifts are still to check.
 export const reconcilePledges = action({
   args: {
-    after: v.optional(v.object({ date: v.string(), transactionId: v.id("transactions") })),
+    after: v.optional(smartLinkCursorValidator),
   },
   handler: async (ctx, args): Promise<SmartLinkPage> => {
     limitAIInput(args);
     const user = await requireUser(ctx, "ledger.write", 0);
     const { internal } = await import("../_generated/api");
-    const page = await ctx.runQuery(internal.queries.pledges.smartLinkCandidates, {
+    const request = await ctx.runQuery(internal.queries.pledges.smartLinkCandidates, {
       organizationId: user.organizationId,
       after: args.after,
     });
-    if (page.gifts.length === 0) return { matches: [], remaining: 0, nextCursor: null };
+    if (!request) return { matches: [], remaining: 0, nextCursor: null };
 
-    const { prompt, included } = fitSmartLinkPrompt(page.pledges, page.gifts);
     // One unit per gift and pledge sent: the work the model is asked to do.
-    await chargeAIUnits(ctx, user, requestUnits(included.length + page.pledges.length));
+    await chargeAIUnits(ctx, user, requestUnits(request.rows));
     const ai = getAI();
 
     let text: string | undefined;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: prompt,
+        contents: request.prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -928,12 +927,11 @@ export const reconcilePledges = action({
       throw new Error("Smart Link could not check these gifts. Please try again.", { cause: e });
     }
 
-    const last = included[included.length - 1];
-    const remaining = page.total - included.length;
+    const raw = text ? safeJsonParse<unknown>(text, "reconcilePledges response") : [];
     return {
-      matches: acceptedMatches(text ? safeJsonParse<unknown>(text, "reconcilePledges response") : [], page.pledges, included),
-      remaining,
-      nextCursor: remaining > 0 ? { date: last.date, transactionId: last.id } : null,
+      matches: acceptedMatches(raw, request.pledges, request.giftIds),
+      remaining: request.remaining,
+      nextCursor: request.nextCursor,
     };
   },
 });

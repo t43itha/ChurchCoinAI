@@ -6,14 +6,8 @@ import {
   sumReportableIncome,
 } from "../../lib/reportableTransactions";
 import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
-import {
-  compareGifts,
-  earliestPledgeStart,
-  giftForMatching,
-  isAfterCursor,
-  openPledgesForMatching,
-  SMART_LINK_LIMITS,
-} from "../../lib/smartLink";
+import { earliestPledgeStart, planSmartLinkRequest, smartLinkPageSizes } from "../../lib/smartLink";
+import { aiUsageLimits } from "../lib/aiValidation";
 import { roundMoney } from "../lib/money";
 
 // List all pledges
@@ -141,36 +135,38 @@ export const getWithProgress = query({
   },
 });
 
-// One page of Smart Link candidates: unlinked income dated on or after the
-// earliest open pledge, oldest first after `after`, with the open pledges.
-// The action has already checked the caller may run Smart Link.
+// Where Smart Link's next request starts (lib/smartLink SmartLinkCursor). Ids
+// are only compared, never loaded, so they are plain strings.
+const pledgeKeyValidator = v.object({ createdAt: v.number(), pledgeId: v.string() });
+export const smartLinkCursorValidator = v.object({
+  pledgesAfter: v.optional(pledgeKeyValidator),
+  pledgesThrough: v.optional(pledgeKeyValidator),
+  giftsAfter: v.optional(v.object({ date: v.string(), transactionId: v.string() })),
+});
+
+// The next Smart Link request for a church: a batch of open pledges and a
+// page of unlinked income dated on or after the earliest of them, continuing
+// from `after`. Null when nothing is left to check. The action has already
+// checked the caller may run Smart Link.
 export const smartLinkCandidates = internalQuery({
   args: {
     organizationId: v.id("organizations"),
-    after: v.optional(v.object({ date: v.string(), transactionId: v.id("transactions") })),
+    after: v.optional(smartLinkCursorValidator),
   },
   handler: async (ctx, args) => {
-    const pledges = openPledgesForMatching(
-      await ctx.db
-        .query("pledges")
-        .withIndex("by_organization_status", (q) => q.eq("organizationId", args.organizationId).eq("status", "Active"))
-        .collect()
-    );
-    if (pledges.length === 0) return { pledges, gifts: [], total: 0 };
+    const pledges = await ctx.db
+      .query("pledges")
+      .withIndex("by_organization_status", (q) => q.eq("organizationId", args.organizationId).eq("status", "Active"))
+      .collect();
+    if (pledges.length === 0) return null;
 
-    const from = earliestPledgeStart(pledges);
     const rows = await ctx.db
       .query("transactions")
-      .withIndex("by_organization_date", (q) => q.eq("organizationId", args.organizationId).gte("date", from))
+      .withIndex("by_organization_date", (q) =>
+        q.eq("organizationId", args.organizationId).gte("date", earliestPledgeStart(pledges))
+      )
       .collect();
-    const candidates = rows
-      .filter((t) => t.pledgeId == null && isReportableIncomeTransaction(t) && isAfterCursor(t, args.after))
-      .sort(compareGifts);
-
-    return {
-      pledges,
-      gifts: candidates.slice(0, SMART_LINK_LIMITS.pageRows).map(giftForMatching),
-      total: candidates.length,
-    };
+    const gifts = rows.filter((t) => t.pledgeId == null && isReportableIncomeTransaction(t));
+    return planSmartLinkRequest(pledges, gifts, args.after, smartLinkPageSizes(aiUsageLimits()));
   },
 });

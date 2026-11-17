@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
 import { notify } from "../../lib/notifications";
 import type { SmartLinkCursor, SmartLinkMatch, SmartLinkPage } from "../../lib/smartLink";
 import { errorMessage } from "../transactions/transactionView";
@@ -30,9 +29,7 @@ export function useSmartLink() {
     const cursor = continued ? state.cursor : null;
     setIsChecking(true);
     try {
-      const page = await reconcile(
-        cursor ? { after: { date: cursor.date, transactionId: cursor.transactionId as Id<"transactions"> } } : {}
-      );
+      const page = await reconcile(cursor ? { after: cursor } : {});
       setState((previous) => addSmartLinkPage(previous, page, continued));
       return page;
     } catch (error) {

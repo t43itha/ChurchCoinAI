@@ -40,12 +40,12 @@ describe("Smart Link suggestions", () => {
   });
 
   it("keeps earlier suggestions when checking more, and starts afresh on a new run", () => {
-    const first = addSmartLinkPage(EMPTY_SMART_LINK, { matches: [match], remaining: 300, nextCursor: { date: "2026-01-01", transactionId: "t1" } }, false);
+    const first = addSmartLinkPage(EMPTY_SMART_LINK, { matches: [match], remaining: 300, nextCursor: { giftsAfter: { date: "2026-01-01", transactionId: "t1" } } }, false);
     const later = { ...match, transactionId: "t2" };
     const second = addSmartLinkPage(first, { matches: [later], remaining: 0, nextCursor: null }, true);
     expect(second).toEqual({ matches: [match, later], remaining: 0, cursor: null });
-    expect(addSmartLinkPage(second, { matches: [], remaining: 5, nextCursor: { date: "2026-02-01", transactionId: "t9" } }, false))
-      .toEqual({ matches: [], remaining: 5, cursor: { date: "2026-02-01", transactionId: "t9" } });
+    expect(addSmartLinkPage(second, { matches: [], remaining: 5, nextCursor: { giftsAfter: { date: "2026-02-01", transactionId: "t9" } } }, false))
+      .toEqual({ matches: [], remaining: 5, cursor: { giftsAfter: { date: "2026-02-01", transactionId: "t9" } } });
   });
 });
 

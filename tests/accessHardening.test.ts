@@ -4,7 +4,7 @@ import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionCtx, MutationCtx } from "../convex/_generated/server";
 import { ROLES, can, type Capability, type UserRole } from "../lib/permissions";
-import { fixture, invoke, type Row } from "./helpers/convexFixture";
+import { fixture, invoke, row as transactionRow, type Row } from "./helpers/convexFixture";
 import * as ai from "../convex/actions/ai";
 import { checkAndConsume, consumeBackgroundUnits } from "../convex/mutations/aiRateLimit";
 import { acceptInvitation, updateProfile } from "../convex/mutations/users";
@@ -17,7 +17,7 @@ import * as bankQueries from "../convex/queries/bankConnections";
 import * as plaidQueries from "../convex/queries/plaid";
 import * as cashQueries from "../convex/queries/cashCollections";
 import * as subscriptionQueries from "../convex/queries/subscriptions";
-import { batchIndexTransactions, indexTransaction, updateInIndex } from "../convex/intelligence/ragIndexer";
+import { batchIndexTransactions, currentEntries, indexTransaction, updateInIndex } from "../convex/intelligence/ragIndexer";
 import { upsertAccepted } from "../convex/intelligence/categorizationMemory";
 import { deleteOrganization } from "../convex/actions/organizations";
 import { transactionRAG } from "../convex/lib/ragInstance";
@@ -76,11 +76,7 @@ function actionContext(role: UserRole, charge: () => Promise<unknown> = async ()
       return { user: { _id: "user", clerkId: "clerk", organizationId: "org", role }, access: { canUseApp: true } };
     }
     if (getFunctionName(reference) === "queries/pledges:smartLinkCandidates") {
-      return {
-        pledges: [{ id: "p1", donorName: "Alex", amount: 10, frequency: "Monthly", startDate: "2026-01-01" }],
-        gifts: [{ id: "t1", date: "2026-02-01", description: "SO ALEX", amount: 10 }],
-        total: 1,
-      };
+      return { prompt: "Match these", giftIds: ["t1"], pledges: [{ id: "p1", donorName: "Alex" }], rows: 2, remaining: 0, nextCursor: null };
     }
     return { giftAidEnabled: true };
   });
@@ -418,22 +414,27 @@ describe("data export for a locked-out church", () => {
 
 // ---------------------------------------------------------------- A9
 describe("A9: indexing after erasure", () => {
-  const entry = {
-    transactionId: "tx", searchText: "TITHE A SMITH",
-    metadata: { category: "Tithes", fundId: "fund", type: "Income", donorName: "Alex Smith", amount: 10 },
-  };
-  const actionCtx = (organization: Row | null) =>
+  const transactions = [transactionRow("tx", { description: "TITHE A SMITH", category: "Tithes", donorName: "Alex Smith" })];
+  const actionCtx = (organization: Row | null) => {
+    const { ctx: db } = fixture({ transactions });
     // The budget charge passes, so these cases test the per-entry erasure check.
-    ({ runQuery: vi.fn(async () => organization), runAction: vi.fn(), runMutation: vi.fn(async () => ({ status: "charged" })) }) as unknown as ActionCtx;
+    return {
+      runQuery: vi.fn(async (reference: Parameters<typeof getFunctionName>[0], args: Record<string, unknown>) =>
+        getFunctionName(reference) === "intelligence/ragIndexer:currentEntries" ? invoke(currentEntries, db, args) : organization !== null),
+      runAction: vi.fn(),
+      runMutation: vi.fn(async () => ({ status: "charged" })),
+    } as unknown as ActionCtx;
+  };
+  const job = { organizationId: "org", transactionIds: ["tx"] };
   const runAction = (fn: unknown, ctx: ActionCtx, args: Record<string, unknown>) =>
     (fn as { _handler: (ctx: ActionCtx, args: unknown) => Promise<unknown> })._handler(ctx, args);
 
   it("does not recreate search entries for an erased church", async () => {
     const add = vi.spyOn(transactionRAG, "add").mockResolvedValue({} as never);
-    await runAction(batchIndexTransactions, actionCtx(null), { organizationId: "org", transactions: [entry] });
-    await runAction(indexTransaction, actionCtx(null), { organizationId: "org", ...entry });
+    await runAction(batchIndexTransactions, actionCtx(null), job);
+    await runAction(indexTransaction, actionCtx(null), { organizationId: "org", transactionId: "tx" });
     expect(add).not.toHaveBeenCalled();
-    await runAction(batchIndexTransactions, actionCtx({ _id: "org" }), { organizationId: "org", transactions: [entry] });
+    await runAction(batchIndexTransactions, actionCtx({ _id: "org" }), job);
     expect(add).toHaveBeenCalledTimes(1);
   });
 
@@ -471,16 +472,19 @@ describe("Import indexing spends the AI budget", () => {
     vi.useFakeTimers({ now: new Date("2026-11-17T12:00:05Z") });
   });
   const untilTomorrow = Date.parse("2026-11-18T00:00:00Z") - Date.parse("2026-11-17T12:00:05Z");
-  const entries = (count: number) => Array.from({ length: count }, (_, i) => ({
-    transactionId: `tx-${i}`, searchText: `TITHE ${i}`,
-    metadata: { category: "Tithes", fundId: "fund", type: "Income", amount: 10 },
-  }));
-  // Runs the indexer with its budget mutation against an in-memory database.
+  const ids = (count: number) => Array.from({ length: count }, (_, i) => `tx-${i}`);
+  // Runs the indexer with its budget mutation against an in-memory database
+  // holding 50 transactions.
   const indexer = (aiRateLimits: Row[] = []) => {
-    const db = fixture({ aiRateLimits, aiDailyUsage: [] });
+    const db = fixture({
+      aiRateLimits,
+      aiDailyUsage: [],
+      transactions: ids(50).map((id) => transactionRow(id, { description: `TITHE ${id}`, category: "Tithes" })),
+    });
     const runAfter = vi.fn(async () => "job");
     const ctx = {
-      runQuery: vi.fn(async () => ({ _id: "org" })),
+      runQuery: vi.fn(async (reference: Parameters<typeof getFunctionName>[0], args: Record<string, unknown>) =>
+        getFunctionName(reference) === "intelligence/ragIndexer:currentEntries" ? invoke(currentEntries, db.ctx, args) : true),
       runMutation: vi.fn(async (reference: Parameters<typeof getFunctionName>[0], args: Record<string, unknown>) => {
         expect(getFunctionName(reference)).toBe("mutations/aiRateLimit:consumeBackgroundUnits");
         return invoke(consumeBackgroundUnits, db.ctx, args);
@@ -496,7 +500,7 @@ describe("Import indexing spends the AI budget", () => {
 
   it("charges each indexed entry against the church's and the deployment's day", async () => {
     const { ctx, add, runAfter, records } = indexer();
-    await runAction(batchIndexTransactions, ctx, { organizationId: "org", transactions: entries(3) });
+    await runAction(batchIndexTransactions, ctx, { organizationId: "org", transactionIds: ids(3) });
     expect(add).toHaveBeenCalledTimes(3);
     expect(churchDay(records)).toBe(3);
     expect(records.aiDailyUsage[0].units).toBe(3);
@@ -508,23 +512,23 @@ describe("Import indexing spends the AI budget", () => {
     const { ctx, add, runAfter, records } = indexer([
       { _id: "window", organizationId: "org", windowStart: 0, requestCount: 0, day: "2026-11-17", dayUnits: 9_975, updatedAt: 0 },
     ]);
-    const result = await runAction(batchIndexTransactions, ctx, { organizationId: "org", transactions: entries(50) });
+    const result = await runAction(batchIndexTransactions, ctx, { organizationId: "org", transactionIds: ids(50) });
     expect(add).toHaveBeenCalledTimes(20);
     expect(churchDay(records)).toBe(9_995);
     expect(result).toMatchObject({ total: 50, successful: 20, failed: 0, deferred: 30 });
     expect(runAfter).toHaveBeenCalledTimes(1);
-    const [delay, reference, args] = runAfter.mock.calls[0] as unknown as [number, Parameters<typeof getFunctionName>[0], { transactions: Array<{ transactionId: string }> }];
+    const [delay, reference, args] = runAfter.mock.calls[0] as unknown as [number, Parameters<typeof getFunctionName>[0], { transactionIds: string[] }];
     expect(delay).toBe(untilTomorrow);
     expect(getFunctionName(reference)).toBe("intelligence/ragIndexer:batchIndexTransactions");
-    expect(args.transactions.map((t) => t.transactionId)).toEqual(entries(50).slice(20).map((t) => t.transactionId));
+    expect(args.transactionIds).toEqual(ids(50).slice(20));
   });
 
   it("defers a category correction's re-index the same way", async () => {
     const { ctx, add, runAfter } = indexer([
       { _id: "window", organizationId: "org", windowStart: 0, requestCount: 0, day: "2026-11-17", dayUnits: 10_000, updatedAt: 0 },
     ]);
-    const args = { organizationId: "org", transactionId: "tx", newSearchText: "TITHE", metadata: { category: "Tithes", fundId: "fund", type: "Income" } };
-    await expect(runAction(updateInIndex, ctx, args)).resolves.toMatchObject({ success: false, deferred: true });
+    const args = { organizationId: "org", transactionId: "tx-0" };
+    await expect(runAction(updateInIndex, ctx, args)).resolves.toMatchObject({ successful: 0, deferred: 1 });
     expect(add).not.toHaveBeenCalled();
     expect(runAfter).toHaveBeenCalledWith(untilTomorrow, expect.anything(), args);
   });

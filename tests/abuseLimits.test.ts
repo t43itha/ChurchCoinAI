@@ -1,11 +1,11 @@
 // Behaviour checks for the cross-review of the access and abuse hardening:
 // per-person limits that survive erasing a church, a deployment-wide
-// invitation cap, the search-index erasure race, and Smart Link's bounded,
-// paged matching.
+// invitation cap, the search-index erasure race and deferred indexing, and
+// Smart Link's bounded, paged matching.
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionCtx, MutationCtx } from "../convex/_generated/server";
-import { fixture, invoke, type Row } from "./helpers/convexFixture";
+import { fixture, invoke, row, type Row } from "./helpers/convexFixture";
 import { ORGANIZATION_DATA_TABLES } from "../lib/organizationData";
 import * as invitationMutations from "../convex/mutations/invitations";
 import * as invitationActions from "../convex/actions/invitations";
@@ -17,8 +17,12 @@ import * as pledgeQueries from "../convex/queries/pledges";
 import * as userQueries from "../convex/queries/users";
 import * as aiRateLimit from "../convex/mutations/aiRateLimit";
 import * as maintenance from "../convex/mutations/scheduledMaintenance";
+import * as transactionMutations from "../convex/mutations/transactions";
 import * as ai from "../convex/actions/ai";
+import * as ragIndexer from "../convex/intelligence/ragIndexer";
 import { batchIndexTransactions, indexTransaction } from "../convex/intelligence/ragIndexer";
+import { getRCICategorySeedData } from "../constants/rciCategories";
+import { aiUsageLimits } from "../convex/lib/aiValidation";
 import { deleteOrganization } from "../convex/actions/organizations";
 import { transactionRAG } from "../convex/lib/ragInstance";
 
@@ -49,6 +53,7 @@ function actionContext(db: MutationCtx, extra: Record<string, unknown> = {}) {
     "mutations/organizations": organizationMutations,
     "mutations/invitations": invitationMutations,
     "mutations/aiRateLimit": aiRateLimit,
+    "intelligence/ragIndexer": ragIndexer,
   };
   const route = async (reference: Parameters<typeof getFunctionName>[0], args?: unknown) => {
     const [path, name] = getFunctionName(reference).split(":");
@@ -206,10 +211,8 @@ describe("invitation resends reserve the email before sending it", () => {
 
 // ---------------------------------------------------------------- R73-2
 describe("search indexing after erasure", () => {
-  const entry = {
-    transactionId: "tx", searchText: "TITHE A SMITH",
-    metadata: { category: "Tithes", fundId: "fund", type: "Income", donorName: "Alex Smith", amount: 10 },
-  };
+  const transactions = [row("tx", { description: "TITHE A SMITH", category: "Tithes", donorName: "Alex Smith" })];
+  const job = { organizationId: "org", transactionIds: ["tx"] };
   // An in-memory search index: namespace name -> entry keys.
   const fakeIndex = () => {
     const namespaces = new Map<string, Set<string>>();
@@ -226,7 +229,7 @@ describe("search indexing after erasure", () => {
   };
 
   it("leaves nothing behind when erasure finishes while an indexer's add is in flight", async () => {
-    const { ctx: db, records } = fixture({ aiRateLimits: [], aiDailyUsage: [] });
+    const { ctx: db, records } = fixture({ aiRateLimits: [], aiDailyUsage: [], transactions });
     records.organizations[0].name = "Church";
     const index = fakeIndex();
     const ctx = actionContext(db, { runAction: index.runAction });
@@ -241,7 +244,7 @@ describe("search indexing after erasure", () => {
       return { entryId: "entry" } as never;
     });
 
-    await handlerOf(batchIndexTransactions)(ctx, { organizationId: "org", transactions: [entry] });
+    await handlerOf(batchIndexTransactions)(ctx, job);
 
     await expect(erasure).resolves.toMatchObject({ success: true });
     expect(records.organizations).toEqual([]);
@@ -260,18 +263,97 @@ describe("search indexing after erasure", () => {
   });
 
   it("adds nothing once erasure has started, while the church row still exists", async () => {
-    const { ctx: db } = fixture({ aiRateLimits: [], aiDailyUsage: [], erasedOrganizations: [{ _id: "mark", organizationId: "org", erasedAt: 1 }] });
+    const { ctx: db } = fixture({ aiRateLimits: [], aiDailyUsage: [], transactions, erasedOrganizations: [{ _id: "mark", organizationId: "org", erasedAt: 1 }] });
     const ctx = actionContext(db, { runAction: fakeIndex().runAction });
     const add = vi.spyOn(transactionRAG, "add").mockResolvedValue({} as never);
-    await handlerOf(batchIndexTransactions)(ctx, { organizationId: "org", transactions: [entry] });
-    await handlerOf(indexTransaction)(ctx, { organizationId: "org", ...entry });
+    await handlerOf(batchIndexTransactions)(ctx, job);
+    await handlerOf(indexTransaction)(ctx, { organizationId: "org", transactionId: "tx" });
     expect(add).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------- deferred indexing
+describe("indexing deferred to tomorrow", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date("2026-11-17T12:00:05Z") });
+  });
+  const [imported, corrected] = ["Offerings", "Thanksgiving"];
+  // The indexing function a scheduled reference names.
+  const indexerJob = (reference: unknown) =>
+    ragIndexer[getFunctionName(reference as never).split(":")[1] as keyof typeof ragIndexer];
+
+  // Imports one gift through the real import mutation while the church's AI
+  // day is spent, then runs the indexing job it schedules, which defers.
+  // `runTomorrow` runs the deferred job as the scheduler would.
+  const importWhileBudgetSpent = async () => {
+    const f = fixture({
+      categories: getRCICategorySeedData().map((category, i) => ({ ...category, _id: `category-${i}`, organizationId: "org" })),
+      aiRateLimits: [{ _id: "window", organizationId: "org", windowStart: 0, requestCount: 0, day: "2026-11-17", dayUnits: 10_000, updatedAt: 0 }],
+      aiDailyUsage: [],
+    });
+    f.records.funds[0].name = "General Fund";
+    await invoke(transactionMutations.bulkCreate, f.ctx, {
+      transactions: [{ date: "2026-11-16", description: "SO G OKAFOR", amount: 50, type: "Income", category: imported, fundId: "fund", donorName: "G Okafor" }],
+    });
+    const [[, importJob, importArgs]] = (f.ctx.scheduler.runAfter as ReturnType<typeof vi.fn>).mock.calls;
+    const runAfter = vi.fn();
+    const ctx = actionContext(f.ctx, { scheduler: { runAfter } });
+    const add = vi.spyOn(transactionRAG, "add").mockResolvedValue({} as never);
+    await handlerOf(indexerJob(importJob))(ctx, importArgs);
+    expect(add).not.toHaveBeenCalled();
+    expect(runAfter).toHaveBeenCalledTimes(1);
+    const [[delay, deferredJob, deferredArgs]] = runAfter.mock.calls;
+    const runTomorrow = async () => {
+      vi.advanceTimersByTime(delay as number);
+      return handlerOf(indexerJob(deferredJob))(ctx, deferredArgs);
+    };
+    return { ...f, add, runTomorrow, transactionId: f.records.transactions[0]._id };
+  };
+  const indexed = (add: ReturnType<typeof vi.spyOn>) =>
+    (add.mock.calls as unknown as Array<[unknown, { key: string; text: string; metadata: Record<string, unknown> }]>).map(([, entry]) => entry);
+
+  it("indexes the transaction as it is when the job runs, not as it was imported", async () => {
+    const { ctx, add, runTomorrow, transactionId } = await importWhileBudgetSpent();
+    await invoke(transactionMutations.update, ctx, { transactionId, category: corrected, donorName: "Grace Okafor" });
+
+    await runTomorrow();
+
+    const [entry] = indexed(add);
+    expect(entry.key).toBe(`tx:${transactionId}`);
+    expect(entry.text).toBe(`SO G OKAFOR | Category: ${corrected} | Type: Income | Donor: Grace Okafor`);
+    expect(entry.metadata).toMatchObject({ category: corrected, donorName: "Grace Okafor" });
+  });
+
+  it.each([
+    ["deleted", (ctx: MutationCtx, transactionId: string) => invoke(transactionMutations.remove, ctx, { transactionId })],
+    ["voided", (ctx: MutationCtx, transactionId: string) =>
+      invoke(transactionMutations.voidTransaction, ctx, { transactionId, reason: "Duplicate" })],
+  ])("does not index a transaction %s before the job runs, or charge for it", async (_change, change) => {
+    const { ctx, add, runTomorrow, transactionId, records } = await importWhileBudgetSpent();
+    await change(ctx, transactionId);
+
+    await runTomorrow();
+
+    expect(add).not.toHaveBeenCalled();
+    expect(records.aiRateLimits[0].day).toBe("2026-11-17");
+  });
+
+  it("ends on the newer state when the row is edited while the job is adding it", async () => {
+    const { ctx, add, runTomorrow, transactionId } = await importWhileBudgetSpent();
+    add.mockImplementationOnce(async () => {
+      await invoke(transactionMutations.update, ctx, { transactionId, donorName: "Grace Okafor" });
+      return {} as never;
+    });
+
+    await runTomorrow();
+
+    expect(indexed(add).at(-1)!.text).toContain("Donor: Grace Okafor");
   });
 });
 
 // ---------------------------------------------------------------- R73-3 + R73-4
 const pledge = (id: string, extra: Record<string, unknown> = {}): Row => ({
-  _id: id, organizationId: "org", donorName: "Grace Okafor", amount: 50, fundId: "fund",
+  _id: id, _creationTime: 0, organizationId: "org", donorName: "Grace Okafor", amount: 50, fundId: "fund",
   frequency: "Monthly", startDate: "2026-01-01", status: "Active", createdAt: 0, ...extra,
 });
 const income = (id: string, date: string, extra: Record<string, unknown> = {}): Row => ({
@@ -329,7 +411,7 @@ describe("Smart Link", () => {
   const church = (pledges: Row[], transactions: Row[]) => {
     const { ctx: db, records } = fixture({ pledges, transactions, aiRateLimits: [], aiDailyUsage: [], usageCounters: [] });
     records.users[0].name = "Pat";
-    return { ctx: actionContext(db), records };
+    return { ctx: actionContext(db), db, records };
   };
 
   it("sends a bounded summary, truncating long stored text, and charges for the rows it sends", async () => {
@@ -407,5 +489,103 @@ describe("Smart Link", () => {
     expect(pages[0].remaining).toBeGreaterThan(0);
     const examined = rows.filter((row) => prompts().some((prompt) => prompt.includes(`"${row._id}"`)));
     expect(examined).toHaveLength(700);
+  });
+
+  // Runs Smart Link to the end as a person would, pressing "Check more" a
+  // minute after the last request.
+  const runToEnd = async (ctx: ActionCtx, between: () => void = () => {}) => {
+    const pages = [await smartLink(ctx)];
+    while (pages.at(-1)!.nextCursor) {
+      expect(pages.length).toBeLessThan(100);
+      between();
+      vi.advanceTimersByTime(61_000);
+      pages.push(await smartLink(ctx, { after: pages.at(-1)!.nextCursor }));
+    }
+    return pages;
+  };
+  const idsIn = (prompt: string, prefix: string) =>
+    [...prompt.matchAll(new RegExp(`"id":"(${prefix}-\\d+)"`, "g"))].map((match) => match[1]);
+  // For each gift sent, every pledge it was sent alongside, across all requests.
+  const pairsChecked = () => {
+    const checked = new Map<string, Set<string>>();
+    for (const prompt of prompts()) {
+      const pledgeIds = idsIn(prompt, "p");
+      for (const giftId of idsIn(prompt, "t")) {
+        const seen = checked.get(giftId) ?? new Set<string>();
+        for (const pledgeId of pledgeIds) seen.add(pledgeId);
+        checked.set(giftId, seen);
+      }
+    }
+    return checked;
+  };
+  const openPledges = (count: number) =>
+    Array.from({ length: count }, (_, i) => pledge(`p-${i}`, { _creationTime: i, startDate: "2025-01-01", donorName: `Donor ${i}` }));
+  const expectWithinDefaultLimits = (ctx: ActionCtx) => {
+    const limits = aiUsageLimits();
+    const units = chargedUnits(ctx);
+    for (const charge of units) expect(charge).toBeLessThanOrEqual(Math.min(limits.userPerMinute, limits.organizationPerMinute));
+    expect(units.reduce((total, charge) => total + charge, 0)).toBeLessThanOrEqual(limits.organizationPerDay);
+  };
+
+  it("checks a gift against all 600 open pledges, every request within one person's minute", async () => {
+    const { ctx } = church(openPledges(600), [income("t-0", "2025-06-01")]);
+
+    const pages = await runToEnd(ctx);
+
+    expect(pages.at(-1)).toMatchObject({ remaining: 0, nextCursor: null });
+    expect(pairsChecked().get("t-0")?.size).toBe(600);
+    expectWithinDefaultLimits(ctx);
+  });
+
+  it("checks every gift against every pledge for 600 pledges and 2,000 gifts within the default limits", async () => {
+    const gifts = Array.from({ length: 2_000 }, (_, i) =>
+      income(`t-${i}`, `2025-${String(1 + (i % 12)).padStart(2, "0")}-${String(1 + (i % 28)).padStart(2, "0")}`));
+    const { ctx } = church(openPledges(600), gifts);
+
+    const pages = await runToEnd(ctx);
+
+    expect(pages.at(-1)).toMatchObject({ remaining: 0, nextCursor: null });
+    expect(pages[0].remaining).toBe(2_000);
+    const checked = pairsChecked();
+    expect(checked.size).toBe(2_000);
+    for (const pledgeIds of checked.values()) expect(pledgeIds.size).toBe(600);
+    for (const prompt of prompts()) expect(prompt.length).toBeLessThan(100_000);
+    expectWithinDefaultLimits(ctx);
+  });
+
+  it("still checks every gift against every open pledge when a confirmed match closes a pledge mid-run", async () => {
+    const pledges = openPledges(400);
+    const { ctx, records } = church(pledges, Array.from({ length: 600 }, (_, i) => income(`t-${i}`, "2025-06-01")));
+
+    await runToEnd(ctx, () => {
+      records.pledges[0].status = "Completed";
+    });
+
+    const checked = pairsChecked();
+    expect(checked.size).toBe(600);
+    const missed = [...checked].flatMap(([giftId, pledgeIds]) =>
+      pledges.slice(1).filter((open) => !pledgeIds.has(open._id)).map((open) => `${giftId}/${open._id}`));
+    expect(missed).toEqual([]);
+  });
+
+  it("saves the pledge donor's full name when a suggestion is confirmed, not the shortened prompt text", async () => {
+    const fullName =
+      "The Okafor-Williamson Family Charitable Trust for the Restoration of St Mary's Bell Tower and Churchyard, given in memory of Emmanuel Okafor";
+    expect(fullName.length).toBeGreaterThan(120);
+    generateContent.mockResolvedValueOnce({ text: JSON.stringify([{ transactionId: "t-1", pledgeId: "p-long", reason: "Same amount" }]) });
+    const { ctx, db, records } = church(
+      [pledge("p-long", { donorName: fullName, donorId: "donor-1" })],
+      [income("t-1", "2026-03-01", { donorName: "OKAFOR W" })]
+    );
+    records.donors = [{ _id: "donor-1", organizationId: "org", name: fullName }];
+
+    const { matches } = await smartLink(ctx);
+    expect(prompts()[0]).not.toContain(fullName);
+    expect(matches[0].donorName).toBe(fullName);
+
+    // What both confirmation screens save: the link alone.
+    await invoke(transactionMutations.update, db, { transactionId: matches[0].transactionId, pledgeId: matches[0].pledgeId });
+
+    expect(records.transactions[0]).toMatchObject({ pledgeId: "p-long", donorName: fullName, donorId: "donor-1" });
   });
 });

@@ -303,11 +303,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
   function handleConfirmMatch(match: PledgeMatch) {
     const t = transactions.find((tr) => tr._id === match.transactionId);
     if (t) {
-      onUpdateTransaction({
-        ...t,
-        pledgeId: match.pledgeId,
-        donorName: match.donorName || t.donorName,
-      });
+      // No donor here: the server names the gift after the pledge's donor.
+      onUpdateTransaction({ ...t, pledgeId: match.pledgeId, donorName: undefined, donorId: undefined });
       smartLink.dismiss(match);
     }
   }
