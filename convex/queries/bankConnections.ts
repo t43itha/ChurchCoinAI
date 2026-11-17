@@ -1,7 +1,8 @@
-import { query, internalQuery } from "../_generated/server";
+import { query, internalQuery, type QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
-import { requireAuth } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
+import { can } from "../../lib/permissions";
 
 const publicAccount = (
   account: Doc<"bankConnections">["accounts"][number]
@@ -34,10 +35,30 @@ const publicConnection = (connection: Doc<"bankConnections">) => ({
   updatedAt: connection.updatedAt,
 });
 
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+const needsAttention = (connection: Doc<"bankConnections">, now: number) =>
+  connection.status === "error" ||
+  connection.status === "consent_expired" ||
+  connection.status === "pending_reauth" ||
+  Boolean(
+    (connection.consentExpiresAt && connection.consentExpiresAt < now + SEVEN_DAYS_MS) ||
+      (connection.consentReconfirmBy && connection.consentReconfirmBy < now + SEVEN_DAYS_MS)
+  );
+
+// Bank names, account details and consent errors are for bank managers.
+// Screens every role opens call these queries too, so other readers get an
+// empty result rather than an error.
+async function bankManager(ctx: QueryCtx) {
+  const user = await requireCapability(ctx, "ledger.read");
+  return can(user.role, "bank.manage") ? user : null;
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await bankManager(ctx);
+    if (!user) return [];
 
     const connections = await ctx.db
       .query("bankConnections")
@@ -50,10 +71,33 @@ export const list = query({
   },
 });
 
+// How current the bank feeds are, without bank or account details, for the
+// dashboard every member sees.
+export const syncStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireCapability(ctx, "ledger.read");
+
+    const connections = await ctx.db
+      .query("bankConnections")
+      .withIndex("by_organization", (q) =>
+        q.eq("organizationId", user.organizationId)
+      )
+      .take(100);
+
+    const now = Date.now();
+    return connections.map((connection) => ({
+      lastSyncAt: connection.lastSyncAt,
+      needsAttention: needsAttention(connection, now),
+    }));
+  },
+});
+
 export const getActiveWithMappedAccounts = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await bankManager(ctx);
+    if (!user) return [];
 
     const connections = await ctx.db
       .query("bankConnections")
@@ -82,7 +126,8 @@ export const getActiveWithMappedAccounts = query({
 export const getItemsNeedingAttention = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await bankManager(ctx);
+    if (!user) return [];
 
     const connections = await ctx.db
       .query("bankConnections")
@@ -92,25 +137,9 @@ export const getItemsNeedingAttention = query({
       .take(100);
 
     const now = Date.now();
-    const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
 
     return connections
-      .filter((connection) => {
-        if (
-          connection.status === "error" ||
-          connection.status === "consent_expired" ||
-          connection.status === "pending_reauth"
-        ) {
-          return true;
-        }
-
-        return Boolean(
-          (connection.consentExpiresAt &&
-            connection.consentExpiresAt < sevenDaysFromNow) ||
-            (connection.consentReconfirmBy &&
-              connection.consentReconfirmBy < sevenDaysFromNow)
-        );
-      })
+      .filter((connection) => needsAttention(connection, now))
       .map((connection) => ({
         _id: connection._id,
         provider: connection.provider,
@@ -154,7 +183,7 @@ export const getAttempt = query({
     })
   ),
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "bank.manage");
     const attempt = await ctx.db
       .query("pendingBankConnections")
       .withIndex("by_organization_and_state", (q) =>

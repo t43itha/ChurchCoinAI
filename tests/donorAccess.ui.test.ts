@@ -49,8 +49,18 @@ describe("Donors page permissions", () => {
     const html = renderDonors(role);
     expect(html).toContain("Alex Smith");
     expect(html).toContain("Add donor");
-    expect(html).toContain("Find duplicates");
-    expect(html).toContain("Select donors to merge");
     expect(html).toContain(">Edit<");
+  });
+
+  // Merging deletes the duplicate donor records, which is Admin only.
+  it("offers duplicate finding and merging to Admin only", () => {
+    const admin = renderDonors("Admin");
+    expect(admin).toContain("Find duplicates");
+    expect(admin).toContain("Select donors to merge");
+    for (const role of ["Finance Team", "Pastorate"] as UserRole[]) {
+      const html = renderDonors(role);
+      expect(html).not.toContain("Find duplicates");
+      expect(html).not.toContain("Select donors to merge");
+    }
   });
 });

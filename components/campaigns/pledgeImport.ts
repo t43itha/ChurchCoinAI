@@ -1,4 +1,5 @@
 import { formatLocalDateInputValue } from "../../lib/dateUtils";
+import { pledgeDonorNameProblem } from "../../lib/displayNames";
 import type { Donor, DonorCreateInput, Pledge, PledgeCreateInput } from "../../types";
 
 export const IMPORT_FIELDS = [
@@ -105,6 +106,12 @@ export function buildPledgeImport({
     const donorName = row[donorIdx]?.trim();
     if (!donorName) {
       skippedRows.push({ row: line, reason: "Empty donor name" });
+      return;
+    }
+    // The server refuses the whole batch over one bad name, after donors are saved.
+    const nameProblem = pledgeDonorNameProblem(donorName);
+    if (nameProblem) {
+      skippedRows.push({ row: line, reason: nameProblem });
       return;
     }
 

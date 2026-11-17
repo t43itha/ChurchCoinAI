@@ -39,10 +39,12 @@ import TransactionFilterBar from './transactions/TransactionFilterBar';
 import TransactionFilterSheet from './transactions/TransactionFilterSheet';
 import TransactionVoidSheet from './transactions/TransactionVoidSheet';
 import SmartLinkSheet, { type SmartLinkMatch } from './transactions/SmartLinkSheet';
+import { useSmartLink } from './smartLink/useSmartLink';
 import BankReviewSheet from './transactions/BankReviewSheet';
 import BankAccountSheet from './transactions/BankAccountSheet';
 import InPersonGivingList from './transactions/InPersonGivingList';
 import type { TransactionListProps } from './transactions/TransactionRow';
+import { autoCategoriseBatch } from '../lib/aiActionInputs';
 import {
   HUB_VIEWS,
   editingAfterSave,
@@ -117,7 +119,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
   const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
   const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
-  const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
+  const smartLink = useSmartLink();
   const unlinkTransaction = useMutation(api.mutations.movements.unlink);
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
 
@@ -152,8 +154,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
 
   // Smart Link State
-  const [isReconciling, setIsReconciling] = useState(false);
-  const [pledgeMatches, setPledgeMatches] = useState<SmartLinkMatch[]>([]);
   const [showMatchModal, setShowMatchModal] = useState(false);
 
   // Statement import walkthrough (file, columns, fix, categorise, check)
@@ -387,8 +387,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const runAutoCategorise = async (ids: Set<string>) => {
       if (ids.size === 0) return;
       setIsBulkProcessingAI(true);
-      const targetTransactions = transactions.filter(t => ids.has(t._id));
-      const descriptions = targetTransactions.map(t => t.description);
+      const { batch: targetTransactions, descriptions, remaining } = autoCategoriseBatch(transactions.filter(t => ids.has(t._id)));
       try {
           const suggestions = await categorizeTransactionsAI({
               descriptions,
@@ -418,7 +417,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           if (updates.length > 0) {
             await batchUpdateTransactions({ updates });
           }
-          setSelectedIds(new Set());
+          if (remaining > 0) {
+            const categorised = new Set<string>(targetTransactions.map(t => t._id));
+            setSelectedIds(new Set([...ids].filter(id => !categorised.has(id))));
+            notify("Notice", `Categorised ${targetTransactions.length} lines. ${remaining} are still selected; run Auto-categorise again for them.`);
+          } else {
+            setSelectedIds(new Set());
+          }
       } catch (error) {
           console.error(error);
           notify("Error", "Failed to auto-categorize. Please check API connection.");
@@ -437,21 +442,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleSmartLinkPledges = async () => {
-      setIsReconciling(true);
-      try {
-          // AI action now fetches unlinked income server-side for complete coverage
-          const matches = await reconcilePledgesAI({});
-          if (matches.length > 0) {
-              setPledgeMatches(matches as SmartLinkMatch[]);
-              setShowMatchModal(true);
-          } else {
-              notify("Notice", "No obvious pledge matches found for unlinked income.");
-          }
-      } catch (e) {
-          console.error(e);
-          notify("Error", "Smart Link failed. Please check API connection.");
-      } finally {
-          setIsReconciling(false);
+      const page = await smartLink.start();
+      if (!page) return;
+      if (page.matches.length > 0 || page.remaining > 0) {
+          setShowMatchModal(true);
+      } else {
+          notify("Notice", "No obvious pledge matches found for unlinked income.");
       }
   };
 
@@ -462,10 +458,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       if (t && matchedPledge) {
           try {
+              // The server names the gift after the pledge's donor.
               const result = await updateTransaction({
                   transactionId: t._id as Id<"transactions">,
-                  pledgeId: matchedPledge._id as Id<"pledges">, // Use the actual pledge ID from our data
-                  donorName: match.donorName || matchedPledge.donorName || t.donorName
+                  pledgeId: matchedPledge._id as Id<"pledges">,
               });
               // Check if pledge was completed
               if (result?.pledgeCompleted && onPledgeCompleted) {
@@ -479,7 +475,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       } else {
           console.error("Could not find transaction or pledge for match:", match);
       }
-      setPledgeMatches(prev => prev.filter(m => m !== match));
+      smartLink.dismiss(match);
   };
 
   const startBankSync = (bankConnectionId: Id<"bankConnections">) => {
@@ -799,7 +795,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       <HubLayout receipt={receipt}>
         <HubHeader title="Transactions" status={headerStatus} actions={headerActions} />
 
-        {isReconciling && (
+        {smartLink.isChecking && (
           <p role="status" className="text-sm font-semibold text-sage">Looking for pledge matches…</p>
         )}
 
@@ -949,11 +945,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {showMatchModal && canEdit && (
         <SmartLinkSheet
-          matches={pledgeMatches}
+          matches={smartLink.matches}
           transactions={transactions}
           onConfirm={handleConfirmMatch}
-          onIgnore={(match) => setPledgeMatches(prev => prev.filter(m => m !== match))}
+          onIgnore={smartLink.dismiss}
           onClose={() => setShowMatchModal(false)}
+          remaining={smartLink.remaining}
+          isChecking={smartLink.isChecking}
+          onCheckMore={() => void smartLink.checkMore()}
         />
       )}
 

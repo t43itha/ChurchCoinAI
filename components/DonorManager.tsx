@@ -69,6 +69,8 @@ const DonorManager: FC<DonorManagerProps> = ({ donors, transactions, pledges, fu
   const giftAidEnabled = isGiftAidEnabled(churchDetails);
   const canEdit = can(currentUser.role, "donors.write");
   const canView = can(currentUser.role, "donors.read");
+  // Merging deletes the duplicate donor records.
+  const canMerge = can(currentUser.role, "donors.delete");
   const wide = useWideLayout();
 
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(donors[0]?._id ?? null);
@@ -542,7 +544,7 @@ ${churchName} Finance Team
     setManualPrimaryId(null);
   };
 
-  const mergeControls: MergeControls | undefined = canEdit
+  const mergeControls: MergeControls | undefined = canMerge
     ? {
         active: manualMergeMode,
         selected: selectedForMerge,
@@ -597,14 +599,16 @@ ${churchName} Finance Team
         actions={
           canEdit ? (
             <>
-              <button
-                type="button"
-                onClick={() => void handleFindDuplicates()}
-                disabled={isFindingDuplicates}
-                className={`${btnOutline} ${btnMd} !w-auto px-4`}
-              >
-                {isFindingDuplicates ? "Searching…" : "Find duplicates"}
-              </button>
+              {canMerge && (
+                <button
+                  type="button"
+                  onClick={() => void handleFindDuplicates()}
+                  disabled={isFindingDuplicates}
+                  className={`${btnOutline} ${btnMd} !w-auto px-4`}
+                >
+                  {isFindingDuplicates ? "Searching…" : "Find duplicates"}
+                </button>
+              )}
               <button type="button" onClick={() => setSheet("add")} className={`${btnPrimary} ${btnMd} !w-auto px-5`}>
                 <Plus size={16} aria-hidden="true" />
                 Add donor
@@ -684,7 +688,7 @@ ${churchName} Finance Team
           onClose={closeSheet}
         />
       )}
-      {sheet === "merge" && canEdit && (
+      {sheet === "merge" && canMerge && (
         <MergeSheet
           groups={duplicateGroups}
           giftAidEnabled={giftAidEnabled}

@@ -1,5 +1,5 @@
 import { query } from "../_generated/server";
-import { requireAuth, redactDonorFields } from "../lib/auth";
+import { requireCapability, redactDonorFields } from "../lib/auth";
 import {
   filterFundBalanceRows,
   filterIncomeAndExpenditure,
@@ -13,7 +13,7 @@ const AI_CONTEXT_MAX_TRANSACTIONS = 5000;
 export const getAIContext = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const now = new Date();
     const analysisPeriodStart = new Date(

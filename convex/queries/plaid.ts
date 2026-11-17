@@ -1,12 +1,12 @@
 import { query } from "../_generated/server";
-import { requireAuth } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { v } from "convex/values";
 
 // List all connected banks for the organization (excludes accessToken for security)
 export const listItems = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "bank.manage");
 
     const items = await ctx.db
       .query("plaidItems")
@@ -41,7 +41,7 @@ export const getItem = query({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "bank.manage");
 
     const item = await ctx.db.get(args.plaidItemId);
     if (!item || item.organizationId !== user.organizationId) {
@@ -72,7 +72,7 @@ export const getItem = query({
 export const getItemsNeedingAttention = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "bank.manage");
 
     const items = await ctx.db
       .query("plaidItems")
@@ -121,7 +121,7 @@ export const getItemsNeedingAttention = query({
 export const hasConnections = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const item = await ctx.db
       .query("plaidItems")
@@ -138,7 +138,7 @@ export const hasConnections = query({
 export const getActiveItemsWithMappedAccounts = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "bank.manage");
 
     const items = await ctx.db
       .query("plaidItems")

@@ -1,5 +1,6 @@
 import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { utcDay } from "./aiRateLimit";
 
 const MAINTENANCE_BATCH_SIZE = 500;
 const CONSENT_STATUS_BATCH_SIZE = Math.floor(MAINTENANCE_BATCH_SIZE / 2);
@@ -124,5 +125,32 @@ export const cleanupExpiredPendingBankConnections = internalMutation({
       removed,
       continuationScheduled: pending.length === MAINTENANCE_BATCH_SIZE,
     };
+  },
+});
+
+// Per-person abuse counters only matter for the UTC day they count, so each
+// day's rows are deleted once that day is over.
+export const purgeUsageCounters = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const today = utcDay(Date.now());
+    const stale = await ctx.db
+      .query("usageCounters")
+      .withIndex("by_day", (q) => q.lt("day", today))
+      .take(MAINTENANCE_BATCH_SIZE);
+
+    for (const record of stale) {
+      await ctx.db.delete(record._id);
+    }
+
+    if (stale.length === MAINTENANCE_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(
+        CONTINUATION_DELAY_MS,
+        internal.mutations.scheduledMaintenance.purgeUsageCounters,
+        {}
+      );
+    }
+
+    return { removed: stale.length };
   },
 });

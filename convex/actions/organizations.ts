@@ -14,7 +14,7 @@ import {
   YapilyApiError,
 } from "../lib/yapily";
 import { getStripe } from "../lib/stripe";
-import { transactionRAG } from "../lib/ragInstance";
+import { clearOrganizationSearch } from "../lib/ragInstance";
 
 const BATCH_SIZE = 75;
 const MAX_BATCHES_PER_TABLE = 10_000;
@@ -87,15 +87,13 @@ export const deleteOrganization = action({
 
     // RAG entries contain derived transaction text and live in a Convex
     // component database, so they must be removed separately from app tables.
-    const namespace = await transactionRAG.getNamespace(ctx, {
-      namespace: `org_${user.organizationId}`,
+    // The marker goes first: an indexing job that sees it after its own write
+    // clears the namespace again (see addForExistingOrganization).
+    await ctx.runMutation(internal.mutations.organizations.recordErasure, {
+      organizationId: user.organizationId,
     });
-    if (namespace) {
-      await ctx.runAction(
-        transactionRAG.component.namespaces.deleteNamespaceSync,
-        { namespaceId: namespace.namespaceId }
-      );
-    }
+    const clearRagNamespace = () => clearOrganizationSearch(ctx, user.organizationId);
+    await clearRagNamespace();
 
     let deletedRecords = 0;
     for (let pass = 0; pass < 5; pass += 1) {
@@ -124,6 +122,9 @@ export const deleteOrganization = action({
         { organizationId: user.organizationId }
       );
       if (finalized.deleted) {
+        // Clears entries written since the first clear. A job whose write
+        // lands after this one sees the marker and clears them itself.
+        await clearRagNamespace();
         console.info("Organization data deleted", {
           organizationId: user.organizationId,
           requestedBy: identity.subject,

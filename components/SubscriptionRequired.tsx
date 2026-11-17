@@ -8,6 +8,7 @@ import {
   Check,
   Clock3,
   Crown,
+  Download,
   Loader2,
   LifeBuoy,
   RefreshCw,
@@ -23,6 +24,7 @@ import type { PlanTier } from "../lib/onboardingIntent";
 import { createClientAttemptId } from "../lib/clientId";
 import { PLANS } from "../lib/plans";
 import { btnLg, btnMd, btnOutline, btnPrimary, screenTitle } from "./wizard/ui";
+import DataPrivacySettings from "./DataPrivacySettings";
 import { useLaunchFeatures } from "./app/useLaunchFeatures";
 
 // Sheet-style panels for the blocking states, built from the walkthrough kit.
@@ -56,6 +58,7 @@ const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
   const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [processingTimedOut, setProcessingTimedOut] = useState(false);
+  const [isDataOpen, setIsDataOpen] = useState(false);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const returnedFromCheckout = billing && params.get("subscription") === "success";
   const checkoutSessionId = params.get("session_id");
@@ -129,6 +132,7 @@ const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
   };
 
   const header = (
+    <>
     <header className="border-b border-ledger bg-white/90 backdrop-blur-xs">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -140,6 +144,16 @@ const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
           <p className="text-xs text-grey-mid border-l border-ledger pl-3">{organizationName}</p>
         </div>
         <div className="flex items-center gap-2">
+          {can(userRole, "organization.export") && (
+            <button
+              type="button"
+              onClick={() => setIsDataOpen(true)}
+              className={`${btnOutline} h-11 !w-auto gap-2 px-3 text-xs`}
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Your data</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenSupport}
@@ -156,6 +170,11 @@ const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
         </div>
       </div>
     </header>
+    {/* A locked-out church can still take its data away (UK GDPR portability). */}
+    {isDataOpen && (
+      <DataPrivacySettings organizationName={organizationName} onClose={() => setIsDataOpen(false)} />
+    )}
+    </>
   );
 
   if (accessState === "demo_provisioning" || accessState === "demo_expired") {

@@ -53,7 +53,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `actions/` — Server-side async operations (AI calls, Stripe, bank connection flows)
 - `intelligence/` — AI insight generation and RAG indexing
 - `http.ts` — HTTP routes for Stripe webhooks, the Yapily callback, and preserved Plaid webhook compatibility
-- `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections
+- `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections, purge past days' per-person usage counters
 - `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireCapability()`, `assertCapability()`, `roleValidator`, `redactDonorFields()`
 - `lib/money.ts` — Money helpers: amounts are pounds as floats; total them with `sumMoney()`, round single values with `roundMoney()`, and compare targets with `meetsMoneyTarget()`
 
@@ -96,6 +96,7 @@ The "Refined Ledger" design system is defined in the `@theme` block and componen
 - `APP_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 - `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, `STRIPE_PRODUCT_THRIVING`
+- Optional AI budgets in usage units (one per transaction row or indexed entry, at least 20 per model request): `AI_USER_UNITS_PER_MINUTE` (default 600), `AI_ORG_UNITS_PER_MINUTE` (default 1000), `AI_ORG_DAILY_UNITS` (per church, default 10000), `AI_DAILY_UNITS` (deployment-wide, default 200000)
 - `RESEND_API_KEY` (invitation emails), optional `RESEND_FROM_EMAIL` (defaults to `ChurchCoin <onboarding@resend.dev>`; set a verified-domain sender for production)
 - Launch flags, both off unless set to `true`: `BILLING_ENABLED` (Stripe checkout, billing UI, trials) and `BANK_FEEDS_ENABLED` (Yapily bank connections and sync). The client reads them through `api.queries.launchFeatures.get` via `useLaunchFeatures()`. With billing off, `subscription` churches get `early_access` and start no trial clock. After setting `BILLING_ENABLED=true`, run `internal.mutations.organizations.startTrialsAfterEarlyAccess` (repeat with the returned cursor until `isDone`) so every early-access church gets a full trial from that day.
 
@@ -134,3 +135,5 @@ Mistakes reviewers caught more than once, and what now stops them. When you're c
 | Cash walkthrough dates use the shared `DateInput`, with wrapper padding, a shrinkable native input and an explicit calendar icon; desktop mobile emulation alone does not verify iOS date controls | `components/cashEntry/DateInput.tsx` + `.cash-date-*` styles; physical iPhone verification remains manual |
 | `BILLING_ENABLED` and `BANK_FEEDS_ENABLED` are read only in `convex/lib/launchFeatures.ts`; no `VITE_*` copies | `tests/launchFeatureFlags.test.ts` |
 | Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |
+| Every public function under `convex/queries`, `mutations`, `actions` and `intelligence` checks a capability (`requireCapability`, `assertCapability`, or an action helper given a capability), awaited and reachable; a bare `requireAuth` is not a gate. Pre-membership and own-record functions go in the inventory's allowlist with a reason | Behaviour: `tests/permissionsAccess.test.ts` (role × function). Inventory only (proves a check is named, not that it holds): `tests/publicFunctionGateInventory.test.ts` |
+| Convex functions typecheck against `convex/tsconfig.json` (ES2021 lib), which `npx convex deploy` enforces and the root tsconfig does not | `npm run typecheck` runs `tsc -p convex --noEmit` |

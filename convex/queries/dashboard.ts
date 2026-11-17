@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import {
   buildExecutiveDashboardSummary,
   type DashboardPeriodKey,
@@ -20,7 +20,7 @@ export const executiveSummary = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
     const periodKey: DashboardPeriodKey | undefined = args.periodKey;
 
     const [

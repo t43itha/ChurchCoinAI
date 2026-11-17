@@ -1,7 +1,8 @@
 import { query, internalQuery } from "../_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-import { getCurrentUser, getIdentity, requireCapability, redactDonorFields } from "../lib/auth";
+import { assertCapability, getCurrentUser, getIdentity, redactDonorFields, requireMembership } from "../lib/auth";
+import { can } from "../../lib/permissions";
 import {
   ORGANIZATION_DATA_TABLES,
   type OrganizationDataTable,
@@ -109,7 +110,10 @@ export const current = query({
     if (!user) return null;
 
     const organization = await ctx.db.get(user.organizationId);
-    return organization;
+    // The Stripe customer and the creator's Clerk id are for billing admins.
+    if (!organization || can(user.role, "billing.manage")) return organization;
+    const { stripeCustomerId: _stripeCustomerId, createdBy: _createdBy, ...safe } = organization;
+    return safe;
   },
 });
 
@@ -137,7 +141,10 @@ export const exportDataPage = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
-    const user = await requireCapability(ctx, "organization.export");
+    // Membership, not app access: a locked-out church's Admin can still take
+    // its data away (UK GDPR portability), as they can still erase it.
+    const user = await requireMembership(ctx);
+    assertCapability(user, "organization.export");
 
     if (args.table === "organizations") {
       const organization = await ctx.db.get(user.organizationId);
@@ -259,6 +266,20 @@ export const getByIdInternal = internalQuery({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.organizationId);
+  },
+});
+
+// Whether search entries may exist for this church: it exists and its
+// erasure has not started.
+export const acceptsSearchEntries = internalQuery({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    if (!(await ctx.db.get(args.organizationId))) return false;
+    const erased = await ctx.db
+      .query("erasedOrganizations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    return erased === null;
   },
 });
 

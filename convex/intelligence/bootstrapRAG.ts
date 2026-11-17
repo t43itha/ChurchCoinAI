@@ -6,7 +6,7 @@ import {
 } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { transactionRAG } from "../lib/ragInstance";
+import { addForExistingOrganization } from "../lib/ragInstance";
 import {
   TRANSACTION_EMBEDDING_DIMENSION,
   TRANSACTION_EMBEDDING_INDEX_VERSION,
@@ -127,7 +127,7 @@ export const indexSingleTransaction = internalAction({
     const namespace = `org_${args.organizationId}`;
 
     try {
-      await transactionRAG.add(ctx, {
+      await addForExistingOrganization(ctx, args.organizationId, {
         namespace,
         key: `tx:${args.transactionId}`,
         text: args.searchText,

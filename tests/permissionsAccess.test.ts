@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QueryCtx } from "../convex/_generated/server";
-import { ROLES, type UserRole } from "../lib/permissions";
+import { ROLES, can, type UserRole } from "../lib/permissions";
+import * as intelligence from "../convex/queries/intelligence";
 import * as transactions from "../convex/queries/transactions";
 import * as pledges from "../convex/queries/pledges";
 import * as users from "../convex/queries/users";
@@ -37,6 +38,7 @@ function fixture(role: UserRole | null) {
         collect: async () => rows,
         take: async (n: number) => rows.slice(0, n),
         paginate: async () => ({ page: rows, isDone: true, continueCursor: "done" }),
+        async *[Symbol.asyncIterator]() { yield* rows; },
       };
       return chain;
     }),
@@ -189,6 +191,49 @@ it("does not leak donor identity through AI context aggregates or descriptions",
   expect(JSON.stringify(guest)).not.toContain("Alex Smith");
   const pastor = await invoke(getAIContext, fixture("Pastorate").ctx);
   expect(pastor.topDonors).toEqual([{ id: "donor", name: "Alex Smith", total: 25 }]);
+});
+
+// Donor insights name donors with amounts and Gift Aid status.
+describe("intelligence suggestions", () => {
+  const suggestions = (): Row[] => [
+    {
+      _id: "donor-insight", organizationId: "org", insightType: "donor", ruleId: "lapsed_regular_giver",
+      title: "Regular giver has lapsed", description: "Alex Smith has not given since March (£40 a month, Gift Aid declared)",
+      severity: "critical", confidence: 1, status: "pending", createdAt: 2, actionData: { donorId: "donor", pledgeId: "pledge" },
+    },
+    {
+      _id: "ops-insight", organizationId: "org", insightType: "operations", ruleId: "uncategorized_large_expense",
+      title: "Large expense needs categorization", description: "A £900 expense needs categorization.",
+      severity: "warning", confidence: 1, status: "pending", createdAt: 1, actionData: { transactionId: "transaction", donorId: "stray" },
+    },
+  ];
+
+  it.each(ROLES)("shows donor insights and identifiers only with donors.read (%s)", async (role) => {
+    const { ctx, records } = fixture(role);
+    records.intelligenceSuggestions = suggestions();
+    const pending = await invoke(intelligence.getPendingSuggestions, ctx);
+    const all = await invoke(intelligence.listAll, ctx);
+    const donorType = await invoke(intelligence.getSuggestionsByType, ctx, { insightType: "donor" });
+    const counts = await invoke(intelligence.getSuggestionCounts, ctx);
+    if (can(role, "donors.read")) {
+      expect(pending.map((s: Row) => s._id)).toEqual(["donor-insight", "ops-insight"]);
+      expect(donorType).toHaveLength(1);
+      expect(counts).toMatchObject({ total: 2, donor: 1, operations: 1 });
+      expect(pending[0].actionData).toEqual({ donorId: "donor", pledgeId: "pledge" });
+    } else {
+      for (const result of [pending, all, donorType]) {
+        expect(JSON.stringify(result)).not.toMatch(/Alex Smith|"donorId"|"pledgeId"/);
+      }
+      expect(pending.map((s: Row) => s._id)).toEqual(["ops-insight"]);
+      expect(pending[0].actionData).toEqual({ transactionId: "transaction" });
+      expect(donorType).toEqual([]);
+      expect(counts).toMatchObject({ total: 1, donor: 0, operations: 1, critical: 0 });
+    }
+  });
+
+  it("requires a signed-in member", async () => {
+    await expect(invoke(intelligence.getSuggestionCounts, fixture(null).ctx)).rejects.toThrow("Unauthorized");
+  });
 });
 
 it("still enforces authentication and organization access before returning redacted rows", async () => {

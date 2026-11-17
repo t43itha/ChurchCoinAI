@@ -53,6 +53,9 @@ export default defineSchema({
       v.literal("failed")
     )),
     demoSeedVersion: v.optional(v.string()),
+    // Invitation emails sent on inviteEmailDay (UTC), for the daily cap.
+    inviteEmailDay: v.optional(v.string()),
+    inviteEmailCount: v.optional(v.number()),
     createdAt: v.number(),
     createdBy: v.string(), // Clerk userId
   })
@@ -144,6 +147,8 @@ export default defineSchema({
     ),
     // Secret link token; optional because older invitations predate it
     token: v.optional(v.string()),
+    // When the last email was reserved (create or resend), set before the
+    // email provider is called, whether or not delivery then succeeds.
     lastSentAt: v.optional(v.number()),
     createdAt: v.number(),
     expiresAt: v.number(), // 30 days from creation
@@ -441,12 +446,49 @@ export default defineSchema({
     .index("by_organization_name", ["organizationId", "name"])
     .index("by_organization_mainCategory", ["organizationId", "mainCategory"]),
 
-  // Per-organization AI rate limiting window state
+  // Per-minute AI usage windows: one row per organization, plus one per user
+  // (userId set). requestCount holds usage units, not requests. The
+  // organization row also counts the church's units for one UTC day.
   aiRateLimits: defineTable({
     organizationId: v.id("organizations"),
+    userId: v.optional(v.id("users")),
     windowStart: v.number(),
     requestCount: v.number(),
+    day: v.optional(v.string()),
+    dayUnits: v.optional(v.number()),
     updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_user", ["organizationId", "userId"]),
+
+  // Deployment-wide AI usage units per UTC day.
+  aiDailyUsage: defineTable({
+    day: v.string(),
+    units: v.number(),
+    updatedAt: v.number(),
+  }).index("by_day", ["day"]),
+
+  // Abuse counters per UTC day, for a signed-in person (scope "person:<Clerk
+  // subject>") or the whole deployment (scope "deployment"). Not church data:
+  // erasing a church leaves them, so erasing and recreating a church does not
+  // reset a person's limits. Purged after a day by scheduled maintenance.
+  usageCounters: defineTable({
+    scope: v.string(),
+    day: v.string(),
+    invitationEmails: v.optional(v.number()),
+    churchCreations: v.optional(v.number()),
+    aiUnits: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_scope_day", ["scope", "day"])
+    .index("by_day", ["day"]),
+
+  // Churches whose erasure has started. Recorded before anything is cleared
+  // and kept after the church is gone, so a search-indexing job that saw the
+  // church before erasure removes what it wrote. Holds no personal data.
+  erasedOrganizations: defineTable({
+    organizationId: v.id("organizations"),
+    erasedAt: v.number(),
   }).index("by_organization", ["organizationId"]),
 
   // Intelligence suggestions (rules-based insights with feedback tracking)

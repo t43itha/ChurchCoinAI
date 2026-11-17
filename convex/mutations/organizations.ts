@@ -2,11 +2,13 @@ import { OWNER_ROLE } from "../../lib/permissions";
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { getIdentity, requireAuth, assertCapability } from "../lib/auth";
+import { getIdentity, requireAuth, assertCapability, UNVERIFIED_EMAIL_MESSAGE, verifiedEmail } from "../lib/auth";
+import { requireDisplayName } from "../../lib/displayNames";
 import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
 import { seedOrganizationCategories } from "../lib/categoryIntegrity";
+import { dailyCaps, loadDailyCharges, personScope } from "./aiRateLimit";
 import { getLaunchFeatures } from "../lib/launchFeatures";
 import { hasLiveSubscription } from "../lib/access";
 import type { Id } from "../_generated/dataModel";
@@ -217,10 +219,12 @@ export const create = mutation({
     }
 
     // Email always comes from the verified Clerk identity, never the client
-    const userEmail = identity.email?.toLowerCase().trim();
+    const userEmail = verifiedEmail(identity);
     if (!userEmail) {
-      throw new Error("No email found on your account");
+      throw new Error(UNVERIFIED_EMAIL_MESSAGE);
     }
+    const name = requireDisplayName(args.name, "church");
+    const userName = requireDisplayName(args.userName, "person");
 
     // Check if user already has an organization
     const existingUser = await ctx.db
@@ -233,9 +237,21 @@ export const create = mutation({
     }
 
     const now = Date.now();
+    // Charged to the person, not a church, so erasing a church and creating
+    // another does not reset this or their invitation and AI allowances.
+    const churchCap = dailyCaps().personChurchCreations;
+    const creation = await loadDailyCharges(ctx, [{
+      scope: personScope(identity.subject),
+      counter: "churchCreations",
+      amount: 1,
+      cap: churchCap,
+      refusal: `You have created ${churchCap} ${churchCap === 1 ? "church" : "churches"} today. Please try again tomorrow.`,
+    }], now);
+    if (creation.refusal) throw new Error(creation.refusal);
+    await creation.commit();
 
     const organizationId = await ctx.db.insert("organizations", {
-      name: args.name,
+      name,
       charityNumber: args.charityNumber,
       address: args.address,
       email: args.email,
@@ -253,7 +269,7 @@ export const create = mutation({
     await ctx.db.insert("users", {
       clerkId: identity.subject,
       organizationId,
-      name: args.userName,
+      name: userName,
       email: userEmail,
       role: OWNER_ROLE,
       createdAt: now,
@@ -528,7 +544,12 @@ export const update = mutation({
     assertCapability(user, "organization.update");
 
     const updates: Record<string, any> = {};
-    if (args.name !== undefined) updates.name = args.name;
+    // Settings resend the current name on every save; only a changed name is
+    // validated, so a church with an older name can still save other details.
+    if (args.name !== undefined) {
+      const organization = await ctx.db.get(user.organizationId);
+      updates.name = args.name === organization?.name ? args.name : requireDisplayName(args.name, "church");
+    }
     if (args.charityNumber !== undefined)
       updates.charityNumber = args.charityNumber;
     if (args.address !== undefined) updates.address = args.address;
@@ -657,6 +678,22 @@ export const deleteDataBatch = internalMutation({
 // Convex tracks each index-range read in this mutation. If a concurrent write
 // inserts tenant data between these checks and the organization delete, the
 // mutation is retried and cannot commit an orphaned record.
+// Marks a church as being erased before erasure clears anything. Search
+// indexing checks this before and after every write, so a job already in
+// flight removes what it wrote. Kept after the church is gone.
+export const recordErasure = internalMutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("erasedOrganizations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (!existing) {
+      await ctx.db.insert("erasedOrganizations", { organizationId: args.organizationId, erasedAt: Date.now() });
+    }
+  },
+});
+
 export const finalizeDeletion = internalMutation({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {

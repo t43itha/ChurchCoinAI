@@ -4,6 +4,13 @@ import { api } from '../../convex/_generated/api';
 import { Transaction, Fund, Pledge, ChurchDetails } from '../../types';
 import { sumMoney } from '../../convex/lib/money';
 import { filterIncomeAndExpenditure } from '../../lib/reportableTransactions';
+import {
+  annualStatementArgs,
+  giftAidScheduleArgs,
+  monthlyBreakdownArgs,
+  projectReportArgs,
+  treasurerReportArgs,
+} from '../../lib/aiActionInputs';
 import { isGiftAidEnabled } from '../../lib/giftAid';
 import {
   Calendar,
@@ -25,10 +32,11 @@ interface AIReportsProps {
   funds: Fund[];
   pledges: Pledge[];
   churchDetails: ChurchDetails;
+  canDraftGiftAid: boolean;
 }
 
-const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, churchDetails }) => {
-  const giftAidEnabled = isGiftAidEnabled(churchDetails);
+const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, churchDetails, canDraftGiftAid }) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails) && canDraftGiftAid;
   const activeTransactions = useMemo(() => filterIncomeAndExpenditure(transactions), [transactions]);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');
@@ -76,14 +84,7 @@ const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, chu
     setIsGenerating(true);
     setReportTitle("Treasurer's Financial Commentary");
     try {
-      const totalIncome = sumMoney(activeTransactions.filter(t => t.type === 'Income'), t => t.amount);
-      const totalExpenditure = sumMoney(activeTransactions.filter(t => t.type === 'Expenditure'), t => t.amount);
-      const fundsStatus = funds.map(f => ({ name: f.name, balance: f.balance }));
-      const recentLargeTransactions = activeTransactions
-        .filter(t => t.amount > 500)
-        .map(t => ({ desc: t.description, amount: t.amount }));
-      const summaryData = JSON.stringify({ totalIncome, totalExpenditure, fundsStatus, recentLargeTransactions });
-      const text = await treasurerReport({ summaryData });
+      const text = await treasurerReport(treasurerReportArgs(activeTransactions, funds));
       setReportText(text || "No report generated.");
     } catch (e) {
       console.error(e);
@@ -96,19 +97,8 @@ const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, chu
   const handleGenerateGiftAid = async () => {
     setIsGenerating(true);
     setReportTitle("HMRC Gift Aid Schedule");
-    const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const eligible = activeTransactions.filter(t =>
-        t.type === 'Income' &&
-        t.isGiftAidEligible &&
-        (!start || t.date >= start) &&
-        (!end || t.date <= end)
-      );
-      const text = await giftAidSchedule({
-        eligibleTransactions: JSON.stringify(eligible),
-        startDate: start,
-        endDate: end
-      });
+      const text = await giftAidSchedule(giftAidScheduleArgs(activeTransactions, getDatesForTaxYear(taxYear)));
       setReportText(text || "No gift aid transactions found.");
     } catch (e) {
       console.error(e);
@@ -124,24 +114,8 @@ const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, chu
 
     setIsGenerating(true);
     setReportTitle(`${fund.name} Impact Report`);
-    const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const periodTxns = activeTransactions.filter(t =>
-        t.fundId === fund._id &&
-        (!start || t.date >= start) &&
-        (!end || t.date <= end)
-      );
-      const periodIncome = sumMoney(periodTxns.filter(t => t.type === 'Income'), t => t.amount);
-      const periodExpense = sumMoney(periodTxns.filter(t => t.type === 'Expenditure'), t => t.amount);
-      const recentTransactions = JSON.stringify(periodTxns.slice(0, 15));
-      const text = await projectReport({
-        fundName: fund.name,
-        fundBalance: fund.balance,
-        targetAmount: fund.targetAmount,
-        periodIncome,
-        periodExpense,
-        recentTransactions
-      });
+      const text = await projectReport(projectReportArgs(activeTransactions, fund, getDatesForTaxYear(taxYear)));
       setReportText(text || "No activity found.");
     } catch (e) {
       console.error(e);
@@ -186,28 +160,8 @@ const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, chu
   const handleGenerateAnnualStatement = async () => {
     setIsGenerating(true);
     setReportTitle("Annual Financial Statement");
-    const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const periodTxns = activeTransactions.filter(t =>
-        (!start || t.date >= start) &&
-        (!end || t.date <= end)
-      );
-      const incomeByCategory: Record<string, number> = {};
-      const expenditureByCategory: Record<string, number> = {};
-      periodTxns.forEach(t => {
-        if (t.type === 'Income') {
-          incomeByCategory[t.category] = (incomeByCategory[t.category] || 0) + t.amount;
-        } else {
-          expenditureByCategory[t.category] = (expenditureByCategory[t.category] || 0) + t.amount;
-        }
-      });
-      const text = await annualStatement({
-        period: `${start || 'Start'} to ${end || 'End'}`,
-        incomeByCategory: JSON.stringify(incomeByCategory),
-        expenditureByCategory: JSON.stringify(expenditureByCategory),
-        totalIncome: sumMoney(periodTxns.filter(t => t.type === 'Income'), t => t.amount),
-        totalExpenditure: sumMoney(periodTxns.filter(t => t.type !== 'Income'), t => t.amount)
-      });
+      const text = await annualStatement(annualStatementArgs(activeTransactions, getDatesForTaxYear(taxYear)));
       setReportText(text || "No transactions found for this period.");
     } catch (e) {
       console.error(e);
@@ -220,25 +174,8 @@ const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, chu
   const handleGenerateMonthlyBreakdown = async () => {
     setIsGenerating(true);
     setReportTitle("Monthly Income & Expense Breakdown");
-    const { start, end } = getDatesForTaxYear(taxYear);
     try {
-      const periodTxns = activeTransactions.filter(t =>
-        (!start || t.date >= start) &&
-        (!end || t.date <= end)
-      );
-      const monthly: Record<string, typeof periodTxns> = {};
-      periodTxns.forEach(t => {
-        const monthKey = t.date.substring(0, 7);
-        (monthly[monthKey] ??= []).push(t);
-      });
-      const monthlyData = Object.entries(monthly)
-        .map(([month, rows]) => ({
-          month,
-          income: sumMoney(rows.filter(t => t.type === 'Income'), t => t.amount),
-          expense: sumMoney(rows.filter(t => t.type !== 'Income'), t => t.amount),
-        }))
-        .sort((a, b) => a.month.localeCompare(b.month));
-      const text = await monthlyBreakdown({ monthlyData: JSON.stringify(monthlyData) });
+      const text = await monthlyBreakdown(monthlyBreakdownArgs(activeTransactions, getDatesForTaxYear(taxYear)));
       setReportText(text || "No transactions found for this period.");
     } catch (e) {
       console.error(e);

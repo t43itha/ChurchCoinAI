@@ -1,7 +1,8 @@
 import { OWNER_ROLE } from "../../lib/permissions";
+import { displayNameProblem, requireDisplayName } from "../../lib/displayNames";
 import { internalMutation, mutation } from "../_generated/server";
 import { v } from "convex/values";
-import { getIdentity, requireAuth, requireCapability, roleValidator } from "../lib/auth";
+import { getIdentity, requireAuth, requireCapability, roleValidator, UNVERIFIED_EMAIL_MESSAGE, verifiedEmail } from "../lib/auth";
 
 // Accept an invitation explicitly (for new users). Identified either by the
 // secret link token (works regardless of which email the user signed up
@@ -27,7 +28,7 @@ export const acceptInvitation = mutation({
       throw new Error("You already belong to an organization");
     }
 
-    const identityEmail = identity.email?.toLowerCase().trim();
+    const identityEmail = verifiedEmail(identity);
     const now = Date.now();
 
     let invitation;
@@ -44,8 +45,11 @@ export const acceptInvitation = mutation({
       if (!invitation) {
         throw new Error("Invitation not found");
       }
-      // Without a token, the invitation must be addressed to this identity
-      if (!identityEmail || invitation.email !== identityEmail) {
+      // Without a token, the invitation must be addressed to this verified identity
+      if (!identityEmail) {
+        throw new Error(UNVERIFIED_EMAIL_MESSAGE);
+      }
+      if (invitation.email !== identityEmail) {
         throw new Error("This invitation was sent to a different email address");
       }
     } else {
@@ -60,12 +64,16 @@ export const acceptInvitation = mutation({
     }
 
     const email = identityEmail ?? invitation.email;
+    const name =
+      [identity.name, email.split("@")[0].replace(/[._+]+/g, " ")]
+        .find((candidate) => candidate && !displayNameProblem(candidate, "person"))
+        ?.trim() ?? "Member";
 
     // Create the user record
     const userId = await ctx.db.insert("users", {
       clerkId: identity.subject,
       organizationId: invitation.organizationId,
-      name: identity.name ?? email.split("@")[0],
+      name,
       email,
       role: invitation.role,
       createdAt: now,
@@ -139,7 +147,9 @@ export const updateProfile = mutation({
     const user = await requireAuth(ctx);
 
     const updates: Record<string, any> = {};
-    if (args.name !== undefined) updates.name = args.name;
+    if (args.name !== undefined && args.name !== user.name) {
+      updates.name = requireDisplayName(args.name, "person");
+    }
     if (args.avatarUrl !== undefined) {
       const avatarUrl = args.avatarUrl.trim();
       if (avatarUrl.length > 2048) {

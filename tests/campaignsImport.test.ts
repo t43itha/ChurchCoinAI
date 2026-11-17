@@ -71,6 +71,24 @@ describe("buildPledgeImport", () => {
     expect(plan.pledges.map((p) => p.donorName)).toEqual(["Ruth Bailey"]);
   });
 
+  it("skips a row whose donor name the server would refuse, before any donor is planned for it", () => {
+    const plan = buildPledgeImport({
+      headers,
+      rows: [["R".repeat(121), "10", "Monthly", "", ""], ["Ruth\tBailey", "15", "Monthly", "", ""], ["Grace Okafor", "20", "Monthly", "", ""]],
+      mapping,
+      donors: [],
+      pledges: [],
+      fundId: FUND,
+      today: TODAY,
+    });
+    expect(plan.skippedRows).toEqual([
+      { row: 2, reason: "Donor name must be 120 characters or fewer" },
+      { row: 3, reason: "Donor name cannot contain control characters" },
+    ]);
+    expect(plan.pledges.map((p) => p.donorName)).toEqual(["Grace Okafor"]);
+    expect(plan.donors.map((d) => d.name)).toEqual(["Grace Okafor"]);
+  });
+
   it("defaults the amount to 0 and reads the frequency words", () => {
     const plan = buildPledgeImport({
       headers,

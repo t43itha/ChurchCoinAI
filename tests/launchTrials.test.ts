@@ -37,7 +37,7 @@ describe("signing up during early access", () => {
   it("creates a church with no trial clock and schedules no expiry", async () => {
     vi.stubEnv("BILLING_ENABLED", "");
     const { ctx, records } = fixture({ users: [], organizations: [] });
-    (ctx as any).auth = { getUserIdentity: async () => ({ subject: "new-admin", email: "admin@example.invalid" }) };
+    (ctx as any).auth = { getUserIdentity: async () => ({ subject: "new-admin", email: "admin@example.invalid", emailVerified: true }) };
 
     await invoke(create, ctx, { name: "St Anne's", userName: "Sam Admin" });
 
@@ -51,7 +51,7 @@ describe("signing up during early access", () => {
   it("still starts a 14-day trial for a church that signs up once billing is on", async () => {
     vi.stubEnv("BILLING_ENABLED", "true");
     const { ctx, records } = fixture({ users: [], organizations: [] });
-    (ctx as any).auth = { getUserIdentity: async () => ({ subject: "new-admin", email: "admin@example.invalid" }) };
+    (ctx as any).auth = { getUserIdentity: async () => ({ subject: "new-admin", email: "admin@example.invalid", emailVerified: true }) };
 
     await invoke(create, ctx, { name: "St Anne's", userName: "Sam Admin" });
 

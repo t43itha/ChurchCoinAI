@@ -181,7 +181,7 @@ const CampaignsRoute: React.FC<RouteContext> = ({ funds, currentUser }) => {
   );
 };
 
-const ReportsRoute: React.FC<RouteContext> = ({ funds, churchDetails }) => {
+const ReportsRoute: React.FC<RouteContext> = ({ funds, churchDetails, currentUser }) => {
   const transactions = useQuery(api.queries.transactions.list, {});
   const pledges = useQuery(api.queries.pledges.list, {});
   const programmes = useQuery(api.queries.programmes.list, { includeArchived: true });
@@ -197,6 +197,7 @@ const ReportsRoute: React.FC<RouteContext> = ({ funds, churchDetails }) => {
       pledges={pledges}
       programmes={programmes}
       churchDetails={churchDetails}
+      canDraftGiftAid={can(currentUser.role, "giftAid.read")}
     />
   );
 };

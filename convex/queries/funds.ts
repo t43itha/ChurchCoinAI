@@ -1,13 +1,13 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 import { sumFundBalance } from "../../lib/reportableTransactions";
 
 // Get all funds with computed balances
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const funds = await ctx.db
       .query("funds")
@@ -39,7 +39,7 @@ export const list = query({
 export const getById = query({
   args: { fundId: v.id("funds") },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
     const fund = await ctx.db.get(args.fundId);
 
     if (!fund || fund.organizationId !== user.organizationId) {
@@ -62,7 +62,7 @@ export const getById = query({
 export const listPriority = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const funds = await ctx.db
       .query("funds")
@@ -111,7 +111,7 @@ export const listByType = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const funds = await ctx.db
       .query("funds")

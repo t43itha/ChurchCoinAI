@@ -19,20 +19,6 @@ import {
 import { deleteTransaction, patchTransaction } from "../lib/transactionWrites";
 import { importIdentity, importKeyOccurrence } from "../../lib/importKeys";
 
-// Helper to build searchable text for RAG indexing
-function buildRAGSearchText(tx: {
-  description: string;
-  category: string;
-  type: "Income" | "Expenditure";
-  donorName?: string | null;
-}): string {
-  let text = `${tx.description} | Category: ${tx.category} | Type: ${tx.type}`;
-  if (tx.donorName) {
-    text += ` | Donor: ${tx.donorName}`;
-  }
-  return text;
-}
-
 export function shouldUpdateCategorizationRagIndex(args: {
   finalCategory: unknown | null;
   predictedCategory?: string;
@@ -204,9 +190,10 @@ export const update = mutation({
     }
 
     // Verify pledge belongs to organization if provided
+    let linkedPledge: Doc<"pledges"> | null = null;
     if (args.pledgeId) {
-      const pledge = await ctx.db.get(args.pledgeId as Id<"pledges">);
-      if (!pledge || pledge.organizationId !== user.organizationId) {
+      linkedPledge = await ctx.db.get(args.pledgeId as Id<"pledges">);
+      if (!linkedPledge || linkedPledge.organizationId !== user.organizationId) {
         throw new Error("Invalid pledge");
       }
       const finalType = args.type ?? transaction.type;
@@ -240,6 +227,12 @@ export const update = mutation({
     if (finalType === "Expenditure") updates.isGiftAidEligible = false;
     if (args.donorName !== undefined) updates.donorName = args.donorName;
     if (args.donorId !== undefined) updates.donorId = args.donorId;
+    // A newly linked gift with no donor given is the pledge donor's, in full:
+    // Smart Link sends only the link, never a name the model echoed back.
+    if (linkedPledge && linkedPledge._id !== transaction.pledgeId && args.donorName === undefined) {
+      updates.donorName = linkedPledge.donorName;
+      if (args.donorId === undefined && linkedPledge.donorId) updates.donorId = linkedPledge.donorId;
+    }
     if (finalType !== "Income") {
       updates.pledgeId = undefined;
     } else if (args.pledgeId !== undefined) {
@@ -319,8 +312,6 @@ export const bulkCreate = mutation({
 
     // ids stays index-aligned with args.transactions; skipped duplicates are null
     const transactionIds: (Id<"transactions"> | null)[] = [];
-    const canonicalCategories: Array<string | null> = [];
-    const resolvedFundIds: Array<Id<"funds"> | null> = [];
     const pledgesToCheck = new Set<string>();
     const validatedConnections = new Set<string>();
     const validatedCollections = new Set<string>();
@@ -410,8 +401,6 @@ export const bulkCreate = mutation({
               .first());
         if (existing) {
           transactionIds.push(null);
-          canonicalCategories.push(null);
-          resolvedFundIds.push(null);
           skippedDuplicates += 1;
           continue;
         }
@@ -442,47 +431,22 @@ export const bulkCreate = mutation({
       });
 
       transactionIds.push(transactionId);
-      canonicalCategories.push(category);
-      resolvedFundIds.push(fund._id);
 
       if (t.pledgeId && t.type === "Income") {
         pledgesToCheck.add(t.pledgeId as string);
       }
     }
 
-    // Schedule RAG indexing for all new transactions (batch for efficiency)
-    const ragIndexData = args.transactions.flatMap((t, idx) => {
-      const transactionId = transactionIds[idx];
-      if (!transactionId) return []; // skipped duplicate
-      return [
-        {
-          transactionId,
-          searchText: buildRAGSearchText({
-            description: t.description,
-            category: canonicalCategories[idx]!,
-            type: t.type,
-            donorName: t.donorName,
-          }),
-          metadata: {
-            category: canonicalCategories[idx]!,
-            fundId: resolvedFundIds[idx]!,
-            type: t.type,
-            isGiftAidEligible: t.isGiftAidEligible,
-            donorName: t.donorName,
-            amount: t.amount,
-          },
-        },
-      ];
-    });
-
-    // Schedule batch indexing (runs asynchronously, doesn't block import)
-    if (ragIndexData.length > 0) {
+    // Index the new rows for search (runs asynchronously, doesn't block import).
+    // Skipped duplicates have no id.
+    const indexIds = transactionIds.filter((id): id is Id<"transactions"> => id !== null);
+    if (indexIds.length > 0) {
       await ctx.scheduler.runAfter(
         0,
         internal.intelligence.ragIndexer.batchIndexTransactions,
         {
           organizationId: user.organizationId,
-          transactions: ragIndexData,
+          transactionIds: indexIds,
         }
       );
     }
@@ -994,28 +958,12 @@ export const recordCorrections = mutation({
 
       // Update RAG whenever the accepted categorization metadata differs.
       if (shouldUpdateRagIndex) {
-        const searchText = buildRAGSearchText({
-          description: correction.description,
-          category: finalCategoryName,
-          type: transaction.type,
-          donorName: finalDonorName,
-        });
-
         await ctx.scheduler.runAfter(
           0,
           internal.intelligence.ragIndexer.updateInIndex,
           {
             organizationId: user.organizationId,
             transactionId: correction.transactionId,
-            newSearchText: searchText,
-            metadata: {
-              category: finalCategoryName,
-              fundId: finalFundId,
-              type: transaction.type,
-              isGiftAidEligible: finalGiftAidEligible,
-              donorName: finalDonorName,
-              acceptedCount: 1,
-            },
           }
         );
       }

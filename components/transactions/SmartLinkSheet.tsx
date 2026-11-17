@@ -4,13 +4,11 @@ import StepFooter from "../wizard/StepFooter";
 import WizardFrame from "../wizard/WizardFrame";
 import { btnMd, btnOutline, btnPrimary, btnSage, card, screenHelp, screenTitle } from "../wizard/ui";
 import { formatSignedAmount } from "./transactionView";
+import MoreToCheck from "../smartLink/MoreToCheck";
 
-export interface SmartLinkMatch {
-  transactionId: string;
-  pledgeId: string;
-  donorName?: string;
-  reason: string;
-}
+import type { SmartLinkMatch } from "../../lib/smartLink";
+
+export type { SmartLinkMatch };
 
 interface SmartLinkSheetProps {
   matches: SmartLinkMatch[];
@@ -18,10 +16,22 @@ interface SmartLinkSheetProps {
   onConfirm: (match: SmartLinkMatch) => void;
   onIgnore: (match: SmartLinkMatch) => void;
   onClose: () => void;
+  remaining: number;
+  isChecking: boolean;
+  onCheckMore: () => void;
 }
 
 // Suggested links between unlinked income and pledges. Nothing changes until a match is confirmed.
-export default function SmartLinkSheet({ matches, transactions, onConfirm, onIgnore, onClose }: SmartLinkSheetProps) {
+export default function SmartLinkSheet({
+  matches,
+  transactions,
+  onConfirm,
+  onIgnore,
+  onClose,
+  remaining,
+  isChecking,
+  onCheckMore,
+}: SmartLinkSheetProps) {
   const rows = matches.flatMap((match) => {
     const transaction = transactions.find((t) => t._id === match.transactionId);
     return transaction ? [{ match, transaction }] : [];
@@ -48,7 +58,7 @@ export default function SmartLinkSheet({ matches, transactions, onConfirm, onIgn
 
       {rows.length === 0 ? (
         <p className="rounded-2xl border border-ledger bg-white px-4 py-3.5 text-sm font-semibold text-sage">
-          All suggestions are dealt with.
+          {remaining > 0 ? "No suggestions in the gifts checked so far." : "All suggestions are dealt with."}
         </p>
       ) : (
         <div className="grid gap-3">
@@ -74,6 +84,7 @@ export default function SmartLinkSheet({ matches, transactions, onConfirm, onIgn
           ))}
         </div>
       )}
+      <MoreToCheck remaining={remaining} isChecking={isChecking} onCheckMore={onCheckMore} />
     </WizardFrame>
   );
 }

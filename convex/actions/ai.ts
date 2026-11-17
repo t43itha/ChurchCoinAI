@@ -6,9 +6,14 @@ import type { Doc } from "../_generated/dataModel";
 import { GoogleGenAI, Type } from "@google/genai";
 import { transactionRAG } from "../lib/ragInstance";
 import {
+  AI_CALL_UNITS,
+  limitAIInput,
+  requestUnits,
   safeJsonParse,
   validateGiftAidEligibleTransactions,
 } from "../lib/aiValidation";
+import { assertCapability } from "../lib/auth";
+import type { Capability } from "../../lib/permissions";
 import {
   categorizationSignatures,
   categorizeFromContext,
@@ -23,9 +28,8 @@ import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
 import { effectiveCategories } from "../../lib/transactionCategories";
-
-const AI_RATE_LIMIT_WINDOW_MS = 60_000;
-const DEFAULT_AI_RATE_LIMIT_PER_MINUTE = 40;
+import { acceptedMatches, type SmartLinkPage } from "../../lib/smartLink";
+import { smartLinkCursorValidator } from "../queries/pledges";
 
 // Initialize Gemini AI with server-side API key
 const getAI = () => {
@@ -36,8 +40,13 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// Require an authenticated Convex user (protects all AI actions)
-const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
+// Every AI action authorizes its capability, then charges `units` of work
+// (see AI_CALL_UNITS) against the per-user, per-church and daily budgets.
+const requireUser = async (
+  ctx: ActionCtx,
+  capability: Capability,
+  units: number
+): Promise<Doc<"users">> => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
@@ -54,29 +63,30 @@ const requireUser = async (ctx: ActionCtx): Promise<Doc<"users">> => {
   if (!userContext.access?.canUseApp) {
     throw new Error("Organization access is not active");
   }
+  assertCapability(userContext.user, capability);
 
-  const { internal } = (await import("../_generated/api")) as any;
-  const configuredLimit = Number(process.env.AI_RATE_LIMIT_PER_MINUTE);
-  const perMinuteLimit =
-    Number.isFinite(configuredLimit) && configuredLimit > 0
-      ? Math.floor(configuredLimit)
-      : DEFAULT_AI_RATE_LIMIT_PER_MINUTE;
-
-  await ctx.runMutation(internal.mutations.aiRateLimit.checkAndConsume, {
-    organizationId: userContext.user.organizationId,
-    limit: perMinuteLimit,
-    windowMs: AI_RATE_LIMIT_WINDOW_MS,
-  });
-
+  if (units > 0) await chargeAIUnits(ctx, userContext.user, units);
   return userContext.user;
 };
 
-// Check if API key is configured
+// The person's daily allowance is keyed by their Clerk subject, which
+// outlives any church they create or erase.
+const chargeAIUnits = async (ctx: ActionCtx, user: Doc<"users">, units: number) => {
+  const { internal } = (await import("../_generated/api")) as any;
+  await ctx.runMutation(internal.mutations.aiRateLimit.checkAndConsume, {
+    organizationId: user.organizationId,
+    userId: user._id,
+    principal: user.clerkId,
+    units,
+  });
+};
+
+// Check if API key is configured. Reports only deployment configuration, so
+// any member may ask, and it costs no AI budget.
 export const hasApiKey = action({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    await requireUser(ctx, "ledger.read", 0);
     const provider =
       process.env.CATEGORIZATION_AI_PROVIDER?.trim().toLowerCase();
     if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;
@@ -93,7 +103,8 @@ export const categorizeTransactions = action({
     categories: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args);
+    await requireUser(ctx, "ledger.write", requestUnits(args.descriptions.length));
     const ai = getAI();
 
     const prompt = `
@@ -161,8 +172,9 @@ export const categorizeWithPipelinePreview = action({
     if (args.transactions.length > 500 || args.transactions.some((row) => !Number.isFinite(row.amount) || row.amount <= 0 || row.description.length > 4000 || (row.rowId?.length ?? 0) > 100)) throw new Error("Invalid categorisation batch (maximum 500 rows)");
     const transactions = args.transactions.map((row, index) => ({ ...row, rowId: row.rowId ?? `row-${index}` }));
     if (transactions.some((row) => !row.rowId.trim()) || new Set(transactions.map((row) => row.rowId)).size !== transactions.length) throw new Error("Missing or duplicate categorisation row IDs");
+    limitAIInput(args);
     const startedAt = performance.now();
-    const user = await requireUser(ctx);
+    const user = await requireUser(ctx, "ledger.write", requestUnits(transactions.length));
     const authenticatedAt = performance.now();
     const { internal } = (await import("../_generated/api")) as any;
     const pipelineContext = await ctx.runQuery(
@@ -391,7 +403,8 @@ export const categorizeWithMatching = action({
     categories: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    limitAIInput(args);
+    const user = await requireUser(ctx, "ledger.write", requestUnits(args.transactions.length));
     const ai = getAI();
     const { api } = await import("../_generated/api");
 
@@ -588,7 +601,9 @@ export const categorizeWithRAG = action({
     categories: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    limitAIInput(args);
+    // Each row runs its own embedding search, so large batches are charged per row.
+    const user = await requireUser(ctx, "ledger.write", requestUnits(args.transactions.length));
     const ai = getAI();
     const { api } = await import("../_generated/api");
 
@@ -813,7 +828,8 @@ export const generateInsights = action({
     transactionData: v.string(), // JSON string of transactions
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["transactionData"]);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const prompt = `
@@ -861,36 +877,32 @@ export const generateInsights = action({
   },
 });
 
-// Reconcile pledges with transactions (fetches data server-side)
+// Smart Link: suggests links between unlinked income and open pledges, one
+// bounded request at a time (see planSmartLinkRequest). `after` continues from
+// the previous request, and `remaining` says how many gifts are still to check.
 export const reconcilePledges = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireUser(ctx);
+  args: {
+    after: v.optional(smartLinkCursorValidator),
+  },
+  handler: async (ctx, args): Promise<SmartLinkPage> => {
+    limitAIInput(args);
+    const user = await requireUser(ctx, "ledger.write", 0);
+    const { internal } = await import("../_generated/api");
+    const request = await ctx.runQuery(internal.queries.pledges.smartLinkCandidates, {
+      organizationId: user.organizationId,
+      after: args.after,
+    });
+    if (!request) return { matches: [], remaining: 0, nextCursor: null };
+
+    // One unit per gift and pledge sent: the work the model is asked to do.
+    await chargeAIUnits(ctx, user, requestUnits(request.rows));
     const ai = getAI();
 
-    // Fetch unlinked income and pledges server-side
-    const { api } = await import("../_generated/api");
-    const [candidates, pledgeList] = await Promise.all([
-      ctx.runQuery(api.queries.pledges.getUnlinkedIncomeForMatching, {}),
-      ctx.runQuery(api.queries.pledges.list, {}),
-    ]);
-
-    if (candidates.length === 0) return [];
-
-    const prompt = `
-      I have a list of Transactions and a list of Pledges/Donors.
-      Match the Transactions to the Pledges based on donor name similarity or amount patterns.
-      Only include matches where you are reasonably confident.
-      Return a JSON array of matches.
-
-      Transactions: ${JSON.stringify(candidates)}
-      Pledges: ${JSON.stringify(pledgeList)}
-    `;
-
+    let text: string | undefined;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: prompt,
+        contents: request.prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -900,7 +912,6 @@ export const reconcilePledges = action({
               properties: {
                 transactionId: { type: Type.STRING },
                 pledgeId: { type: Type.STRING },
-                donorName: { type: Type.STRING },
                 reason: { type: Type.STRING },
               },
             },
@@ -909,15 +920,21 @@ export const reconcilePledges = action({
           thinkingConfig: { thinkingBudget: 0 },
         },
       });
-
-      const text = response.text;
-      return text
-        ? safeJsonParse<any[]>(text, "reconcilePledges response")
-        : [];
+      text = response.text;
     } catch (e) {
       console.error("Reconciliation failed", e);
-      return [];
+      // Not an empty page: that would skip these gifts. The original is logged above;
+      // convex/tsconfig.json targets the ES2021 lib, which has no Error cause option.
+      // eslint-disable-next-line preserve-caught-error
+      throw new Error("Smart Link could not check these gifts. Please try again.");
     }
+
+    const raw = text ? safeJsonParse<unknown>(text, "reconcilePledges response") : [];
+    return {
+      matches: acceptedMatches(raw, request.pledges, request.giftIds),
+      remaining: request.remaining,
+      nextCursor: request.nextCursor,
+    };
   },
 });
 
@@ -929,7 +946,8 @@ export const generateGiftAidSchedule = action({
     endDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["eligibleTransactions"]);
+    await requireUser(ctx, "giftAid.read", AI_CALL_UNITS);
     const { api } = await import("../_generated/api");
     const organization = await ctx.runQuery(api.queries.organizations.current, {});
     if (!isGiftAidEnabled(organization)) {
@@ -1022,7 +1040,8 @@ export const generateTreasurerReport = action({
     summaryData: v.string(), // JSON with totalIncome, totalExpenditure, fundsStatus, recentLargeTransactions
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["summaryData"]);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const data = safeJsonParse<Record<string, any>>(args.summaryData, "summaryData");
@@ -1088,7 +1107,8 @@ export const generateProjectReport = action({
     recentTransactions: v.string(), // JSON array
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["recentTransactions"]);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const progressPercent = args.targetAmount
@@ -1152,7 +1172,8 @@ export const generateCampaignReport = action({
     deadline: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const totalCommitted = args.totalRaisedCash + args.totalPledged;
@@ -1226,7 +1247,8 @@ export const generateAnnualStatement = action({
     expenditureByMainCategory: v.optional(v.string()), // Optional RCI-style grouped data
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["incomeByCategory", "expenditureByCategory", "incomeByMainCategory", "expenditureByMainCategory"]);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const ai = getAI();
 
     // Use mainCategory grouping if provided, otherwise fall back to standard categories
@@ -1322,7 +1344,8 @@ export const generateMonthlyBreakdown = action({
     categoryBreakdown: v.optional(v.string()), // Optional breakdown by mainCategory
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["monthlyData", "categoryBreakdown"]);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const data = safeJsonParse<Array<{ income: number; expense: number }>>(
@@ -1407,7 +1430,8 @@ export const generateDonorCommunication = action({
     recentDonations: v.string(), // JSON array
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["recentDonations"]);
+    await requireUser(ctx, "donors.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const prompt = `
@@ -1437,7 +1461,8 @@ export const generatePledgeCompletionMessage = action({
     fundName: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args);
+    await requireUser(ctx, "donors.read", AI_CALL_UNITS);
     const ai = getAI();
 
     const prompt = `
@@ -1467,12 +1492,7 @@ export const chatWithTreasurer = action({
     contextData: v.string(), // JSON with funds and recent transactions
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
-    const { api } = await import("../_generated/api");
-    const giftAidEnabled = isGiftAidEnabled(await ctx.runQuery(api.queries.organizations.current, {}));
-    const ai = getAI();
     const message = args.message.trim();
-
     if (!message) {
       throw new Error("Message cannot be empty");
     }
@@ -1482,6 +1502,13 @@ export const chatWithTreasurer = action({
     if (args.contextData.length > 100_000) {
       throw new Error("Context data is too large");
     }
+    // The chat reads no church data itself: it answers from the context the
+    // caller already loaded through getAIContext, which redacts donors for
+    // readers without donors.read. So any member who can read the ledger may ask.
+    await requireUser(ctx, "ledger.read", AI_CALL_UNITS);
+    const { api } = await import("../_generated/api");
+    const giftAidEnabled = isGiftAidEnabled(await ctx.runQuery(api.queries.organizations.current, {}));
+    const ai = getAI();
 
     const parsedContext = safeJsonParse<Record<string, unknown>>(
       args.contextData,
@@ -1539,7 +1566,8 @@ export const generateRCIMonthlyNarrative = action({
     monthlyReportData: v.string(), // JSON string of MonthlyReportData
   },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    limitAIInput(args, ["monthlyReportData"]);
+    await requireUser(ctx, "reports.read", AI_CALL_UNITS);
     const { api } = await import("../_generated/api");
     const giftAidEnabled = isGiftAidEnabled(await ctx.runQuery(api.queries.organizations.current, {}));
     const ai = getAI();
