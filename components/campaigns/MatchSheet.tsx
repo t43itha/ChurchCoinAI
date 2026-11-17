@@ -4,13 +4,11 @@ import { gbp } from "../cashEntry/format";
 import StepFooter from "../wizard/StepFooter";
 import WizardFrame from "../wizard/WizardFrame";
 import { btnLg, btnOutline, btnPrimary, btnSage, screenTitle } from "../wizard/ui";
+import MoreToCheck from "../smartLink/MoreToCheck";
 
-export type PledgeMatch = {
-  transactionId: string;
-  pledgeId: string;
-  donorName?: string;
-  reason: string;
-};
+import type { SmartLinkMatch as PledgeMatch } from "../../lib/smartLink";
+
+export type { PledgeMatch };
 
 export interface MatchSheetProps {
   matches: PledgeMatch[];
@@ -18,10 +16,22 @@ export interface MatchSheetProps {
   onConfirm: (match: PledgeMatch) => void;
   onDismiss: (match: PledgeMatch) => void;
   onClose: () => void;
+  remaining: number;
+  isChecking: boolean;
+  onCheckMore: () => void;
 }
 
 // Suggested links from the AI match. Each one is confirmed or dismissed on its own.
-export default function MatchSheet({ matches, transactions, onConfirm, onDismiss, onClose }: MatchSheetProps) {
+export default function MatchSheet({
+  matches,
+  transactions,
+  onConfirm,
+  onDismiss,
+  onClose,
+  remaining,
+  isChecking,
+  onCheckMore,
+}: MatchSheetProps) {
   const rows = matches.flatMap((match) => {
     const transaction = transactions.find((candidate) => candidate._id === match.transactionId);
     return transaction ? [{ match, transaction }] : [];
@@ -43,7 +53,9 @@ export default function MatchSheet({ matches, transactions, onConfirm, onDismiss
       <h2 className={screenTitle}>Gifts that may match a pledge</h2>
       <p className="mb-4 mt-1.5 text-[13.5px] text-grey-mid">Confirm the ones that are right. Dismissing one removes it from this list.</p>
       {rows.length === 0 ? (
-        <p className="rounded-2xl border border-ledger bg-white px-4 py-3.5 text-sm font-semibold text-sage">No suggested links left.</p>
+        <p className="rounded-2xl border border-ledger bg-white px-4 py-3.5 text-sm font-semibold text-sage">
+          {remaining > 0 ? "No suggested links in the gifts checked so far." : "No suggested links left."}
+        </p>
       ) : (
         <ul className="grid gap-2.5">
           {rows.map(({ match, transaction }) => (
@@ -71,6 +83,7 @@ export default function MatchSheet({ matches, transactions, onConfirm, onDismiss
           ))}
         </ul>
       )}
+      <MoreToCheck remaining={remaining} isChecking={isChecking} onCheckMore={onCheckMore} />
     </WizardFrame>
   );
 }

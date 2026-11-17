@@ -71,7 +71,7 @@ const DEFAULT_AI_USAGE_LIMITS = {
 
 export type AIUsageLimits = typeof DEFAULT_AI_USAGE_LIMITS;
 
-const positiveInteger = (raw: string | undefined, fallback: number) => {
+export const positiveInteger = (raw: string | undefined, fallback: number) => {
   const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 };

@@ -269,6 +269,20 @@ export const getByIdInternal = internalQuery({
   },
 });
 
+// Whether search entries may exist for this church: it exists and its
+// erasure has not started.
+export const acceptsSearchEntries = internalQuery({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    if (!(await ctx.db.get(args.organizationId))) return false;
+    const erased = await ctx.db
+      .query("erasedOrganizations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    return erased === null;
+  },
+});
+
 export const getDeletionManifest = internalQuery({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {

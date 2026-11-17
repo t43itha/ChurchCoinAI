@@ -119,12 +119,6 @@ export const createAndSend = action({
       inviteUrl,
     });
 
-    if (result.sent) {
-      await ctx.runMutation(api.mutations.invitations.markSent, {
-        invitationId: invitation.invitationId,
-      });
-    }
-
     return {
       invitationId: invitation.invitationId,
       inviteUrl,
@@ -152,12 +146,6 @@ export const resend = action({
       inviterName: invitation.inviterName,
       inviteUrl,
     });
-
-    if (result.sent) {
-      await ctx.runMutation(api.mutations.invitations.markSent, {
-        invitationId: args.invitationId,
-      });
-    }
 
     return {
       invitationId: args.invitationId,

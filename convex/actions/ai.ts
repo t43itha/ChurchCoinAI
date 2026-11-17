@@ -7,7 +7,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { transactionRAG } from "../lib/ragInstance";
 import {
   AI_CALL_UNITS,
-  AI_INPUT_LIMITS,
   limitAIInput,
   requestUnits,
   safeJsonParse,
@@ -29,6 +28,7 @@ import { categorizeWithOpenAI } from "../intelligence/categorization/openai";
 import { categorizeWithOpenRouter } from "../intelligence/categorization/openrouter";
 import { categorizationInputValidator, categorizationSuggestionValidator } from "../intelligence/categorization/validators";
 import { effectiveCategories } from "../../lib/transactionCategories";
+import { acceptedMatches, fitSmartLinkPrompt, type SmartLinkPage } from "../../lib/smartLink";
 
 // Initialize Gemini AI with server-side API key
 const getAI = () => {
@@ -64,16 +64,20 @@ const requireUser = async (
   }
   assertCapability(userContext.user, capability);
 
-  if (units > 0) {
-    const { internal } = (await import("../_generated/api")) as any;
-    await ctx.runMutation(internal.mutations.aiRateLimit.checkAndConsume, {
-      organizationId: userContext.user.organizationId,
-      userId: userContext.user._id,
-      units,
-    });
-  }
-
+  if (units > 0) await chargeAIUnits(ctx, userContext.user, units);
   return userContext.user;
+};
+
+// The person's daily allowance is keyed by their Clerk subject, which
+// outlives any church they create or erase.
+const chargeAIUnits = async (ctx: ActionCtx, user: Doc<"users">, units: number) => {
+  const { internal } = (await import("../_generated/api")) as any;
+  await ctx.runMutation(internal.mutations.aiRateLimit.checkAndConsume, {
+    organizationId: user.organizationId,
+    userId: user._id,
+    principal: user.clerkId,
+    units,
+  });
 };
 
 // Check if API key is configured. Reports only deployment configuration, so
@@ -872,34 +876,30 @@ export const generateInsights = action({
   },
 });
 
-// Reconcile pledges with transactions (fetches data server-side)
+// Smart Link: suggests links between unlinked income and open pledges, one
+// bounded page at a time. Candidates are income dated on or after the earliest
+// open pledge, oldest first; `after` continues from the previous page, and
+// `remaining` says how many are still to check.
 export const reconcilePledges = action({
-  args: {},
-  handler: async (ctx) => {
-    await requireUser(ctx, "ledger.write", AI_CALL_UNITS);
+  args: {
+    after: v.optional(v.object({ date: v.string(), transactionId: v.id("transactions") })),
+  },
+  handler: async (ctx, args): Promise<SmartLinkPage> => {
+    limitAIInput(args);
+    const user = await requireUser(ctx, "ledger.write", 0);
+    const { internal } = await import("../_generated/api");
+    const page = await ctx.runQuery(internal.queries.pledges.smartLinkCandidates, {
+      organizationId: user.organizationId,
+      after: args.after,
+    });
+    if (page.gifts.length === 0) return { matches: [], remaining: 0, nextCursor: null };
+
+    const { prompt, included } = fitSmartLinkPrompt(page.pledges, page.gifts);
+    // One unit per gift and pledge sent: the work the model is asked to do.
+    await chargeAIUnits(ctx, user, requestUnits(included.length + page.pledges.length));
     const ai = getAI();
 
-    // Fetch unlinked income and pledges server-side
-    const { api } = await import("../_generated/api");
-    const [unlinkedIncome, pledgeList] = await Promise.all([
-      ctx.runQuery(api.queries.pledges.getUnlinkedIncomeForMatching, {}),
-      ctx.runQuery(api.queries.pledges.list, {}),
-    ]);
-    // One prompt per call: send the newest rows only, within the input cap.
-    const candidates = unlinkedIncome.slice(-AI_INPUT_LIMITS.items);
-
-    if (candidates.length === 0) return [];
-
-    const prompt = `
-      I have a list of Transactions and a list of Pledges/Donors.
-      Match the Transactions to the Pledges based on donor name similarity or amount patterns.
-      Only include matches where you are reasonably confident.
-      Return a JSON array of matches.
-
-      Transactions: ${JSON.stringify(candidates)}
-      Pledges: ${JSON.stringify(pledgeList)}
-    `;
-
+    let text: string | undefined;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -913,7 +913,6 @@ export const reconcilePledges = action({
               properties: {
                 transactionId: { type: Type.STRING },
                 pledgeId: { type: Type.STRING },
-                donorName: { type: Type.STRING },
                 reason: { type: Type.STRING },
               },
             },
@@ -922,15 +921,20 @@ export const reconcilePledges = action({
           thinkingConfig: { thinkingBudget: 0 },
         },
       });
-
-      const text = response.text;
-      return text
-        ? safeJsonParse<any[]>(text, "reconcilePledges response")
-        : [];
+      text = response.text;
     } catch (e) {
       console.error("Reconciliation failed", e);
-      return [];
+      // Not an empty page: that would skip these gifts.
+      throw new Error("Smart Link could not check these gifts. Please try again.", { cause: e });
     }
+
+    const last = included[included.length - 1];
+    const remaining = page.total - included.length;
+    return {
+      matches: acceptedMatches(text ? safeJsonParse<unknown>(text, "reconcilePledges response") : [], page.pledges, included),
+      remaining,
+      nextCursor: remaining > 0 ? { date: last.date, transactionId: last.id } : null,
+    };
   },
 });
 

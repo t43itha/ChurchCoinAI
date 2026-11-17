@@ -2,22 +2,50 @@ import { mutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import { requireCapability, roleValidator } from "../lib/auth";
+import { nextResendAt } from "../../lib/invitationLimits";
+import { DEPLOYMENT_SCOPE, dailyCaps, loadDailyCharges, personScope, utcDay } from "./aiRateLimit";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-const INVITE_RESEND_COOLDOWN_MS = 10 * 60 * 1000;
 const INVITE_EMAILS_PER_DAY = 25;
 
-// Each create or resend is followed by an email, so it counts against the
-// church's daily allowance whether or not delivery then succeeds.
-async function chargeInviteEmail(ctx: MutationCtx, organization: Doc<"organizations">, now: number) {
-  const day = new Date(now).toISOString().slice(0, 10);
-  const sent = organization.inviteEmailDay === day ? organization.inviteEmailCount ?? 0 : 0;
-  if (sent >= INVITE_EMAILS_PER_DAY) {
+// Each create or resend is followed by an email, so it reserves the send here,
+// before the action contacts the email provider: it counts against the
+// church's, the sender's and the deployment's day, and the caller records
+// `lastSentAt` in the same transaction. A failed delivery keeps the
+// reservation, so retrying cannot get round the caps or the cooldown.
+async function reserveInviteEmail(
+  ctx: MutationCtx,
+  organization: Doc<"organizations">,
+  sender: Doc<"users">,
+  now: number
+) {
+  const day = utcDay(now);
+  const sentByChurch = organization.inviteEmailDay === day ? organization.inviteEmailCount ?? 0 : 0;
+  if (sentByChurch >= INVITE_EMAILS_PER_DAY) {
     throw new Error(
       `Your church has sent ${INVITE_EMAILS_PER_DAY} invitations today. Please try again tomorrow.`
     );
   }
-  await ctx.db.patch(organization._id, { inviteEmailDay: day, inviteEmailCount: sent + 1 });
+  const caps = dailyCaps();
+  const charges = await loadDailyCharges(ctx, [
+    {
+      scope: personScope(sender.clerkId),
+      counter: "invitationEmails",
+      amount: 1,
+      cap: caps.personInvitationEmails,
+      refusal: `You have sent ${caps.personInvitationEmails} invitations today. Please try again tomorrow.`,
+    },
+    {
+      scope: DEPLOYMENT_SCOPE,
+      counter: "invitationEmails",
+      amount: 1,
+      cap: caps.deploymentInvitationEmails,
+      refusal: "Invitation emails are paused for today. Please try again tomorrow.",
+    },
+  ], now);
+  if (charges.refusal) throw new Error(charges.refusal);
+  await ctx.db.patch(organization._id, { inviteEmailDay: day, inviteEmailCount: sentByChurch + 1 });
+  await charges.commit();
 }
 
 function generateToken(): string {
@@ -81,7 +109,7 @@ export const create = mutation({
     }
 
     const now = Date.now();
-    await chargeInviteEmail(ctx, organization, now);
+    await reserveInviteEmail(ctx, organization, currentUser, now);
     const token = generateToken();
     const invitationId = await ctx.db.insert("invitations", {
       organizationId: currentUser.organizationId,
@@ -90,6 +118,7 @@ export const create = mutation({
       invitedBy: currentUser._id,
       status: "pending",
       token,
+      lastSentAt: now,
       createdAt: now,
       expiresAt: now + THIRTY_DAYS_MS,
     });
@@ -132,14 +161,19 @@ export const resend = mutation({
     }
 
     const now = Date.now();
-    if (invitation.lastSentAt !== undefined && now - invitation.lastSentAt < INVITE_RESEND_COOLDOWN_MS) {
-      throw new Error("This invitation was emailed in the last 10 minutes. Please wait before resending it.");
+    const allowedAt = nextResendAt(invitation.lastSentAt, now);
+    if (allowedAt !== null) {
+      const minutes = Math.ceil((allowedAt - now) / 60_000);
+      throw new Error(
+        `This invitation was emailed in the last 10 minutes. You can resend it in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`
+      );
     }
-    await chargeInviteEmail(ctx, organization, now);
+    await reserveInviteEmail(ctx, organization, currentUser, now);
     const token = invitation.token ?? generateToken();
     await ctx.db.patch(args.invitationId, {
       status: "pending",
       token,
+      lastSentAt: now,
       expiresAt: now + THIRTY_DAYS_MS,
     });
 
@@ -151,23 +185,6 @@ export const resend = mutation({
       organizationName: organization.name,
       inviterName: currentUser.name,
     };
-  },
-});
-
-// Record that the invitation email was delivered
-export const markSent = mutation({
-  args: {
-    invitationId: v.id("invitations"),
-  },
-  handler: async (ctx, args) => {
-    const currentUser = await requireCapability(ctx, "invitations.manage");
-
-    const invitation = await ctx.db.get(args.invitationId);
-    if (!invitation || invitation.organizationId !== currentUser.organizationId) {
-      throw new Error("Invitation not found");
-    }
-
-    await ctx.db.patch(args.invitationId, { lastSentAt: Date.now() });
   },
 });
 

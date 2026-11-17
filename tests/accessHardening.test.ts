@@ -73,7 +73,14 @@ function actionContext(role: UserRole, charge: () => Promise<unknown> = async ()
   const runMutation = vi.fn(charge);
   const runQuery = vi.fn(async (reference: Parameters<typeof getFunctionName>[0]) => {
     if (getFunctionName(reference) === "queries/users:currentWithAccess") {
-      return { user: { _id: "user", organizationId: "org", role }, access: { canUseApp: true } };
+      return { user: { _id: "user", clerkId: "clerk", organizationId: "org", role }, access: { canUseApp: true } };
+    }
+    if (getFunctionName(reference) === "queries/pledges:smartLinkCandidates") {
+      return {
+        pledges: [{ id: "p1", donorName: "Alex", amount: 10, frequency: "Monthly", startDate: "2026-01-01" }],
+        gifts: [{ id: "t1", date: "2026-02-01", description: "SO ALEX", amount: 10 }],
+        total: 1,
+      };
     }
     return { giftAidEnabled: true };
   });
@@ -129,8 +136,8 @@ describe("A2: AI input caps and work-based charging", () => {
     await run("categorizeTransactions", ctx, { descriptions: Array(30).fill("x"), fundNames: [], categories: [] });
     await run("generateTreasurerReport", ctx, { summaryData: "{}" });
     expect(runMutation.mock.calls.map((call) => (call as unknown[])[1])).toEqual([
-      { organizationId: "org", userId: "user", units: 30 },
-      { organizationId: "org", userId: "user", units: 20 },
+      { organizationId: "org", userId: "user", principal: "clerk", units: 30 },
+      { organizationId: "org", userId: "user", principal: "clerk", units: 20 },
     ]);
   });
 
@@ -139,7 +146,7 @@ describe("A2: AI input caps and work-based charging", () => {
       vi.useFakeTimers({ now: new Date("2026-11-17T12:00:05Z") });
     });
     const charge = (ctx: MutationCtx, userId: string, units: number) =>
-      invoke(checkAndConsume, ctx, { organizationId: "org", userId, units });
+      invoke(checkAndConsume, ctx, { organizationId: "org", userId, principal: `clerk-${userId}`, units });
 
     it("lets one person import a full 500-row statement but caps them per minute", async () => {
       const { ctx } = fixture({ aiRateLimits: [], aiDailyUsage: [] });
@@ -163,10 +170,10 @@ describe("A2: AI input caps and work-based charging", () => {
       vi.stubEnv("AI_DAILY_UNITS", "700");
       const { ctx } = fixture({ aiRateLimits: [], aiDailyUsage: [], organizations: [{ _id: "org" }, { _id: "org-2" }] });
       await charge(ctx, "u1", 500);
-      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "stranger", units: 201 }))
+      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "stranger", principal: "clerk-stranger", units: 201 }))
         .rejects.toThrow("today's usage limit");
       vi.setSystemTime(new Date("2026-11-18T00:00:05Z"));
-      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "stranger", units: 201 })).resolves.toBeTruthy();
+      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "stranger", principal: "clerk-stranger", units: 201 })).resolves.toBeTruthy();
     });
 
     it("stops one church at its own daily cap while other churches carry on", async () => {
@@ -178,7 +185,7 @@ describe("A2: AI input caps and work-based charging", () => {
       }
       vi.setSystemTime(new Date("2026-11-17T13:00:05Z"));
       await expect(charge(ctx, "u1", 20)).rejects.toThrow("Your church has reached today's AI usage limit");
-      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "u9", units: 500 })).resolves.toBeTruthy();
+      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "u9", principal: "clerk-u9", units: 500 })).resolves.toBeTruthy();
       vi.setSystemTime(new Date("2026-11-18T00:00:05Z"));
       await expect(charge(ctx, "u1", 20)).resolves.toBeTruthy();
     });

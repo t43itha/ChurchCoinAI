@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 import { roundMoney } from "../lib/money";
+import { requirePledgeDonorName } from "../../lib/displayNames";
 import { refreshPledgeStatus } from "../lib/pledgeStatus";
 import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
 import { assertNotLockedByReconciliation, getCompletedReconciliationLock, patchTransaction } from "../lib/transactionWrites";
@@ -28,6 +29,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "pledges.write");
+    const donorName = requirePledgeDonorName(args.donorName);
 
     // Verify fund belongs to organization
     const fund = await ctx.db.get(args.fundId);
@@ -46,7 +48,7 @@ export const create = mutation({
     const pledgeId = await ctx.db.insert("pledges", {
       organizationId: user.organizationId,
       donorId: args.donorId,
-      donorName: args.donorName,
+      donorName,
       amount: roundMoney(args.amount),
       fundId: args.fundId,
       frequency: args.frequency,
@@ -108,7 +110,7 @@ export const update = mutation({
 
     const updates: Record<string, any> = {};
     if (args.donorId !== undefined) updates.donorId = args.donorId;
-    if (args.donorName !== undefined) updates.donorName = args.donorName;
+    if (args.donorName !== undefined) updates.donorName = requirePledgeDonorName(args.donorName);
     if (args.amount !== undefined) updates.amount = roundMoney(args.amount);
     if (args.fundId !== undefined) updates.fundId = args.fundId;
     if (args.frequency !== undefined) updates.frequency = args.frequency;
@@ -160,10 +162,11 @@ export const bulkCreate = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireCapability(ctx, "pledges.write");
+    const donorNames = args.pledges.map((pledge) => requirePledgeDonorName(pledge.donorName));
 
     const pledgeIds: string[] = [];
 
-    for (const pledge of args.pledges) {
+    for (const [index, pledge] of args.pledges.entries()) {
       const amount = roundMoney(pledge.amount);
       // Verify fund belongs to organization
       const fund = await ctx.db.get(pledge.fundId);
@@ -195,7 +198,7 @@ export const bulkCreate = mutation({
       const pledgeId = await ctx.db.insert("pledges", {
         organizationId: user.organizationId,
         donorId: pledge.donorId,
-        donorName: pledge.donorName,
+        donorName: donorNames[index],
         amount,
         fundId: pledge.fundId,
         frequency: pledge.frequency,

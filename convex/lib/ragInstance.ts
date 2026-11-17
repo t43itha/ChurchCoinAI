@@ -27,18 +27,32 @@ export const transactionRAG = new RAG((components as any).rag, {
   embeddingDimension: TRANSACTION_EMBEDDING_DIMENSION,
 });
 
+/** Removes a church's search namespace and every entry in it. */
+export async function clearOrganizationSearch(ctx: ActionCtx, organizationId: Id<"organizations">) {
+  const namespace = await transactionRAG.getNamespace(ctx, { namespace: `org_${organizationId}` });
+  if (namespace) {
+    await ctx.runAction(transactionRAG.component.namespaces.deleteNamespaceSync, {
+      namespaceId: namespace.namespaceId,
+    });
+  }
+}
+
 /**
- * Indexing jobs scheduled before a church erased its data can run after the
- * erasure cleared its namespace. Adding only while the organization still
- * exists stops them recreating entries; returns whether the entry was added.
+ * Indexing jobs can run while, or after, a church erases its data. Erasure
+ * records a marker before it clears anything, so this checks the marker
+ * before adding and again once the add has finished: if erasure started in
+ * between, its final clear may already have run, so the job clears the
+ * namespace itself. Returns whether the entry was kept.
  */
 export async function addForExistingOrganization(
   ctx: ActionCtx,
   organizationId: Id<"organizations">,
   entry: Parameters<typeof transactionRAG.add>[1]
 ): Promise<boolean> {
-  const organization = await ctx.runQuery(internal.queries.organizations.getByIdInternal, { organizationId });
-  if (!organization) return false;
+  const accepts = () => ctx.runQuery(internal.queries.organizations.acceptsSearchEntries, { organizationId });
+  if (!(await accepts())) return false;
   await transactionRAG.add(ctx, entry);
-  return true;
+  if (await accepts()) return true;
+  await clearOrganizationSearch(ctx, organizationId);
+  return false;
 }

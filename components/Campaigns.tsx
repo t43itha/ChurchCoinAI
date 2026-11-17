@@ -16,6 +16,7 @@ import HubLayout from "./hub/HubLayout";
 import { NeedsYou, NeedsYouItem } from "./hub/NeedsYou";
 import SectionTitle from "./hub/SectionTitle";
 import MatchSheet, { type PledgeMatch } from "./campaigns/MatchSheet";
+import { useSmartLink } from "./smartLink/useSmartLink";
 import NewCampaignWalkthrough from "./campaigns/NewCampaignWalkthrough";
 import PledgeImportSheet from "./campaigns/PledgeImportSheet";
 import PledgeSheet from "./campaigns/PledgeSheet";
@@ -97,9 +98,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
   const [panel, setPanel] = useState<Panel | null>(null);
   const [filter, setFilter] = useState<Filter>("Everyone");
   const [pledgeSearch, setPledgeSearch] = useState("");
-  const [matches, setMatches] = useState<PledgeMatch[]>([]);
-  const [isMatching, setIsMatching] = useState(false);
-  const reconcilePledgesAction = useAction(api.actions.ai.reconcilePledges);
+  const smartLink = useSmartLink();
+  const { matches } = smartLink;
   const generatePledgeCompletionMessageAction = useAction(api.actions.ai.generatePledgeCompletionMessage);
   const giftAidOn = useGiftAidEnabled();
 
@@ -203,8 +203,11 @@ const Campaigns: React.FC<CampaignsProps> = ({
             matches={matches}
             transactions={transactions}
             onConfirm={handleConfirmMatch}
-            onDismiss={handleDismissMatch}
+            onDismiss={smartLink.dismiss}
             onClose={close}
+            remaining={smartLink.remaining}
+            isChecking={smartLink.isChecking}
+            onCheckMore={() => void smartLink.checkMore()}
           />
         ) : null;
       default:
@@ -293,16 +296,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
   // --- Actions ---
 
   const handleAIMatch = async () => {
-    setIsMatching(true);
-    try {
-      const results = await reconcilePledgesAction({});
-      setMatches(results);
-      if (results.length > 0) setPanel({ kind: "matches" });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsMatching(false);
-    }
+    const page = await smartLink.start();
+    if (page && (page.matches.length > 0 || page.remaining > 0)) setPanel({ kind: "matches" });
   };
 
   function handleConfirmMatch(match: PledgeMatch) {
@@ -313,12 +308,8 @@ const Campaigns: React.FC<CampaignsProps> = ({
         pledgeId: match.pledgeId,
         donorName: match.donorName || t.donorName,
       });
-      setMatches((prev) => prev.filter((m) => m !== match));
+      smartLink.dismiss(match);
     }
-  }
-
-  function handleDismissMatch(match: PledgeMatch) {
-    setMatches((prev) => prev.filter((m) => m !== match));
   }
 
   const needsYou = [
@@ -333,13 +324,17 @@ const Campaigns: React.FC<CampaignsProps> = ({
         onClick={() => setFilter("Behind")}
       />
     ),
-    canEdit && matches.length > 0 && (
+    canEdit && (matches.length > 0 || smartLink.remaining > 0) && (
       <NeedsYouItem
         key="matches"
         tone="sage"
         icon={Wand2}
-        title={`${matches.length} ${matches.length === 1 ? "gift may match" : "gifts may match"} a pledge`}
-        detail="Confirm or dismiss the suggestions"
+        title={
+          matches.length > 0
+            ? `${matches.length} ${matches.length === 1 ? "gift may match" : "gifts may match"} a pledge`
+            : `${smartLink.remaining.toLocaleString("en-GB")} more to check`
+        }
+        detail={matches.length > 0 ? "Confirm or dismiss the suggestions" : "Smart Link checks gifts a batch at a time"}
         action="Review"
         onClick={() => setPanel({ kind: "matches" })}
       />
@@ -431,12 +426,12 @@ const Campaigns: React.FC<CampaignsProps> = ({
                   </button>
                   <button
                     type="button"
-                    disabled={isMatching}
+                    disabled={smartLink.isChecking}
                     onClick={() => void handleAIMatch()}
                     className={`${btnOutline} h-11 !w-auto px-3.5 text-sm`}
                   >
                     <Wand2 size={16} aria-hidden="true" />
-                    {isMatching ? "Matching…" : "AI match"}
+                    {smartLink.isChecking ? "Matching…" : "AI match"}
                   </button>
                 </div>
               )}

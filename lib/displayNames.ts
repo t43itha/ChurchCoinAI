@@ -32,3 +32,20 @@ export function requireDisplayName(value: string, kind: DisplayNameKind): string
   if (problem) throw new Error(problem);
   return value.trim();
 }
+
+// Pledge donor names come from people typing and from imported files (often a
+// bank's "MR J SMITH"), so they keep any printable characters but are capped
+// at a length that fits real names, joint names and family names.
+export const PLEDGE_DONOR_NAME_MAX = 120;
+const CONTROL_CHARACTERS = /\p{Cc}/u;
+
+/** The trimmed pledge donor name, or throws with a message for the person typing it. */
+export function requirePledgeDonorName(value: string): string {
+  const name = value.trim();
+  if (!name) throw new Error("Donor name is required");
+  if (name.length > PLEDGE_DONOR_NAME_MAX) {
+    throw new Error(`Donor name must be ${PLEDGE_DONOR_NAME_MAX} characters or fewer`);
+  }
+  if (CONTROL_CHARACTERS.test(name)) throw new Error("Donor name cannot contain control characters");
+  return name;
+}

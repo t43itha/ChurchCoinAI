@@ -38,6 +38,7 @@ import TransactionFilterBar from './transactions/TransactionFilterBar';
 import TransactionFilterSheet from './transactions/TransactionFilterSheet';
 import TransactionVoidSheet from './transactions/TransactionVoidSheet';
 import SmartLinkSheet, { type SmartLinkMatch } from './transactions/SmartLinkSheet';
+import { useSmartLink } from './smartLink/useSmartLink';
 import BankReviewSheet from './transactions/BankReviewSheet';
 import BankAccountSheet from './transactions/BankAccountSheet';
 import InPersonGivingList from './transactions/InPersonGivingList';
@@ -117,7 +118,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const categorizeTransactionsAI = useAction(api.actions.ai.categorizeTransactions);
   const voidTransaction = useMutation(api.mutations.transactions.voidTransaction);
   const unvoidTransaction = useMutation(api.mutations.transactions.unvoidTransaction);
-  const reconcilePledgesAI = useAction(api.actions.ai.reconcilePledges);
+  const smartLink = useSmartLink();
   const unlinkTransaction = useMutation(api.mutations.movements.unlink);
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
 
@@ -147,8 +148,6 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const [isBulkProcessingAI, setIsBulkProcessingAI] = useState(false);
 
   // Smart Link State
-  const [isReconciling, setIsReconciling] = useState(false);
-  const [pledgeMatches, setPledgeMatches] = useState<SmartLinkMatch[]>([]);
   const [showMatchModal, setShowMatchModal] = useState(false);
 
   // Statement import walkthrough (file, columns, fix, categorise, check)
@@ -437,21 +436,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   };
 
   const handleSmartLinkPledges = async () => {
-      setIsReconciling(true);
-      try {
-          // AI action now fetches unlinked income server-side for complete coverage
-          const matches = await reconcilePledgesAI({});
-          if (matches.length > 0) {
-              setPledgeMatches(matches as SmartLinkMatch[]);
-              setShowMatchModal(true);
-          } else {
-              notify("Notice", "No obvious pledge matches found for unlinked income.");
-          }
-      } catch (e) {
-          console.error(e);
-          notify("Error", "Smart Link failed. Please check API connection.");
-      } finally {
-          setIsReconciling(false);
+      const page = await smartLink.start();
+      if (!page) return;
+      if (page.matches.length > 0 || page.remaining > 0) {
+          setShowMatchModal(true);
+      } else {
+          notify("Notice", "No obvious pledge matches found for unlinked income.");
       }
   };
 
@@ -479,7 +469,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       } else {
           console.error("Could not find transaction or pledge for match:", match);
       }
-      setPledgeMatches(prev => prev.filter(m => m !== match));
+      smartLink.dismiss(match);
   };
 
   const startBankSync = (bankConnectionId: Id<"bankConnections">) => {
@@ -799,7 +789,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
       <HubLayout receipt={receipt}>
         <HubHeader title="Transactions" status={headerStatus} actions={headerActions} />
 
-        {isReconciling && (
+        {smartLink.isChecking && (
           <p role="status" className="text-sm font-semibold text-sage">Looking for pledge matches…</p>
         )}
 
@@ -949,11 +939,14 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
 
       {showMatchModal && canEdit && (
         <SmartLinkSheet
-          matches={pledgeMatches}
+          matches={smartLink.matches}
           transactions={transactions}
           onConfirm={handleConfirmMatch}
-          onIgnore={(match) => setPledgeMatches(prev => prev.filter(m => m !== match))}
+          onIgnore={smartLink.dismiss}
           onClose={() => setShowMatchModal(false)}
+          remaining={smartLink.remaining}
+          isChecking={smartLink.isChecking}
+          onCheckMore={() => void smartLink.checkMore()}
         />
       )}
 

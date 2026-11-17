@@ -1,4 +1,4 @@
-import { query } from "../_generated/server";
+import { internalQuery, query } from "../_generated/server";
 import { v } from "convex/values";
 import { redactDonorFields, requireCapability } from "../lib/auth";
 import {
@@ -6,6 +6,14 @@ import {
   sumReportableIncome,
 } from "../../lib/reportableTransactions";
 import { pledgeFulfillmentTarget } from "../../lib/pledgeProgress";
+import {
+  compareGifts,
+  earliestPledgeStart,
+  giftForMatching,
+  isAfterCursor,
+  openPledgesForMatching,
+  SMART_LINK_LIMITS,
+} from "../../lib/smartLink";
 import { roundMoney } from "../lib/money";
 
 // List all pledges
@@ -133,22 +141,36 @@ export const getWithProgress = query({
   },
 });
 
-// Get unlinked income transactions (for Smart Link feature)
-export const getUnlinkedIncomeForMatching = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await requireCapability(ctx, "pledges.write");
+// One page of Smart Link candidates: unlinked income dated on or after the
+// earliest open pledge, oldest first after `after`, with the open pledges.
+// The action has already checked the caller may run Smart Link.
+export const smartLinkCandidates = internalQuery({
+  args: {
+    organizationId: v.id("organizations"),
+    after: v.optional(v.object({ date: v.string(), transactionId: v.id("transactions") })),
+  },
+  handler: async (ctx, args) => {
+    const pledges = openPledgesForMatching(
+      await ctx.db
+        .query("pledges")
+        .withIndex("by_organization_status", (q) => q.eq("organizationId", args.organizationId).eq("status", "Active"))
+        .collect()
+    );
+    if (pledges.length === 0) return { pledges, gifts: [], total: 0 };
 
-    const unlinkedIncome = await ctx.db
+    const from = earliestPledgeStart(pledges);
+    const rows = await ctx.db
       .query("transactions")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", user.organizationId)
-      )
-      .filter((q) => q.eq(q.field("type"), "Income"))
+      .withIndex("by_organization_date", (q) => q.eq("organizationId", args.organizationId).gte("date", from))
       .collect();
+    const candidates = rows
+      .filter((t) => t.pledgeId == null && isReportableIncomeTransaction(t) && isAfterCursor(t, args.after))
+      .sort(compareGifts);
 
-    return unlinkedIncome.filter(
-      (t) => t.pledgeId == null && isReportableIncomeTransaction(t)
-    ).map((transaction) => redactDonorFields(user, transaction));
+    return {
+      pledges,
+      gifts: candidates.slice(0, SMART_LINK_LIMITS.pageRows).map(giftForMatching),
+      total: candidates.length,
+    };
   },
 });

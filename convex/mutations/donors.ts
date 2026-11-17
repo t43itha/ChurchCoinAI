@@ -2,6 +2,7 @@ import { mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
 import { patchTransaction } from "../lib/transactionWrites";
+import { requirePledgeDonorName } from "../../lib/displayNames";
 
 // Create a new donor
 export const create = mutation({
@@ -64,10 +65,12 @@ export const update = mutation({
     }
 
     const oldName = donor.name;
-    const newName = args.name;
+    // A rename is copied onto the donor's pledges below, so it meets the pledge name rule.
+    const newName =
+      args.name !== undefined && args.name !== oldName ? requirePledgeDonorName(args.name) : args.name;
 
     const updates: Record<string, any> = {};
-    if (args.name !== undefined) updates.name = args.name;
+    if (newName !== undefined) updates.name = newName;
     if (args.email !== undefined) updates.email = args.email;
     if (args.phone !== undefined) updates.phone = args.phone;
     if (args.address !== undefined) updates.address = args.address;

@@ -8,6 +8,7 @@ import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
 import { seedOrganizationCategories } from "../lib/categoryIntegrity";
+import { dailyCaps, loadDailyCharges, personScope } from "./aiRateLimit";
 
 const DEMO_SEED_VERSION = "uk-church-v1";
 
@@ -225,6 +226,19 @@ export const create = mutation({
     }
 
     const now = Date.now();
+    // Charged to the person, not a church, so erasing a church and creating
+    // another does not reset this or their invitation and AI allowances.
+    const churchCap = dailyCaps().personChurchCreations;
+    const creation = await loadDailyCharges(ctx, [{
+      scope: personScope(identity.subject),
+      counter: "churchCreations",
+      amount: 1,
+      cap: churchCap,
+      refusal: `You have created ${churchCap} ${churchCap === 1 ? "church" : "churches"} today. Please try again tomorrow.`,
+    }], now);
+    if (creation.refusal) throw new Error(creation.refusal);
+    await creation.commit();
+
     const trialEndsAt = now + PRODUCT_TRIAL_DURATION_MS;
 
     // Create the organization with a server-issued product trial.
@@ -616,6 +630,22 @@ export const deleteDataBatch = internalMutation({
 // Convex tracks each index-range read in this mutation. If a concurrent write
 // inserts tenant data between these checks and the organization delete, the
 // mutation is retried and cannot commit an orphaned record.
+// Marks a church as being erased before erasure clears anything. Search
+// indexing checks this before and after every write, so a job already in
+// flight removes what it wrote. Kept after the church is gone.
+export const recordErasure = internalMutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("erasedOrganizations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (!existing) {
+      await ctx.db.insert("erasedOrganizations", { organizationId: args.organizationId, erasedAt: Date.now() });
+    }
+  },
+});
+
 export const finalizeDeletion = internalMutation({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {

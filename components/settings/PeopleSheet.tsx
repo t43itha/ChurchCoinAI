@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useConvex } from "convex/react";
 import { UserPlus } from "lucide-react";
 import { api } from "../../convex/_generated/api";
@@ -10,6 +10,7 @@ import WizardFrame from "../wizard/WizardFrame";
 import StepFooter from "../wizard/StepFooter";
 import { btnLg, btnPrimary, linkBtnSm, screenHelp, screenTitle, tagAmber, tagSage } from "../wizard/ui";
 import { buildInviteUrl, generateInviteMessage } from "./inviteMessage";
+import { nextResendAt } from "../../lib/invitationLimits";
 
 interface PeopleSheetProps {
   currentUser: AppUser;
@@ -22,6 +23,8 @@ interface PeopleSheetProps {
   onInvite: () => void;
   onClose: () => void;
 }
+
+const clockTime = (time: number) => new Date(time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 const formatExpiry = (expiresAt: number) => {
   const days = Math.ceil((expiresAt - Date.now()) / (1000 * 60 * 60 * 24));
@@ -45,6 +48,16 @@ export default function PeopleSheet({
   const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const canManageInvites = can(currentUser.role, "invitations.manage");
+  // Each email starts a ten-minute wait before the next; re-render when the soonest one ends.
+  const [now, setNow] = useState(() => Date.now());
+  const soonestResend = Math.min(
+    ...pendingInvitations.map((invitation) => nextResendAt(invitation.lastSentAt, now) ?? Infinity)
+  );
+  useEffect(() => {
+    if (!Number.isFinite(soonestResend)) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(soonestResend - Date.now(), 0) + 500);
+    return () => clearTimeout(timer);
+  }, [soonestResend]);
 
   const handleResend = async (invitationId: string) => {
     setResendingInviteId(invitationId);
@@ -139,6 +152,7 @@ export default function PeopleSheet({
           <ul className="mt-2.5 divide-y divide-ledger overflow-hidden rounded-2xl border border-ledger bg-white">
             {pendingInvitations.map((invitation) => {
               const expired = invitation.expiresAt <= Date.now();
+              const resendAt = nextResendAt(invitation.lastSentAt, now);
               return (
                 <li key={invitation._id} className="grid gap-2 px-3.5 py-3">
                   <div className="min-w-0">
@@ -153,11 +167,19 @@ export default function PeopleSheet({
                       <button
                         type="button"
                         onClick={() => void handleResend(invitation._id)}
-                        disabled={resendingInviteId === invitation._id}
-                        title="Email the invitation again and extend its expiry"
+                        disabled={resendingInviteId === invitation._id || resendAt !== null}
+                        title={
+                          resendAt === null
+                            ? "Email the invitation again and extend its expiry"
+                            : "Invitations can be emailed again ten minutes after the last email"
+                        }
                         className={`${linkBtnSm} disabled:opacity-50`}
                       >
-                        {resendingInviteId === invitation._id ? "Sending…" : "Resend"}
+                        {resendingInviteId === invitation._id
+                          ? "Sending…"
+                          : resendAt !== null
+                            ? `Resend after ${clockTime(resendAt)}`
+                            : "Resend"}
                       </button>
                       <button
                         type="button"

@@ -21,6 +21,12 @@ crons.daily(
   internal.mutations.scheduledMaintenance.cleanupExpiredPendingBankConnections
 );
 
+crons.daily(
+  "purge past days' usage counters",
+  { hourUTC: 2, minuteUTC: 45 },
+  internal.mutations.scheduledMaintenance.purgeUsageCounters
+);
+
 crons.interval(
   "retry support tickets awaiting GitHub sync",
   { minutes: 30 },
