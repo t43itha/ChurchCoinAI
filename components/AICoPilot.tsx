@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type FC } from 'react';
 import { Send, RotateCcw } from 'lucide-react';
 import { useAction, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
+import { chatContextData } from '../lib/aiActionInputs';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
 import HubHeader from './hub/HubHeader';
 import { btnMd, btnOutline, chip, eyebrow, txtInput } from './wizard/ui';
@@ -99,39 +100,7 @@ const AICoPilot: FC = () => {
 
         try {
             // Use pre-computed comprehensive context instead of limited transactions
-            const contextSummary = JSON.stringify({
-                // Monthly summaries for aggregate questions
-                monthlySummaries: aiContext?.monthlySummaries,
-                // Top donors for "who are our best donors" questions
-                topDonors: aiContext?.topDonors,
-                // Fund balances with progress
-                fundBalances: aiContext?.fundBalances,
-                // Category breakdowns
-                incomeByCategory: aiContext?.incomeByCategory,
-                expenditureByCategory: aiContext?.expenditureByCategory,
-                // Key totals
-                totals: {
-                    totalIncome: aiContext?.totalIncome,
-                    totalExpenditure: aiContext?.totalExpenditure,
-                    netBalance: aiContext?.netBalance,
-                    ytdIncome: aiContext?.ytdIncome,
-                    ytdExpenditure: aiContext?.ytdExpenditure,
-                },
-                // Pre-computed insights for common questions
-                insights: {
-                    bestMonth: aiContext?.bestMonth,
-                    worstMonth: aiContext?.worstMonth,
-                    dateRange: aiContext?.dateRange,
-                },
-                // Operational status
-                metrics: {
-                    transactionCount: aiContext?.transactionCount,
-                    donorCount: aiContext?.donorCount,
-                    uncategorizedCount: aiContext?.uncategorizedCount,
-                },
-                // Recent transactions for context
-                recentTransactions: aiContext?.recentTransactions,
-            });
+            const contextSummary = chatContextData(aiContext);
             const responseText = await chatWithTreasurer({ message: userMsg.text, contextData: contextSummary });
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), sender: 'ai', text: responseText || "I couldn't process that.", timestamp: new Date() }]);
         } catch {

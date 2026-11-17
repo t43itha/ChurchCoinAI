@@ -42,6 +42,7 @@ import BankReviewSheet from './transactions/BankReviewSheet';
 import BankAccountSheet from './transactions/BankAccountSheet';
 import InPersonGivingList from './transactions/InPersonGivingList';
 import type { TransactionListProps } from './transactions/TransactionRow';
+import { autoCategoriseBatch } from '../lib/aiActionInputs';
 import {
   HUB_VIEWS,
   editingAfterSave,
@@ -381,8 +382,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const runAutoCategorise = async (ids: Set<string>) => {
       if (ids.size === 0) return;
       setIsBulkProcessingAI(true);
-      const targetTransactions = transactions.filter(t => ids.has(t._id));
-      const descriptions = targetTransactions.map(t => t.description);
+      const { batch: targetTransactions, descriptions, remaining } = autoCategoriseBatch(transactions.filter(t => ids.has(t._id)));
       try {
           const suggestions = await categorizeTransactionsAI({
               descriptions,
@@ -412,7 +412,13 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
           if (updates.length > 0) {
             await batchUpdateTransactions({ updates });
           }
-          setSelectedIds(new Set());
+          if (remaining > 0) {
+            const categorised = new Set<string>(targetTransactions.map(t => t._id));
+            setSelectedIds(new Set([...ids].filter(id => !categorised.has(id))));
+            notify("Notice", `Categorised ${targetTransactions.length} lines. ${remaining} are still selected; run Auto-categorise again for them.`);
+          } else {
+            setSelectedIds(new Set());
+          }
       } catch (error) {
           console.error(error);
           notify("Error", "Failed to auto-categorize. Please check API connection.");

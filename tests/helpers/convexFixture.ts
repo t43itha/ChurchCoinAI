@@ -34,6 +34,10 @@ export function fixture(
           rows = rows.filter((row) => row[field] === value);
           return index;
         },
+        gte: (field: string, value: string | number) => {
+          rows = rows.filter((row) => (row[field] as string | number) >= value);
+          return index;
+        },
       };
       const chain = {
         withIndex: (_name: string, configure: (q: typeof index) => unknown) => {
