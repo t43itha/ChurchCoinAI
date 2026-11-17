@@ -43,13 +43,18 @@ export function requireDisplayName(value: string, kind: DisplayNameKind): string
 export const PLEDGE_DONOR_NAME_MAX = 120;
 const CONTROL_CHARACTERS = /\p{Cc}/u;
 
+/** Why a pledge donor name would be refused, or null when it is fine. */
+export function pledgeDonorNameProblem(value: string): string | null {
+  const name = value.trim();
+  if (!name) return "Donor name is required";
+  if (name.length > PLEDGE_DONOR_NAME_MAX) return `Donor name must be ${PLEDGE_DONOR_NAME_MAX} characters or fewer`;
+  if (CONTROL_CHARACTERS.test(name)) return "Donor name cannot contain control characters";
+  return null;
+}
+
 /** The trimmed pledge donor name, or throws with a message for the person typing it. */
 export function requirePledgeDonorName(value: string): string {
-  const name = value.trim();
-  if (!name) throw new Error("Donor name is required");
-  if (name.length > PLEDGE_DONOR_NAME_MAX) {
-    throw new Error(`Donor name must be ${PLEDGE_DONOR_NAME_MAX} characters or fewer`);
-  }
-  if (CONTROL_CHARACTERS.test(name)) throw new Error("Donor name cannot contain control characters");
-  return name;
+  const problem = pledgeDonorNameProblem(value);
+  if (problem) throw new Error(problem);
+  return value.trim();
 }
