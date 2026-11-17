@@ -338,12 +338,13 @@ export const expireProductTrial = internalMutation({
     }
 
     // A trial that runs out during early access is cleared rather than expired,
-    // so the church gets a full trial when billing is switched on.
+    // so the church gets a full trial when billing is switched on (again).
     if (!getLaunchFeatures().billing) {
       await ctx.db.patch(organizationId, {
         trialStatus: undefined,
         trialStartedAt: undefined,
         trialEndsAt: undefined,
+        billingStartedAt: undefined,
       });
       return;
     }

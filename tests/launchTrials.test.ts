@@ -74,6 +74,23 @@ describe("signing up during early access", () => {
     await invoke(startTrialsAfterEarlyAccess, ctx, {});
     expect(get("old-trial")?.trialEndsAt).toBe(NOW + PRODUCT_TRIAL_DURATION_MS);
   });
+
+  it("restores a full trial when billing is switched off and on again and the trial ran out in between", async () => {
+    vi.stubEnv("BILLING_ENABLED", "");
+    const { ctx, get } = fixture({
+      organizations: [
+        church("handed-off", { trialStatus: "active", trialStartedAt: NOW - 15 * DAY, trialEndsAt: NOW - DAY, billingStartedAt: NOW - 15 * DAY }),
+      ],
+    });
+
+    await invoke(expireProductTrial, ctx, { organizationId: "handed-off" });
+
+    vi.stubEnv("BILLING_ENABLED", "true");
+    expect((await access(ctx, "handed-off")).canUseApp).toBe(true);
+    await invoke(startTrialsAfterEarlyAccess, ctx, {});
+    expect(get("handed-off")).toMatchObject({ trialStatus: "active", trialEndsAt: NOW + PRODUCT_TRIAL_DURATION_MS });
+    expect((await access(ctx, "handed-off")).state).toBe("active_trial");
+  });
 });
 
 describe("startTrialsAfterEarlyAccess", () => {
