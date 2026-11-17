@@ -159,10 +159,12 @@ docs/             Product, architecture, design, and implementation notes
 
 ## Deployment
 
-Build the frontend with `npm run build` and deploy `dist/` to the configured host. Deploy Convex functions separately:
+Follow [the production launch runbook](docs/PRODUCTION_LAUNCH_RUNBOOK.md) for the ordered Clerk, data and identity cutover. Vercel runs:
 
 ```bash
-npx convex deploy
+node scripts/vercel-build.mjs
 ```
 
-Before inviting a pilot church, verify the production Resend sender, Sentry projects, Clerk JWT issuer, Stripe webhook, Yapily callback, backup/export procedure, and the complete CI run.
+Production builds with `CONVEX_DEPLOY_KEY` deploy Convex and build Vite together, injecting `VITE_CONVEX_URL`. Without that key, and for all local/Preview builds, the script runs the existing frontend build only. Set `REQUIRE_PRODUCTION_KEYS=1` at cutover to refuse development Clerk keys, a missing/wrong production deploy key, and a conflicting Convex URL. `VITE_APP_RELEASE` defaults to the Vercel commit SHA for Sentry.
+
+Billing and bank feeds stay off at launch; their credentials are not prerequisites. Verify Resend, Clerk JWT claims, backups, role access and the production smoke script before lifting the write freeze. A simple return to the development backend is safe only while writes remain frozen. See the runbook for later feature activation and rollback.

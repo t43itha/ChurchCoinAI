@@ -3,6 +3,8 @@ import { buildDecision, productionUrl } from '../scripts/vercel-build.mjs';
 import { clerkFrontendHost, contentSecurityPolicy } from '../lib/contentSecurityPolicy';
 import { launchProblems, planClerkRelink } from '../convex/lib/productionLaunch';
 import { listClerkUsers, mappingFromUsers } from '../scripts/clerk-relink-mapping.mjs';
+import { relinkClerkIds } from '../convex/mutations/maintenance';
+import type { MutationCtx } from '../convex/_generated/server';
 
 describe('production build gate', () => {
   const valid = { VERCEL_ENV: 'production', REQUIRE_PRODUCTION_KEYS: '1', CONVEX_DEPLOY_KEY: 'prod:valuable-akita-907|fixture', VITE_CLERK_PUBLISHABLE_KEY: 'pk_live_fixture' };
@@ -76,5 +78,50 @@ describe('Clerk mapping fixtures', () => {
     const urls: string[] = [];
     const users = await listClerkUsers('fixture', async url => { urls.push(String(url)); return new Response(JSON.stringify(urls.length === 1 ? Array.from({ length: 100 }, () => user('fixture')) : [])); });
     expect(users).toHaveLength(100); expect(urls[1]).toContain('offset=100');
+  });
+});
+
+describe('relink mutation', () => {
+  function fixture() {
+    const records: Record<string, Array<Record<string, string>>> = {
+      users: [{ _id: 'u', email: 'a@example.com', clerkId: 'user_old' }],
+      organizations: [{ _id: 'o', createdBy: 'user_old' }, { _id: 'unrelated', createdBy: 'user_other' }],
+    };
+    let writes = 0;
+    const ctx = { db: {
+      query(table: string) {
+        let rows = records[table];
+        const chain = {
+          withIndex(_name: string, configure: (q: { eq: (field: string, value: string) => void }) => void) {
+            configure({ eq(field, value) { rows = rows.filter(row => row[field] === value); } });
+            return chain;
+          },
+          async take(count: number) { return rows.slice(0, count); },
+        };
+        return chain;
+      },
+      async patch(id: string, patch: Record<string, string>) {
+        writes++;
+        Object.assign(Object.values(records).flat().find(row => row._id === id)!, patch);
+      },
+    } } as unknown as MutationCtx;
+    const run = (mapping: Array<{email: string; clerkId: string}>, dryRun?: boolean) =>
+      (relinkClerkIds as unknown as { _handler: (ctx: MutationCtx, args: {mapping: typeof mapping; dryRun?: boolean}) => Promise<unknown> })._handler(ctx, { mapping, dryRun });
+    return { records, run, writes: () => writes };
+  }
+  const mapping = [{ email: 'a@example.com', clerkId: 'user_new' }];
+  it('defaults to dry-run, updates both copies, then becomes a no-op', async () => {
+    const f = fixture();
+    await f.run(mapping); expect(f.writes()).toBe(0);
+    await f.run(mapping, false);
+    expect(f.records.users[0].clerkId).toBe('user_new');
+    expect(f.records.organizations.map(row => row.createdBy)).toEqual(['user_new', 'user_other']);
+    expect(f.writes()).toBe(2);
+    await f.run(mapping, false); expect(f.writes()).toBe(2);
+  });
+  it('validates the whole batch before writing', async () => {
+    const f = fixture();
+    await expect(f.run([...mapping, {email: 'unknown@example.com', clerkId: 'user_unknown'}], false)).rejects.toThrow();
+    expect(f.writes()).toBe(0);
   });
 });
