@@ -6,6 +6,7 @@ import { v } from "convex/values";
 import { getPlaid, PLAID_CONFIG, getPlaidWebhookUrl } from "../lib/plaid";
 import { Products } from "plaid";
 import { Id } from "../_generated/dataModel";
+import { requireBankFeedsEnabled } from "../lib/launchFeatures";
 
 // Account fund mapping schema
 const accountMappingSchema = v.object({
@@ -15,6 +16,7 @@ const accountMappingSchema = v.object({
 
 // Require an authenticated Convex user
 const requireUser = async (ctx: ActionCtx) => {
+  requireBankFeedsEnabled();
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");

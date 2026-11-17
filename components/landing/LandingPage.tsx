@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import FundsPreview from "./FundsPreview";
+import { useLaunchFeatures, type LaunchFeatures } from "../app/useLaunchFeatures";
 
 interface LandingPageProps {
   onSignIn: () => void;
@@ -25,6 +26,8 @@ type PricingPlan = {
   price: string;
   description: string;
   features: string[];
+  // Shown as a plan feature once bank feeds are live, and as coming later until then.
+  bankFeedFeature?: string;
   featured?: boolean;
 };
 
@@ -55,10 +58,10 @@ const pricingPlans: PricingPlan[] = [
     description: "For churches with £100k–£500k annual income and more to manage.",
     features: [
       "Everything in Core",
-      "Connected bank accounts",
       "Trustee-ready reports",
       "One onboarding session",
     ],
+    bankFeedFeature: "Connected bank accounts",
     featured: true,
   },
   {
@@ -68,45 +71,59 @@ const pricingPlans: PricingPlan[] = [
     description: "For churches with £500k–£1m annual income and greater support needs.",
     features: [
       "Everything in Standard",
-      "More connected bank accounts",
       "Advanced permissions",
       "Assisted onboarding and training",
     ],
+    bankFeedFeature: "More connected bank accounts",
   },
 ];
 
-const faqs = [
-  {
-    question: "Do I need to know accounting?",
-    answer:
-      "No. If you can read a bank statement, you can use ChurchCoin. Fund accounting happens in the background so you don't have to think in debits and credits.",
-  },
-  {
-    question: "Which banks work?",
-    answer:
-      "Direct bank feeds cover the major UK banks through Open Banking. And whichever bank your church uses — including CAF Bank, Unity Trust and other accounts churches typically hold — you can always import statements, so no church is left out.",
-  },
-  {
-    question: "Is our data safe?",
-    answer:
-      "Yes. Your data is encrypted in transit, and ChurchCoin never has access to move money from your account — it works from statements, not from control of your bank.",
-  },
-  {
-    question: "What if the AI gets something wrong?",
-    answer:
-      "You'll catch it, because nothing is posted without your approval. Correct it once and it learns for next time.",
-  },
-  {
-    question: "Can we switch from a spreadsheet?",
-    answer:
-      "Yes — import your existing records and carry on from where you are.",
-  },
-  {
-    question: "What denomination is this for?",
-    answer:
-      "Any. Anglican, Methodist, Baptist, URC, independent — fund accounting works the same way.",
-  },
-];
+function faqsFor({ billing, bankFeeds }: LaunchFeatures) {
+  const earlyAccess = billing
+    ? []
+    : [
+        {
+          question: "What does early access mean?",
+          answer:
+            "ChurchCoin is free while it is in early access, and you don't need a card to sign up. When paid plans start, every early-access church gets a full free trial from that date before any payment is asked for.",
+        },
+      ];
+
+  return [
+    {
+      question: "Do I need to know accounting?",
+      answer:
+        "No. If you can read a bank statement, you can use ChurchCoin. Fund accounting happens in the background so you don't have to think in debits and credits.",
+    },
+    {
+      question: "Which banks work?",
+      answer: bankFeeds
+        ? "Direct bank feeds cover the major UK banks through Open Banking. And whichever bank your church uses — including CAF Bank, Unity Trust and other accounts churches typically hold — you can always import statements, so no church is left out."
+        : "All of them. Download a statement from your bank as a CSV or Excel file and import it — that works for every UK bank, including CAF Bank, Unity Trust and the other accounts churches typically hold. Direct bank feeds through Open Banking are coming later.",
+    },
+    ...earlyAccess,
+    {
+      question: "Is our data safe?",
+      answer:
+        "Yes. Your data is encrypted in transit, and ChurchCoin never has access to move money from your account — it works from statements, not from control of your bank.",
+    },
+    {
+      question: "What if the AI gets something wrong?",
+      answer:
+        "You'll catch it, because nothing is posted without your approval. Correct it once and it learns for next time.",
+    },
+    {
+      question: "Can we switch from a spreadsheet?",
+      answer:
+        "Yes — import your existing records and carry on from where you are.",
+    },
+    {
+      question: "What denomination is this for?",
+      answer:
+        "Any. Anglican, Methodist, Baptist, URC, independent — fund accounting works the same way.",
+    },
+  ];
+}
 
 const reveal = {
   hidden: { opacity: 0, y: 24 },
@@ -442,6 +459,9 @@ export default function LandingPage({
   const [menuOpen, setMenuOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const features = useLaunchFeatures();
+  const { billing, bankFeeds } = features;
+  const faqs = faqsFor(features);
   const reduceMotion = useReducedMotion();
   const closeTour = useCallback(() => setTourOpen(false), []);
 
@@ -649,7 +669,9 @@ export default function LandingPage({
                   <h3 className="mt-4 text-3xl font-bold tracking-[-0.035em]">Transactions sort themselves</h3>
                   <div className="mt-6 ledger-space-y-4 text-base leading-7 text-grey-dark">
                     <p>
-                      Connect your church bank account and transactions arrive already categorised — each with a suggested fund and category, and the reason behind it. Prefer to import statements instead? That works too.
+                      {bankFeeds
+                        ? "Connect your church bank account and transactions arrive already categorised — each with a suggested fund and category, and the reason behind it. Prefer to import statements instead? That works too."
+                        : "Import your bank statement — a CSV or Excel file from any UK bank — and every line arrives already categorised, each with a suggested fund and category and the reason behind it. Direct bank feeds are coming later."}
                     </p>
                     <p>
                       You approve. Nothing goes on the books until you do, and anything ChurchCoin isn&apos;t confident about is flagged for you to check rather than guessed at.
@@ -757,7 +779,11 @@ export default function LandingPage({
             <motion.div {...motionProps} className="mx-auto max-w-3xl text-center">
               <SectionLabel>Pricing</SectionLabel>
               <h2 className="text-balance text-4xl font-bold tracking-[-0.04em] sm:text-5xl">Priced for churches, not corporates.</h2>
-              <p className="mt-5 text-lg text-grey-dark">Start free. No card required.</p>
+              <p className="mt-5 text-lg text-grey-dark">
+                {billing
+                  ? "Start free. No card required."
+                  : "Free during early access. No card needed."}
+              </p>
             </motion.div>
 
             <motion.div {...motionProps} className="mx-auto mt-14 grid max-w-5xl gap-5 md:grid-cols-3">
@@ -788,6 +814,12 @@ export default function LandingPage({
                         {feature}
                       </li>
                     ))}
+                    {plan.bankFeedFeature && (
+                      <li className="flex items-start gap-2.5 text-sm text-grey-dark">
+                        <Check size={16} className="mt-0.5 shrink-0 text-sage" strokeWidth={2.4} />
+                        {bankFeeds ? plan.bankFeedFeature : `${plan.bankFeedFeature} (coming later)`}
+                      </li>
+                    )}
                   </ul>
                   <button
                     onClick={() => selectPlan(plan.id)}
@@ -797,12 +829,16 @@ export default function LandingPage({
                         : "border border-ledger bg-white text-ink hover:border-ink"
                     }`}
                   >
-                    Choose {plan.name}
+                    {billing ? `Choose ${plan.name}` : "Start free"}
                   </button>
                 </article>
               ))}
             </motion.div>
-            <p className="mt-7 text-center text-xs text-grey-mid">Paid plans billed monthly. Cancel at any time.</p>
+            <p className="mt-7 text-center text-xs text-grey-mid">
+              {billing
+                ? "Paid plans billed monthly. Cancel at any time."
+                : "These are the prices once early access ends. Until then ChurchCoin is free, and no card is needed."}
+            </p>
           </div>
         </section>
 
@@ -861,7 +897,9 @@ export default function LandingPage({
               <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-dark">Ready when you are</p>
               <h2 className="mt-5 text-4xl font-bold tracking-[-0.045em] sm:text-5xl lg:text-6xl">Get your evenings back.</h2>
               <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-grey-dark">
-                Set up takes about ten minutes. Start free and see your own transactions sorted before you decide anything.
+                {billing
+                  ? "Set up takes about ten minutes. Start free and see your own transactions sorted before you decide anything."
+                  : "Set up takes about ten minutes. Import a statement and see your own transactions sorted. ChurchCoin is free during early access."}
               </p>
               <button
                 onClick={() => onGetStarted()}

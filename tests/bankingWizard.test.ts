@@ -196,7 +196,8 @@ describe("banking walkthrough", () => {
     fixtures.candidates = [];
     const markup = renderWizard({ initialStep: "bank" });
     expect(markup).toContain("No bank credits to match yet.");
-    expect(markup).toContain("statement imports or bank sync");
+    expect(markup).toContain("import the statement first");
+    expect(markup).not.toContain("bank sync");
   });
 
   it("says the bank shows less when nothing has been found in the bank yet", () => {

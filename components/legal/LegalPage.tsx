@@ -4,7 +4,7 @@ type LegalPageProps = {
   type: "privacy" | "terms";
 };
 
-const updatedAt = "14 August 2026";
+const updatedAt = "17 November 2026";
 
 const sections = {
   privacy: {
@@ -20,17 +20,17 @@ const sections = {
       {
         heading: "Banking data",
         body:
-          "When an authorised user connects a bank account, ChurchCoinAI uses Yapily to request read-only account and transaction access. We do not receive or store online banking passwords. Imported transactions are shown for manual review before they are added to the ledger.",
+          "Most churches bring in transactions by importing a bank statement file, which is processed like any other record you enter. Where direct bank feeds are available and an authorised user connects a bank account, ChurchCoinAI uses Yapily to request read-only account and transaction access. We do not receive or store online banking passwords. Imported transactions are shown for manual review before they are added to the ledger.",
       },
       {
         heading: "How data is used",
         body:
-          "We use data to provide fund accounting, donor management, transaction categorisation, reporting, subscription billing, support, security monitoring, and service improvement.",
+          "We use data to provide fund accounting, donor management, transaction categorisation, reporting, subscription billing where paid plans apply, support, security monitoring, and service improvement.",
       },
       {
         heading: "Processors",
         body:
-          "The service uses trusted processors including Convex for application data hosting, Clerk for authentication, Stripe for subscription billing, Yapily (and Yapily Connect where applicable) for open banking connectivity, and AI providers for categorisation features where enabled.",
+          "The service uses trusted processors including Convex for application data hosting, Clerk for authentication, Stripe for subscription billing where paid plans apply, Yapily (and Yapily Connect where applicable) for open banking connectivity where direct bank feeds are available, and AI providers for categorisation features where enabled.",
       },
       {
         heading: "Retention and control",
@@ -62,12 +62,12 @@ const sections = {
       {
         heading: "Bank connections",
         body:
-          "Bank connections are read-only and require explicit user consent through Yapily. You may disconnect a bank connection or allow consent to expire. Transaction sync is manual and reviewed before import.",
+          "Where direct bank feeds are available, bank connections are read-only and require explicit user consent through Yapily. You may disconnect a bank connection or allow consent to expire. Transaction sync is manual and reviewed before import.",
       },
       {
         heading: "Subscriptions",
         body:
-          "Paid plans, billing, renewals, and cancellations are handled through Stripe. Access to paid functionality may depend on the organisation's subscription status.",
+          "While ChurchCoinAI is in early access it is free, and no card is needed. Where paid plans apply, billing, renewals, and cancellations are handled through Stripe, and access to paid functionality may depend on the organisation's subscription status. Churches that joined during early access get a full free trial from the date paid plans start, before any payment is asked for.",
       },
       {
         heading: "Availability and changes",

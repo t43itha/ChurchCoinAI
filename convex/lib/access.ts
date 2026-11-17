@@ -1,10 +1,12 @@
 import { can } from "../../lib/permissions";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
+import { getLaunchFeatures, type LaunchFeatures } from "./launchFeatures";
 
 const PAST_DUE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type OrganizationAccessState =
+  | "early_access"
   | "active_subscription"
   | "trialing_subscription"
   | "active_trial"
@@ -19,10 +21,24 @@ export type OrganizationAccessState =
 
 type AccessCtx = QueryCtx | MutationCtx;
 
+// A subscription Stripe is still billing or collecting. Any other status (canceled,
+// incomplete_expired, unpaid, paused) has ended, so it no longer stands in for a trial.
+const LIVE_SUBSCRIPTION_STATUSES: ReadonlySet<Doc<"subscriptions">["status"]> = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "incomplete",
+]);
+
+export function hasLiveSubscription(subscription: Pick<Doc<"subscriptions">, "status"> | null): boolean {
+  return subscription !== null && LIVE_SUBSCRIPTION_STATUSES.has(subscription.status);
+}
+
 export async function resolveOrganizationAccess(
   ctx: AccessCtx,
   user: Doc<"users">,
-  now = Date.now()
+  now = Date.now(),
+  features: LaunchFeatures = getLaunchFeatures()
 ) {
   const organization = await ctx.db.get(user.organizationId);
   if (!organization) {
@@ -101,6 +117,22 @@ export async function resolveOrganizationAccess(
     };
   }
 
+  const earlyAccess = (reason: string) => ({
+    state: "early_access" as const,
+    canUseApp: true,
+    canManageBilling: false,
+    reason,
+    accessMode,
+    dataMode,
+    expiresAt: null,
+    subscriptionStatus: null,
+    plan: null,
+  });
+
+  if (!features.billing) {
+    return earlyAccess("billing_disabled");
+  }
+
   const subscription = await ctx.db
     .query("subscriptions")
     .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
@@ -170,6 +202,17 @@ export async function resolveOrganizationAccess(
       subscriptionStatus: subscription?.status ?? null,
       plan: organization.trialPlan ?? null,
     };
+  }
+
+  // A church in early access has no trial until startTrialsAfterEarlyAccess runs;
+  // keep it open between the flag flip and that run. A subscription that ended
+  // before then does not count, but one that ends afterwards does.
+  if (
+    organization.trialStatus === undefined &&
+    organization.billingStartedAt === undefined &&
+    !hasLiveSubscription(subscription)
+  ) {
+    return earlyAccess("trial_not_started");
   }
 
   if (!subscription) {

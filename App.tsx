@@ -18,6 +18,7 @@ import LandingPage from "./components/landing/LandingPage";
 import LegalPage from "./components/legal/LegalPage";
 import SubscriptionRequired from "./components/SubscriptionRequired";
 import AppContentRoutes from "./components/app/AppContentRoutes";
+import { useLaunchFeatures } from "./components/app/useLaunchFeatures";
 import MobileTabBar from "./components/app/MobileTabBar";
 import NewChooser from "./components/app/NewChooser";
 import AppNotificationToast, {
@@ -84,7 +85,9 @@ function App() {
     api.queries.subscriptions.access,
     hasUser ? {} : "skip"
   );
+  const features = useLaunchFeatures();
   const returnedFromCheckout =
+    features.billing &&
     new URLSearchParams(location.search).get("subscription") === "success";
   const checkoutVerificationPending =
     returnedFromCheckout &&
@@ -172,7 +175,9 @@ function App() {
     );
   }, [access?.state, location.pathname, location.search, navigate, returnedFromCheckout]);
 
-  const beginAuth = (mode: "signin" | "signup", plan?: PlanTier, source = "landing") => {
+  const beginAuth = (mode: "signin" | "signup", pricingPlan?: PlanTier, source = "landing") => {
+    // During early access a pricing click is just a sign-up; no plan carries into checkout.
+    const plan = features.billing ? pricingPlan : undefined;
     storeOnboardingIntent({ authMode: mode, selectedPlan: plan, source });
     setAuthMode(mode);
     setSelectedPlan(plan);
@@ -248,7 +253,7 @@ function App() {
     return (
       <Onboarding
         clerkUser={clerkUser}
-        selectedPlan={selectedPlan}
+        selectedPlan={features.billing ? selectedPlan : undefined}
         onComplete={(result) => {
           if (result === "invitation") {
             clearOnboardingIntent();
@@ -316,7 +321,7 @@ function App() {
       />
 
       {isNewChooserOpen && (
-        <NewChooser role={currentUser.role} onClose={() => setIsNewChooserOpen(false)} />
+        <NewChooser role={currentUser.role} features={features} onClose={() => setIsNewChooserOpen(false)} />
       )}
 
       <MobileTabBar role={currentUser.role} onNew={() => setIsNewChooserOpen(true)} />

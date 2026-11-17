@@ -39,6 +39,9 @@ export default defineSchema({
     )),
     trialStartedAt: v.optional(v.number()),
     trialEndsAt: v.optional(v.number()),
+    // When startTrialsAfterEarlyAccess moved this church from early access onto
+    // billing. Unset means it has not been through the hand-off yet.
+    billingStartedAt: v.optional(v.number()),
     trialPlan: v.optional(v.union(
       v.literal("starter"),
       v.literal("growing"),

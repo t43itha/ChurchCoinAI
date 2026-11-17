@@ -9,9 +9,11 @@ import {
   getStripe,
 } from "../lib/stripe";
 import { validateRedirectUrl } from "../lib/urlValidation";
+import { requireBillingEnabled } from "../lib/launchFeatures";
 
 // Require an authenticated Convex user
 const requireUser = async (ctx: ActionCtx) => {
+  requireBillingEnabled();
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");

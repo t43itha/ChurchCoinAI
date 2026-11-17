@@ -22,6 +22,7 @@ import JournalTransferModal from './transactions/JournalTransferModal';
 import { useGiftAidEnabled } from './app/useGiftAidEnabled';
 import NewChooser from './app/NewChooser';
 import { linkParamsToRemove, planNewKind } from './app/newChooserRows';
+import { useLaunchFeatures } from './app/useLaunchFeatures';
 import HubHeader from './hub/HubHeader';
 import HubLayout from './hub/HubLayout';
 import { NeedsYou, NeedsYouItem } from './hub/NeedsYou';
@@ -121,7 +122,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const deleteJournalTransfer = useMutation(api.mutations.movements.deleteJournalTransfer);
 
   // Bank sync
-  const bankConnectionsResult = useQuery(api.queries.bankConnections.getActiveWithMappedAccounts);
+  const launchFeatures = useLaunchFeatures();
+  const { bankFeeds } = launchFeatures;
+  const bankConnectionsResult = useQuery(
+    api.queries.bankConnections.getActiveWithMappedAccounts,
+    bankFeeds ? {} : "skip"
+  );
   const bankConnections = useMemo(() => bankConnectionsResult || [], [bankConnectionsResult]);
   const bankConnectionsLoaded = bankConnectionsResult !== undefined;
 
@@ -602,7 +608,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
   const handledNewKind = useRef<string | null>(null);
   useEffect(() => {
     if (!newKindParam) handledNewKind.current = null;
-    const step = planNewKind({ param: newKindParam, handled: handledNewKind.current, canEdit, bankConnectionsLoaded });
+    const step = planNewKind({ param: newKindParam, handled: handledNewKind.current, canEdit, bankConnectionsLoaded, bankFeeds, featuresLoaded: launchFeatures.loaded });
     const remove = linkParamsToRemove(step, viewParam, newKindParam, handledNewKind.current);
     if (remove.length === 0) return;
     const takeNew = step.type === 'handled';
@@ -640,7 +646,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
     }
     // Runs once per arrival of a param; the handlers are current for that render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newKindParam, viewParam, bankConnectionsLoaded, canBank]);
+  }, [newKindParam, viewParam, bankConnectionsLoaded, bankFeeds, launchFeatures.loaded, canBank]);
 
   // Read-only roles can open a row too; the panel shows it as text.
   const editingTransaction = editingId ? transactions.find((t) => t._id === editingId) ?? null : null;
@@ -924,7 +930,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({
         />
       )}
 
-      {showChooser && canEdit && <NewChooser role={currentUser.role} onClose={() => setShowChooser(false)} />}
+      {showChooser && canEdit && <NewChooser role={currentUser.role} features={launchFeatures} onClose={() => setShowChooser(false)} />}
 
       {showMoreFilters && (
         <TransactionFilterSheet

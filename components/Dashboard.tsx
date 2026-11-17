@@ -21,6 +21,7 @@ import { ReceiptCard, ReceiptRow } from "./wizard/Receipt";
 import { btnMd, btnPrimary, chipDark, chipDarkOn, eyebrow } from "./wizard/ui";
 import { formatLocalDateInputValue } from "../lib/dateUtils";
 import LoadingSpinner from "./LoadingSpinner";
+import { useLaunchFeatures } from "./app/useLaunchFeatures";
 
 interface DashboardProps {
   funds: Fund[];
@@ -48,8 +49,12 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
     periodKey,
     today: formatLocalDateInputValue(new Date()),
   });
-  const bankConnections = useQuery(api.queries.bankConnections.list);
-  const bankFeedsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention);
+  const { bankFeeds } = useLaunchFeatures();
+  const bankConnections = useQuery(api.queries.bankConnections.list, bankFeeds ? {} : "skip");
+  const bankFeedsNeedingAttention = useQuery(
+    api.queries.bankConnections.getItemsNeedingAttention,
+    bankFeeds ? {} : "skip"
+  );
 
   if (summary === undefined) {
     return <LoadingSpinner message="Loading leadership dashboard..." />;
@@ -127,7 +132,11 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
           title={title}
           status={
             <>
-              <DataFreshness connections={bankConnections} />
+              {bankFeeds ? (
+                <DataFreshness connections={bankConnections} />
+              ) : (
+                <span>Figures cover entered and imported transactions.</span>
+              )}
               {needsYou.length > 0 && (
                 <>
                   {" "}
