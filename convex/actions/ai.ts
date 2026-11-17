@@ -923,7 +923,9 @@ export const reconcilePledges = action({
       text = response.text;
     } catch (e) {
       console.error("Reconciliation failed", e);
-      // Not an empty page: that would skip these gifts.
+      // Not an empty page: that would skip these gifts. The original is logged above;
+      // convex/tsconfig.json targets the ES2021 lib, which has no Error cause option.
+      // eslint-disable-next-line preserve-caught-error
       throw new Error("Smart Link could not check these gifts. Please try again.");
     }
 
