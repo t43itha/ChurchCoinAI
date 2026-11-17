@@ -1,11 +1,11 @@
 import { query } from "../_generated/server";
-import { requireAuth } from "../lib/auth";
+import { requireCapability } from "../lib/auth";
 
 // List all categories for the organization
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const categories = await ctx.db
       .query("categories")
@@ -23,7 +23,7 @@ export const list = query({
 export const listWithDetails = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     const categories = await ctx.db
       .query("categories")

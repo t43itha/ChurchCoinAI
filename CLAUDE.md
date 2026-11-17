@@ -96,6 +96,7 @@ The "Refined Ledger" design system is defined in the `@theme` block and componen
 - `APP_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 - `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, `STRIPE_PRODUCT_THRIVING`
+- Optional AI budgets in usage units (one per transaction row, 20 per single AI request): `AI_USER_UNITS_PER_MINUTE` (default 600), `AI_ORG_UNITS_PER_MINUTE` (default 1000), `AI_DAILY_UNITS` (deployment-wide, default 200000)
 - `RESEND_API_KEY` (invitation emails), optional `RESEND_FROM_EMAIL` (defaults to `ChurchCoin <onboarding@resend.dev>`; set a verified-domain sender for production)
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).
@@ -132,3 +133,4 @@ Mistakes reviewers caught more than once, and what now stops them. When you're c
 | Bindings are regenerated against a local anonymous backend, never the shared dev deployment (codegen uploads code to its target) | Docs only: judgment call |
 | Cash walkthrough dates use the shared `DateInput`, with wrapper padding, a shrinkable native input and an explicit calendar icon; desktop mobile emulation alone does not verify iOS date controls | `components/cashEntry/DateInput.tsx` + `.cash-date-*` styles; physical iPhone verification remains manual |
 | Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |
+| Every public function under `convex/queries`, `mutations`, `actions` and `intelligence` names the capability it enforces (`requireCapability`, `assertCapability`, or an action helper given a capability); a bare `requireAuth` is not a gate. Pre-membership and own-record functions go in the test's allowlist with a reason | `tests/publicFunctionAuth.test.ts` |
