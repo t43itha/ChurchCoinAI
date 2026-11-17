@@ -1,4 +1,6 @@
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { addForExistingOrganization } from "../lib/ragInstance";
 
@@ -7,7 +9,22 @@ import { addForExistingOrganization } from "../lib/ragInstance";
  * Called via ctx.scheduler.runAfter from bulkCreate mutation.
  *
  * This enables the learning system to improve with every imported transaction.
+ *
+ * Every entry is one embedding call, charged as one unit against the church's
+ * and the deployment's daily AI budget before it is added. Work a spent budget
+ * refuses is rescheduled for the next UTC day, never marked failed.
  */
+
+// Entries charged per budget check, so a nearly spent day still indexes what fits.
+const INDEX_CHUNK = 20;
+
+type BudgetAnswer =
+  | { status: "charged" }
+  | { status: "deferred"; retryAt: number }
+  | { status: "organizationMissing" };
+
+const chargeIndexing = (ctx: ActionCtx, organizationId: Id<"organizations">, units: number): Promise<BudgetAnswer> =>
+  ctx.runMutation(internal.mutations.aiRateLimit.consumeBackgroundUnits, { organizationId, units });
 
 // Index a newly created transaction into RAG
 export const indexTransaction = internalAction({
@@ -24,10 +41,16 @@ export const indexTransaction = internalAction({
       amount: v.number(),
     }),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Record<string, unknown>> => {
     const namespace = `org_${args.organizationId}`;
 
     try {
+      const budget = await chargeIndexing(ctx, args.organizationId, 1);
+      if (budget.status === "organizationMissing") return { success: false, transactionId: args.transactionId };
+      if (budget.status === "deferred") {
+        await ctx.scheduler.runAfter(budget.retryAt - Date.now(), internal.intelligence.ragIndexer.indexTransaction, args);
+        return { success: false, deferred: true, transactionId: args.transactionId };
+      }
       await addForExistingOrganization(ctx, args.organizationId, {
         namespace,
         key: `tx:${args.transactionId}`,
@@ -79,11 +102,33 @@ export const batchIndexTransactions = internalAction({
       })
     ),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{
+    total: number;
+    successful: number;
+    failed: number;
+    deferred: number;
+    results: Array<{ transactionId: string; success: boolean }>;
+  }> => {
     const namespace = `org_${args.organizationId}`;
     const results: Array<{ transactionId: string; success: boolean }> = [];
+    let deferred = 0;
 
-    for (const tx of args.transactions) {
+    for (const [index, tx] of args.transactions.entries()) {
+      if (index % INDEX_CHUNK === 0) {
+        const chunk = args.transactions.slice(index, index + INDEX_CHUNK);
+        const budget = await chargeIndexing(ctx, args.organizationId, chunk.length);
+        if (budget.status === "organizationMissing") break;
+        if (budget.status === "deferred") {
+          const remaining = args.transactions.slice(index);
+          await ctx.scheduler.runAfter(
+            budget.retryAt - Date.now(),
+            internal.intelligence.ragIndexer.batchIndexTransactions,
+            { ...args, transactions: remaining }
+          );
+          deferred = remaining.length;
+          break;
+        }
+      }
       try {
         await addForExistingOrganization(ctx, args.organizationId, {
           namespace,
@@ -110,6 +155,7 @@ export const batchIndexTransactions = internalAction({
       total: args.transactions.length,
       successful: results.filter((r) => r.success).length,
       failed: results.filter((r) => !r.success).length,
+      deferred,
       results,
     };
   },
@@ -132,10 +178,16 @@ export const updateInIndex = internalAction({
       acceptedCount: v.optional(v.number()),
     }),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Record<string, unknown>> => {
     const namespace = `org_${args.organizationId}`;
 
     try {
+      const budget = await chargeIndexing(ctx, args.organizationId, 1);
+      if (budget.status === "organizationMissing") return { success: false, transactionId: args.transactionId };
+      if (budget.status === "deferred") {
+        await ctx.scheduler.runAfter(budget.retryAt - Date.now(), internal.intelligence.ragIndexer.updateInIndex, args);
+        return { success: false, deferred: true, transactionId: args.transactionId };
+      }
       // Add the corrected version - RAG will find the most relevant match
       await addForExistingOrganization(ctx, args.organizationId, {
         namespace,

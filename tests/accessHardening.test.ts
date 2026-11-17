@@ -6,7 +6,7 @@ import type { ActionCtx, MutationCtx } from "../convex/_generated/server";
 import { ROLES, can, type Capability, type UserRole } from "../lib/permissions";
 import { fixture, invoke, type Row } from "./helpers/convexFixture";
 import * as ai from "../convex/actions/ai";
-import { checkAndConsume } from "../convex/mutations/aiRateLimit";
+import { checkAndConsume, consumeBackgroundUnits } from "../convex/mutations/aiRateLimit";
 import { acceptInvitation, updateProfile } from "../convex/mutations/users";
 import * as invitationQueries from "../convex/queries/invitations";
 import * as invitationMutations from "../convex/mutations/invitations";
@@ -17,7 +17,7 @@ import * as bankQueries from "../convex/queries/bankConnections";
 import * as plaidQueries from "../convex/queries/plaid";
 import * as cashQueries from "../convex/queries/cashCollections";
 import * as subscriptionQueries from "../convex/queries/subscriptions";
-import { batchIndexTransactions, indexTransaction } from "../convex/intelligence/ragIndexer";
+import { batchIndexTransactions, indexTransaction, updateInIndex } from "../convex/intelligence/ragIndexer";
 import { upsertAccepted } from "../convex/intelligence/categorizationMemory";
 import { deleteOrganization } from "../convex/actions/organizations";
 import { transactionRAG } from "../convex/lib/ragInstance";
@@ -416,7 +416,8 @@ describe("A9: indexing after erasure", () => {
     metadata: { category: "Tithes", fundId: "fund", type: "Income", donorName: "Alex Smith", amount: 10 },
   };
   const actionCtx = (organization: Row | null) =>
-    ({ runQuery: vi.fn(async () => organization), runAction: vi.fn(), runMutation: vi.fn() }) as unknown as ActionCtx;
+    // The budget charge passes, so these cases test the per-entry erasure check.
+    ({ runQuery: vi.fn(async () => organization), runAction: vi.fn(), runMutation: vi.fn(async () => ({ status: "charged" })) }) as unknown as ActionCtx;
   const runAction = (fn: unknown, ctx: ActionCtx, args: Record<string, unknown>) =>
     (fn as { _handler: (ctx: ActionCtx, args: unknown) => Promise<unknown> })._handler(ctx, args);
 
@@ -455,5 +456,69 @@ describe("A9: indexing after erasure", () => {
     expect(runActionMock).toHaveBeenCalledTimes(2);
     const finalize = (ctx.runMutation as ReturnType<typeof vi.fn>).mock.invocationCallOrder.at(-1)!;
     expect(runActionMock.mock.invocationCallOrder[1]).toBeGreaterThan(finalize);
+  });
+});
+
+describe("Import indexing spends the AI budget", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date("2026-11-17T12:00:05Z") });
+  });
+  const untilTomorrow = Date.parse("2026-11-18T00:00:00Z") - Date.parse("2026-11-17T12:00:05Z");
+  const entries = (count: number) => Array.from({ length: count }, (_, i) => ({
+    transactionId: `tx-${i}`, searchText: `TITHE ${i}`,
+    metadata: { category: "Tithes", fundId: "fund", type: "Income", amount: 10 },
+  }));
+  // Runs the indexer with its budget mutation against an in-memory database.
+  const indexer = (aiRateLimits: Row[] = []) => {
+    const db = fixture({ aiRateLimits, aiDailyUsage: [] });
+    const runAfter = vi.fn(async () => "job");
+    const ctx = {
+      runQuery: vi.fn(async () => ({ _id: "org" })),
+      runMutation: vi.fn(async (reference: Parameters<typeof getFunctionName>[0], args: Record<string, unknown>) => {
+        expect(getFunctionName(reference)).toBe("mutations/aiRateLimit:consumeBackgroundUnits");
+        return invoke(consumeBackgroundUnits, db.ctx, args);
+      }),
+      scheduler: { runAfter },
+    } as unknown as ActionCtx;
+    const add = vi.spyOn(transactionRAG, "add").mockResolvedValue({} as never);
+    return { ctx, add, runAfter, records: db.records };
+  };
+  const runAction = (fn: unknown, ctx: ActionCtx, args: Record<string, unknown>) =>
+    (fn as { _handler: (ctx: ActionCtx, args: unknown) => Promise<unknown> })._handler(ctx, args);
+  const churchDay = (records: Record<string, Row[]>) => records.aiRateLimits.find((r) => !r.userId)?.dayUnits;
+
+  it("charges each indexed entry against the church's and the deployment's day", async () => {
+    const { ctx, add, runAfter, records } = indexer();
+    await runAction(batchIndexTransactions, ctx, { organizationId: "org", transactions: entries(3) });
+    expect(add).toHaveBeenCalledTimes(3);
+    expect(churchDay(records)).toBe(3);
+    expect(records.aiDailyUsage[0].units).toBe(3);
+    expect(runAfter).not.toHaveBeenCalled();
+  });
+
+  it("keeps the entries a spent budget refuses and retries them tomorrow, without failing any", async () => {
+    // The church has 25 units left today: the first 20-entry chunk fits, the rest waits.
+    const { ctx, add, runAfter, records } = indexer([
+      { _id: "window", organizationId: "org", windowStart: 0, requestCount: 0, day: "2026-11-17", dayUnits: 9_975, updatedAt: 0 },
+    ]);
+    const result = await runAction(batchIndexTransactions, ctx, { organizationId: "org", transactions: entries(50) });
+    expect(add).toHaveBeenCalledTimes(20);
+    expect(churchDay(records)).toBe(9_995);
+    expect(result).toMatchObject({ total: 50, successful: 20, failed: 0, deferred: 30 });
+    expect(runAfter).toHaveBeenCalledTimes(1);
+    const [delay, reference, args] = runAfter.mock.calls[0] as unknown as [number, Parameters<typeof getFunctionName>[0], { transactions: Array<{ transactionId: string }> }];
+    expect(delay).toBe(untilTomorrow);
+    expect(getFunctionName(reference)).toBe("intelligence/ragIndexer:batchIndexTransactions");
+    expect(args.transactions.map((t) => t.transactionId)).toEqual(entries(50).slice(20).map((t) => t.transactionId));
+  });
+
+  it("defers a category correction's re-index the same way", async () => {
+    const { ctx, add, runAfter } = indexer([
+      { _id: "window", organizationId: "org", windowStart: 0, requestCount: 0, day: "2026-11-17", dayUnits: 10_000, updatedAt: 0 },
+    ]);
+    const args = { organizationId: "org", transactionId: "tx", newSearchText: "TITHE", metadata: { category: "Tithes", fundId: "fund", type: "Income" } };
+    await expect(runAction(updateInIndex, ctx, args)).resolves.toMatchObject({ success: false, deferred: true });
+    expect(add).not.toHaveBeenCalled();
+    expect(runAfter).toHaveBeenCalledWith(untilTomorrow, expect.anything(), args);
   });
 });
