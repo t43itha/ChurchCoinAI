@@ -96,7 +96,7 @@ The "Refined Ledger" design system is defined in the `@theme` block and componen
 - `APP_BASE_URL`
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 - `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, `STRIPE_PRODUCT_THRIVING`
-- Optional AI budgets in usage units (one per transaction row, 20 per single AI request): `AI_USER_UNITS_PER_MINUTE` (default 600), `AI_ORG_UNITS_PER_MINUTE` (default 1000), `AI_DAILY_UNITS` (deployment-wide, default 200000)
+- Optional AI budgets in usage units (one per transaction row or indexed entry, at least 20 per model request): `AI_USER_UNITS_PER_MINUTE` (default 600), `AI_ORG_UNITS_PER_MINUTE` (default 1000), `AI_ORG_DAILY_UNITS` (per church, default 10000), `AI_DAILY_UNITS` (deployment-wide, default 200000)
 - `RESEND_API_KEY` (invitation emails), optional `RESEND_FROM_EMAIL` (defaults to `ChurchCoin <onboarding@resend.dev>`; set a verified-domain sender for production)
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).
