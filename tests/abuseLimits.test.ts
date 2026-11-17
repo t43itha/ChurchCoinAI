@@ -307,7 +307,12 @@ describe("indexing deferred to tomorrow", () => {
       vi.advanceTimersByTime(delay as number);
       return handlerOf(indexerJob(deferredJob))(ctx, deferredArgs);
     };
-    return { ...f, add, runTomorrow, transactionId: f.records.transactions[0]._id };
+    // Runs the newest job the indexer scheduled, as the scheduler would.
+    const runLastScheduled = async () => {
+      const [, job, args] = runAfter.mock.calls.at(-1)!;
+      return handlerOf(indexerJob(job))(ctx, args);
+    };
+    return { ...f, add, runAfter, runTomorrow, runLastScheduled, transactionId: f.records.transactions[0]._id };
   };
   const indexed = (add: ReturnType<typeof vi.spyOn>) =>
     (add.mock.calls as unknown as Array<[unknown, { key: string; text: string; metadata: Record<string, unknown> }]>).map(([, entry]) => entry);
@@ -338,16 +343,40 @@ describe("indexing deferred to tomorrow", () => {
     expect(records.aiRateLimits[0].day).toBe("2026-11-17");
   });
 
-  it("ends on the newer state when the row is edited while the job is adding it", async () => {
-    const { ctx, add, runTomorrow, transactionId } = await importWhileBudgetSpent();
+  it("ends on the newer state when the row is edited while the job is adding it, through a charged follow-up", async () => {
+    const { ctx, add, runAfter, runTomorrow, runLastScheduled, transactionId, records } = await importWhileBudgetSpent();
     add.mockImplementationOnce(async () => {
       await invoke(transactionMutations.update, ctx, { transactionId, donorName: "Grace Okafor" });
       return {} as never;
     });
 
     await runTomorrow();
+    // No uncharged second embedding inside the job: a follow-up job is scheduled instead.
+    expect(add).toHaveBeenCalledTimes(1);
+    const scheduledBefore = runAfter.mock.calls.length;
+    const unitsBefore = records.aiRateLimits[0].dayUnits as number;
+
+    await runLastScheduled();
 
     expect(indexed(add).at(-1)!.text).toContain("Donor: Grace Okafor");
+    expect(records.aiRateLimits[0].dayUnits).toBe(unitsBefore + 1);
+    expect(runAfter.mock.calls.length).toBe(scheduledBefore);
+  });
+
+  it("defers the follow-up re-index when the day's budget is spent", async () => {
+    const { ctx, add, runAfter, runTomorrow, runLastScheduled, transactionId, records } = await importWhileBudgetSpent();
+    add.mockImplementationOnce(async () => {
+      await invoke(transactionMutations.update, ctx, { transactionId, donorName: "Grace Okafor" });
+      return {} as never;
+    });
+    await runTomorrow();
+    records.aiRateLimits[0].dayUnits = 10_000;
+    const scheduledBefore = runAfter.mock.calls.length;
+
+    await runLastScheduled();
+
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(runAfter.mock.calls.length).toBe(scheduledBefore + 1);
   });
 });
 

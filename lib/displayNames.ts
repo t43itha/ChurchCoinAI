@@ -5,6 +5,10 @@ const NAME_CHARACTERS = /^[\p{L}\p{M}\p{N} '’&.,()/!–—-]+$/u;
 // A label of two or more characters, a dot, then a suffix of two or more
 // letters ("example.com") reads as a web address; initials ("J.R.") do not.
 const DOMAIN_LIKE = /[\p{L}\p{N}-]{2,}\.\p{L}{2,}/u;
+// Dotted IPv4 addresses, and a one-letter label before a short suffix that ends the
+// word ("x.co"). "A.Smith" keeps working because "Smith" is not a short suffix.
+const IP_ADDRESS = /\d{1,3}(?:\.\d{1,3}){3}/u;
+const SHORT_DOMAIN = /(?<![\p{L}\p{N}])\p{L}\.\p{L}{2,3}(?![\p{L}\p{N}])/u;
 
 export const DISPLAY_NAME_LIMITS = { church: 100, person: 80 } as const;
 
@@ -20,7 +24,7 @@ export function displayNameProblem(value: string, kind: DisplayNameKind): string
   if (name.length > DISPLAY_NAME_LIMITS[kind]) {
     return `${label} must be ${DISPLAY_NAME_LIMITS[kind]} characters or fewer`;
   }
-  if (!NAME_CHARACTERS.test(name) || DOMAIN_LIKE.test(name)) {
+  if (!NAME_CHARACTERS.test(name) || [DOMAIN_LIKE, IP_ADDRESS, SHORT_DOMAIN].some((pattern) => pattern.test(name))) {
     return `${label} can only use letters, numbers, spaces and simple punctuation (no web or email addresses)`;
   }
   return null;

@@ -119,11 +119,13 @@ async function indexCurrent(
           summary.skipped += 1;
           continue;
         }
-        // An edit can land between reading the row and the add finishing, and
-        // another job may already have indexed it: re-add the newer state so
+        // An edit can land between reading the row and the add finishing. A
+        // follow-up job re-indexes the newer state, charged like any other, so
         // the entry never ends on the details this job read.
         const [after] = await load([transactionId]);
-        if (after.entry && !sameEntry(after.entry, entry)) await add(after.entry);
+        if (after.entry && !sameEntry(after.entry, entry)) {
+          await ctx.scheduler.runAfter(0, internal.intelligence.ragIndexer.updateInIndex, { organizationId, transactionId });
+        }
         summary.successful += 1;
       } catch (error) {
         console.error(`Failed to index transaction ${transactionId}:`, error);

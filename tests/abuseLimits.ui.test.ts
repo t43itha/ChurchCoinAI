@@ -39,6 +39,14 @@ describe("Smart Link suggestions", () => {
     expect(done).not.toContain("Check more");
   });
 
+  it("keeps one suggestion per gift across pages, so confirming one never moves a gift another confirmed", () => {
+    const first = addSmartLinkPage(EMPTY_SMART_LINK, { matches: [match], remaining: 3, nextCursor: { giftsAfter: { date: "2026-01-01", transactionId: "t1" } } }, false);
+    const sameGiftOtherPledge = { ...match, pledgeId: "p-other" };
+    const otherGift = { ...match, transactionId: "t-other" };
+    const second = addSmartLinkPage(first, { matches: [sameGiftOtherPledge, otherGift], remaining: 0, nextCursor: null }, true);
+    expect(second.matches).toEqual([match, otherGift]);
+  });
+
   it("keeps earlier suggestions when checking more, and starts afresh on a new run", () => {
     const first = addSmartLinkPage(EMPTY_SMART_LINK, { matches: [match], remaining: 300, nextCursor: { giftsAfter: { date: "2026-01-01", transactionId: "t1" } } }, false);
     const later = { ...match, transactionId: "t2" };

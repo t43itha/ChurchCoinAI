@@ -9,10 +9,16 @@ export type SmartLinkState = { matches: SmartLinkMatch[]; remaining: number; cur
 
 export const EMPTY_SMART_LINK: SmartLinkState = { matches: [], remaining: 0, cursor: null };
 
-/** A fresh run replaces earlier suggestions; checking more adds the next page's to them. */
+/**
+ * A fresh run replaces earlier suggestions; checking more adds the next page's to them.
+ * A later pledge batch can suggest a gift again, so only the first suggestion per gift
+ * is kept: confirming a second one would move the gift off a pledge already confirmed.
+ */
 export function addSmartLinkPage(state: SmartLinkState, page: SmartLinkPage, continued: boolean): SmartLinkState {
+  const suggested = new Set(continued ? state.matches.map((m) => m.transactionId) : []);
+  const fresh = page.matches.filter((m) => !suggested.has(m.transactionId) && suggested.add(m.transactionId));
   return {
-    matches: continued ? [...state.matches, ...page.matches] : page.matches,
+    matches: continued ? [...state.matches, ...fresh] : fresh,
     remaining: page.remaining,
     cursor: page.nextCursor,
   };
