@@ -10,6 +10,7 @@ import {
   storeInviteToken,
 } from "../lib/inviteToken";
 import type { PlanTier } from "../lib/onboardingIntent";
+import { useLaunchFeatures } from "./app/useLaunchFeatures";
 import RailStep from "./wizard/RailStep";
 import { ReceiptCard, ReceiptRow } from "./wizard/Receipt";
 import StepFooter from "./wizard/StepFooter";
@@ -57,6 +58,8 @@ const Onboarding: FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkInput, setLinkInput] = useState("");
+  const { bankFeeds } = useLaunchFeatures();
+  const createSteps = bankFeeds ? CREATE_STEPS : CREATE_STEPS.filter((step) => step !== "bank");
 
   const defaultName =
     clerkUser?.fullName ||
@@ -122,7 +125,7 @@ const Onboarding: FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }
   };
 
   // Only the organisation is created here. The General Fund and standard categories come with it;
-  // bank and team are set up from Settings afterwards.
+  // the team (and bank, when feeds are on) is set up from Settings afterwards.
   const handleCreateOrg = async () => {
     setIsSubmitting(true);
     setError(null);
@@ -333,9 +336,9 @@ const Onboarding: FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }
     );
   }
 
-  // ----- Create a new organisation: church → funds → bank → team → done -----
+  // ----- Create a new organisation: church → funds → (bank) → team → done -----
   if (view === "create-org") {
-    const stepIndex = CREATE_STEPS.indexOf(createStep);
+    const stepIndex = createSteps.indexOf(createStep);
     const ready = orgName.trim() !== "" && userName.trim() !== "";
     const next = (step: CreateStep) => {
       setError(null);
@@ -426,8 +429,8 @@ const Onboarding: FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }
       );
       footer = (
         <StepFooter>
-          <button type="button" onClick={() => next("bank")} className={`${btnPrimary} ${btnLg}`}>
-            Next: bank →
+          <button type="button" onClick={() => next(bankFeeds ? "bank" : "team")} className={`${btnPrimary} ${btnLg}`}>
+            {bankFeeds ? "Next: bank →" : "Next: team →"}
           </button>
         </StepFooter>
       );
@@ -475,7 +478,7 @@ const Onboarding: FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }
             <ReceiptRow label="Administrator" value={userName.trim()} />
             <ReceiptRow label="General Fund" value="Created" sub />
             <ReceiptRow label="Standard UK charity categories" value="Created" sub />
-            <ReceiptRow label="Bank" value="Later, in Settings" dim />
+            {bankFeeds && <ReceiptRow label="Bank" value="Later, in Settings" dim />}
             <ReceiptRow label="Team" value="Later, in Settings" dim />
           </ReceiptCard>
           <div className="mt-4">{errorBox}</div>
@@ -504,13 +507,13 @@ const Onboarding: FC<OnboardingProps> = ({ clerkUser, onComplete, selectedPlan }
           ariaLabel="Set up your church"
           title="Set up your church"
           onClose={backToStart}
-          onBack={stepIndex > 0 && !isSubmitting ? () => next(CREATE_STEPS[stepIndex - 1]) : undefined}
-          progress={{ total: CREATE_STEPS.length, current: stepIndex }}
+          onBack={stepIndex > 0 && !isSubmitting ? () => next(createSteps[stepIndex - 1]) : undefined}
+          progress={{ total: createSteps.length, current: stepIndex }}
           rail={
             <nav aria-label="Setup steps" className="hidden border-r border-ledger bg-[#f7f6f2] p-4 lg:block">
               <p className={eyebrow}>Setup</p>
               <div className="mt-2 grid gap-0.5">
-                {CREATE_STEPS.map((step, index) => (
+                {createSteps.map((step, index) => (
                   <RailStep
                     key={step}
                     marker={String(index + 1)}

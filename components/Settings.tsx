@@ -26,6 +26,7 @@ import {
   type SettingsSheetId,
 } from "./settings/settingsRows";
 import HubHeader from "./hub/HubHeader";
+import { useLaunchFeatures } from "./app/useLaunchFeatures";
 import SectionTitle from "./hub/SectionTitle";
 import { nextIcon, nextItem, tagAmber } from "./wizard/ui";
 
@@ -96,14 +97,17 @@ const Settings: FC<SettingsProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
   const access = useQuery(api.queries.subscriptions.access);
-  const [sheet, setSheet] = useState<Sheet | null>(() => sheetForSearch(location.search, currentUser.role));
+  const { billing, bankFeeds } = useLaunchFeatures();
+  const [sheet, setSheet] = useState<Sheet | null>(() =>
+    sheetForSearch(location.search, currentUser.role, { billing, bankFeeds })
+  );
   const [fundDraft, setFundDraft] = useState<Partial<Fund>>({});
 
   // Follows navigation both ways: a deep link opens its sheet, and Back to a URL without one closes it.
-  // Rows opened by a click don't change the URL, so this only runs when navigation does.
+  // Rows opened by a click don't change the URL, so this only runs when navigation (or a feature flag) does.
   useEffect(() => {
-    setSheet(sheetForSearch(location.search, currentUser.role));
-  }, [currentUser.role, location.key, location.search]);
+    setSheet(sheetForSearch(location.search, currentUser.role, { billing, bankFeeds }));
+  }, [currentUser.role, location.key, location.search, billing, bankFeeds]);
 
   if (!can(currentUser.role, "settings.view")) {
     return (
@@ -125,7 +129,7 @@ const Settings: FC<SettingsProps> = ({
     if (search !== location.search) navigate({ pathname: location.pathname, search }, { replace: true });
   };
   const planName = PLANS.find((plan) => plan.id === access?.plan)?.name;
-  const rows = settingsRowsFor(currentUser.role);
+  const rows = settingsRowsFor(currentUser.role, { billing, bankFeeds });
 
   const detailFor: Record<SettingsSheetId, string> = {
     church: "Name, address and contact details",
@@ -259,9 +263,9 @@ const Settings: FC<SettingsProps> = ({
         />
       )}
 
-      {sheet === "bank" && <BankConnectionsSettings funds={funds} currentUser={currentUser} onClose={close} />}
+      {sheet === "bank" && bankFeeds && <BankConnectionsSettings funds={funds} currentUser={currentUser} onClose={close} />}
 
-      {sheet === "billing" && can(currentUser.role, "billing.manage") && <BillingSettings onClose={close} />}
+      {sheet === "billing" && billing && can(currentUser.role, "billing.manage") && <BillingSettings onClose={close} />}
 
       {sheet === "privacy" && can(currentUser.role, "organization.export") && (
         <DataPrivacySettings organizationName={churchDetails.name} onClose={close} />

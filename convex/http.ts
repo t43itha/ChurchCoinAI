@@ -10,6 +10,7 @@ import {
   verifyGitHubWebhookSignature,
 } from "./lib/githubSupport";
 import { statusFromGithubIssue } from "../lib/supportTickets";
+import { getLaunchFeatures } from "./lib/launchFeatures";
 
 const http = httpRouter();
 
@@ -193,6 +194,9 @@ http.route({
   path: "/stripe/webhook",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    if (!getLaunchFeatures().billing) {
+      return new Response("Billing is not enabled on this deployment", { status: 503 });
+    }
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!webhookSecret) {
@@ -485,6 +489,12 @@ http.route({
   path: "/yapily/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
+    if (!getLaunchFeatures().bankFeeds) {
+      return new Response("Bank feeds are not available yet.", {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
     const url = new URL(request.url);
     const state = trimCallbackValue(url.searchParams.get("state"));
     const oneTimeToken = trimCallbackValue(

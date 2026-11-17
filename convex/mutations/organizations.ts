@@ -7,8 +7,18 @@ import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
 import { seedOrganizationCategories } from "../lib/categoryIntegrity";
+import { getLaunchFeatures } from "../lib/launchFeatures";
+import type { Id } from "../_generated/dataModel";
 
 const DEMO_SEED_VERSION = "uk-church-v1";
+
+// Server-time checks in the resolver remain authoritative if the expiry job is
+// delayed; the job gives connected clients a reactive update at the boundary.
+async function startProductTrial(ctx: MutationCtx, organizationId: Id<"organizations">, now: number) {
+  const trialEndsAt = now + PRODUCT_TRIAL_DURATION_MS;
+  await ctx.db.patch(organizationId, { trialStatus: "active", trialStartedAt: now, trialEndsAt });
+  await ctx.scheduler.runAt(trialEndsAt, internal.mutations.organizations.expireProductTrial, { organizationId });
+}
 
 async function seedDemoOrganization(
   ctx: MutationCtx,
@@ -222,9 +232,7 @@ export const create = mutation({
     }
 
     const now = Date.now();
-    const trialEndsAt = now + PRODUCT_TRIAL_DURATION_MS;
 
-    // Create the organization with a server-issued product trial.
     const organizationId = await ctx.db.insert("organizations", {
       name: args.name,
       charityNumber: args.charityNumber,
@@ -235,9 +243,6 @@ export const create = mutation({
       logoUrl: args.logoUrl,
       accessMode: "subscription",
       dataMode: "live",
-      trialStatus: "active",
-      trialStartedAt: now,
-      trialEndsAt,
       trialPlan: args.selectedPlan,
       createdAt: now,
       createdBy: identity.subject,
@@ -264,16 +269,40 @@ export const create = mutation({
       createdAt: now,
     });
 
-    // Server-time checks in the resolver remain authoritative if this job is
-    // delayed. The scheduled transition gives connected clients an immediate
-    // reactive update at the boundary.
-    await ctx.scheduler.runAt(
-      trialEndsAt,
-      internal.mutations.organizations.expireProductTrial,
-      { organizationId }
-    );
+    // During early access the trial clock starts later, from startTrialsAfterEarlyAccess.
+    if (getLaunchFeatures().billing) {
+      await startProductTrial(ctx, organizationId, now);
+    }
 
     return organizationId;
+  },
+});
+
+// Run once after setting BILLING_ENABLED=true, repeating with the returned
+// cursor until isDone. Every subscription church that never had a trial or a
+// subscription gets a full trial from now; churches already started are skipped.
+export const startTrialsAfterEarlyAccess = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  handler: async (ctx, { cursor }) => {
+    if (!getLaunchFeatures().billing) {
+      throw new Error("Set BILLING_ENABLED=true before starting trials");
+    }
+    const now = Date.now();
+    const page = await ctx.db
+      .query("organizations")
+      .paginate({ numItems: 100, cursor: cursor ?? null });
+    let started = 0;
+    for (const organization of page.page) {
+      if (organization.accessMode !== "subscription" || organization.trialStatus !== undefined) continue;
+      const subscription = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_organization", (q) => q.eq("organizationId", organization._id))
+        .first();
+      if (subscription) continue;
+      await startProductTrial(ctx, organization._id, now);
+      started += 1;
+    }
+    return { started, isDone: page.isDone, continueCursor: page.continueCursor };
   },
 });
 
@@ -297,6 +326,17 @@ export const expireProductTrial = internalMutation({
         internal.mutations.organizations.expireProductTrial,
         { organizationId }
       );
+      return;
+    }
+
+    // A trial that runs out during early access is cleared rather than expired,
+    // so the church gets a full trial when billing is switched on.
+    if (!getLaunchFeatures().billing) {
+      await ctx.db.patch(organizationId, {
+        trialStatus: undefined,
+        trialStartedAt: undefined,
+        trialEndsAt: undefined,
+      });
       return;
     }
 

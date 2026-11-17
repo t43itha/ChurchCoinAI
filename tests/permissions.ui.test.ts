@@ -29,6 +29,8 @@ const render = (element: ReactElement, route = "/settings") =>
 beforeEach(() => {
   queryMock.mockImplementation((reference, args) => {
     if (args === "skip") return undefined;
+    // Role checks are tested with every launch feature on, so the gated rows render.
+    if (getFunctionName(reference) === "queries/launchFeatures:get") return { billing: true, bankFeeds: true };
     if (getFunctionName(reference) === "queries/bankConnections:list") {
       return [{ _id: "bank", institutionName: "Test Bank", provider: "yapily", status: "active", accounts: [] }];
     }

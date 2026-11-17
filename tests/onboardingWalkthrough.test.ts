@@ -16,6 +16,7 @@ vi.mock("convex/react", async () => {
       const name = nameOf(ref);
       if (name === nameOf(api.queries.invitations.pendingForCurrentUser)) return fixtures.emailInvites;
       if (name === nameOf(api.queries.invitations.getByToken)) return undefined;
+      if (name === nameOf(api.queries.launchFeatures.get)) return { billing: false, bankFeeds: false };
       throw new Error(`Unexpected query: ${name}`);
     },
     useMutation: () => () => Promise.resolve(undefined),

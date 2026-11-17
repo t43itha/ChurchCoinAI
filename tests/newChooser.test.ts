@@ -7,6 +7,9 @@ import NewChooser from "../components/app/NewChooser";
 import { canAddNew, linkParamsToRemove, newChooserRows, newKindModal, parseNewKind, planNewKind } from "../components/app/newChooserRows";
 import { ROLES, type UserRole } from "../lib/permissions";
 
+const ALL_ON = { billing: true, bankFeeds: true };
+const ALL_OFF = { billing: false, bankFeeds: false };
+
 const ROW_IDS: Record<UserRole, string[]> = {
   Admin: ["giving", "statement", "sync", "entry", "transfer", "link", "cash-banking"],
   "Finance Team": ["giving", "statement", "sync", "entry", "transfer", "link", "cash-banking"],
@@ -16,11 +19,11 @@ const ROW_IDS: Record<UserRole, string[]> = {
 
 describe("newChooserRows", () => {
   it.each(ROLES)("offers the expected rows to %s", (role) => {
-    expect(newChooserRows(role).map((row) => row.id)).toEqual(ROW_IDS[role]);
+    expect(newChooserRows(role, ALL_ON).map((row) => row.id)).toEqual(ROW_IDS[role]);
   });
 
   it("only links to Transactions with a known new= kind or the cash banking view", () => {
-    for (const row of newChooserRows("Admin")) {
+    for (const row of newChooserRows("Admin", ALL_ON)) {
       const [path, query] = row.to.split("?");
       expect(path).toBe("/transactions");
       if (row.id === "cash-banking") {
@@ -29,6 +32,30 @@ describe("newChooserRows", () => {
         expect(parseNewKind(query?.replace(/^new=/, ""))).not.toBeNull();
       }
     }
+  });
+
+  it("drops Sync from the bank while bank feeds are off, and keeps statement import", () => {
+    const ids = newChooserRows("Admin", ALL_OFF).map((row) => row.id);
+    expect(ids).not.toContain("sync");
+    expect(ids).toContain("statement");
+  });
+});
+
+describe("planNewKind with bank feeds off", () => {
+  it("consumes an old sync link without opening the bank sync or waiting on connections", () => {
+    expect(
+      planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: false })
+    ).toEqual({ type: "handled", modal: null, leaveReconciliation: false });
+  });
+});
+
+describe("NewChooser with bank feeds off", () => {
+  it("does not offer Sync from the bank", () => {
+    const html = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(NewChooser, { role: "Admin", features: ALL_OFF, onClose: () => undefined }))
+    );
+    expect(html).not.toContain("Sync from the bank");
+    expect(html).toContain("A bank statement");
   });
 });
 
@@ -82,14 +109,14 @@ describe("canAddNew", () => {
 });
 
 describe("planNewKind", () => {
-  const loaded = { canEdit: true, bankConnectionsLoaded: true };
+  const loaded = { canEdit: true, bankConnectionsLoaded: true, bankFeeds: true };
 
   it("does nothing without a ?new= value", () => {
     expect(planNewKind({ param: null, handled: null, ...loaded })).toEqual({ type: "idle" });
   });
 
   it("waits for bank connections before a sync, then syncs once they arrive", () => {
-    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false })).toEqual({
+    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true })).toEqual({
       type: "wait",
     });
     expect(planNewKind({ param: "sync", handled: null, ...loaded })).toEqual({
@@ -100,7 +127,7 @@ describe("planNewKind", () => {
   });
 
   it("does not wait on bank connections for other kinds", () => {
-    expect(planNewKind({ param: "entry", handled: null, canEdit: true, bankConnectionsLoaded: false })).toEqual({
+    expect(planNewKind({ param: "entry", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true })).toEqual({
       type: "handled",
       modal: "singleEntry",
       leaveReconciliation: true,
@@ -108,7 +135,7 @@ describe("planNewKind", () => {
   });
 
   it("syncs once when connections load after a wait, and not again on a Strict Mode replay", () => {
-    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false }).type).toBe("wait");
+    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true }).type).toBe("wait");
     const first = planNewKind({ param: "sync", handled: null, ...loaded });
     expect(first.type).toBe("handled");
     // The page records the param as handled before the replay runs, so the replay does nothing.
@@ -124,7 +151,7 @@ describe("planNewKind", () => {
   });
 
   it("consumes the param for roles that cannot edit but opens nothing", () => {
-    expect(planNewKind({ param: "sync", handled: null, canEdit: false, bankConnectionsLoaded: false })).toEqual({
+    expect(planNewKind({ param: "sync", handled: null, canEdit: false, bankConnectionsLoaded: false, bankFeeds: true })).toEqual({
       type: "handled",
       modal: null,
       leaveReconciliation: false,
@@ -143,7 +170,7 @@ describe("planNewKind", () => {
 describe("NewChooser", () => {
   it("lists the rows the role can open", () => {
     const html = renderToStaticMarkup(
-      createElement(MemoryRouter, null, createElement(NewChooser, { role: "Finance Team", onClose: () => undefined }))
+      createElement(MemoryRouter, null, createElement(NewChooser, { role: "Finance Team", features: ALL_ON, onClose: () => undefined }))
     );
     expect(html).toContain("What are you adding?");
     expect(html).toContain("Sunday&#x27;s giving");
@@ -152,7 +179,7 @@ describe("NewChooser", () => {
 
   it.each<UserRole>(["Pastorate", "Guest"])("offers no rows to %s", (role) => {
     const html = renderToStaticMarkup(
-      createElement(MemoryRouter, null, createElement(NewChooser, { role, onClose: () => undefined }))
+      createElement(MemoryRouter, null, createElement(NewChooser, { role, features: ALL_ON, onClose: () => undefined }))
     );
     expect(html).not.toContain("Sunday&#x27;s giving");
   });

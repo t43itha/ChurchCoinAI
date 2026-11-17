@@ -62,8 +62,7 @@ export default function BankStep({
         <p className="py-8 text-center text-sm text-grey-mid">Loading bank credits…</p>
       ) : credits.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-ledger p-6 text-center text-sm text-grey-mid">
-          No bank credits to match yet. Bank credits come from statement imports or bank sync, so import or sync your bank
-          first.
+          No bank credits to match yet. Bank credits come from your bank statement, so import the statement first.
         </p>
       ) : visible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-ledger p-6 text-center text-sm text-grey-mid">

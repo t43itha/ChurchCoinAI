@@ -1,10 +1,12 @@
 import { can } from "../../lib/permissions";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
+import { getLaunchFeatures, type LaunchFeatures } from "./launchFeatures";
 
 const PAST_DUE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type OrganizationAccessState =
+  | "early_access"
   | "active_subscription"
   | "trialing_subscription"
   | "active_trial"
@@ -22,7 +24,8 @@ type AccessCtx = QueryCtx | MutationCtx;
 export async function resolveOrganizationAccess(
   ctx: AccessCtx,
   user: Doc<"users">,
-  now = Date.now()
+  now = Date.now(),
+  features: LaunchFeatures = getLaunchFeatures()
 ) {
   const organization = await ctx.db.get(user.organizationId);
   if (!organization) {
@@ -101,6 +104,22 @@ export async function resolveOrganizationAccess(
     };
   }
 
+  const earlyAccess = (reason: string) => ({
+    state: "early_access" as const,
+    canUseApp: true,
+    canManageBilling: false,
+    reason,
+    accessMode,
+    dataMode,
+    expiresAt: null,
+    subscriptionStatus: null,
+    plan: null,
+  });
+
+  if (!features.billing) {
+    return earlyAccess("billing_disabled");
+  }
+
   const subscription = await ctx.db
     .query("subscriptions")
     .withIndex("by_organization", (q) => q.eq("organizationId", user.organizationId))
@@ -170,6 +189,12 @@ export async function resolveOrganizationAccess(
       subscriptionStatus: subscription?.status ?? null,
       plan: organization.trialPlan ?? null,
     };
+  }
+
+  // A church that joined during early access has no trial until
+  // startTrialsAfterEarlyAccess runs; keep it open between the flag flip and that run.
+  if (!subscription && organization.trialStatus === undefined) {
+    return earlyAccess("trial_not_started");
   }
 
   if (!subscription) {
