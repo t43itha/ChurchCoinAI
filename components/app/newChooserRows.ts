@@ -1,5 +1,6 @@
 import { ArrowLeftRight, Banknote, FileSpreadsheet, Landmark, PenLine, RefreshCw, Wand2, type LucideIcon } from "lucide-react";
 import { can, type Capability, type UserRole } from "../../lib/permissions";
+import type { LaunchFeatures } from "../../convex/lib/launchFeatures";
 
 // Kinds the chooser can pass to Transactions as ?new=<kind>. Each opens one existing
 // modal there. Cash banking is a view, not a kind, so it uses ?view=cash-banking.
@@ -33,6 +34,8 @@ export interface NewChooserRow {
   tone: "sage" | "grey" | "amber";
   capability: Capability;
   to: string;
+  // Hidden while this feature is switched off on the deployment.
+  feature?: keyof LaunchFeatures;
 }
 
 // Each capability is the one the matching button on Transactions already checks.
@@ -63,6 +66,7 @@ const ROWS: NewChooserRow[] = [
     tone: "grey",
     capability: "ledger.write",
     to: "/transactions?new=sync",
+    feature: "bankFeeds",
   },
   {
     id: "entry",
@@ -102,13 +106,14 @@ const ROWS: NewChooserRow[] = [
   },
 ];
 
-export function newChooserRows(role: UserRole): NewChooserRow[] {
-  return ROWS.filter((row) => can(role, row.capability));
+export function newChooserRows(role: UserRole, features: LaunchFeatures): NewChooserRow[] {
+  return ROWS.filter((row) => can(role, row.capability) && (!row.feature || features[row.feature]));
 }
 
 // The desktop "+ New" button and the phone bar's New slot only show when there is something to open.
+// Feature-gated rows are left out, so the answer holds whichever features are on.
 export function canAddNew(role: UserRole): boolean {
-  return newChooserRows(role).length > 0;
+  return ROWS.some((row) => !row.feature && can(role, row.capability));
 }
 
 export type NewKindStep =
@@ -123,14 +128,22 @@ export function planNewKind({
   handled,
   canEdit,
   bankConnectionsLoaded,
+  bankFeeds,
+  featuresLoaded,
 }: {
   param: string | null;
   handled: string | null;
   canEdit: boolean;
   bankConnectionsLoaded: boolean;
+  bankFeeds: boolean;
+  featuresLoaded: boolean;
 }): NewKindStep {
   if (!param || param === handled) return { type: "idle" };
-  const kind = parseNewKind(param);
+  const parsed = parseNewKind(param);
+  // Whether a sync link opens depends on a flag that may not have arrived yet.
+  if (parsed === "sync" && !featuresLoaded) return { type: "wait" };
+  // An old sync link while bank feeds are off is consumed without opening anything.
+  const kind = parsed === "sync" && !bankFeeds ? null : parsed;
   // Sync needs the connected accounts, so wait for them rather than report none.
   if (kind && canEdit && newKindModal(kind) === "bankSync" && !bankConnectionsLoaded) return { type: "wait" };
   const modal = kind && canEdit ? newKindModal(kind) : null;

@@ -22,8 +22,10 @@ import {
   YapilyApiError,
   type YapilyTransactionLike,
 } from "../lib/yapily";
+import { requireBankFeedsEnabled } from "../lib/launchFeatures";
 
 const requireUser = async (ctx: ActionCtx, capability: Capability) => {
+  requireBankFeedsEnabled();
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");

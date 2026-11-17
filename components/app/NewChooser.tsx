@@ -4,12 +4,21 @@ import type { UserRole } from "../../lib/permissions";
 import WizardFrame from "../wizard/WizardFrame";
 import { nextIcon, nextItem, screenHelp, screenTitle } from "../wizard/ui";
 import { newChooserRows } from "./newChooserRows";
+import type { LaunchFeatures } from "./useLaunchFeatures";
 
 // The single "+ New" entry point. Choosing a row closes the sheet and opens the
 // matching walkthrough or modal on Transactions. Only shown to roles with rows to offer.
-export default function NewChooser({ role, onClose }: { role: UserRole; onClose: () => void }) {
+export default function NewChooser({
+  role,
+  features,
+  onClose,
+}: {
+  role: UserRole;
+  features: LaunchFeatures;
+  onClose: () => void;
+}) {
   const navigate = useNavigate();
-  const rows = newChooserRows(role);
+  const rows = newChooserRows(role, features);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

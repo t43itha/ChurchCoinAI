@@ -25,6 +25,7 @@ import { createClientAttemptId } from "../lib/clientId";
 import { PLANS } from "../lib/plans";
 import { btnLg, btnMd, btnOutline, btnPrimary, screenTitle } from "./wizard/ui";
 import DataPrivacySettings from "./DataPrivacySettings";
+import { useLaunchFeatures } from "./app/useLaunchFeatures";
 
 // Sheet-style panels for the blocking states, built from the walkthrough kit.
 const sheetCard = "mx-auto max-w-lg rounded-2xl border border-ledger bg-white p-8 text-center";
@@ -48,20 +49,21 @@ const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
   accessReason,
   onOpenSupport,
 }) => {
+  const { billing } = useLaunchFeatures();
   const createCheckout = useAction(api.actions.stripe.createCheckoutSession);
   const reconcileCheckout = useAction(api.actions.stripe.reconcileCheckoutSession);
   const createPortal = useAction(api.actions.stripe.createPortalSession);
-  const subscription = useQuery(api.queries.subscriptions.current);
+  const subscription = useQuery(api.queries.subscriptions.current, billing ? {} : "skip");
   const [loading, setLoading] = useState<PlanTier | null>(null);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [processingTimedOut, setProcessingTimedOut] = useState(false);
   const [isDataOpen, setIsDataOpen] = useState(false);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const returnedFromCheckout = params.get("subscription") === "success";
+  const returnedFromCheckout = billing && params.get("subscription") === "success";
   const checkoutSessionId = params.get("session_id");
   const checkoutCancelled = params.get("subscription") === "cancelled";
-  const isProcessing = returnedFromCheckout || accessState === "payment_processing";
+  const isProcessing = billing && (returnedFromCheckout || accessState === "payment_processing");
   const trialExpired = accessReason === "product_trial_expired";
 
   useEffect(() => {
@@ -195,6 +197,28 @@ const SubscriptionRequired: FC<SubscriptionRequiredProps> = ({
                 ? "Contact ChurchCoin to arrange a fresh demonstration or create a clean production church. Synthetic financial data is never converted into live records."
                 : "We are loading a fictional ledger, donors, funds, and transactions. Refresh shortly if this screen does not update automatically."}
             </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Billing is off, so there is no payment to offer: access was stopped for another reason.
+  if (!billing) {
+    return (
+      <div className="min-h-screen bg-paper flex flex-col">
+        {header}
+        <main className="grid flex-1 place-items-center p-6">
+          <div className={sheetCard}>
+            <AlertTriangle size={34} className="mx-auto text-amber mb-5" />
+            <h1 className={screenTitle}>We can't open this ledger right now</h1>
+            <p className="mt-3 text-sm text-grey-mid leading-relaxed">
+              Access for <strong>{organizationName}</strong> isn't available at the moment. Your records are safe.
+              Contact ChurchCoin support and we'll sort it out.
+            </p>
+            <button type="button" onClick={onOpenSupport} className={`${actionBtn} mt-6`}>
+              <LifeBuoy size={15} aria-hidden="true" /> Contact support
+            </button>
           </div>
         </main>
       </div>

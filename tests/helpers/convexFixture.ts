@@ -64,6 +64,12 @@ export function fixture(
         async *[Symbol.asyncIterator]() {
           yield* rows;
         },
+        // The cursor is the offset of the next row.
+        paginate: async ({ numItems, cursor }: { numItems: number; cursor: string | null }) => {
+          const start = cursor ? Number(cursor) : 0;
+          const end = start + numItems;
+          return { page: rows.slice(start, end), isDone: end >= rows.length, continueCursor: String(end) };
+        },
       };
       return chain;
     }),
@@ -92,7 +98,7 @@ export function fixture(
   const ctx = {
     auth: { getUserIdentity: async () => identity },
     db,
-    scheduler: { runAfter: vi.fn() },
+    scheduler: { runAfter: vi.fn(), runAt: vi.fn() },
   } as unknown as MutationCtx;
   return { ctx, db, get, records };
 }
