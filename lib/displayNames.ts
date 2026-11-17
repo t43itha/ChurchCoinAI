@@ -2,8 +2,9 @@
 // limited to name-like text: letters, digits, spaces and common name
 // punctuation. Links, email addresses and markup cannot be written into them.
 const NAME_CHARACTERS = /^[\p{L}\p{M}\p{N} '’&.,()/!–—-]+$/u;
-// A dot between letters or digits ("example.com") only appears in web addresses.
-const DOMAIN_LIKE = /[\p{L}\p{N}]\.[\p{L}\p{N}]/u;
+// A label of two or more characters, a dot, then a suffix of two or more
+// letters ("example.com") reads as a web address; initials ("J.R.") do not.
+const DOMAIN_LIKE = /[\p{L}\p{N}-]{2,}\.\p{L}{2,}/u;
 
 export const DISPLAY_NAME_LIMITS = { church: 100, person: 80 } as const;
 
