@@ -12,8 +12,8 @@ import "./styles.css";
 
 initializeMonitoring();
 
-// Initialize Convex client
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+const convexUrl = import.meta.env.VITE_CONVEX_URL?.trim();
+const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -32,10 +32,14 @@ if ("serviceWorker" in navigator) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+if (!convexUrl || !clerkKey) {
+  root.render(<main style={{ padding: '2rem', fontFamily: 'sans-serif' }}><h1>ChurchCoin could not start</h1><p>The site configuration is incomplete. Please contact support or try again later.</p></main>);
+} else {
+const convex = new ConvexReactClient(convexUrl);
 root.render(
   <React.StrictMode>
     <ClerkProvider
-      publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string}
+      publishableKey={clerkKey}
       appearance={clerkAppearance}
     >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
@@ -48,3 +52,4 @@ root.render(
     </ClerkProvider>
   </React.StrictMode>
 );
+}

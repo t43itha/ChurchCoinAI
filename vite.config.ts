@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { contentSecurityPolicy } from "./lib/contentSecurityPolicy.ts";
 
 // IMPORTANT: Do NOT expose backend secrets (e.g., GEMINI_API_KEY) to the browser.
 // All AI calls must go through Convex actions where auth is enforced.
@@ -22,6 +23,9 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    define: {
+      'import.meta.env.VITE_APP_RELEASE': JSON.stringify(env.VITE_APP_RELEASE?.trim() || env.VERCEL_GIT_COMMIT_SHA || ''),
+    },
     server: {
       port: 3000,
       host: "127.0.0.1",
@@ -38,7 +42,12 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), {
+      name: 'clerk-content-security-policy',
+      transformIndexHtml() {
+        return [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: contentSecurityPolicy(env.VITE_CLERK_PUBLISHABLE_KEY) }, injectTo: 'head-prepend' as const }];
+      },
+    }],
     css: {
       // Tailwind runs through Vite; ignore a parent checkout's PostCSS config.
       postcss: { plugins: [] },

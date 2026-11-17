@@ -20,8 +20,7 @@ jobs:
         run: npm ci
 
       # Shipped (production) dependencies block on high findings. Dev tooling is
-      # reported but non-blocking: Tailwind 3's `braces` chain has no patched
-      # release, and clearing it needs the Tailwind 4 migration.
+      # reported but non-blocking. Tailwind 4 runs through the Vite plugin.
       - name: Dependency audit (production)
         run: npm audit --omit=dev --audit-level=high
 

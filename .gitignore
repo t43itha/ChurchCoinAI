@@ -35,4 +35,5 @@ nul
 .vercel
 tmp/
 .preview/
+clerk-relink-mapping.json
 evals/categorization/results/*.json
