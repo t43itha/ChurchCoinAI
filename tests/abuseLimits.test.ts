@@ -570,8 +570,8 @@ describe("Smart Link", () => {
 
   it("saves the pledge donor's full name when a suggestion is confirmed, not the shortened prompt text", async () => {
     const fullName =
-      "The Okafor-Williamson Family Charitable Trust for the Restoration of St Mary's Bell Tower and Churchyard, given in memory of Emmanuel Okafor";
-    expect(fullName.length).toBeGreaterThan(120);
+      "The Okafor-Williamson Family Charitable Trust for the Restoration of St Mary's Bell Tower and Churchyard, given in memory of Emmanuel Okafor and Grace";
+    expect(fullName).toHaveLength(150);
     generateContent.mockResolvedValueOnce({ text: JSON.stringify([{ transactionId: "t-1", pledgeId: "p-long", reason: "Same amount" }]) });
     const { ctx, db, records } = church(
       [pledge("p-long", { donorName: fullName, donorId: "donor-1" })],
