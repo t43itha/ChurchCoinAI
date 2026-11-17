@@ -11,6 +11,7 @@ export function initializeMonitoring() {
 
   Sentry.init({
     dsn,
+    release: import.meta.env.VITE_APP_RELEASE?.trim() || undefined,
     environment:
       import.meta.env.VITE_SENTRY_ENVIRONMENT?.trim() || import.meta.env.MODE,
     enabled: true,

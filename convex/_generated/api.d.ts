@@ -51,6 +51,7 @@ import type * as lib_launchFeatures from "../lib/launchFeatures.js";
 import type * as lib_money from "../lib/money.js";
 import type * as lib_plaid from "../lib/plaid.js";
 import type * as lib_pledgeStatus from "../lib/pledgeStatus.js";
+import type * as lib_productionLaunch from "../lib/productionLaunch.js";
 import type * as lib_ragInstance from "../lib/ragInstance.js";
 import type * as lib_stripe from "../lib/stripe.js";
 import type * as lib_transactionEmbeddingModel from "../lib/transactionEmbeddingModel.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   "lib/money": typeof lib_money;
   "lib/plaid": typeof lib_plaid;
   "lib/pledgeStatus": typeof lib_pledgeStatus;
+  "lib/productionLaunch": typeof lib_productionLaunch;
   "lib/ragInstance": typeof lib_ragInstance;
   "lib/stripe": typeof lib_stripe;
   "lib/transactionEmbeddingModel": typeof lib_transactionEmbeddingModel;

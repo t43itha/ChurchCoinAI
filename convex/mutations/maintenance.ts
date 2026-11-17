@@ -1,4 +1,5 @@
-import { internalMutation, mutation } from "../_generated/server";
+import { internalMutation, internalQuery, mutation } from "../_generated/server";
+import { launchProblems, planClerkRelink } from "../lib/productionLaunch";
 import { v } from "convex/values";
 import { requireCapability } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
@@ -13,6 +14,37 @@ const normalizeName = (name: string): string => {
     .replace(/^(mr|mrs|ms|miss|dr|rev|pastor|deacon)\.?\s+/i, "")
     .replace(/\s+/g, " ");
 };
+
+export const launchPreflight = internalQuery({
+  args: {},
+  returns: v.array(v.string()),
+  handler: () => launchProblems(process.env),
+});
+
+export const relinkClerkIds = internalMutation({
+  args: { mapping: v.array(v.object({ email: v.string(), clerkId: v.string() })), dryRun: v.optional(v.boolean()) },
+  returns: v.array(v.object({ email: v.string(), before: v.string(), after: v.string(), changed: v.boolean(), dryRun: v.boolean() })),
+  handler: async (ctx, args) => {
+    // A bounded full scan catches historical mixed-case emails. Refuse larger
+    // datasets instead of silently overlooking ambiguity or ownership conflicts.
+    const users = await ctx.db.query('users').take(1001);
+    if (users.length > 1000 || args.mapping.length > 100) throw new Error('Relink exceeds launch batch limit');
+    const plan = planClerkRelink(users, args.mapping);
+    const updates = [];
+    for (const row of plan) {
+      const organizations = await ctx.db.query('organizations').withIndex('by_createdBy', q => q.eq('createdBy', row.before)).take(1001);
+      if (organizations.length > 1000) throw new Error('Relink exceeds organization limit');
+      updates.push({ ...row, organizations });
+    }
+    const dryRun = args.dryRun ?? true;
+    for (const row of updates) {
+      if (dryRun || row.before === row.after) continue;
+      await ctx.db.patch(row.userId as Id<'users'>, { clerkId: row.after });
+      for (const organization of row.organizations) await ctx.db.patch(organization._id, { createdBy: row.after });
+    }
+    return plan.map(row => ({ email: row.email, before: row.before.slice(0, 8) + '…', after: row.after.slice(0, 8) + '…', changed: row.before !== row.after, dryRun }));
+  },
+});
 
 export const backfillDonorIdsFromDonorName = mutation({
   args: {
