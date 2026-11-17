@@ -44,8 +44,20 @@ describe("newChooserRows", () => {
 describe("planNewKind with bank feeds off", () => {
   it("consumes an old sync link without opening the bank sync or waiting on connections", () => {
     expect(
-      planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: false })
+      planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: false, featuresLoaded: true })
     ).toEqual({ type: "handled", modal: null, leaveReconciliation: false });
+  });
+
+  it("keeps a sync link until the flags have loaded, so it is not dropped when bank feeds turn out to be on", () => {
+    expect(
+      planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: false, featuresLoaded: false })
+    ).toEqual({ type: "wait" });
+  });
+
+  it("does not hold other kinds back while the flags load", () => {
+    expect(
+      planNewKind({ param: "entry", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: false, featuresLoaded: false })
+    ).toEqual({ type: "handled", modal: "singleEntry", leaveReconciliation: true });
   });
 });
 
@@ -109,14 +121,14 @@ describe("canAddNew", () => {
 });
 
 describe("planNewKind", () => {
-  const loaded = { canEdit: true, bankConnectionsLoaded: true, bankFeeds: true };
+  const loaded = { canEdit: true, bankConnectionsLoaded: true, bankFeeds: true, featuresLoaded: true };
 
   it("does nothing without a ?new= value", () => {
     expect(planNewKind({ param: null, handled: null, ...loaded })).toEqual({ type: "idle" });
   });
 
   it("waits for bank connections before a sync, then syncs once they arrive", () => {
-    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true })).toEqual({
+    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true, featuresLoaded: true })).toEqual({
       type: "wait",
     });
     expect(planNewKind({ param: "sync", handled: null, ...loaded })).toEqual({
@@ -127,7 +139,7 @@ describe("planNewKind", () => {
   });
 
   it("does not wait on bank connections for other kinds", () => {
-    expect(planNewKind({ param: "entry", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true })).toEqual({
+    expect(planNewKind({ param: "entry", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true, featuresLoaded: true })).toEqual({
       type: "handled",
       modal: "singleEntry",
       leaveReconciliation: true,
@@ -135,7 +147,7 @@ describe("planNewKind", () => {
   });
 
   it("syncs once when connections load after a wait, and not again on a Strict Mode replay", () => {
-    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true }).type).toBe("wait");
+    expect(planNewKind({ param: "sync", handled: null, canEdit: true, bankConnectionsLoaded: false, bankFeeds: true, featuresLoaded: true }).type).toBe("wait");
     const first = planNewKind({ param: "sync", handled: null, ...loaded });
     expect(first.type).toBe("handled");
     // The page records the param as handled before the replay runs, so the replay does nothing.
@@ -151,7 +163,7 @@ describe("planNewKind", () => {
   });
 
   it("consumes the param for roles that cannot edit but opens nothing", () => {
-    expect(planNewKind({ param: "sync", handled: null, canEdit: false, bankConnectionsLoaded: false, bankFeeds: true })).toEqual({
+    expect(planNewKind({ param: "sync", handled: null, canEdit: false, bankConnectionsLoaded: false, bankFeeds: true, featuresLoaded: true })).toEqual({
       type: "handled",
       modal: null,
       leaveReconciliation: false,

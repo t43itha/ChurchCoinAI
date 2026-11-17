@@ -97,6 +97,7 @@ The "Refined Ledger" design system is defined in the `@theme` block and componen
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_GROWING`, `STRIPE_PRICE_THRIVING`
 - `STRIPE_PRODUCT_STARTER`, `STRIPE_PRODUCT_GROWING`, `STRIPE_PRODUCT_THRIVING`
 - `RESEND_API_KEY` (invitation emails), optional `RESEND_FROM_EMAIL` (defaults to `ChurchCoin <onboarding@resend.dev>`; set a verified-domain sender for production)
+- Launch flags, both off unless set to `true`: `BILLING_ENABLED` (Stripe checkout, billing UI, trials) and `BANK_FEEDS_ENABLED` (Yapily bank connections and sync). The client reads them through `api.queries.launchFeatures.get` via `useLaunchFeatures()`. With billing off, `subscription` churches get `early_access` and start no trial clock. After setting `BILLING_ENABLED=true`, run `internal.mutations.organizations.startTrialsAfterEarlyAccess` (repeat with the returned cursor until `isDone`) so every early-access church gets a full trial from that day.
 
 Backend secrets must **never** go in `VITE_*` env vars (those are exposed to the browser).
 `APP_BASE_URL` is the public frontend origin used after Yapily redirects back to Convex; set it for deployed environments.
@@ -132,3 +133,4 @@ Mistakes reviewers caught more than once, and what now stops them. When you're c
 | Bindings are regenerated against a local anonymous backend, never the shared dev deployment (codegen uploads code to its target) | Docs only: judgment call |
 | Cash walkthrough dates use the shared `DateInput`, with wrapper padding, a shrinkable native input and an explicit calendar icon; desktop mobile emulation alone does not verify iOS date controls | `components/cashEntry/DateInput.tsx` + `.cash-date-*` styles; physical iPhone verification remains manual |
 | Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |
+| `BILLING_ENABLED` and `BANK_FEEDS_ENABLED` are read only in `convex/lib/launchFeatures.ts`; no `VITE_*` copies | `tests/launchFeatureFlags.test.ts` |

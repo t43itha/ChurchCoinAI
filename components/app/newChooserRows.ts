@@ -129,15 +129,19 @@ export function planNewKind({
   canEdit,
   bankConnectionsLoaded,
   bankFeeds,
+  featuresLoaded,
 }: {
   param: string | null;
   handled: string | null;
   canEdit: boolean;
   bankConnectionsLoaded: boolean;
   bankFeeds: boolean;
+  featuresLoaded: boolean;
 }): NewKindStep {
   if (!param || param === handled) return { type: "idle" };
   const parsed = parseNewKind(param);
+  // Whether a sync link opens depends on a flag that may not have arrived yet.
+  if (parsed === "sync" && !featuresLoaded) return { type: "wait" };
   // An old sync link while bank feeds are off is consumed without opening anything.
   const kind = parsed === "sync" && !bankFeeds ? null : parsed;
   // Sync needs the connected accounts, so wait for them rather than report none.
