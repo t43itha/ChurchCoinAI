@@ -924,7 +924,7 @@ export const reconcilePledges = action({
     } catch (e) {
       console.error("Reconciliation failed", e);
       // Not an empty page: that would skip these gifts.
-      throw new Error("Smart Link could not check these gifts. Please try again.", { cause: e });
+      throw new Error("Smart Link could not check these gifts. Please try again.");
     }
 
     const raw = text ? safeJsonParse<unknown>(text, "reconcilePledges response") : [];
