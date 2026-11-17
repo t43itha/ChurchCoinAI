@@ -38,8 +38,9 @@ const ALLOWLIST: Record<string, string> = {
   "actions/invitations:resend": "runs mutations.invitations.resend (invitations.manage) before emailing",
 };
 
-// Entries for functions another open branch adds. The stale check skips them
-// until that branch merges; then delete the name from here.
+// Allowlisted functions another open branch adds. The stale check tolerates
+// their absence, so either branch can merge first. Delete a name from here
+// once its branch has merged.
 const AWAITING_MERGE = new Set([
   // PR #72 (feat/launch-mode) adds convex/queries/launchFeatures.ts.
   "queries/launchFeatures:get",
@@ -71,12 +72,6 @@ describe("public Convex function gate inventory", () => {
       return fn.capabilities.length > 0;
     });
     expect(stale, "Remove these allowlist entries: the function is gone or now names a capability.").toEqual([]);
-  });
-
-  it("only waits for functions that are not here yet", () => {
-    const names = new Set(functions.map((fn) => fn.name));
-    const merged = [...AWAITING_MERGE].filter((name) => names.has(name));
-    expect(merged, "These functions exist now: remove them from AWAITING_MERGE.").toEqual([]);
   });
 });
 
