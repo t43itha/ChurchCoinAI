@@ -1,7 +1,10 @@
-// Every public Convex function must name the capability it enforces, so a
-// new query or action can't ship with only "signed in and a member" as its
-// gate. The security audit before launch found AI actions and insight queries
-// that any Guest (or any free sign-up) could call that way.
+// An inventory of public Convex functions and the capability each one names.
+// It parses the source, so it proves a function asks for a capability, not
+// that the check runs on every path or blocks the right roles: the behaviour
+// tests (tests/permissionsAccess.test.ts, tests/accessHardening.test.ts) are
+// the guarantee. Its job is to stop a new query or action shipping with only
+// "signed in and a member" as its gate, as the pre-launch audit found AI
+// actions and insight queries that any Guest (or any free sign-up) could call.
 import { describe, expect, it } from "vitest";
 import { functionsInSource, publicFunctions } from "./helpers/publicFunctions";
 
@@ -16,6 +19,8 @@ const ALLOWLIST: Record<string, string> = {
   "queries/invitations:pendingForCurrentUser": "invitations addressed to the caller's verified email",
   "mutations/users:acceptInvitation": "joins via token or a verified-email invitation",
   "queries/users:identity": "the caller's own Clerk identity",
+  // Before sign-in.
+  "queries/launchFeatures:get": "two public launch-flag booleans the signed-out landing page reads",
   // The caller's own records, for every member.
   "queries/users:current": "the caller's own user record",
   "queries/users:currentWithAccess": "the caller's own record and access decision (used by action helpers)",
@@ -33,28 +38,45 @@ const ALLOWLIST: Record<string, string> = {
   "actions/invitations:resend": "runs mutations.invitations.resend (invitations.manage) before emailing",
 };
 
+// Entries for functions another open branch adds. The stale check skips them
+// until that branch merges; then delete the name from here.
+const AWAITING_MERGE = new Set([
+  // PR #72 (feat/launch-mode) adds convex/queries/launchFeatures.ts.
+  "queries/launchFeatures:get",
+]);
+
 const functions = publicFunctions();
 
-describe("public Convex functions", () => {
+describe("public Convex function gate inventory", () => {
   it("finds the public functions under queries, mutations, actions and intelligence", () => {
     // A sanity floor so a parser change can't silently check nothing.
     expect(functions.length).toBeGreaterThan(190);
   });
 
-  it("each enforce a named capability or are allowlisted with a reason", () => {
+  it("lists a capability check for each function, or an allowlist reason", () => {
     const ungated = functions
       .filter(({ name, capabilities }) => capabilities.length === 0 && !(name in ALLOWLIST))
       .map(({ name }) => name);
     expect(
       ungated,
-      "Gate these with requireCapability / assertCapability (or the action helper with a capability). Add to ALLOWLIST only for pre-membership or own-record functions, with a reason."
+      "These functions name no capability check this inventory can see. Gate them with an awaited requireCapability / assertCapability (or the action helper with a capability), and cover the roles in tests/permissionsAccess.test.ts. Add to ALLOWLIST only for pre-membership or own-record functions, with a reason."
     ).toEqual([]);
   });
 
   it("keeps the allowlist to functions that exist and have no gate", () => {
     const byName = new Map(functions.map((fn) => [fn.name, fn]));
-    const stale = Object.keys(ALLOWLIST).filter((name) => (byName.get(name)?.capabilities.length ?? 1) > 0);
+    const stale = Object.keys(ALLOWLIST).filter((name) => {
+      const fn = byName.get(name);
+      if (!fn) return !AWAITING_MERGE.has(name);
+      return fn.capabilities.length > 0;
+    });
     expect(stale, "Remove these allowlist entries: the function is gone or now names a capability.").toEqual([]);
+  });
+
+  it("only waits for functions that are not here yet", () => {
+    const names = new Set(functions.map((fn) => fn.name));
+    const merged = [...AWAITING_MERGE].filter((name) => names.has(name));
+    expect(merged, "These functions exist now: remove them from AWAITING_MERGE.").toEqual([]);
   });
 });
 
@@ -72,10 +94,23 @@ describe("capability detection", () => {
     expect(detect('const user = await requireMembership(ctx); assertCapability(user, "organization.export");')).toEqual(["organization.export"]);
     expect(detect('await requireUser(ctx, "reports.read", 20);')).toEqual(["reports.read"]);
     expect(detect("await readRows(ctx);", 'async function readRows(ctx) { return requireCapability(ctx, "ledger.read"); }')).toEqual(["ledger.read"]);
+    expect(detect("return requireCapability(ctx, \"ledger.read\");")).toEqual(["ledger.read"]);
   });
 
   it("rejects capability names that are not in lib/permissions.ts", () => {
     expect(detect('await requireCapability(ctx, "ledger.everything");')).toEqual([]);
+  });
+
+  it("rejects a gate that can never run", () => {
+    expect(detect('if (false) await requireCapability(ctx, "ledger.read");')).toEqual([]);
+    expect(detect('if (false) { assertCapability(user, "ledger.read"); }')).toEqual([]);
+    expect(detect("if (false) await readRows(ctx);", 'async function readRows(ctx) { return requireCapability(ctx, "ledger.read"); }')).toEqual([]);
+  });
+
+  it("rejects an async gate whose result is not awaited", () => {
+    expect(detect('requireCapability(ctx, "ledger.read"); return null;')).toEqual([]);
+    expect(detect('void requireUser(ctx, "reports.read", 20);')).toEqual([]);
+    expect(detect("readRows(ctx); return null;", 'async function readRows(ctx) { return requireCapability(ctx, "ledger.read"); }')).toEqual([]);
   });
 
   it("ignores internal functions", () => {

@@ -53,7 +53,7 @@ Both `npm run dev` and `npx convex dev` must run simultaneously during developme
 - `actions/` — Server-side async operations (AI calls, Stripe, bank connection flows)
 - `intelligence/` — AI insight generation and RAG indexing
 - `http.ts` — HTTP routes for Stripe webhooks, the Yapily callback, and preserved Plaid webhook compatibility
-- `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections
+- `crons.ts` — Daily maintenance: expire pending invitations, flag lapsed bank consents, clean stale pending bank connections, purge past days' per-person usage counters
 - `lib/auth.ts` — Auth helpers: `getCurrentUser()`, `requireAuth()`, `requireCapability()`, `assertCapability()`, `roleValidator`, `redactDonorFields()`
 - `lib/money.ts` — Money helpers: amounts are pounds as floats; total them with `sumMoney()`, round single values with `roundMoney()`, and compare targets with `meetsMoneyTarget()`
 
@@ -133,4 +133,4 @@ Mistakes reviewers caught more than once, and what now stops them. When you're c
 | Bindings are regenerated against a local anonymous backend, never the shared dev deployment (codegen uploads code to its target) | Docs only: judgment call |
 | Cash walkthrough dates use the shared `DateInput`, with wrapper padding, a shrinkable native input and an explicit calendar icon; desktop mobile emulation alone does not verify iOS date controls | `components/cashEntry/DateInput.tsx` + `.cash-date-*` styles; physical iPhone verification remains manual |
 | Convex function references use typed `api` / `internal` refs from `convex/_generated/api`; if one is missing, run `npx convex codegen` instead of using `makeFunctionReference` | ESLint `churchcoin/no-function-reference-strings` |
-| Every public function under `convex/queries`, `mutations`, `actions` and `intelligence` names the capability it enforces (`requireCapability`, `assertCapability`, or an action helper given a capability); a bare `requireAuth` is not a gate. Pre-membership and own-record functions go in the test's allowlist with a reason | `tests/publicFunctionAuth.test.ts` |
+| Every public function under `convex/queries`, `mutations`, `actions` and `intelligence` checks a capability (`requireCapability`, `assertCapability`, or an action helper given a capability), awaited and reachable; a bare `requireAuth` is not a gate. Pre-membership and own-record functions go in the inventory's allowlist with a reason | Behaviour: `tests/permissionsAccess.test.ts` (role × function). Inventory only (proves a check is named, not that it holds): `tests/publicFunctionGateInventory.test.ts` |
