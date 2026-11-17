@@ -50,9 +50,9 @@ export const validateGiftAidEligibleTransactions = (
 
 export type { GiftAidEligibleTransaction };
 
-// AI usage is charged in units of work: one unit per transaction row, and
-// AI_CALL_UNITS for a single model request (about one 20-row categorisation
-// batch, which is how the import flow calls the pipeline).
+// AI usage is charged in units of work: one unit per transaction row (or
+// embedding), and at least AI_CALL_UNITS for any model request, so a request
+// costs the same whether it carries one row or a full 20-row import batch.
 export const AI_CALL_UNITS = 20;
 
 export const AI_USAGE_WINDOW_MS = 60_000;
@@ -61,6 +61,10 @@ const DEFAULT_AI_USAGE_LIMITS = {
   // A 500-row statement import costs 500 units within about a minute.
   userPerMinute: 600,
   organizationPerMinute: 1_000,
+  // One church's day: a full import costs about 1,000 units (500 to
+  // categorise, 500 to index), so this covers several imports plus dozens of
+  // reports, and keeps one church to 5% of the deployment's day.
+  organizationPerDay: 10_000,
   // Deployment-wide ceiling: about 10,000 model requests a day.
   deploymentPerDay: 200_000,
 };
@@ -76,11 +80,12 @@ export function aiUsageLimits(env: Record<string, string | undefined> = process.
   return {
     userPerMinute: positiveInteger(env.AI_USER_UNITS_PER_MINUTE, DEFAULT_AI_USAGE_LIMITS.userPerMinute),
     organizationPerMinute: positiveInteger(env.AI_ORG_UNITS_PER_MINUTE, DEFAULT_AI_USAGE_LIMITS.organizationPerMinute),
+    organizationPerDay: positiveInteger(env.AI_ORG_DAILY_UNITS, DEFAULT_AI_USAGE_LIMITS.organizationPerDay),
     deploymentPerDay: positiveInteger(env.AI_DAILY_UNITS, DEFAULT_AI_USAGE_LIMITS.deploymentPerDay),
   };
 }
 
-export const rowUnits = (rows: number) => Math.max(1, rows);
+export const requestUnits = (rows: number) => Math.max(AI_CALL_UNITS, rows);
 
 export const AI_INPUT_LIMITS = {
   items: 500,

@@ -21,6 +21,8 @@ import { batchIndexTransactions, indexTransaction } from "../convex/intelligence
 import { upsertAccepted } from "../convex/intelligence/categorizationMemory";
 import { deleteOrganization } from "../convex/actions/organizations";
 import { transactionRAG } from "../convex/lib/ragInstance";
+import { AI_CALL_UNITS, aiUsageLimits, requestUnits } from "../convex/lib/aiValidation";
+import { runCategorisation } from "../components/statementImport/reviewLogic";
 
 const generateContent = vi.hoisted(() => vi.fn(async () => ({ text: "[]" })));
 vi.mock("@google/genai", async (importOriginal) => ({
@@ -166,6 +168,69 @@ describe("A2: AI input caps and work-based charging", () => {
       vi.setSystemTime(new Date("2026-11-18T00:00:05Z"));
       await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "stranger", units: 201 })).resolves.toBeTruthy();
     });
+
+    it("stops one church at its own daily cap while other churches carry on", async () => {
+      const { ctx } = fixture({ aiRateLimits: [], aiDailyUsage: [], organizations: [{ _id: "org" }, { _id: "org-2" }] });
+      // 20 minutes of a full import each: 10,000 units, the default church cap.
+      for (let minute = 0; minute < 20; minute += 1) {
+        vi.setSystemTime(new Date(Date.UTC(2026, 10, 17, 12, minute, 5)));
+        await charge(ctx, "u1", 500);
+      }
+      vi.setSystemTime(new Date("2026-11-17T13:00:05Z"));
+      await expect(charge(ctx, "u1", 20)).rejects.toThrow("Your church has reached today's AI usage limit");
+      await expect(invoke(checkAndConsume, ctx, { organizationId: "org-2", userId: "u9", units: 500 })).resolves.toBeTruthy();
+      vi.setSystemTime(new Date("2026-11-18T00:00:05Z"));
+      await expect(charge(ctx, "u1", 20)).resolves.toBeTruthy();
+    });
+
+    it("lets two people run full 500-row statement imports at once through the real import flow", async () => {
+      const { ctx } = fixture({ aiRateLimits: [], aiDailyUsage: [] });
+      const importStatement = async (userId: string) => {
+        const statuses: string[] = [];
+        await runCategorisation({
+          rows: Array.from({ length: 500 }, (_, i) => ({ description: `ROW ${i}`, amount: 10, type: "Income" as const })),
+          runCounter: { current: 0 },
+          funds: [],
+          categories: [],
+          // Each batch is one categorisation request, charged as the action charges it.
+          suggest: async (batch) => {
+            await charge(ctx, userId, requestUnits(batch.length));
+            return [];
+          },
+          setRows: () => {},
+          setCount: () => {},
+          setStatus: (status) => statuses.push(status),
+          setIsCategorising: () => {},
+        });
+        return statuses.at(-1);
+      };
+      await expect(Promise.all([importStatement("u1"), importStatement("u2")])).resolves.toEqual([
+        "Auto-categorisation complete. 500 entries ready to review.",
+        "Auto-categorisation complete. 500 entries ready to review.",
+      ]);
+    });
+  });
+
+  it("charges every categorisation request at least one model call, however few rows it sends", async () => {
+    // 25 requests of 20 rows (a 500-row import) cost 500 units, inside the
+    // 600-unit user minute. One-row requests cost 20 each, so one person gets
+    // at most 30 requests a minute and the deployment about 10,000 a day.
+    const limits = aiUsageLimits({});
+    expect(25 * requestUnits(20)).toBe(500);
+    expect(limits.userPerMinute / requestUnits(1)).toBe(30);
+    expect(limits.deploymentPerDay / requestUnits(1)).toBe(10_000);
+
+    const categorisations: Array<[keyof typeof ai, Record<string, unknown>]> = [
+      ["categorizeTransactions", { descriptions: ["x"], fundNames: [], categories: [] }],
+      ["categorizeWithPipelinePreview", { transactions: [{ ...row, rowId: "r1" }] }],
+      ["categorizeWithMatching", { transactions: [row], fundNames: [], categories: [] }],
+      ["categorizeWithRAG", { transactions: [row], fundNames: [], categories: [] }],
+    ];
+    for (const [name, args] of categorisations) {
+      const { ctx, runMutation } = actionContext("Admin");
+      await expect(run(name, ctx, args)).rejects.toThrow("CHARGED");
+      expect((runMutation.mock.calls[0] as unknown[])[1]).toMatchObject({ units: AI_CALL_UNITS });
+    }
   });
 });
 

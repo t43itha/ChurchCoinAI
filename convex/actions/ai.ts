@@ -9,7 +9,7 @@ import {
   AI_CALL_UNITS,
   AI_INPUT_LIMITS,
   limitAIInput,
-  rowUnits,
+  requestUnits,
   safeJsonParse,
   validateGiftAidEligibleTransactions,
 } from "../lib/aiValidation";
@@ -99,7 +99,7 @@ export const categorizeTransactions = action({
   },
   handler: async (ctx, args) => {
     limitAIInput(args);
-    await requireUser(ctx, "ledger.write", rowUnits(args.descriptions.length));
+    await requireUser(ctx, "ledger.write", requestUnits(args.descriptions.length));
     const ai = getAI();
 
     const prompt = `
@@ -169,7 +169,7 @@ export const categorizeWithPipelinePreview = action({
     if (transactions.some((row) => !row.rowId.trim()) || new Set(transactions.map((row) => row.rowId)).size !== transactions.length) throw new Error("Missing or duplicate categorisation row IDs");
     limitAIInput(args);
     const startedAt = performance.now();
-    const user = await requireUser(ctx, "ledger.write", rowUnits(transactions.length));
+    const user = await requireUser(ctx, "ledger.write", requestUnits(transactions.length));
     const authenticatedAt = performance.now();
     const { internal } = (await import("../_generated/api")) as any;
     const pipelineContext = await ctx.runQuery(
@@ -399,7 +399,7 @@ export const categorizeWithMatching = action({
   },
   handler: async (ctx, args) => {
     limitAIInput(args);
-    const user = await requireUser(ctx, "ledger.write", rowUnits(args.transactions.length));
+    const user = await requireUser(ctx, "ledger.write", requestUnits(args.transactions.length));
     const ai = getAI();
     const { api } = await import("../_generated/api");
 
@@ -597,8 +597,8 @@ export const categorizeWithRAG = action({
   },
   handler: async (ctx, args) => {
     limitAIInput(args);
-    // Each row runs its own embedding search, so the charge is per row.
-    const user = await requireUser(ctx, "ledger.write", rowUnits(args.transactions.length));
+    // Each row runs its own embedding search, so large batches are charged per row.
+    const user = await requireUser(ctx, "ledger.write", requestUnits(args.transactions.length));
     const ai = getAI();
     const { api } = await import("../_generated/api");
 

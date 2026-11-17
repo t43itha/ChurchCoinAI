@@ -442,12 +442,15 @@ export default defineSchema({
     .index("by_organization_mainCategory", ["organizationId", "mainCategory"]),
 
   // Per-minute AI usage windows: one row per organization, plus one per user
-  // (userId set). requestCount holds usage units, not requests.
+  // (userId set). requestCount holds usage units, not requests. The
+  // organization row also counts the church's units for one UTC day.
   aiRateLimits: defineTable({
     organizationId: v.id("organizations"),
     userId: v.optional(v.id("users")),
     windowStart: v.number(),
     requestCount: v.number(),
+    day: v.optional(v.string()),
+    dayUnits: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
