@@ -21,7 +21,7 @@ The gap is three things: code that still assumes billing and bank feeds, a deplo
 1. **Billing off means free early access.** No card, no trial countdown, no paywall. Plans and prices stay on the landing page with an "early access is free" note. Reverse with `BILLING_ENABLED=true` on the Convex deployment.
 2. **Bank feeds are hidden, not half-shown.** No "Connect your bank" in onboarding, Settings, Transactions or the dashboard. Reverse with `BANK_FEEDS_ENABLED=true`.
 3. **Production origin is `https://www.churchcoin.co.uk`** (already set as `APP_BASE_URL` on both deployments).
-4. **The three existing users keep their churches.** Clerk production issues new user ids, so each user row is relinked by an explicit email-to-id mapping run by the operator, never by automatic email matching.
+4. **The three existing users keep their churches.** Clerk production issues new user ids, so the users are created in Clerk production first and each user row is relinked by an explicit email-to-id mapping, never by automatic email matching.
 5. **Vercel deploys the backend.** A production build with a deploy key runs `convex deploy` and the Vite build together, so the site and its backend cannot drift again.
 
 ## Workstreams
@@ -78,15 +78,18 @@ Every PR is reviewed by the other model before merge (Astra reviews Opus, Opus r
 
 Operator steps are marked **You**. Everything else the coordinator runs, on your go.
 
-- [ ] **You.** Clerk dashboard: create the production instance for `churchcoin.co.uk`, add its DNS records, switch on the same sign-in methods, add production OAuth credentials for any social login, create the `convex` JWT template, apply `docs/CLERK_BRANDING_RUNBOOK.md`.
+The order matters. Convex prod gets trunk code before anything is checked against it, and the three users exist in Clerk production before the site switches, so nobody lands in onboarding.
+
+- [ ] **You.** Clerk dashboard: create the production instance for `churchcoin.co.uk`, add its DNS records (DNS is at IONOS; none exist yet), switch on the same sign-in methods, add production OAuth credentials for any social login, create the `convex` JWT template, apply `docs/CLERK_BRANDING_RUNBOOK.md`.
 - [ ] **You.** Give the coordinator the production publishable key and issuer domain (both public values).
+- [ ] **You.** In the Clerk production dashboard, create the three existing users with the same email addresses they use today. They sign in afterwards with an email code or the same social login.
+- [ ] Deploy trunk to Convex prod (nothing reads it yet). Set `CLERK_JWT_ISSUER_DOMAIN` to the production issuer; confirm `BILLING_ENABLED` and `BANK_FEEDS_ENABLED` are unset; run `launchPreflight` until it reports nothing.
+- [ ] Freeze writes (announce a short window). Export dev, import into prod with `--replace-all`, compare row counts per table, and record each church's dashboard totals.
+- [ ] Build the email-to-id mapping from Clerk production, run the relink as a dry run, read the summary, then run it for real.
 - [ ] **You.** Vercel, Production environment only: `VITE_CLERK_PUBLISHABLE_KEY` (pk_live), `CONVEX_DEPLOY_KEY` (prod deploy key from the Convex dashboard), `REQUIRE_PRODUCTION_KEYS=1`, `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT=production`. Leave Preview on the dev values.
-- [ ] Convex prod: set `CLERK_JWT_ISSUER_DOMAIN` to the production issuer; confirm `BILLING_ENABLED` and `BANK_FEEDS_ENABLED` are unset; run `launchPreflight` until it reports nothing.
-- [ ] Freeze writes (announce a short window), export dev, import into prod with `--replace-all`, compare row counts per table.
-- [ ] **You.** Sign in once on production with each existing account so Clerk production has the three users. Coordinator runs the relink with the resulting mapping.
 - [ ] Trigger the production deploy. Run `scripts/smoke-prod.mjs https://www.churchcoin.co.uk`.
-- [ ] Sign in as each role and check dashboard totals against the pre-cutover figures.
-- [ ] Rollback: point the Vercel Production env vars back at the dev values and redeploy. Dev data is untouched by the cutover.
+- [ ] **You.** Sign in with each existing account. Each must land in its own church, not onboarding, and the dashboard totals must match the recorded figures. Then lift the freeze.
+- [ ] Rollback, inside the freeze window only: point the Vercel Production env vars back at the dev values and redeploy. Dev data is untouched by the cutover, so nothing is lost while no church has saved on prod. Once the freeze is lifted, prod holds the only copy of new work; fix forward, or export prod and import it into dev before pointing back.
 
 ## Not in this launch
 
