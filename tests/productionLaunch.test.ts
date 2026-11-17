@@ -68,11 +68,12 @@ describe('relink planning', () => {
 });
 describe('Clerk mapping fixtures', () => {
   const user = (id: string, status = 'verified') => ({ id, primary_email_address_id: 'e', email_addresses: [{ id: 'e', email_address: 'A@example.com', verification: { status } }] });
-  it('uses verified primary emails in both instances', () => {
-    expect(mappingFromUsers([user('old')], [user('new')])).toEqual([{ email: 'a@example.com', clerkId: 'new' }]);
-    expect(mappingFromUsers([user('old', 'unverified')], [user('new')])).toEqual([]);
-    expect(() => mappingFromUsers([user('old')], [user('new', 'unverified')])).toThrow();
-    expect(() => mappingFromUsers([user('old')], [user('new'), user('duplicate')])).toThrow();
+  it('maps each verified production primary email, skipping unverified accounts', () => {
+    expect(mappingFromUsers([user('new')])).toEqual([{ email: 'a@example.com', clerkId: 'new' }]);
+    expect(mappingFromUsers([user('new', 'unverified')])).toEqual([]);
+  });
+  it('refuses two production accounts with the same email', () => {
+    expect(() => mappingFromUsers([user('new'), user('duplicate')])).toThrow();
   });
   it('paginates until a short page', async () => {
     const urls: string[] = [];

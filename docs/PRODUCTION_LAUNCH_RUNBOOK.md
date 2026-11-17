@@ -38,6 +38,7 @@ In the production dashboard set or confirm:
 - `RESEND_API_KEY` and `RESEND_FROM_EMAIL` on the verified custom domain, never `resend.dev`. Confirm sender verification in Resend even though DNS resolves.
 - Leave `BILLING_ENABLED` and `BANK_FEEDS_ENABLED` unset (or `false`). Stripe and Yapily credentials are not launch prerequisites.
 - Optional AI budgets: `AI_USER_UNITS_PER_MINUTE=600`, `AI_ORG_UNITS_PER_MINUTE=1000`, `AI_ORG_DAILY_UNITS=10000`, `AI_DAILY_UNITS=200000`. These are the defaults. `AI_RATE_LIMIT_PER_MINUTE` is no longer read.
+- Optional per-person and invitation caps from PR-C (defaults): `AI_PERSON_DAILY_UNITS=10000`, `CHURCH_CREATIONS_PER_PERSON_DAILY=2`, `INVITE_EMAILS_PER_PERSON_DAILY=25`, `INVITE_EMAILS_DAILY=200`. Keep `INVITE_EMAILS_DAILY` at or below the Resend plan's daily sending quota.
 
 ```sh
 npx convex run --deployment valuable-akita-907 mutations/maintenance:launchPreflight '{}'
@@ -65,13 +66,13 @@ Rollback: development data is unchanged. Keep the site on development; restore `
 
 ## 5. Relink Clerk IDs
 
-Supply `CLERK_DEVELOPMENT_SECRET_KEY` and `CLERK_PRODUCTION_SECRET_KEY` through a secure environment loader. Do not paste keys into shell history or command arguments. The script calls Clerk's read-only `GET /v1/users` endpoint with offset pagination in both instances. It requires a unique production match for each verified development primary email.
+Supply `CLERK_PRODUCTION_SECRET_KEY` through a secure environment loader. Do not paste it into shell history or command arguments. The script calls Clerk's read-only `GET /v1/users` endpoint on the production instance with offset pagination and writes one entry per verified primary email. It refuses two production accounts that share an email.
 
 ```sh
 node scripts/clerk-relink-mapping.mjs ../clerk-relink-mapping.json
 ```
 
-Review the output file against the three existing Convex users. Resolve missing/unverified accounts in Clerk; do not substitute secondary or unverified emails. If development contains unrelated test accounts, explicitly reduce the reviewed mapping to the three intended users. The mutation refuses unknown or ambiguous email matches and ID ownership conflicts for the whole batch.
+Review the output file against the three existing Convex users. Resolve missing or unverified accounts in Clerk; do not substitute secondary or unverified emails. If the production instance holds any other account (an operator test account, say), remove it from the reviewed mapping so only the three intended users remain. The mutation refuses unknown or ambiguous email matches and ID ownership conflicts for the whole batch.
 
 In the **valuable-akita-907** Convex dashboard, run internal `mutations/maintenance:relinkClerkIds` with `{"mapping": <the reviewed array>, "dryRun": true}`. Review every before/after summary, then repeat with `dryRun: false`. Repeat the dry run: all `changed` fields must be false. IDs in summaries are truncated; validate the full IDs in the privately held mapping. Defaults are dry-run, with a limit of 100 mapping entries and 1,000 user rows; exceeding these limits refuses the transaction.
 
