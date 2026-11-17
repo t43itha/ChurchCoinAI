@@ -34,7 +34,7 @@ In the production dashboard set or confirm:
 
 - `CLERK_JWT_ISSUER_DOMAIN`: the verified production issuer.
 - `APP_BASE_URL=https://www.churchcoin.co.uk`.
-- The selected categorisation provider key: `GEMINI_API_KEY` by default, `OPENAI_API_KEY` for `CATEGORIZATION_AI_PROVIDER=openai`, or `OPENROUTER_API_KEY` for `openrouter`.
+- `GEMINI_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY` always: reports, Smart Link and chat call Gemini, and AI search embeds through Google, whichever provider categorises. Add the categorisation provider key too: `OPENAI_API_KEY` for `CATEGORIZATION_AI_PROVIDER=openai`, `OPENROUTER_API_KEY` for `openrouter`.
 - `RESEND_API_KEY` and `RESEND_FROM_EMAIL` on the verified custom domain, never `resend.dev`. Confirm sender verification in Resend even though DNS resolves.
 - Leave `BILLING_ENABLED` and `BANK_FEEDS_ENABLED` unset (or `false`). Stripe and Yapily credentials are not launch prerequisites.
 - Optional AI budgets: `AI_USER_UNITS_PER_MINUTE=600`, `AI_ORG_UNITS_PER_MINUTE=1000`, `AI_ORG_DAILY_UNITS=10000`, `AI_DAILY_UNITS=200000`. These are the defaults. `AI_RATE_LIMIT_PER_MINUTE` is no longer read.

@@ -2,7 +2,10 @@ type Env = Record<string, string | undefined>;
 export function launchProblems(env: Env): string[] {
   const provider = env.CATEGORIZATION_AI_PROVIDER?.trim().toLowerCase() || 'gemini';
   const aiKey = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
-  const problems = new Set(['CLERK_JWT_ISSUER_DOMAIN', 'APP_BASE_URL', aiKey, 'RESEND_API_KEY', 'RESEND_FROM_EMAIL'].filter(name => !env[name]?.trim()));
+  // GEMINI_API_KEY serves the non-categorisation AI features and GOOGLE_GENERATIVE_AI_API_KEY
+  // the search embeddings, whichever provider categorises.
+  const required = ['CLERK_JWT_ISSUER_DOMAIN', 'APP_BASE_URL', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', aiKey, 'RESEND_API_KEY', 'RESEND_FROM_EMAIL'];
+  const problems = new Set(required.filter(name => !env[name]?.trim()));
   if (!['gemini', 'openrouter', 'openai'].includes(provider)) problems.add('CATEGORIZATION_AI_PROVIDER');
   try {
     const issuer = new URL(env.CLERK_JWT_ISSUER_DOMAIN || '');

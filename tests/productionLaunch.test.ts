@@ -43,11 +43,16 @@ describe('Clerk CSP', () => {
   });
 });
 describe('preflight', () => {
-  const env = { CLERK_JWT_ISSUER_DOMAIN: 'https://clerk.churchcoin.co.uk', APP_BASE_URL: 'https://www.churchcoin.co.uk', GEMINI_API_KEY: 'secret', RESEND_API_KEY: 'secret', RESEND_FROM_EMAIL: 'ChurchCoin <hello@churchcoin.co.uk>' };
+  const env = { CLERK_JWT_ISSUER_DOMAIN: 'https://clerk.churchcoin.co.uk', APP_BASE_URL: 'https://www.churchcoin.co.uk', GEMINI_API_KEY: 'secret', GOOGLE_GENERATIVE_AI_API_KEY: 'secret', RESEND_API_KEY: 'secret', RESEND_FROM_EMAIL: 'ChurchCoin <hello@churchcoin.co.uk>' };
   it('needs no billing or bank secrets', () => expect(launchProblems(env)).toEqual([]));
   it('selects provider keys and reports names only', () => {
     expect(launchProblems({ ...env, CATEGORIZATION_AI_PROVIDER: 'openai' })).toEqual(['OPENAI_API_KEY']);
     expect(launchProblems({ ...env, CATEGORIZATION_AI_PROVIDER: 'openrouter' })).toEqual(['OPENROUTER_API_KEY']);
+    // Reports, Smart Link and chat call Gemini, and AI search embeds through @ai-sdk/google,
+    // whatever provider categorises.
+    const openrouter = { ...env, CATEGORIZATION_AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'k' };
+    expect(launchProblems({ ...openrouter, GEMINI_API_KEY: '' })).toEqual(['GEMINI_API_KEY']);
+    expect(launchProblems({ ...openrouter, GOOGLE_GENERATIVE_AI_API_KEY: '' })).toEqual(['GOOGLE_GENERATIVE_AI_API_KEY']);
     expect(launchProblems({ ...env, GEMINI_API_KEY: ' ' })).toEqual(['GEMINI_API_KEY']);
     expect(launchProblems({ ...env, CLERK_JWT_ISSUER_DOMAIN: 'https://foo.clerk.accounts.dev', APP_BASE_URL: 'http://localhost', RESEND_FROM_EMAIL: 'Test <onboarding@resend.dev>' }).sort()).toEqual(['APP_BASE_URL', 'CLERK_JWT_ISSUER_DOMAIN', 'RESEND_FROM_EMAIL']);
   });
