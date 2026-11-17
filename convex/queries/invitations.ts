@@ -1,6 +1,6 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, requireCapability, getIdentity } from "../lib/auth";
+import { requireCapability, getIdentity, verifiedEmail } from "../lib/auth";
 
 // List all open invitations for the organization (including time-expired
 // ones, so admins can see and resend them)
@@ -46,7 +46,7 @@ export const pendingForCurrentUser = query({
     const identity = await getIdentity(ctx);
     if (!identity) return [];
 
-    const email = identity.email?.toLowerCase().trim();
+    const email = verifiedEmail(identity);
     if (!email) return [];
 
     const now = Date.now();

@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
-import { requireAuth, requireCapability, redactDonorFields } from "../lib/auth";
+import { requireCapability, redactDonorFields } from "../lib/auth";
+import { can } from "../../lib/permissions";
 import { filterIncomeAndExpenditure } from "../../lib/reportableTransactions";
 
 // List all cash collections for the organization
@@ -11,7 +12,7 @@ export const list = query({
     ),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireCapability(ctx, "ledger.read");
 
     let collections;
 
@@ -32,11 +33,15 @@ export const list = query({
     }
 
     // Sort by week ending date descending
-    return collections.sort(
+    const sorted = collections.sort(
       (a, b) =>
         new Date(b.weekEndingDate).getTime() -
         new Date(a.weekEndingDate).getTime()
     );
+    // The Transactions screen groups in-person giving for every role, but the
+    // collection notes stay with those who manage cash collections.
+    if (can(user.role, "cashCollections.read")) return sorted;
+    return sorted.map((collection) => ({ ...collection, notes: undefined }));
   },
 });
 

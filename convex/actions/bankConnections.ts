@@ -3,6 +3,7 @@
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { assertCapability } from "../lib/auth";
+import type { Capability } from "../../lib/permissions";
 import { v } from "convex/values";
 import {
   calculateDefaultSyncRange,
@@ -22,7 +23,7 @@ import {
   type YapilyTransactionLike,
 } from "../lib/yapily";
 
-const requireUser = async (ctx: ActionCtx) => {
+const requireUser = async (ctx: ActionCtx, capability: Capability) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
@@ -41,6 +42,7 @@ const requireUser = async (ctx: ActionCtx) => {
   if (access.dataMode === "synthetic") {
     throw new Error("Live bank connections are disabled for demo organizations");
   }
+  assertCapability(currentUser, capability);
 
   return currentUser;
 };
@@ -163,8 +165,7 @@ export const listInstitutions = action({
   args: {},
   returns: v.array(institutionSchema),
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    await requireUser(ctx, "bank.manage");
 
     const institutions = await getYapilyInstitutions();
     return institutions.map((institution) => ({
@@ -185,8 +186,7 @@ export const startConnection = action({
   },
   returns: v.object({ authorizationUrl: v.string() }),
   handler: async (ctx, args): Promise<{ authorizationUrl: string }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    const user = await requireUser(ctx, "bank.manage");
 
     const { internal } = await import("../_generated/api");
     const aspspCountry = args.institutionCountry.trim().toUpperCase();
@@ -406,8 +406,7 @@ export const syncTransactions = action({
     hasMore: boolean;
     nextCursor?: SyncTransactionsCursor;
   }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    const user = await requireUser(ctx, "bank.manage");
 
     const { internal } = await import("../_generated/api");
     const connection = await ctx.runQuery(
@@ -594,8 +593,7 @@ export const removeConnection = action({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args): Promise<{ success: boolean }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.remove");
+    const user = await requireUser(ctx, "bank.remove");
 
     const { internal } = await import("../_generated/api");
     const connection = await ctx.runQuery(

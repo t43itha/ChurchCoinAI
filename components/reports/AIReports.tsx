@@ -25,10 +25,11 @@ interface AIReportsProps {
   funds: Fund[];
   pledges: Pledge[];
   churchDetails: ChurchDetails;
+  canDraftGiftAid: boolean;
 }
 
-const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, churchDetails }) => {
-  const giftAidEnabled = isGiftAidEnabled(churchDetails);
+const AIReports: React.FC<AIReportsProps> = ({ transactions, funds, pledges, churchDetails, canDraftGiftAid }) => {
+  const giftAidEnabled = isGiftAidEnabled(churchDetails) && canDraftGiftAid;
   const activeTransactions = useMemo(() => filterIncomeAndExpenditure(transactions), [transactions]);
   const [reportText, setReportText] = useState('');
   const [reportTitle, setReportTitle] = useState('Report');

@@ -2,7 +2,8 @@ import { OWNER_ROLE } from "../../lib/permissions";
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { getIdentity, requireAuth, assertCapability } from "../lib/auth";
+import { getIdentity, requireAuth, assertCapability, UNVERIFIED_EMAIL_MESSAGE, verifiedEmail } from "../lib/auth";
+import { requireDisplayName } from "../../lib/displayNames";
 import { ORGANIZATION_DELETION_TABLES } from "../../lib/organizationData";
 import { PRODUCT_TRIAL_DURATION_MS } from "../../lib/trial";
 import { getRCICategorySeedData } from "../../constants/rciCategories";
@@ -206,10 +207,12 @@ export const create = mutation({
     }
 
     // Email always comes from the verified Clerk identity, never the client
-    const userEmail = identity.email?.toLowerCase().trim();
+    const userEmail = verifiedEmail(identity);
     if (!userEmail) {
-      throw new Error("No email found on your account");
+      throw new Error(UNVERIFIED_EMAIL_MESSAGE);
     }
+    const name = requireDisplayName(args.name, "church");
+    const userName = requireDisplayName(args.userName, "person");
 
     // Check if user already has an organization
     const existingUser = await ctx.db
@@ -226,7 +229,7 @@ export const create = mutation({
 
     // Create the organization with a server-issued product trial.
     const organizationId = await ctx.db.insert("organizations", {
-      name: args.name,
+      name,
       charityNumber: args.charityNumber,
       address: args.address,
       email: args.email,
@@ -247,7 +250,7 @@ export const create = mutation({
     await ctx.db.insert("users", {
       clerkId: identity.subject,
       organizationId,
-      name: args.userName,
+      name: userName,
       email: userEmail,
       role: OWNER_ROLE,
       createdAt: now,
@@ -479,7 +482,12 @@ export const update = mutation({
     assertCapability(user, "organization.update");
 
     const updates: Record<string, any> = {};
-    if (args.name !== undefined) updates.name = args.name;
+    // Settings resend the current name on every save; only a changed name is
+    // validated, so a church with an older name can still save other details.
+    if (args.name !== undefined) {
+      const organization = await ctx.db.get(user.organizationId);
+      updates.name = args.name === organization?.name ? args.name : requireDisplayName(args.name, "church");
+    }
     if (args.charityNumber !== undefined)
       updates.charityNumber = args.charityNumber;
     if (args.address !== undefined) updates.address = args.address;

@@ -105,6 +105,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
 
   const canEdit = can(currentUser.role, "pledges.write");
   const canStartCampaign = can(currentUser.role, "funds.write");
+  const canThankDonors = can(currentUser.role, "donors.read");
   const today = formatLocalDateInputValue(new Date());
 
   // Set default selected fund when campaign funds are available
@@ -168,6 +169,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
           />
         ) : null;
       case "thank": {
+        if (!canThankDonors) return null;
         const { pledge } = panel;
         const fundName = funds.find((f) => f._id === pledge.fundId)?.name || "Campaign";
         return (
@@ -461,7 +463,7 @@ const Campaigns: React.FC<CampaignsProps> = ({
                   </span>
                 </div>
                 <span className={TAG_CLASS[tag]}>{PLEDGE_TAG_LABEL[tag]}</span>
-                {tag === "paid" && (
+                {tag === "paid" && canThankDonors && (
                   <button type="button" onClick={() => setPanel({ kind: "thank", pledge })} className={linkBtn}>
                     Thank
                   </button>

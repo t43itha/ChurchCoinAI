@@ -7,10 +7,15 @@ type FilterBuilder = typeof filterBuilder;
 const filterBuilder = {
   field: (name: string) => name,
   eq: (field: string, value: unknown) => (row: Row) => row[field] === value,
+  gt: (field: string, value: number) => (row: Row) => (row[field] as number) > value,
+  and: (...conditions: Array<(row: Row) => boolean>) => (row: Row) => conditions.every((condition) => condition(row)),
 };
 
 // Run real handlers against an indexed, mutable in-memory database.
-export function fixture(extra: Record<string, Row[]> = {}) {
+export function fixture(
+  extra: Record<string, Row[]> = {},
+  identity: Record<string, unknown> | null = { subject: "clerk-user" }
+) {
   const records: Record<string, Row[]> = {
     users: [{ _id: "user", clerkId: "clerk-user", organizationId: "org", role: "Admin" }],
     organizations: [{ _id: "org", accessMode: "legacy" }],
@@ -40,8 +45,17 @@ export function fixture(extra: Record<string, Row[]> = {}) {
           rows = rows.filter(build(filterBuilder));
           return chain;
         },
+        order: (direction: "asc" | "desc") => {
+          if (direction === "desc") rows = [...rows].reverse();
+          return chain;
+        },
         collect: async () => rows,
         first: async () => rows[0] ?? null,
+        unique: async () => rows[0] ?? null,
+        take: async (n: number) => rows.slice(0, n),
+        async *[Symbol.asyncIterator]() {
+          yield* rows;
+        },
       };
       return chain;
     }),
@@ -68,7 +82,7 @@ export function fixture(extra: Record<string, Row[]> = {}) {
     }),
   };
   const ctx = {
-    auth: { getUserIdentity: async () => ({ subject: "clerk-user" }) },
+    auth: { getUserIdentity: async () => identity },
     db,
     scheduler: { runAfter: vi.fn() },
   } as unknown as MutationCtx;

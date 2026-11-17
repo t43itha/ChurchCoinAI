@@ -102,6 +102,8 @@ export const upsertAccepted = internalMutation({
     sourceTransactionId: v.optional(v.id("transactions")),
   },
   handler: async (ctx, args) => {
+    // Scheduled before an erasure, this can run after it: write nothing then.
+    if (!(await ctx.db.get(args.organizationId))) return null;
     const existing = await ctx.db
       .query("transactionCategorizationMemory")
       .withIndex("by_organization_signature", (q) =>

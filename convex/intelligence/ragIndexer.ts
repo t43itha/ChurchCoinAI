@@ -1,6 +1,6 @@
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
-import { transactionRAG } from "../lib/ragInstance";
+import { addForExistingOrganization } from "../lib/ragInstance";
 
 /**
  * RAG Indexer - Handles ongoing indexing of new transactions.
@@ -28,7 +28,7 @@ export const indexTransaction = internalAction({
     const namespace = `org_${args.organizationId}`;
 
     try {
-      await transactionRAG.add(ctx, {
+      await addForExistingOrganization(ctx, args.organizationId, {
         namespace,
         key: `tx:${args.transactionId}`,
         text: args.searchText,
@@ -85,7 +85,7 @@ export const batchIndexTransactions = internalAction({
 
     for (const tx of args.transactions) {
       try {
-        await transactionRAG.add(ctx, {
+        await addForExistingOrganization(ctx, args.organizationId, {
           namespace,
           key: `tx:${tx.transactionId}`,
           text: tx.searchText,
@@ -137,7 +137,7 @@ export const updateInIndex = internalAction({
 
     try {
       // Add the corrected version - RAG will find the most relevant match
-      await transactionRAG.add(ctx, {
+      await addForExistingOrganization(ctx, args.organizationId, {
         namespace,
         key: `tx:${args.transactionId}`,
         text: args.newSearchText,

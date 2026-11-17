@@ -17,7 +17,7 @@ const AMOUNT_MAPPING = { date: "Date", description: "Description", amount: "Amou
 function database() {
   const records: Record<string, any[]> = { users: [], organizations: [], funds: [], categories: [], transactions: [] };
   const ctx: any = {
-    auth: { getUserIdentity: async () => ({ subject: "synthetic-owner", email: "audit@example.invalid" }) },
+    auth: { getUserIdentity: async () => ({ subject: "synthetic-owner", email: "audit@example.invalid", emailVerified: true }) },
     db: {
       query: (table: string) => {
         const q: any = { withIndex: () => q, first: async () => records[table]?.[0] ?? null, collect: async () => records[table] ?? [] };

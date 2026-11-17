@@ -48,8 +48,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
     periodKey,
     today: formatLocalDateInputValue(new Date()),
   });
-  const bankConnections = useQuery(api.queries.bankConnections.list);
-  const bankFeedsNeedingAttention = useQuery(api.queries.bankConnections.getItemsNeedingAttention);
+  const bankConnections = useQuery(api.queries.bankConnections.syncStatus);
 
   if (summary === undefined) {
     return <LoadingSpinner message="Loading leadership dashboard..." />;
@@ -58,7 +57,7 @@ const Dashboard: React.FC<DashboardProps> = ({ funds, categories, currentUser })
   const { period, health, funds: fundFigures, readiness, donorFollowUp } = summary;
   const needsYou = buildDashboardNeedsYou(summary, {
     role: currentUser.role,
-    bankFeedIssues: bankFeedsNeedingAttention?.length ?? 0,
+    bankFeedIssues: bankConnections?.filter((connection) => connection.needsAttention).length ?? 0,
     canOpenDonors,
   });
   const generalFund = fundFigures.generalFundBalance;

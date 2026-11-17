@@ -1,8 +1,24 @@
-import { mutation } from "../_generated/server";
+import { mutation, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Doc } from "../_generated/dataModel";
 import { requireCapability, roleValidator } from "../lib/auth";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const INVITE_RESEND_COOLDOWN_MS = 10 * 60 * 1000;
+const INVITE_EMAILS_PER_DAY = 25;
+
+// Each create or resend is followed by an email, so it counts against the
+// church's daily allowance whether or not delivery then succeeds.
+async function chargeInviteEmail(ctx: MutationCtx, organization: Doc<"organizations">, now: number) {
+  const day = new Date(now).toISOString().slice(0, 10);
+  const sent = organization.inviteEmailDay === day ? organization.inviteEmailCount ?? 0 : 0;
+  if (sent >= INVITE_EMAILS_PER_DAY) {
+    throw new Error(
+      `Your church has sent ${INVITE_EMAILS_PER_DAY} invitations today. Please try again tomorrow.`
+    );
+  }
+  await ctx.db.patch(organization._id, { inviteEmailDay: day, inviteEmailCount: sent + 1 });
+}
 
 function generateToken(): string {
   const bytes = new Uint8Array(24);
@@ -65,6 +81,7 @@ export const create = mutation({
     }
 
     const now = Date.now();
+    await chargeInviteEmail(ctx, organization, now);
     const token = generateToken();
     const invitationId = await ctx.db.insert("invitations", {
       organizationId: currentUser.organizationId,
@@ -115,6 +132,10 @@ export const resend = mutation({
     }
 
     const now = Date.now();
+    if (invitation.lastSentAt !== undefined && now - invitation.lastSentAt < INVITE_RESEND_COOLDOWN_MS) {
+      throw new Error("This invitation was emailed in the last 10 minutes. Please wait before resending it.");
+    }
+    await chargeInviteEmail(ctx, organization, now);
     const token = invitation.token ?? generateToken();
     await ctx.db.patch(args.invitationId, {
       status: "pending",

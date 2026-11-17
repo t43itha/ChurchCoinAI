@@ -1,5 +1,6 @@
 import { QueryCtx, MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { UserIdentity } from "convex/server";
 import { can, ROLES, type Capability, type UserRole } from "../../lib/permissions";
 import { Doc } from "../_generated/dataModel";
 import { requireOrganizationAccess } from "./access";
@@ -29,6 +30,19 @@ export async function getCurrentUser(ctx: QueryCtx | MutationCtx) {
 export async function getIdentity(ctx: QueryCtx | MutationCtx) {
   return await ctx.auth.getUserIdentity();
 }
+
+/**
+ * The identity's email, only when Clerk marks it verified (the `email_verified`
+ * claim of the `convex` JWT template). Invitations are matched by email, so an
+ * unverified address must never stand in for ownership.
+ */
+export function verifiedEmail(identity: Pick<UserIdentity, "email" | "emailVerified">): string | null {
+  const email = identity.email?.toLowerCase().trim();
+  return email && identity.emailVerified === true ? email : null;
+}
+
+export const UNVERIFIED_EMAIL_MESSAGE =
+  "Please verify your email address in your account settings, then try again.";
 
 /**
  * Require authentication - throws if not authenticated

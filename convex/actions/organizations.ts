@@ -87,15 +87,18 @@ export const deleteOrganization = action({
 
     // RAG entries contain derived transaction text and live in a Convex
     // component database, so they must be removed separately from app tables.
-    const namespace = await transactionRAG.getNamespace(ctx, {
-      namespace: `org_${user.organizationId}`,
-    });
-    if (namespace) {
-      await ctx.runAction(
-        transactionRAG.component.namespaces.deleteNamespaceSync,
-        { namespaceId: namespace.namespaceId }
-      );
-    }
+    const clearRagNamespace = async () => {
+      const namespace = await transactionRAG.getNamespace(ctx, {
+        namespace: `org_${user.organizationId}`,
+      });
+      if (namespace) {
+        await ctx.runAction(
+          transactionRAG.component.namespaces.deleteNamespaceSync,
+          { namespaceId: namespace.namespaceId }
+        );
+      }
+    };
+    await clearRagNamespace();
 
     let deletedRecords = 0;
     for (let pass = 0; pass < 5; pass += 1) {
@@ -124,6 +127,9 @@ export const deleteOrganization = action({
         { organizationId: user.organizationId }
       );
       if (finalized.deleted) {
+        // Indexing jobs scheduled before the erasure may have added entries
+        // since the first clear; with the organization gone, none can now.
+        await clearRagNamespace();
         console.info("Organization data deleted", {
           organizationId: user.organizationId,
           requestedBy: identity.subject,

@@ -12,11 +12,12 @@ interface ReportsProps {
   pledges: Pledge[];
   programmes: Array<{ _id: string; name: string }>;
   churchDetails: ChurchDetails;
+  canDraftGiftAid: boolean;
 }
 
 // Reports page shell: the active tab decides which report renders. Each tab
 // remounts the error boundary, so a failed report clears when the user switches.
-const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, programmes, churchDetails }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, programmes, churchDetails, canDraftGiftAid }) => {
   const [activeTab, setActiveTab] = useState<ReportTab>('monthly');
 
   return (
@@ -54,6 +55,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, funds, pledges, program
               funds={funds}
               pledges={pledges}
               churchDetails={churchDetails}
+              canDraftGiftAid={canDraftGiftAid}
             />
           </div>
         )}

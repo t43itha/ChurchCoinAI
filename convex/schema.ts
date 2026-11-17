@@ -50,6 +50,9 @@ export default defineSchema({
       v.literal("failed")
     )),
     demoSeedVersion: v.optional(v.string()),
+    // Invitation emails sent on inviteEmailDay (UTC), for the daily cap.
+    inviteEmailDay: v.optional(v.string()),
+    inviteEmailCount: v.optional(v.number()),
     createdAt: v.number(),
     createdBy: v.string(), // Clerk userId
   })
@@ -438,13 +441,24 @@ export default defineSchema({
     .index("by_organization_name", ["organizationId", "name"])
     .index("by_organization_mainCategory", ["organizationId", "mainCategory"]),
 
-  // Per-organization AI rate limiting window state
+  // Per-minute AI usage windows: one row per organization, plus one per user
+  // (userId set). requestCount holds usage units, not requests.
   aiRateLimits: defineTable({
     organizationId: v.id("organizations"),
+    userId: v.optional(v.id("users")),
     windowStart: v.number(),
     requestCount: v.number(),
     updatedAt: v.number(),
-  }).index("by_organization", ["organizationId"]),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_user", ["organizationId", "userId"]),
+
+  // Deployment-wide AI usage units per UTC day.
+  aiDailyUsage: defineTable({
+    day: v.string(),
+    units: v.number(),
+    updatedAt: v.number(),
+  }).index("by_day", ["day"]),
 
   // Intelligence suggestions (rules-based insights with feedback tracking)
   intelligenceSuggestions: defineTable({

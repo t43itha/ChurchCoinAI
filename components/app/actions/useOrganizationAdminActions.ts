@@ -130,7 +130,10 @@ export const useOrganizationAdminActions = ({
       );
     } catch (error) {
       console.error("Failed to update organization:", error);
-      showNotification("Error", "Failed to update organization. Please try again.");
+      showNotification(
+        "Error",
+        error instanceof Error && error.message ? error.message : "Failed to update organization. Please try again."
+      );
     }
   };
 

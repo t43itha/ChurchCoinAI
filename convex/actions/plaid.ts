@@ -2,6 +2,7 @@
 
 import { action, type ActionCtx } from "../_generated/server";
 import { assertCapability } from "../lib/auth";
+import type { Capability } from "../../lib/permissions";
 import { v } from "convex/values";
 import { getPlaid, PLAID_CONFIG, getPlaidWebhookUrl } from "../lib/plaid";
 import { Products } from "plaid";
@@ -14,7 +15,7 @@ const accountMappingSchema = v.object({
 });
 
 // Require an authenticated Convex user
-const requireUser = async (ctx: ActionCtx) => {
+const requireUser = async (ctx: ActionCtx, capability: Capability) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Unauthorized: please sign in");
@@ -31,6 +32,7 @@ const requireUser = async (ctx: ActionCtx) => {
   if (access.dataMode === "synthetic") {
     throw new Error("Live bank connections are disabled for demo organizations");
   }
+  assertCapability(currentUser, capability);
   return currentUser;
 };
 
@@ -38,8 +40,7 @@ const requireUser = async (ctx: ActionCtx) => {
 export const createLinkToken = action({
   args: {},
   handler: async (ctx): Promise<{ linkToken: string }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    const user = await requireUser(ctx, "bank.manage");
 
     const plaid = getPlaid();
 
@@ -64,8 +65,7 @@ export const createUpdateLinkToken = action({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args): Promise<{ linkToken: string }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    const user = await requireUser(ctx, "bank.manage");
     const { api } = await import("../_generated/api");
 
     // Get the item to re-authenticate
@@ -118,8 +118,7 @@ export const exchangePublicToken = action({
     accountMappings: v.array(accountMappingSchema),
   },
   handler: async (ctx, args): Promise<{ success: boolean; itemId: string }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    const user = await requireUser(ctx, "bank.manage");
     const { internal } = await import("../_generated/api");
 
     const plaid = getPlaid();
@@ -199,8 +198,7 @@ export const syncTransactions = action({
     }>;
     hasMore: boolean;
   }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.manage");
+    const user = await requireUser(ctx, "bank.manage");
     const { internal, api } = await import("../_generated/api");
 
     // Get item with access token
@@ -281,8 +279,7 @@ export const removeItem = action({
     plaidItemId: v.id("plaidItems"),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
-    const user = await requireUser(ctx);
-    assertCapability(user, "bank.remove");
+    await requireUser(ctx, "bank.remove");
     const { internal } = await import("../_generated/api");
 
     // Get credentials for removal

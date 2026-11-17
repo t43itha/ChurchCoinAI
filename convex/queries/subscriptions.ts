@@ -1,5 +1,6 @@
 import { query } from "../_generated/server";
 import { getCurrentUser } from "../lib/auth";
+import { can } from "../../lib/permissions";
 import { resolveOrganizationAccess } from "../lib/access";
 
 export const access = query({
@@ -25,7 +26,15 @@ export const current = query({
       )
       .first();
 
-    return subscription;
+    // Every member sees the plan and status; Stripe ids are for billing admins.
+    if (!subscription || can(user.role, "billing.manage")) return subscription;
+    const {
+      stripeCustomerId: _stripeCustomerId,
+      stripeSubscriptionId: _stripeSubscriptionId,
+      stripePriceId: _stripePriceId,
+      ...safe
+    } = subscription;
+    return safe;
   },
 });
 

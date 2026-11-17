@@ -457,7 +457,8 @@ export const merge = mutation({
     duplicateDonorIds: v.array(v.id("donors")),
   },
   handler: async (ctx, args) => {
-    const user = await requireCapability(ctx, "donors.write");
+    // Merging deletes the duplicate donor records.
+    const user = await requireCapability(ctx, "donors.delete");
 
     // Verify primary donor exists and belongs to org
     const primaryDonor = await ctx.db.get(args.primaryDonorId);
